@@ -154,9 +154,6 @@ const COMPONENTS = {
   td: ({ isHeader: _h, ...p }: Props<"td"> & { isHeader?: boolean }) => (
     <td {...dom(p)} className="ui:border ui:border-border ui:px-2 ui:py-1" />
   ),
-  img: ({ alt, ...p }: Props<"img">) => (
-    <img {...dom(p)} alt={alt ?? ""} className="ui:max-w-full" />
-  ),
   // A GFM task-list box: read-only, and named, since its item text is not its label.
   input: ({ checked, type, ...p }: Props<"input">) => (
     <input
@@ -189,9 +186,34 @@ const COMPONENTS = {
   },
 };
 
+// Off by default, an image is a link the reader can choose to follow:
+// fetching it on render would let text steered by a document (prompt
+// injection) send data to any host in its URL.
+const LINKED_IMAGE = ({ alt, src }: Props<"img">) => (
+  <a
+    href={src}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="ui:rounded-sm ui:text-primary ui:underline ui:underline-offset-2 ui:focus-visible:focus-ring"
+  >
+    {alt ? `Image: ${alt}` : "Image"}
+  </a>
+);
+const LOADED_IMAGE = ({ alt, ...p }: Props<"img">) => (
+  <img {...dom(p)} alt={alt ?? ""} className="ui:max-w-full" />
+);
+const WITH_LINKED_IMAGES = { ...COMPONENTS, img: LINKED_IMAGE };
+const WITH_LOADED_IMAGES = { ...COMPONENTS, img: LOADED_IMAGE };
+
 export type MarkdownProps = Readonly<{
   /** Markdown source, including GitHub extensions (tables, task lists, strikethrough). */
   children: string;
+  /**
+   * Loads images inline. Off by default: images show as "Image: alt" links,
+   * because text from a model or a document can point an image at any host.
+   * Turn it on only for Markdown you author or trust.
+   */
+  loadImages?: boolean;
   className?: string;
 }>;
 
@@ -200,9 +222,14 @@ export type MarkdownProps = Readonly<{
  * never rendered (no rehype-raw), and link and image URLs go through
  * react-markdown's safe-URL filter, so `javascript:` URLs render inert.
  * External links open in a new tab with `rel="noopener noreferrer"`.
- * Fenced code renders as a CodeBlock.
+ * Images are links unless `loadImages` is set. Fenced code renders as a
+ * CodeBlock.
  */
-export function Markdown({ children, className }: MarkdownProps): JSX.Element {
+export function Markdown({
+  children,
+  loadImages = false,
+  className,
+}: MarkdownProps): JSX.Element {
   return (
     <div
       data-slot="markdown"
@@ -218,7 +245,11 @@ export function Markdown({ children, className }: MarkdownProps): JSX.Element {
         transformLinkUri={uriTransformer}
         transformImageUri={uriTransformer}
         // react-markdown 8's types are written against React 18's global JSX.
-        components={COMPONENTS as unknown as Record<string, () => ReactNode>}
+        components={
+          (loadImages
+            ? WITH_LOADED_IMAGES
+            : WITH_LINKED_IMAGES) as unknown as Record<string, () => ReactNode>
+        }
       >
         {children}
       </ReactMarkdown>

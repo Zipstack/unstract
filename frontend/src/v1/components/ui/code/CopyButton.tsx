@@ -43,8 +43,9 @@ export type CopyButtonProps = Omit<
   }>;
 
 /**
- * The one copy control for v1. Every attempt gives inline feedback (the icon
- * turns into a check, or the label says what went wrong) and, unless
+ * The one copy control for v1. Every attempt gives inline feedback (a check
+ * on success, a red icon on failure, and with `showLabel` the label names the
+ * outcome) and, unless
  * `toastOnCopy` is off, a toast. With the toast off, a polite live region
  * announces the result instead, so screen readers hear it exactly once.
  */
@@ -75,7 +76,7 @@ export function CopyButton({
         });
       } else {
         toast.error("Could not copy", {
-          description: "The browser blocked clipboard access.",
+          description: "Try again, or select the text and copy it.",
         });
       }
     }

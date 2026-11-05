@@ -3,7 +3,11 @@
  * extraction output the consumer pages show (frame V14).
  */
 
-/** A small statement extraction, as in frame V14. */
+/**
+ * A small statement extraction. `fees`, `rewards` and `website` are frame
+ * V14's values; `autopay`, `previous_balance` and `transactions` are added so
+ * every token kind (boolean, null, array) appears.
+ */
 export const STATEMENT = {
   fees: 0,
   rewards: {

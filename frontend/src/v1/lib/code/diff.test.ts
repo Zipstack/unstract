@@ -1,14 +1,27 @@
 import { expect, it } from "vitest";
-import { computeLineDiff, describeChanges } from "./diff";
+import {
+  computeLineDiff,
+  DIFF_TIMEOUT_MS,
+  describeChanges,
+  diffStats,
+} from "./diff";
+
+function diffOf(oldText: string, newText: string) {
+  const diff = computeLineDiff(oldText, newText);
+  if (!diff) {
+    throw new Error("diff hit its limits");
+  }
+  return diff;
+}
 
 it("counts changes as separate runs of changed lines", () => {
-  const diff = computeLineDiff("a\nb\nc\nd\ne", "a\nB\nc\nd\nE\nF");
+  const diff = diffOf("a\nb\nc\nd\ne", "a\nB\nc\nd\nE\nF");
   expect(diff.stats).toEqual({ changes: 2, added: 3, removed: 2 });
   expect(describeChanges(diff.stats)).toBe("2 changes");
 });
 
 it("pairs removed and added lines side by side, padding the shorter side", () => {
-  const diff = computeLineDiff("one\nold\ntwo", "one\nnew A\nnew B\ntwo");
+  const diff = diffOf("one\nold\ntwo", "one\nnew A\nnew B\ntwo");
   expect(diff.split).toEqual([
     { old: { kind: "context", line: 0 }, new: { kind: "context", line: 0 } },
     { old: { kind: "removed", line: 1 }, new: { kind: "added", line: 1 } },
@@ -27,20 +40,36 @@ it("pairs removed and added lines side by side, padding the shorter side", () =>
 });
 
 it("ignores a trailing newline and CRLF, so only real edits count", () => {
-  const diff = computeLineDiff("a\r\nb\r\n", "a\nb");
+  const diff = diffOf("a\r\nb\r\n", "a\nb");
   expect(diff.stats.changes).toBe(0);
   expect(describeChanges(diff.stats)).toBe("No changes");
   expect(diff.oldLines).toEqual(["a", "b"]);
 });
 
 it("handles an empty side", () => {
-  expect(computeLineDiff("", "x\ny").stats).toEqual({
+  expect(diffOf("", "x\ny").stats).toEqual({
     changes: 1,
     added: 2,
     removed: 0,
   });
-  expect(computeLineDiff("x", "").split).toEqual([
+  expect(diffOf("x", "").split).toEqual([
     { old: { kind: "removed", line: 0 } },
   ]);
-  expect(computeLineDiff("", "").unified).toEqual([]);
+  expect(diffOf("", "").unified).toEqual([]);
+});
+
+it("gives up past its limits instead of freezing, and says so with null", () => {
+  expect(
+    computeLineDiff("a\nb\nc", "x\ny\nz", { maxEditLength: 1 }),
+  ).toBeNull();
+  expect(computeLineDiff("a\nb", "a\nB", { maxEditLength: 2 })).not.toBeNull();
+  expect(DIFF_TIMEOUT_MS).toBeGreaterThan(0);
+});
+
+it("diffStats gives the counts on their own", () => {
+  expect(diffStats("a\nb", "a\nc\nd")).toEqual({
+    changes: 1,
+    added: 2,
+    removed: 1,
+  });
 });

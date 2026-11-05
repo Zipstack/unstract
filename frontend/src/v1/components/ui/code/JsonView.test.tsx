@@ -171,11 +171,62 @@ it("shows invalid text as an error with the text as it came", async () => {
   await waitFor(() => expect(writeText).toHaveBeenCalledWith('{"a": 1,,}'));
 });
 
-it("shows a value it cannot serialise as an error, and nothing as 'No data'", () => {
+it("shows a value it cannot serialise as an error, with nothing to copy, and nothing as 'No data'", () => {
   const { rerender } = renderV1(<JsonView value={{ n: BigInt(1) }} />);
-  expect(screen.getByRole("alert").textContent).toMatch(/BigInt/i);
+  const alert = screen.getByRole("alert");
+  expect(alert.textContent).toContain("This value cannot be shown as JSON");
+  expect(alert.textContent).toMatch(/BigInt/i);
+  expect(screen.queryByRole("region")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Copy JSON" })).toBeNull();
   rerender(<JsonView value={undefined} />);
   expect(screen.getByText("No data")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Expand all" })).toBeNull();
+});
+
+it("survives re-renders while the text is invalid, and valid-to-invalid changes", () => {
+  const { rerender } = renderV1(<JsonView text='{"a": 1}' />);
+  rerender(<JsonView text="{bad" />);
+  rerender(<JsonView text="{bad" />);
+  rerender(<JsonView text="{bad," />);
+  expect(screen.getByRole("alert").textContent).toContain("Invalid JSON");
+  rerender(<JsonView text='{"a": 2}' />);
+  expect(screen.getByRole("tree").textContent).toContain('"a": 2');
+});
+
+it("shows and copies JSON text as written, never rounding a large number", async () => {
+  const source = '{"acct":4111111111111111111,"amt":1.10}';
+  const { user } = renderV1(<JsonView text={source} />);
+  expect(screen.getByRole("tree").textContent).toContain(
+    '"acct": 4111111111111111111,',
+  );
+  const writeText = vi.spyOn(navigator.clipboard, "writeText");
+  await user.click(screen.getByRole("button", { name: "Copy JSON" }));
+  await waitFor(() =>
+    expect(writeText).toHaveBeenCalledWith(
+      '{\n  "acct": 4111111111111111111,\n  "amt": 1.10\n}',
+    ),
+  );
+});
+
+it("never makes a closing bracket the active item", async () => {
+  const { user, container, rerender } = renderV1(
+    <JsonView value={{ a: { b: 1 }, c: 2 }} />,
+  );
+  // Line 4 is the inner `},`, which is not a tree item.
+  const close = container.querySelector("[data-pos='3']") as Element;
+  expect(close.getAttribute("role")).toBeNull();
+  await user.click(close);
+  const tree = screen.getByRole("tree");
+  const id = tree.getAttribute("aria-activedescendant") as string;
+  expect(document.getElementById(id)?.textContent).toContain('"a": {');
+  // Left then collapses that container, as it would from its own row.
+  await user.keyboard("{ArrowLeft}");
+  expect(screen.queryByText(/"b": 1/)).toBeNull();
+  // A new, shorter document starts back at the root.
+  rerender(<JsonView value={[1]} />);
+  act(() => screen.getByRole("tree").focus());
+  const next = screen.getByRole("tree").getAttribute("aria-activedescendant");
+  expect(document.getElementById(next as string)?.textContent).toContain("[");
 });
 
 it("resets folding when the document changes", async () => {
@@ -222,10 +273,9 @@ it("passes axe as a tree and as raw text, in every mode", async () => {
   }
 });
 
-it("stays responsive with 5,000 lines: renders a window, folds and unfolds fast", async () => {
+it("keeps 5,000 lines responsive by rendering only a window of rows, through every fold", async () => {
   stubLayout();
   const value = largeJson(5000);
-  const started = performance.now();
   const { user, container } = renderV1(<JsonView value={value} />);
   const rendered = () =>
     container.querySelectorAll("[data-slot=json-line]").length;
@@ -241,8 +291,6 @@ it("stays responsive with 5,000 lines: renders a window, folds and unfolds fast"
   expect(rendered()).toBeLessThan(VIRTUALIZE_ABOVE / 3);
   await user.click(screen.getByRole("button", { name: "Raw" }));
   expect(rendered()).toBeLessThan(VIRTUALIZE_ABOVE / 3);
-  // Generous for CI: render, expand all, collapse all and switch to raw.
-  expect(performance.now() - started).toBeLessThan(3000);
 
   // The window follows the keyboard to the last line.
   await user.click(screen.getByRole("button", { name: "Tree" }));

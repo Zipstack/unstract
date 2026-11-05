@@ -4,8 +4,8 @@ import { cn } from "@v1/lib/cn";
 import {
   containersFrom,
   flattenJson,
+  flattenJsonText,
   type JsonLine,
-  parseJson,
   visibleLines,
 } from "@v1/lib/code/json-lines";
 import { lineText } from "@v1/lib/code/tokens";
@@ -39,15 +39,19 @@ const INITIAL_VIEWPORT = { width: 0, height: 480 };
 
 export type JsonViewMode = "tree" | "raw";
 
-type JsonSource =
+/**
+ * What JsonView shows: a value, or JSON text. Exactly one. Exported apart from
+ * the options so a wrapper can `Omit` options without losing the either-or
+ * (`Omit` over a union collapses it).
+ */
+export type JsonSource =
   | Readonly<{ value: unknown; text?: never }>
   | Readonly<{ text: string; value?: never }>;
 
-export type JsonViewProps = Omit<
+export type JsonViewOptions = Omit<
   ComponentProps<"div">,
   "children" | "title" | "defaultValue"
 > &
-  JsonSource &
   Readonly<{
     /** Controlled mode. */
     mode?: JsonViewMode;
@@ -72,31 +76,41 @@ export type JsonViewProps = Omit<
     "aria-label"?: string;
   }>;
 
+export type JsonViewProps = JsonViewOptions & JsonSource;
+
 type Model =
   | Readonly<{ ok: true; lines: JsonLine[] }>
-  | Readonly<{ ok: false; error: string; raw: string }>;
+  // `raw` is the invalid text as received; a value that cannot be serialised has none.
+  | Readonly<{ ok: false; error: string; raw?: string }>;
+
+// One shared empty list: a fresh `[]` per render would never equal the last
+// one, and the fold reset below would re-render forever.
+const NO_LINES: JsonLine[] = [];
 
 function buildModel(source: JsonSource): Model {
-  let value: unknown = source.value;
   if (source.text !== undefined) {
-    const parsed = parseJson(source.text);
-    if (!parsed.ok) {
-      return { ok: false, error: parsed.error, raw: source.text };
-    }
-    value = parsed.value;
+    const result = flattenJsonText(source.text);
+    return result.ok
+      ? result
+      : { ok: false, error: result.error, raw: source.text };
   }
   try {
-    return { ok: true, lines: flattenJson(value) };
+    return { ok: true, lines: flattenJson(source.value) };
   } catch (error) {
     return {
       ok: false,
       error: error instanceof Error ? error.message : String(error),
-      raw: String(value),
     };
   }
 }
 
-function initialFold(lines: readonly JsonLine[], depth?: number): Set<string> {
+/** A closing line is not a tree item; activating it means activating its container. */
+function itemIndex(lines: readonly JsonLine[], index: number): number {
+  const line = lines[index];
+  return line?.kind === "close" ? (line.openIndex ?? 0) : index;
+}
+
+function initialFold(lines: readonly JsonLine[], depth?: number): Set<number> {
   const start =
     depth ??
     (lines.length <= EXPAND_ALL_UP_TO
@@ -150,7 +164,8 @@ const TOOL_BUTTON =
  * JSON as an expandable tree or as raw pretty-printed text, over one line
  * model. Large documents render only the rows in view, so 5,000 lines stay
  * responsive. Pass `value` (any JSON-serialisable value) or `text` (JSON
- * source; invalid text shows an error with the text as it came).
+ * source, printed as written: numbers are never rounded; invalid text shows
+ * an error with the text as it came).
  *
  * Tree keys: Up/Down move, Home/End jump, Right expands (or enters), Left
  * collapses (or goes to the parent), Enter or Space toggles.
@@ -181,7 +196,7 @@ export function JsonView({
     () => buildModel(text === undefined ? { value } : { text }),
     [value, text],
   );
-  const lines = model.ok ? model.lines : [];
+  const lines = model.ok ? model.lines : NO_LINES;
 
   const [ownMode, setOwnMode] = useState(defaultMode);
   const currentMode = mode ?? ownMode;
@@ -192,18 +207,22 @@ export function JsonView({
     onModeChange?.(next);
   };
 
-  // Folded containers, reset whenever the document changes.
-  const [fold, setFold] = useState(() => ({
+  // Folded containers and the active row, both reset when the document changes.
+  const [view, setView] = useState(() => ({
     lines,
     collapsed: initialFold(lines, defaultExpandDepth),
+    active: 0,
   }));
-  let collapsed = fold.collapsed;
-  if (fold.lines !== lines) {
+  let { collapsed, active } = view;
+  if (view.lines !== lines) {
     collapsed = initialFold(lines, defaultExpandDepth);
-    setFold({ lines, collapsed });
+    active = 0;
+    setView({ lines, collapsed, active });
   }
-  const setCollapsed = (next: Set<string>) =>
-    setFold({ lines, collapsed: next });
+  const setCollapsed = (next: Set<number>) =>
+    setView({ lines, collapsed: next, active });
+  const setActive = (index: number) =>
+    setView({ lines, collapsed, active: itemIndex(lines, index) });
 
   const tree = currentMode === "tree";
   const rows = useMemo(
@@ -223,7 +242,6 @@ export function JsonView({
     initialRect: INITIAL_VIEWPORT,
   });
 
-  const [active, setActive] = useState(0);
   const [focused, setFocused] = useState(false);
   const activePos = rows.length === 0 ? -1 : showingPosition(rows, active);
   const id = useId();
@@ -231,12 +249,12 @@ export function JsonView({
 
   const toggle = (line: JsonLine) => {
     const next = new Set(collapsed);
-    if (next.has(line.path)) {
-      next.delete(line.path);
+    if (next.has(line.index)) {
+      next.delete(line.index);
     } else {
-      next.add(line.path);
+      next.add(line.index);
     }
-    setCollapsed(next);
+    setView({ lines, collapsed: next, active: line.index });
   };
 
   const scrollTo = (pos: number) => {
@@ -273,7 +291,7 @@ export function JsonView({
     }
     const line = rows[activePos];
     const isOpen = line.kind === "open";
-    const folded = isOpen && collapsed.has(line.path);
+    const folded = isOpen && collapsed.has(line.index);
     let handled = true;
     switch (event.key) {
       case "ArrowDown":
@@ -329,7 +347,7 @@ export function JsonView({
 
   const renderRow = (pos: number, start: number) => {
     const line = rows[pos];
-    const folded = tree && line.kind === "open" && collapsed.has(line.path);
+    const folded = tree && line.kind === "open" && collapsed.has(line.index);
     const isActive = tree && focused && pos === activePos;
     const treeAttrs =
       tree && line.kind !== "close"
@@ -338,7 +356,7 @@ export function JsonView({
             id: rowId(line),
             "aria-level": line.depth + 1,
             "aria-expanded":
-              line.kind === "open" ? !collapsed.has(line.path) : undefined,
+              line.kind === "open" ? !collapsed.has(line.index) : undefined,
           }
         : tree
           ? { "aria-hidden": true }
@@ -487,13 +505,13 @@ export function JsonView({
             </>
           ) : null}
           {actions}
-          {copyable ? (
+          {copyable && (model.ok || model.raw !== undefined) ? (
             <CopyButton
               label="Copy JSON"
               text={() =>
                 model.ok
                   ? lines.map((line) => lineText(line.tokens)).join("\n")
-                  : model.raw
+                  : (model.raw ?? "")
               }
             />
           ) : null}
@@ -535,14 +553,24 @@ export function JsonView({
         )
       ) : (
         <div className="ui:flex ui:min-h-0 ui:flex-col ui:gap-2 ui:p-2">
-          <InlineAlert title="Invalid JSON">{model.error}</InlineAlert>
-          <CodeBlock
-            code={model.raw}
-            copyable={false}
-            showLineNumbers
-            aria-label={`${ariaLabel} (as received)`}
-            className="ui:min-h-0 ui:bg-card"
-          />
+          <InlineAlert
+            title={
+              model.raw === undefined
+                ? "This value cannot be shown as JSON"
+                : "Invalid JSON"
+            }
+          >
+            {model.error}
+          </InlineAlert>
+          {model.raw === undefined ? null : (
+            <CodeBlock
+              code={model.raw}
+              copyable={false}
+              showLineNumbers
+              aria-label={`${ariaLabel} (as received)`}
+              className="ui:min-h-0 ui:bg-card"
+            />
+          )}
         </div>
       )}
     </div>

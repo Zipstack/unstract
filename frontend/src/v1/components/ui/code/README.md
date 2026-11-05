@@ -43,11 +43,12 @@ import {
   runtime from `cdn.jsdelivr.net`, as v0's editors do (nginx's CSP allows it).
   Never call `loader.config()` in v1: the loader is a singleton shared with v0
   in the same bundle, so configuring it from v1 would change v0.
-- **Height.** Each component grows with its content. Constrain it with a class
-  and its body scrolls: `className="ui:max-h-80"`, or
-  `className="ui:h-full ui:max-h-none"` to fill a sized panel. `JsonView`
+- **Height.** `CodeBlock`, `JsonView` and `DiffView` grow with their content;
+  constrain one with a class and its body scrolls: `className="ui:max-h-80"`,
+  or `className="ui:h-full ui:max-h-none"` to fill a sized panel. `JsonView`
   defaults to `ui:max-h-120` (480px) so a large document scrolls (and
-  virtualises) instead of stretching the page.
+  virtualises) instead of stretching the page. `CodeEditor` is sized by its
+  `height` prop; `Markdown` flows with the page.
 
 ## CodeBlock
 
@@ -81,7 +82,7 @@ props pass through to the root.
 | Prop | Type | Default | |
 | --- | --- | --- | --- |
 | `value` | `unknown` | — | any JSON-serialisable value; pass this **or** `text` |
-| `text` | `string` | — | JSON source; invalid text shows an error and the text as received |
+| `text` | `string` | — | JSON source, shown as written (numbers never rounded, key order kept); invalid text shows an error and the text as received |
 | `mode` / `defaultMode` / `onModeChange` | `"tree" \| "raw"` | `"tree"` | controlled or not |
 | `defaultExpandDepth` | `number` | all, or 2 above 300 lines | containers at this depth or deeper start folded (root is 0) |
 | `showLineNumbers` | `boolean` | `true` | |
@@ -89,19 +90,21 @@ props pass through to the root.
 | `title`, `actions`, `copyable` | | `copyable` on | toolbar, as CodeBlock; Copy copies the pretty print |
 | `aria-label` | `string` | `"JSON"` | names the tree or raw region |
 
-- Both modes render one line model, the exact `JSON.stringify(value, null, 2)`
-  text. Above 300 showing lines only the rows in view are rendered
+- Both modes render one line model: for `value`, the exact
+  `JSON.stringify(value, null, 2)` text; for `text`, the source re-indented,
+  every number, string and key as written (`JSON.parse` would round a
+  19-digit ID). Above 300 showing lines only the rows in view are rendered
   (`@tanstack/react-virtual`), so the 5,000-line case stays responsive.
 - The tree is an ARIA `tree` with `aria-activedescendant`: Up/Down move,
   Home/End jump, Right expands (or enters), Left collapses (or goes to the
   parent), Enter or Space toggles. Expand all / Collapse all are in the
   toolbar. Folded containers show `{…} 3 keys`.
-- `value` (or `text`) is compared by identity: a new object re-flattens the
+- `value` is compared by identity: a new object re-flattens the
   document and resets folding, so pass a stable or memoised value, not an
   inline literal.
 - `value` goes through `JSON.stringify` rules (`toJSON`, dropped `undefined`).
-  A value it cannot serialise (a BigInt, a cycle) shows the error state;
-  `undefined` shows "No data".
+  A value it cannot serialise (a BigInt, a cycle) shows an error with nothing
+  to copy; `undefined` shows "No data".
 
 ## DiffView
 
@@ -129,8 +132,10 @@ props pass through to the root.
 | `aria-label` | `string` | `"Changes"` | names the scrollable region |
 
 Changed lines are tinted, marked `+` / `−`, and read as "Added:" / "Removed:"
-by screen readers. `DiffSummary` (with `computeLineDiff(old, new).stats`)
-shows the summary on its own, for a row like H20's "what changed".
+by screen readers. `DiffSummary` (with `diffStats(old, new)`) shows the
+summary on its own, for a row like H20's "what changed". Two texts that would
+take jsdiff more than a second to compare show "Too large to compare" instead
+of freezing the page (`diffStats` returns `null` then).
 
 ## Markdown
 
@@ -139,10 +144,13 @@ shows the summary on its own, for a row like H20's "what changed".
 ```
 
 GitHub Markdown (tables, task lists, strikethrough) via react-markdown 8 and
-remark-gfm 3, the versions v0 uses. Raw HTML is dropped (no rehype-raw); link
-and image URLs pass react-markdown's safe-URL filter, so `javascript:` never
-survives. External `http(s)` links open in a new tab with
-`rel="noopener noreferrer"`. Fenced code renders as a `CodeBlock` in its
+remark-gfm 3, the versions v0 uses. Raw HTML tags are dropped (no
+rehype-raw); link and image URLs pass react-markdown's safe-URL filter, so a
+`javascript:` URL renders inert. External `http(s)` links open in a new tab
+with `rel="noopener noreferrer"`. **Images are links** ("Image: alt") unless
+`loadImages` is set: loading them on render would let text steered by a
+document send data to any host in the URL. Set it only for Markdown you
+author or trust. Fenced code renders as a `CodeBlock` in its
 language (`py`, `sh`, `yml`… are understood; unknown names are plain text).
 Styled with the v1 type roles, not `prose`.
 
@@ -162,8 +170,9 @@ Styled with the v1 type roles, not `prose`.
 | `copiedMessage` | `string` | `"Copied to clipboard"` | the success toast |
 | `onCopy` | `(result: "copied" \| "failed" \| "unavailable") => void` | — | |
 
-Every attempt also gives inline feedback for two seconds: a check, or "Copy
-failed" / "Copy unavailable". With `toastOnCopy={false}` a polite live region
+Every attempt also gives inline feedback for two seconds: a check on success
+and a red icon on failure; with `showLabel`, the label reads "Copied", "Copy
+failed" or "Copy unavailable". With `toastOnCopy={false}` a polite live region
 announces the result instead, so it is heard once. The toast needs the
 `Toaster` mounted in the v1 root (see the v1 README, Feedback).
 
@@ -179,7 +188,7 @@ announces the result instead, so it is heard once. The toast needs the
 | `value` / `defaultValue` / `onChange` | `string` / `(value: string) => void` | — | controlled or not |
 | `language` | as CodeBlock | `"text"` | |
 | `readOnly` | `boolean` | `false` | |
-| `lineNumbers` | `boolean` | `true` | |
+| `showLineNumbers` | `boolean` | `true` | |
 | `height` | `number \| string` | `320` | pixels or a CSS length |
 | `aria-label` | `string` | required | the editor has no visible label of its own |
 
@@ -199,7 +208,7 @@ In tests, mock Monaco, whose loader would fetch from the CDN:
 
 ## Gallery and tests
 
-`code.gallery.tsx` lists every variant and state. Until the component gallery
+`code.gallery.tsx` lists every variant and state (except `CodeEditor`, which needs the Monaco CDN). Until the component gallery
 (P1-T01) lands, `markup.test.tsx` renders each entry, snapshots its markup in
 `__snapshots__/markup.md` and runs axe on it. The 5,000-line performance case
 is in `JsonView.test.tsx`; its fixture is `largeJson()` in

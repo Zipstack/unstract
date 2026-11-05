@@ -3,6 +3,7 @@ import { expect, it } from "vitest";
 import {
   containersFrom,
   flattenJson,
+  flattenJsonText,
   formatJson,
   parseJson,
   visibleLines,
@@ -65,7 +66,12 @@ it("pairs each container's opening and closing lines, with a summary and pointer
     summary: "3 keys",
   });
   const close = lines[rewards?.closeIndex as number];
-  expect(close).toMatchObject({ kind: "close", path: "/rewards", depth: 1 });
+  expect(close).toMatchObject({
+    kind: "close",
+    path: "/rewards",
+    depth: 1,
+    openIndex: rewards?.index,
+  });
   expect(lineText(close.tokens)).toBe("  },");
   expect(rewards?.closeTokens).toEqual([{ text: "}" }, { text: "," }]);
   const transactions = lines.find((l) => l.label === "transactions");
@@ -79,7 +85,12 @@ it("pairs each container's opening and closing lines, with a summary and pointer
 
 it("hides a folded container's contents but keeps its opening line", () => {
   const lines = flattenJson(STATEMENT);
-  const shown = visibleLines(lines, new Set(["/rewards", "/transactions"]));
+  const at = (path: string) =>
+    lines.find((l) => l.kind === "open" && l.path === path)?.index as number;
+  const shown = visibleLines(
+    lines,
+    new Set([at("/rewards"), at("/transactions")]),
+  );
   expect(shown.map((l) => lineText(l.tokens))).toEqual([
     "{",
     '  "fees": 0,',
@@ -90,19 +101,20 @@ it("hides a folded container's contents but keeps its opening line", () => {
     '  "transactions": [',
     "}",
   ]);
-  expect(visibleLines(lines, new Set([""]))).toHaveLength(1);
+  expect(visibleLines(lines, new Set([0]))).toHaveLength(1);
   expect(visibleLines(lines, new Set())).toHaveLength(lines.length);
 });
 
 it("lists the containers at or below a depth", () => {
   const lines = flattenJson(STATEMENT);
-  expect([...containersFrom(lines, 1)]).toEqual([
+  const paths = (set: Set<number>) => [...set].map((i) => lines[i].path);
+  expect(paths(containersFrom(lines, 1))).toEqual([
     "/rewards",
     "/transactions",
     "/transactions/0",
     "/transactions/1",
   ]);
-  expect([...containersFrom(lines, 2)]).toEqual([
+  expect(paths(containersFrom(lines, 2))).toEqual([
     "/transactions/0",
     "/transactions/1",
   ]);
@@ -121,4 +133,77 @@ it("parses without throwing and formats like JSON.stringify", () => {
   expect(bad.ok ? "" : bad.error).toMatch(/JSON/);
   expect(formatJson({ a: [1] })).toBe('{\n  "a": [\n    1\n  ]\n}');
   expect(formatJson(undefined)).toBe("");
+});
+
+const textOf = (text: string) => {
+  const result = flattenJsonText(text);
+  return result.ok
+    ? result.lines.map((line) => lineText(line.tokens)).join("\n")
+    : result.error;
+};
+
+it("prints JSON text as JSON.stringify would, re-indented, for ordinary documents", () => {
+  for (const value of [
+    STATEMENT,
+    [],
+    {},
+    { a: [] },
+    "solo",
+    0,
+    largeJson(300),
+  ]) {
+    expect(textOf(JSON.stringify(value))).toBe(JSON.stringify(value, null, 2));
+  }
+  expect(textOf(' {\n\t"a" :\r\n [ 1 ,true ] }\n')).toBe(
+    '{\n  "a": [\n    1,\n    true\n  ]\n}',
+  );
+});
+
+it("keeps JSON text as written: big integers, number spelling, escapes, key order and duplicates", () => {
+  const source =
+    '{"acct":4111111111111111111,"amt":1.10,"e":1E2,"2":"b","1":"a","s":"q\\"\\u00e9\\\\","a":1,"a":2}';
+  expect(textOf(source)).toBe(
+    [
+      "{",
+      '  "acct": 4111111111111111111,',
+      '  "amt": 1.10,',
+      '  "e": 1E2,',
+      '  "2": "b",',
+      '  "1": "a",',
+      '  "s": "q\\"\\u00e9\\\\",',
+      '  "a": 1,',
+      '  "a": 2',
+      "}",
+    ].join("\n"),
+  );
+  const result = flattenJsonText(source);
+  const lines = result.ok ? result.lines : [];
+  expect(lines[1].tokens).toEqual([
+    { text: "  " },
+    { text: '"acct"', kind: "key" },
+    { text: ": " },
+    { text: "4111111111111111111", kind: "number" },
+    { text: "," },
+  ]);
+  expect(lines.find((l) => l.label === "s")?.path).toBe("/s");
+  // A repeated key gives two lines with one path; folds key on index, not path.
+  expect(lines.filter((l) => l.path === "/a")).toHaveLength(2);
+});
+
+it("keys nested text containers like values, and reports invalid text", () => {
+  const result = flattenJsonText('{"a/b":{"~":[null,false]}}');
+  const lines = result.ok ? result.lines : [];
+  expect(lines.map((l) => l.path)).toEqual([
+    "",
+    "/a~1b",
+    "/a~1b/~0",
+    "/a~1b/~0/0",
+    "/a~1b/~0/1",
+    "/a~1b/~0",
+    "/a~1b",
+    "",
+  ]);
+  expect(lines[3].tokens.at(-2)).toEqual({ text: "null", kind: "literal" });
+  const bad = flattenJsonText("{a:1}");
+  expect(bad.ok).toBe(false);
 });

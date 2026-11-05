@@ -75,14 +75,38 @@ it("never renders raw HTML or script URLs", () => {
   expect(container.querySelector("script")).toBeNull();
   expect(container.querySelector("b")).toBeNull();
   expect(container.querySelector("[onerror]")).toBeNull();
+  // The tags are dropped, not escaped into visible text.
+  expect(container.textContent).not.toContain("<b>");
+  expect(container.textContent).not.toContain("<script>");
   // react-markdown's URL filter replaces the target (React 19 would also
   // block a javascript: URL); either way the payload never survives.
   const link = screen.getByText("click").closest("a");
   expect(link?.getAttribute("href") ?? "").not.toContain("alert");
-  expect(
-    container.querySelector("img")?.getAttribute("src") ?? "",
-  ).not.toContain("alert");
-  expect(container.querySelector("img")?.getAttribute("alt")).toBe("p");
+  const image = screen.getByRole("link", { name: "Image: p" });
+  expect(image.getAttribute("href") ?? "").not.toContain("alert");
+});
+
+it("filters image URLs when images load", () => {
+  // React does not filter src, so this pins react-markdown's image filter.
+  const { container } = renderV1(
+    <Markdown loadImages>{"![p](javascript:alert(1))"}</Markdown>,
+  );
+  const img = container.querySelector("img");
+  expect(img?.getAttribute("alt")).toBe("p");
+  expect(img?.getAttribute("src") ?? "").not.toContain("alert");
+});
+
+it("shows images as links unless loadImages is set", () => {
+  const md = "![chart](https://x.example/c.png) ![](https://x.example/d.png)";
+  const { container, rerender } = renderV1(<Markdown>{md}</Markdown>);
+  expect(container.querySelector("img")).toBeNull();
+  const link = screen.getByRole("link", { name: "Image: chart" });
+  expect(link.getAttribute("href")).toBe("https://x.example/c.png");
+  expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  expect(screen.getByRole("link", { name: "Image" })).toBeTruthy();
+  rerender(<Markdown loadImages>{md}</Markdown>);
+  const images = container.querySelectorAll("img");
+  expect([...images].map((i) => i.getAttribute("alt"))).toEqual(["chart", ""]);
 });
 
 it("passes axe in every mode", async () => {

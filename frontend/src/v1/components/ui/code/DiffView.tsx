@@ -1,9 +1,11 @@
+import { InlineAlert } from "@v1/components/ui/feedback";
 import { cn } from "@v1/lib/cn";
 import {
   computeLineDiff,
   type DiffRowKind,
   type DiffStats,
   describeChanges,
+  type LineDiff,
 } from "@v1/lib/code/diff";
 import { type CodeLanguage, highlightLines } from "@v1/lib/code/highlight";
 import type { CodeLine } from "@v1/lib/code/tokens";
@@ -11,6 +13,15 @@ import { type ComponentProps, type JSX, type ReactNode, useMemo } from "react";
 import { GUTTER, gutterWidth, MONO, Tokens } from "./CodeLines";
 
 export type DiffLayout = "split" | "unified";
+
+// What renders while a diff is past its limits: nothing to show.
+const NO_DIFF: LineDiff = {
+  oldLines: [],
+  newLines: [],
+  unified: [],
+  split: [],
+  stats: { changes: 0, added: 0, removed: 0 },
+};
 
 export type DiffViewProps = Omit<ComponentProps<"div">, "children"> &
   Readonly<{
@@ -61,11 +72,17 @@ function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
 
+export type DiffSummaryProps = Readonly<{
+  /** From `diffStats(oldText, newText)`. */
+  stats: DiffStats;
+  className?: string;
+}>;
+
 /** The "1 change +2 −1" summary; also usable on its own. */
 export function DiffSummary({
   stats,
   className,
-}: Readonly<{ stats: DiffStats; className?: string }>): JSX.Element {
+}: DiffSummaryProps): JSX.Element {
   return (
     <p
       data-slot="diff-summary"
@@ -170,10 +187,11 @@ export function DiffView({
   className,
   ...props
 }: DiffViewProps): JSX.Element {
-  const diff = useMemo(
+  const computed = useMemo(
     () => computeLineDiff(oldText, newText),
     [oldText, newText],
   );
+  const diff = computed ?? NO_DIFF;
   const oldTokens = useMemo(
     () => highlightLines(diff.oldLines.join("\n"), language),
     [diff.oldLines, language],
@@ -195,7 +213,16 @@ export function DiffView({
       )}
       {...props}
     >
-      {showSummary ? (
+      {computed === null ? (
+        <InlineAlert
+          kind="warning"
+          title="Too large to compare"
+          className="ui:m-2"
+        >
+          These texts differ too much to compare line by line here.
+        </InlineAlert>
+      ) : null}
+      {showSummary && computed !== null ? (
         <DiffSummary
           stats={diff.stats}
           className="ui:border-b ui:border-border ui:bg-muted ui:px-3.5 ui:py-2"
@@ -212,72 +239,74 @@ export function DiffView({
           </div>
         </div>
       ) : null}
-      <section
-        aria-label={ariaLabel}
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be focusable (WCAG 2.1.1)
-        tabIndex={0}
-        style={{
-          "--code-gutter": gutterWidth(
-            Math.max(diff.oldLines.length, diff.newLines.length),
-          ),
-        }}
-        className={cn(
-          "ui:min-h-0 ui:flex-1 ui:overflow-auto ui:py-2 ui:focus-visible:focus-ring",
-          MONO,
-        )}
-      >
-        {layout === "split"
-          ? diff.split.map((row, i) => (
-              <div
-                // biome-ignore lint/suspicious/noArrayIndexKey: a row is identified by its position.
-                key={i}
-                data-slot="diff-row"
-                className="ui:grid ui:grid-cols-2"
-              >
-                <Cell
-                  {...cell}
-                  kind={row.old?.kind}
-                  number={row.old ? row.old.line + 1 : undefined}
-                  line={row.old ? oldTokens[row.old.line] : undefined}
-                />
-                <Cell
-                  {...cell}
-                  kind={row.new?.kind}
-                  number={row.new ? row.new.line + 1 : undefined}
-                  line={row.new ? newTokens[row.new.line] : undefined}
-                  className="ui:border-l ui:border-border"
-                />
-              </div>
-            ))
-          : diff.unified.map((row, i) => (
-              <div
-                // biome-ignore lint/suspicious/noArrayIndexKey: a row is identified by its position.
-                key={i}
-                data-slot="diff-row"
-                data-kind={row.kind}
-                className={cn("ui:flex", ROW_TONE[row.kind])}
-              >
-                {showLineNumbers ? (
-                  <span aria-hidden className={cn(GUTTER, "ui:pl-3")}>
-                    {row.oldLine === undefined ? "" : row.oldLine + 1}
-                  </span>
-                ) : null}
-                <Cell
-                  {...cell}
-                  kind={row.kind}
-                  number={
-                    row.newLine === undefined ? undefined : row.newLine + 1
-                  }
-                  line={
-                    row.kind === "removed"
-                      ? oldTokens[row.oldLine as number]
-                      : newTokens[row.newLine as number]
-                  }
-                  className="ui:flex-1 ui:bg-transparent ui:pl-0"
-                />
-              </div>
-            ))}
-      </section>
+      {computed === null ? null : (
+        <section
+          aria-label={ariaLabel}
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be focusable (WCAG 2.1.1)
+          tabIndex={0}
+          style={{
+            "--code-gutter": gutterWidth(
+              Math.max(diff.oldLines.length, diff.newLines.length),
+            ),
+          }}
+          className={cn(
+            "ui:min-h-0 ui:flex-1 ui:overflow-auto ui:py-2 ui:focus-visible:focus-ring",
+            MONO,
+          )}
+        >
+          {layout === "split"
+            ? diff.split.map((row, i) => (
+                <div
+                  // biome-ignore lint/suspicious/noArrayIndexKey: a row is identified by its position.
+                  key={i}
+                  data-slot="diff-row"
+                  className="ui:grid ui:grid-cols-2"
+                >
+                  <Cell
+                    {...cell}
+                    kind={row.old?.kind}
+                    number={row.old ? row.old.line + 1 : undefined}
+                    line={row.old ? oldTokens[row.old.line] : undefined}
+                  />
+                  <Cell
+                    {...cell}
+                    kind={row.new?.kind}
+                    number={row.new ? row.new.line + 1 : undefined}
+                    line={row.new ? newTokens[row.new.line] : undefined}
+                    className="ui:border-l ui:border-border"
+                  />
+                </div>
+              ))
+            : diff.unified.map((row, i) => (
+                <div
+                  // biome-ignore lint/suspicious/noArrayIndexKey: a row is identified by its position.
+                  key={i}
+                  data-slot="diff-row"
+                  data-kind={row.kind}
+                  className={cn("ui:flex", ROW_TONE[row.kind])}
+                >
+                  {showLineNumbers ? (
+                    <span aria-hidden className={cn(GUTTER, "ui:pl-3")}>
+                      {row.oldLine === undefined ? "" : row.oldLine + 1}
+                    </span>
+                  ) : null}
+                  <Cell
+                    {...cell}
+                    kind={row.kind}
+                    number={
+                      row.newLine === undefined ? undefined : row.newLine + 1
+                    }
+                    line={
+                      row.kind === "removed"
+                        ? oldTokens[row.oldLine as number]
+                        : newTokens[row.newLine as number]
+                    }
+                    className="ui:flex-1 ui:bg-transparent ui:pl-0"
+                  />
+                </div>
+              ))}
+        </section>
+      )}
     </div>
   );
 }

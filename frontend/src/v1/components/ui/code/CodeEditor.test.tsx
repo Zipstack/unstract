@@ -1,8 +1,8 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import { renderV1 } from "@v1/test";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { expect, it, vi } from "vitest";
-import { CodeEditor } from "./CodeEditor";
+import { CodeEditor, EDITOR_LOAD_TIMEOUT_MS } from "./CodeEditor";
 
 /*
  * Monaco's loader fetches its runtime from the CDN, which happy-dom cannot
@@ -17,12 +17,23 @@ type MonacoProps = {
   height?: number | string;
   loading?: ReactNode;
   onChange?: (value: string | undefined) => void;
+  onMount?: () => void;
   options?: Record<string, unknown>;
 };
 const seen: MonacoProps[] = [];
+// Whether the stand-in reports a mount, as Monaco does once its runtime loads.
+const monaco = vi.hoisted(() => ({ loads: true }));
 vi.mock("@monaco-editor/react", () => ({
   default: (props: MonacoProps) => {
     seen.push(props);
+    useEffect(() => {
+      if (monaco.loads) {
+        props.onMount?.();
+      }
+    }, [props.onMount]);
+    if (!monaco.loads) {
+      return <>{props.loading}</>;
+    }
     return (
       <textarea
         aria-label={String(props.options?.ariaLabel)}
@@ -66,7 +77,7 @@ it("is read-only and numberless when asked, and defaults to plain text", async (
       aria-label="Output"
       defaultValue="x"
       readOnly
-      lineNumbers={false}
+      showLineNumbers={false}
     />,
   );
   await screen.findByRole("textbox", { name: "Output" });
@@ -100,4 +111,37 @@ it("uses the mono font token when the page defines it", async () => {
   await waitFor(() =>
     expect(last().options?.fontFamily).toBe('"Geist Mono", monospace'),
   );
+});
+
+it("says the editor could not load when Monaco never mounts", async () => {
+  monaco.loads = false;
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    renderV1(<CodeEditor aria-label="Late" />);
+    expect(await screen.findByText("Loading editor")).toBeTruthy();
+    act(() => {
+      vi.advanceTimersByTime(EDITOR_LOAD_TIMEOUT_MS);
+    });
+    expect(screen.getByRole("alert").textContent).toContain(
+      "The editor could not load",
+    );
+  } finally {
+    monaco.loads = true;
+    vi.useRealTimers();
+  }
+});
+
+it("keeps a loaded editor when the timeout passes", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    renderV1(<CodeEditor aria-label="Quick" />);
+    await screen.findByRole("textbox", { name: "Quick" });
+    act(() => {
+      vi.advanceTimersByTime(EDITOR_LOAD_TIMEOUT_MS);
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Quick" })).toBeTruthy();
+  } finally {
+    vi.useRealTimers();
+  }
 });

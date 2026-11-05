@@ -1,10 +1,17 @@
-import { Skeleton, SkeletonBlock } from "@v1/components/ui/feedback";
+import {
+  InlineAlert,
+  Skeleton,
+  SkeletonBlock,
+} from "@v1/components/ui/feedback";
 import { cn } from "@v1/lib/cn";
 import type { CodeLanguage } from "@v1/lib/code/highlight";
 import {
+  Component,
   type JSX,
   lazy,
+  type ReactNode,
   Suspense,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -20,6 +27,27 @@ import {
  * here would change v0.
  */
 const MonacoEditor = lazy(() => import("@monaco-editor/react"));
+
+/**
+ * How long the editor may stay on its skeleton before it says it could not
+ * load. @monaco-editor/react only logs a failed CDN load and keeps showing
+ * its loading state, so without this a blocked CDN means a skeleton forever.
+ */
+export const EDITOR_LOAD_TIMEOUT_MS = 15_000;
+
+/** Turns a failed lazy chunk into the editor's own error state instead of unmounting the page. */
+class LoadBoundary extends Component<
+  Readonly<{ fallback: ReactNode; children: ReactNode }>,
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
 
 // Our grammar names → Monaco's language ids.
 const MONACO_LANGUAGE: Readonly<Record<CodeLanguage, string>> = {
@@ -52,7 +80,7 @@ export type CodeEditorProps = Readonly<{
   language?: CodeLanguage;
   readOnly?: boolean;
   /** Shows the line-number gutter (default on). */
-  lineNumbers?: boolean;
+  showLineNumbers?: boolean;
   /** Editor height: pixels, or any CSS length (`"100%"` inside a sized parent). Default 320. */
   height?: number | string;
   /** Names the editor for screen readers. Required: an editor has no visible label of its own. */
@@ -62,7 +90,8 @@ export type CodeEditorProps = Readonly<{
 
 /**
  * An editable code field. Engine-agnostic props over Monaco
- * (@monaco-editor/react), which loads on first render behind a skeleton.
+ * (@monaco-editor/react), which loads on first render behind a skeleton,
+ * and shows an error if it has not loaded within EDITOR_LOAD_TIMEOUT_MS.
  * Follows the v1 theme (light or dark) and the mono font token.
  */
 export function CodeEditor({
@@ -71,13 +100,22 @@ export function CodeEditor({
   onChange,
   language = "text",
   readOnly = false,
-  lineNumbers = true,
+  showLineNumbers = true,
   height = 320,
   "aria-label": ariaLabel,
   className,
 }: CodeEditorProps): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
   const [theme, setTheme] = useState({ dark: false, font: "" });
+  const [load, setLoad] = useState<"loading" | "ready" | "failed">("loading");
+
+  useEffect(() => {
+    const timer = setTimeout(
+      () => setLoad((now) => (now === "loading" ? "failed" : now)),
+      EDITOR_LOAD_TIMEOUT_MS,
+    );
+    return () => clearTimeout(timer);
+  }, []);
 
   useLayoutEffect(() => {
     const element = ref.current;
@@ -103,6 +141,11 @@ export function CodeEditor({
       <SkeletonBlock />
     </Skeleton>
   );
+  const failed = (
+    <InlineAlert title="The editor could not load" className="ui:m-2">
+      Check your connection, then reload the page.
+    </InlineAlert>
+  );
 
   return (
     <div
@@ -113,28 +156,35 @@ export function CodeEditor({
         className,
       )}
     >
-      <Suspense fallback={loading}>
-        <MonacoEditor
-          value={value}
-          defaultValue={defaultValue}
-          language={MONACO_LANGUAGE[language]}
-          height={height}
-          theme={theme.dark ? "vs-dark" : "light"}
-          loading={loading}
-          onChange={(next) => onChange?.(next ?? "")}
-          options={{
-            ariaLabel,
-            readOnly,
-            domReadOnly: readOnly,
-            lineNumbers: lineNumbers ? "on" : "off",
-            minimap: { enabled: false },
-            scrollBeyondLastLine: false,
-            automaticLayout: true,
-            fontSize: 12,
-            ...(theme.font ? { fontFamily: theme.font } : {}),
-          }}
-        />
-      </Suspense>
+      {load === "failed" ? (
+        failed
+      ) : (
+        <LoadBoundary fallback={failed}>
+          <Suspense fallback={loading}>
+            <MonacoEditor
+              value={value}
+              defaultValue={defaultValue}
+              language={MONACO_LANGUAGE[language]}
+              height={height}
+              theme={theme.dark ? "vs-dark" : "light"}
+              loading={loading}
+              onMount={() => setLoad("ready")}
+              onChange={(next) => onChange?.(next ?? "")}
+              options={{
+                ariaLabel,
+                readOnly,
+                domReadOnly: readOnly,
+                lineNumbers: showLineNumbers ? "on" : "off",
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                fontSize: 12,
+                ...(theme.font ? { fontFamily: theme.font } : {}),
+              }}
+            />
+          </Suspense>
+        </LoadBoundary>
+      )}
     </div>
   );
 }

@@ -47,14 +47,44 @@ function normalise(text: string): string {
   return lines.length === 0 ? "" : `${lines.join("\n")}\n`;
 }
 
-/** Diffs two texts line by line. */
-export function computeLineDiff(oldText: string, newText: string): LineDiff {
+export type DiffLimits = Readonly<{
+  /** Give up after this long (jsdiff's `timeout`). */
+  timeoutMs?: number;
+  /** Give up past this many inserted plus removed lines (jsdiff's `maxEditLength`). */
+  maxEditLength?: number;
+}>;
+
+/**
+ * jsdiff runs on the main thread, and two large, very different texts take
+ * O(N·D) time; past this it gives up rather than freeze the page.
+ */
+export const DIFF_TIMEOUT_MS = 1000;
+
+/**
+ * Diffs two texts line by line. Returns `null` when a limit is hit (by
+ * default, DIFF_TIMEOUT_MS), so the caller can say the texts are too large to
+ * compare.
+ */
+export function computeLineDiff(
+  oldText: string,
+  newText: string,
+  limits: DiffLimits = {},
+): LineDiff | null {
   const oldSource = normalise(oldText);
   const newSource = normalise(newText);
+  const result = diffLines(oldSource, newSource, {
+    timeout: limits.timeoutMs ?? DIFF_TIMEOUT_MS,
+    ...(limits.maxEditLength === undefined
+      ? {}
+      : { maxEditLength: limits.maxEditLength }),
+  });
+  if (!result) {
+    return null;
+  }
   const unified: DiffRow[] = [];
   let oldLine = 0;
   let newLine = 0;
-  for (const change of diffLines(oldSource, newSource)) {
+  for (const change of result) {
     for (let i = 0; i < change.count; i++) {
       if (change.added) {
         unified.push({ kind: "added", newLine: newLine++ });
@@ -115,6 +145,11 @@ export function computeLineDiff(oldText: string, newText: string): LineDiff {
     split,
     stats: { changes, added, removed },
   };
+}
+
+/** The "1 change +2 −1" counts for two texts, or `null` past the limits. */
+export function diffStats(oldText: string, newText: string): DiffStats | null {
+  return computeLineDiff(oldText, newText)?.stats ?? null;
 }
 
 /** "1 change", "3 changes", or "No changes". */
