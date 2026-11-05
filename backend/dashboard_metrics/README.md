@@ -1111,6 +1111,10 @@ caveats that do not fit one line):
   --skip-monthly    Largely a no-op inside the rollup window
 ```
 
+It never lowers a stored value. HITL TTL cleanup expires approved reviews and
+deleting a workflow removes its executions, so a recount can come out below what
+was aggregated at the time; the stored row is kept and the run logs how many.
+
 ---
 
 ## Troubleshooting

@@ -10,6 +10,9 @@ on purpose: the rollup will not lower a stored monthly total it would reduce, so
 month is not under-counted, but it is frozen at the stored figure until daily is
 repaired, and the daily tier the dashboards read stays wrong meanwhile. Repair daily.
 
+It never lowers a stored value: the sources shrink after aggregation (HITL TTL
+cleanup, workflow deletes), so a lower recount keeps the stored row.
+
 Usage:
     python manage.py backfill_metrics --days=30
     python manage.py backfill_metrics --days=90 --org-id=5
@@ -46,6 +49,10 @@ try:
     HAS_SUBSCRIPTION = True
 except ImportError:
     HAS_SUBSCRIPTION = False
+
+
+def _parse_date(value: str) -> date:
+    return datetime.fromisoformat(value).date()
 
 
 class Command(BaseCommand):
@@ -537,8 +544,56 @@ class Command(BaseCommand):
             ts = timezone.make_aware(ts, timezone.utc)
         return ts.replace(minute=0, second=0, microsecond=0)
 
+    def _without_lowerings(
+        self, model, period_field: str, parse, aggregations: dict, tier: str
+    ) -> dict:
+        """Drop the recounts that would lower a stored value.
+
+        The sources shrink after they are aggregated: HITL TTL cleanup moves approved
+        reviews to EXPIRED, and deleting a workflow cascades to its executions. A
+        recount below the stored value is history the sources lost, not an
+        over-count, so the stored row stays, as the monthly rollup already does.
+        """
+        if not aggregations:
+            return aggregations
+        periods = [parse(key[1]) for key in aggregations]
+        stored = {
+            (str(org), period, name, project, tag): value
+            for org, period, name, project, tag, value in model._base_manager.filter(
+                organization_id__in={key[0] for key in aggregations},
+                **{
+                    f"{period_field}__gte": min(periods),
+                    f"{period_field}__lte": max(periods),
+                },
+            ).values_list(
+                "organization_id",
+                period_field,
+                "metric_name",
+                "project",
+                "tag",
+                "metric_value",
+            )
+        }
+        kept = {}
+        for key, agg in aggregations.items():
+            org_id, period, metric_name, project, tag = key
+            old = stored.get((str(org_id), parse(period), metric_name, project, tag))
+            if old is None or agg["value"] >= old:
+                kept[key] = agg
+        dropped = len(aggregations) - len(kept)
+        if dropped:
+            self.stdout.write(f"  {tier}: kept {dropped} stored values above the recount")
+        return kept
+
     def _bulk_upsert_hourly(self, aggregations: dict) -> int:
         """Bulk upsert hourly aggregations using INSERT ... ON CONFLICT."""
+        aggregations = self._without_lowerings(
+            EventMetricsHourly,
+            "timestamp",
+            datetime.fromisoformat,
+            aggregations,
+            "Hourly",
+        )
         objects = []
         for key, agg in aggregations.items():
             org_id, ts_str, metric_name, project, tag = key
@@ -572,6 +627,9 @@ class Command(BaseCommand):
 
     def _bulk_upsert_daily(self, aggregations: dict) -> int:
         """Bulk upsert daily aggregations using INSERT ... ON CONFLICT."""
+        aggregations = self._without_lowerings(
+            EventMetricsDaily, "date", _parse_date, aggregations, "Daily"
+        )
         objects = []
         for key, agg in aggregations.items():
             org_id, date_str, metric_name, project, tag = key
@@ -605,6 +663,9 @@ class Command(BaseCommand):
 
     def _bulk_upsert_monthly(self, aggregations: dict) -> int:
         """Bulk upsert monthly aggregations using INSERT ... ON CONFLICT."""
+        aggregations = self._without_lowerings(
+            EventMetricsMonthly, "month", _parse_date, aggregations, "Monthly"
+        )
         objects = []
         for key, agg in aggregations.items():
             org_id, month_str, metric_name, project, tag = key
