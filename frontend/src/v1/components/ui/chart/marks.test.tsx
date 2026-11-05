@@ -40,7 +40,14 @@ it("draws a line marker from the label in the plotted row, nothing on rows witho
 
 it("draws a bar marker from the label value, centred over the bar", () => {
   const marked = svg(
-    <BarMarker color="var(--chart-2)" x={10} y={5} width={20} value="spike" />,
+    <BarMarker
+      color="var(--chart-2)"
+      inset={{ left: 0, right: 0 }}
+      x={10}
+      y={5}
+      width={20}
+      value="spike"
+    />,
   );
   expect(marked.querySelector("[data-slot=chart-marker]")).toHaveTextContent(
     "spike",
@@ -52,7 +59,13 @@ it("draws a bar marker from the label value, centred over the bar", () => {
   );
   expect(
     svg(
-      <BarMarker color="var(--chart-2)" x={10} y={5} width={20} />,
+      <BarMarker
+        color="var(--chart-2)"
+        inset={{ left: 0, right: 0 }}
+        x={10}
+        y={5}
+        width={20}
+      />,
     ).querySelector("[data-slot=chart-marker]"),
   ).toBeNull();
 });
@@ -69,7 +82,7 @@ it("draws an isolated point only where neither plotted neighbour has a value", (
   expect(at([{ y: 5 }], 0)).not.toBeNull(); // a single row
 });
 
-it("reads a line marker's label inward only where, centred, it would cross the plot's edge", () => {
+it("reads a line marker's label inward only where, centred, it would cross one plot edge", () => {
   const Dot = markerDot("var(--chart-1)", "l");
   // Plot edges at x 0 and 300; "peak" is about 28 wide, so 14 either side.
   const points = [
@@ -81,18 +94,66 @@ it("reads a line marker's label inward only where, centred, it would cross the p
     svg(
       <Dot cx={cx} cy={20} points={of} payload={{ l: label }} />,
     ).querySelector("text");
-  expect(text(0)?.getAttribute("text-anchor")).toBe("start");
+  const anchor = (cx: number, label?: string, of?: typeof points) =>
+    text(cx, label, of)?.getAttribute("text-anchor");
+  expect(anchor(0)).toBe("start");
   expect(text(0)?.getAttribute("x")).toBe("-4");
-  expect(text(150)?.getAttribute("text-anchor")).toBe("middle");
+  expect(anchor(150)).toBe("middle");
   expect(text(150)?.getAttribute("x")).toBe("150");
-  expect(text(300)?.getAttribute("text-anchor")).toBe("end");
+  expect(anchor(300)).toBe("end");
   expect(text(300)?.getAttribute("x")).toBe("304");
-  // Near, not on, an edge: a long label still reads inward.
-  const long = "10 Aug · 2,981 pages"; // about 140 wide
-  expect(text(40, long)?.getAttribute("text-anchor")).toBe("start");
-  expect(text(260, long)?.getAttribute("text-anchor")).toBe("end");
-  // A single row sits mid-plot.
+  // A long label, about 140 wide: inward within 70 of an edge, centred past it.
+  const long = "10 Aug · 2,981 pages";
+  expect(anchor(40, long)).toBe("start");
+  expect(anchor(69, long)).toBe("start");
+  expect(anchor(70, long)).toBe("middle"); // exactly half: fits
+  expect(anchor(100, long)).toBe("middle");
+  expect(anchor(260, long)).toBe("end");
+  // Wider than the room on both sides: centring overflows least.
   expect(
-    text(150, "peak", [{ x: 150, y: 1 }])?.getAttribute("text-anchor"),
+    anchor(50, long, [
+      { x: 0, y: 1 },
+      { x: 100, y: 2 },
+    ]),
+  ).toBe("middle");
+  // A single row sits mid-plot.
+  expect(anchor(150, "peak", [{ x: 150, y: 1 }])).toBe("middle");
+});
+
+it("reads a bar marker's label inward near the plot's edges, from the SVG box less the insets", () => {
+  // SVG 0..400; plot 40..392.
+  const label = (x: number, width = 10) =>
+    svg(
+      <BarMarker
+        color="var(--chart-1)"
+        inset={{ left: 40, right: 8 }}
+        parentViewBox={{ x: 0, width: 400 }}
+        x={x}
+        y={5}
+        width={width}
+        value="10 Aug · 2,981 pages"
+      />,
+    )
+      .querySelector("text")
+      ?.getAttribute("text-anchor");
+  expect(label(45)).toBe("start"); // centre 50, 10 from the plot's left
+  expect(label(195)).toBe("middle");
+  expect(label(375)).toBe("end"); // centre 380, 12 from the plot's right
+  // Centre 325: 67 from the plot's right (inward) but 75 from the SVG's.
+  expect(label(320)).toBe("end");
+  // Without Recharts' box it stays centred.
+  expect(
+    svg(
+      <BarMarker
+        color="var(--chart-1)"
+        inset={{ left: 40, right: 8 }}
+        x={45}
+        y={5}
+        width={10}
+        value="peak"
+      />,
+    )
+      .querySelector("text")
+      ?.getAttribute("text-anchor"),
   ).toBe("middle");
 });

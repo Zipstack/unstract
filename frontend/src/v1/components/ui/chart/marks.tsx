@@ -14,9 +14,7 @@ type Anchor = "start" | "middle" | "end";
 
 /**
  * A marker: a dot ringed in the card colour, its label above, centred on the
- * dot. On a line or area, whose first and last rows sit on the plot's edges,
- * a label that would cross an edge if centred reads inward from the dot
- * instead (see `labelAnchor`), so it is not cut off or drawn over the axis.
+ * dot unless that would cross the plot's edge (see `labelAnchor`).
  */
 function MarkerMark({
   x,
@@ -68,32 +66,28 @@ type PointProps = Readonly<{
 const LABEL_CHAR_WIDTH = 7;
 
 /**
- * Where a line or area marker's label reads from: `start` (rightward) when,
- * centred, it would cross the plot's left edge, `end` when it would cross
- * the right, else `middle`. The edges are the first and last row's x, which
- * a category axis without bars puts on the plot's bounds. A single row sits
- * in the middle of the plot, so it stays centred.
+ * Where a marker's label reads from, given the plot's left and right bounds:
+ * `start` (rightward from the dot) when, centred, it would cross only the
+ * left bound, `end` when it would cross only the right, and `middle`
+ * otherwise, including when it is wider than the room on both sides, where
+ * centring overflows least. Bounds that are not numbers leave it centred.
  */
-export function labelAnchor(
+function labelAnchor(
   cx: number,
   label: string,
-  points: readonly Point[] | undefined,
+  left: unknown,
+  right: unknown,
 ): Anchor {
-  const left = points?.[0]?.x;
-  const right = points?.[points.length - 1]?.x;
-  if (
-    points === undefined ||
-    points.length < 2 ||
-    typeof left !== "number" ||
-    typeof right !== "number"
-  ) {
+  if (typeof left !== "number" || typeof right !== "number") {
     return "middle";
   }
   const half = (label.length * LABEL_CHAR_WIDTH) / 2;
-  if (cx - left < half) {
+  const crossesLeft = cx - left < half;
+  const crossesRight = right - cx < half;
+  if (crossesLeft && !crossesRight) {
     return "start";
   }
-  if (right - cx < half) {
+  if (crossesRight && !crossesLeft) {
     return "end";
   }
   return "middle";
@@ -118,7 +112,12 @@ export function markerDot(color: string, labelKey: string) {
     if (cx === undefined || cy === undefined || typeof label !== "string") {
       return <g />;
     }
-    const anchor = labelAnchor(cx, label, points);
+    // A category axis without bars puts the first and last row on the plot's
+    // bounds. A single row sits mid-plot, with no bounds to read from.
+    const anchor =
+      points === undefined || points.length < 2
+        ? "middle"
+        : labelAnchor(cx, label, points[0]?.x, points[points.length - 1]?.x);
     return (
       <MarkerMark x={cx} y={cy} color={color} label={label} anchor={anchor} />
     );
@@ -160,6 +159,10 @@ type BarMarkerProps = Readonly<{
   y?: number | string;
   width?: number | string;
   value?: unknown;
+  /** How far the plot sits inside the SVG on each side (margins and Y axes). */
+  inset: Readonly<{ left: number; right: number }>;
+  // Set by Recharts: the whole SVG's box.
+  parentViewBox?: Readonly<{ x?: unknown; width?: unknown }>;
 }>;
 
 /**
@@ -168,7 +171,8 @@ type BarMarkerProps = Readonly<{
  * `dataKey` is the series' `markerLabelKey`, so `value` is the label carried
  * in that bar's own row (unmarked rows have none). Centred over the bar it
  * names, on top of its own segment in a stack, since Recharts gives the
- * bar's own geometry.
+ * bar's own geometry. Near the plot's edges (the SVG's box from Recharts,
+ * less `inset`) the label reads inward as on a line.
  */
 export function BarMarker({
   color,
@@ -176,6 +180,8 @@ export function BarMarker({
   y,
   width,
   value,
+  inset,
+  parentViewBox,
 }: BarMarkerProps): ReactElement {
   if (
     typeof x !== "number" ||
@@ -185,5 +191,18 @@ export function BarMarker({
   ) {
     return <g />;
   }
-  return <MarkerMark x={x + width / 2} y={y} color={color} label={value} />;
+  const cx = x + width / 2;
+  const box = parentViewBox;
+  const anchor =
+    typeof box?.x === "number" && typeof box.width === "number"
+      ? labelAnchor(
+          cx,
+          value,
+          box.x + inset.left,
+          box.x + box.width - inset.right,
+        )
+      : "middle";
+  return (
+    <MarkerMark x={cx} y={y} color={color} label={value} anchor={anchor} />
+  );
 }

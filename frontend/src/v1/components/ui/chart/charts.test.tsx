@@ -721,6 +721,35 @@ describe("cartesian options", () => {
     }
   });
 
+  it("reads long bar marker labels inward at the first and last bar of a real bar chart", () => {
+    const long = "10 Aug · 2,981 pages";
+    const { container } = renderV1(
+      <BarChart
+        {...props({
+          markers: [
+            { index: 0, series: "pages", label: long },
+            { index: 1, series: "failed", label: "m" },
+            // The right-hand bar of the last group, nearest the edge.
+            { index: 2, series: "failed", label: `${long} ` },
+          ],
+        })}
+      />,
+    );
+    const anchors = [
+      ...container.querySelectorAll("[data-slot=chart-marker]"),
+    ].map((m) => [
+      m.textContent,
+      m.querySelector("text")?.getAttribute("text-anchor"),
+    ]);
+    expect(anchors).toEqual(
+      expect.arrayContaining([
+        [long, "start"],
+        ["m", "middle"],
+        [`${long} `, "end"],
+      ]),
+    );
+  });
+
   it("separates stacked segments with a card-coloured stroke", () => {
     const { container } = renderV1(<StackedBarChart {...props()} />);
     const segments = container.querySelectorAll(".recharts-bar-rectangle path");

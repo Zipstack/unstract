@@ -46,6 +46,7 @@ const NO_MARKERS: readonly never[] = [];
 const AXIS_TICK = { fill: "var(--muted-foreground)" };
 // Room for a marker label above the highest point.
 const MARGIN = { top: 20, right: 8, bottom: 0, left: 0 };
+const Y_AXIS_WIDTH = 40;
 
 type Props<Row extends ChartDatum> = CartesianChartProps<Row> &
   Readonly<{ kind: Exclude<ChartKind, "sparkline">; slot: string }>;
@@ -186,7 +187,15 @@ export function CartesianChart<Row extends ChartDatum>({
             {kept.has(i) ? (
               <LabelList
                 dataKey={markerLabelKey(s.key)}
-                content={<BarMarker color={colors[i]} />}
+                content={
+                  <BarMarker
+                    color={colors[i]}
+                    inset={{
+                      left: MARGIN.left + Y_AXIS_WIDTH,
+                      right: MARGIN.right + (hasRight ? Y_AXIS_WIDTH : 0),
+                    }}
+                  />
+                }
               />
             ) : null}
           </Bar>
@@ -240,7 +249,7 @@ export function CartesianChart<Row extends ChartDatum>({
         tick={AXIS_TICK}
         axisLine={false}
         tickLine={false}
-        width={40}
+        width={Y_AXIS_WIDTH}
       />
       {hasRight ? (
         <YAxis
@@ -250,7 +259,7 @@ export function CartesianChart<Row extends ChartDatum>({
           tick={AXIS_TICK}
           axisLine={false}
           tickLine={false}
-          width={40}
+          width={Y_AXIS_WIDTH}
         />
       ) : null}
       <Tooltip

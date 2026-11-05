@@ -67,7 +67,8 @@ export type ChartSeries<Row extends ChartDatum> = Readonly<{
   /**
    * The field of each row that holds this series' value. Must not start with
    * `__marker`, which the chart reserves for markers (a chart with such a key
-   * draws no markers, and warns).
+   * draws no markers, and warns). Checked at runtime rather than in this
+   * type, so that `Row` inference from `data` stays simple.
    */
   key: NumericKey<Row>;
   /** Shown in the legend, the tooltip, the summary and the data table. */
@@ -86,7 +87,7 @@ export type ChartSeries<Row extends ChartDatum> = Readonly<{
  * read out in the summary only when its series is charted, its index is an
  * integer row of `data`, the series has a value on that row, no earlier
  * marker labels that point, and no series key starts with `__marker`;
- * otherwise it is dropped with a console warning.
+ * otherwise it is dropped, with a console warning once the chart shows data.
  */
 export type ChartMarker<Row extends ChartDatum> = Readonly<{
   /** Row index in `data`, so repeated category labels stay unambiguous. */
