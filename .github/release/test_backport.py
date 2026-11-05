@@ -586,10 +586,11 @@ class ListingUnlabelled(unittest.TestCase):
         self.assertEqual((cls, ref), (bp.UNCLASSIFIABLE, "#8"))
         self.assertRegex(title, r"^UN-8 \[FIX\] x \(no backport label: ")
 
-    def test_a_named_main_pr_without_a_routing_label_fails(self):
+    def test_a_looked_up_pr_without_a_routing_label_keeps_its_number(self):
         pr = {"number": 8, "title": "UN-8 [FIX] x", "labels": []}
-        with self.assertRaisesRegex(ValueError, "no backport label"):
-            bp.pr_class(pr)
+        cls, ref, title = bp.pr_class(pr)
+        self.assertEqual((cls, ref), (bp.UNCLASSIFIABLE, "#8"))
+        self.assertRegex(title, r"^UN-8 \[FIX\] x \(no backport label: ")
 
 
 class FixClassSubject(unittest.TestCase):
@@ -622,6 +623,12 @@ class FixClassSubject(unittest.TestCase):
             self.fix_class(pulls=json.dumps(listed)), ("fix", "#7", "UN-7 [FIX] x")
         )
         self.assertEqual(len(self.calls), 1)
+
+    def test_unlabelled_indexed_pr_keeps_its_number(self):
+        listed = [{**PR_1946, "number": 7, "title": "UN-7 [FIX] x", "labels": []}]
+        cls, ref, title = self.fix_class(pulls=json.dumps(listed))
+        self.assertEqual((cls, ref), (bp.UNCLASSIFIABLE, "#7"))
+        self.assertRegex(title, r"^UN-7 \[FIX\] x \(no backport label: ")
 
     def test_no_pr_unless_the_subject_names_one_that_merged_it(self):
         cases = {
@@ -1748,6 +1755,20 @@ class PushTitle(unittest.TestCase):
             )
         self.assertIn("::warning::ccccccc: fix class: no [TYPE]", out.getvalue())
 
+    def test_unlabelled_push_keeps_its_pr(self):
+        row = (bp.UNCLASSIFIABLE, "#8", "UN-8 [FIX] x (no backport label: ...)")
+        with (
+            mock.patch.object(bp, "fix_class", return_value=row),
+            mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+        ):
+            title = bp.push_title("o/r", "c" * 40)
+        self.assertIn(f"{bp.UNCLASSIFIABLE})", title)
+        self.assertIn("#8", title)
+        self.assertIn(
+            "::warning::ccccccc: fix class: UN-8 [FIX] x (no backport label",
+            out.getvalue(),
+        )
+
 
 class DispatchCommit(unittest.TestCase):
     def test_unclassifiable_named_commit_fails(self):
@@ -1757,6 +1778,13 @@ class DispatchCommit(unittest.TestCase):
         ):
             rows = bp._dispatch_commit("o/r", {}, "c" * 40, False, [], [])
         self.assertEqual(rows, [("c" * 40, "?", "error", "-", "failed: no [TYPE]", "-")])
+
+    def test_unlabelled_named_commit_fails_with_its_pr(self):
+        pr = {"number": 8, "title": "UN-8 [FIX] x", "labels": []}
+        with mock.patch("sys.stdout", io.StringIO()):
+            rows = bp._dispatch_commit("o/r", {}, "c" * 40, False, [], [], named_pr=pr)
+        self.assertEqual(rows[0][1:4], ("#8", "error", "-"))
+        self.assertRegex(rows[0][4], r"^failed: UN-8 \[FIX\] x \(no backport label: ")
 
 
 class Soft(unittest.TestCase):
