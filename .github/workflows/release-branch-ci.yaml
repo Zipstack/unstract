@@ -22,14 +22,14 @@ jobs:
     env:
       BRANCH: ${{ github.base_ref || github.ref_name }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
       # Classifier read from main, so a PR cannot weaken relmgr.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: main
           path: .relmgr
