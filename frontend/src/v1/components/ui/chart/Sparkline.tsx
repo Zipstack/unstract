@@ -78,7 +78,12 @@ export function Sparkline<Row extends ChartDatum>({
       accessibilityLayer={tooltip}
       {...(tooltip ? {} : { role: "img" })}
     >
-      <YAxis hide domain={["dataMin", "dataMax"]} />
+      {/* A series with axis "right" scales on its own hidden axis, as on the
+          axis charts, so a small-valued series beside a large one is not flat. */}
+      <YAxis yAxisId="left" hide domain={["dataMin", "dataMax"]} />
+      {series.some((s) => s.axis === "right") ? (
+        <YAxis yAxisId="right" hide domain={["dataMin", "dataMax"]} />
+      ) : null}
       {tooltip ? (
         <Tooltip
           cursor={{ stroke: "var(--border)" }}
@@ -105,6 +110,7 @@ export function Sparkline<Row extends ChartDatum>({
         <Line
           key={s.key}
           dataKey={s.key}
+          yAxisId={s.axis ?? "left"}
           name={s.label}
           type="linear"
           stroke={colors[i]}

@@ -901,6 +901,33 @@ describe("Sparkline", () => {
     valueFormat: EN.value,
   } as const;
 
+  it("scales a right-axis series on its own axis, so it spans the plot like the left one", () => {
+    const { container } = renderV1(
+      <Sparkline
+        {...sparkProps}
+        series={[
+          { key: "pages", label: "Pages" },
+          { key: "failed", label: "Failed", axis: "right" },
+        ]}
+      />,
+    );
+    const ys = (name: string) =>
+      (
+        container
+          .querySelector(`.recharts-line-curve[name="${name}"]`)
+          ?.getAttribute("d") ?? ""
+      )
+        .split(/[ML]/)
+        .filter(Boolean)
+        .map((point) => Number(point.split(",")[1]));
+    const span = (values: number[]) =>
+      Math.max(...values) - Math.min(...values);
+    // On one shared axis "Failed" (1 to 600) would rise a fifth as far as
+    // "Pages" (10 to 2,981).
+    expect(span(ys("Failed"))).toBeGreaterThan(0);
+    expect(span(ys("Failed"))).toBeCloseTo(span(ys("Pages")), 0);
+  });
+
   it("draws one line with no axes, grid, legend or tooltip, as a static image", async () => {
     const { container } = renderV1(<Sparkline {...sparkProps} />);
     const svg = plot(container);
