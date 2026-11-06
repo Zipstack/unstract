@@ -12,6 +12,8 @@ import argparse
 import datetime
 import json
 import os
+import random
+import re
 import subprocess
 import sys
 import time
@@ -30,9 +32,52 @@ def is_backport(head, base):
     )
 
 
-def gh(*args, token=None):
+GH_TRIES = 5
+# A 5xx or a reply cut short (GitHub incidents) or a network fault. Another 4xx is GitHub's answer: never retried.
+TRANSIENT_RE = re.compile(
+    r"HTTP 5\d\d|unexpected end of JSON input|unexpected EOF|connection reset|timeout|deadline exceeded",
+    re.I,
+)
+# Primary and secondary rate limits (403 or 429). gh hides the Retry-After and reset headers, so GitHub's
+# fallback applies: wait at least a minute, longer on each try.
+RATE_LIMIT_RE = re.compile(r"rate limit|HTTP 429", re.I)
+
+
+def transient(err):
+    if RATE_LIMIT_RE.search(err):
+        return True
+    return bool(TRANSIENT_RE.search(err)) and not re.search(r"HTTP 4\d\d", err)
+
+
+def gh_wait(n, err=""):
+    """Seconds before try n + 2: exponential backoff with jitter, so parallel jobs do not retry in step."""
+    top = min(120, 60 * 2**n) if RATE_LIMIT_RE.search(err) else 4 * 2**n
+    floor = 60 if RATE_LIMIT_RE.search(err) else top / 2
+    return round(random.uniform(floor, top), 1)
+
+
+def run_gh(args, env=None, retry=True, input=None):
+    """Every gh call goes through here. retry=False: a write that may have landed although gh failed; its caller
+    checks before retrying.
+    """
+    for n in range(GH_TRIES):
+        r = subprocess.run(
+            ["gh", *args], capture_output=True, text=True, env=env, input=input
+        )
+        if not (r.returncode and retry and n < GH_TRIES - 1 and transient(r.stderr)):
+            return r
+        wait = gh_wait(n, r.stderr)
+        # Safe: the call is retried, and a last failure is returned to the caller. Stderr: a caller's stdout may be its result.
+        print(
+            f"::warning::gh {' '.join(args[:2])}: {r.stderr.strip()}; retried in {wait} s",
+            file=sys.stderr,
+        )
+        time.sleep(wait)
+
+
+def gh(*args, token=None, retry=True):
     env = {**os.environ, "GH_TOKEN": token} if token else None
-    r = subprocess.run(["gh", *args], capture_output=True, text=True, env=env)
+    r = run_gh(args, env, retry)
     if r.returncode:
         raise RuntimeError(
             f"gh {' '.join(args[:2])} (exit {r.returncode}): {r.stderr.strip()}"
@@ -112,15 +157,19 @@ def base_tip(base):
 DECLINE_TRIES = (
     3  # a 422 on the base ref update: the base moved since base_tip, so re-read it
 )
-SQUASH_WAITS = (5, 20)  # seconds before the 2nd and 3rd merge attempt
+
+
+def merged(slug, n):
+    return gh("api", f"repos/{slug}/pulls/{n}", "--jq", ".merged") == "true"
 
 
 def squash(slug, pr, msg, sleep=time.sleep):
     """False while a required check is pending. GitHub can answer a just-opened PR's merge with 405 "Base branch was
-    modified" although nothing moved the base, so that is retried.
+    modified" although nothing moved the base, so that is retried. A transient failure may still have merged the PR:
+    that is checked before a retry or a failure.
     """
     title, _, body = msg.partition("\n")
-    for wait in (*SQUASH_WAITS, None):
+    for n in range(GH_TRIES):
         try:
             gh(
                 "api",
@@ -135,6 +184,7 @@ def squash(slug, pr, msg, sleep=time.sleep):
                 f"commit_title={title}",
                 "-f",
                 f"commit_message={body.strip()}",
+                retry=False,
             )
             return True
         except RuntimeError as e:
@@ -143,8 +193,13 @@ def squash(slug, pr, msg, sleep=time.sleep):
             if "status check" in str(e).lower():
                 print(f"#{pr['number']}: {str(e).splitlines()[0]}")
                 return False
-            if wait is None or "base branch was modified" not in str(e).lower():
+            moved = "base branch was modified" in str(e).lower()
+            if transient(str(e)) and merged(slug, pr["number"]):
+                print(f"#{pr['number']}: {str(e).splitlines()[0]}; merged all the same")
+                return True
+            if n == GH_TRIES - 1 or not (moved or transient(str(e))):
                 raise
+            wait = gh_wait(n, str(e))
             print(f"#{pr['number']}: {e}; merge retried in {wait} s")
             sleep(wait)
 
@@ -333,6 +388,12 @@ def record(slug, n, sender):
             "sha": (pr.get("mergeCommit") or {}).get("oid"),
             "reason": None,
         }
+    # The App never closes a PR to decline; a close by it comes from a head delete, e.g. a create whose PR was not
+    # listed yet. Recording it would settle the fix with no pick.
+    if sender == f"{os.environ['RELEASE_BOT_APP_SLUG']}[bot]":
+        raise RuntimeError(
+            f"#{n} was closed by the release App, not a person: no decline recorded; the next Backport run picks it again"
+        )
     cs = comments(slug, n)
     reason = (
         decline_reason(cs, sender, pr["closedAt"])
@@ -366,7 +427,7 @@ def record(slug, n, sender):
 
 def summary(n, sender, rec):
     base, sha, pr = rec["base"], rec["sha"], rm.pr_link(n)
-    head = f"**Backport PR** {pr} on `{base}`: "
+    head = f"**Backport PR** {pr} on {rm.branch_link(base)}: "
     if rec["result"].startswith("declined"):
         return [
             head + f"**declined** as {rm.commit_link(sha)}",
@@ -377,7 +438,7 @@ def summary(n, sender, rec):
         squash = rm.commit_link(sha) if sha else "the squash"
         return [
             head + f"**merged** as {squash} (@{sender})",
-            f"Undo: revert {squash} on `{base}`.",
+            f"Undo: revert {squash} on {rm.branch_link(base)}.",
         ]
     if rec["result"] == "reopened":
         return [
@@ -395,7 +456,9 @@ def summary(n, sender, rec):
                 else "Next: nothing here; its head no longer holds this PR's commit."
             ),
         ]
-    return [head + f"**skipped**: already on `{base}` as {rm.commit_link(sha)}"]
+    return [
+        head + f"**skipped**: already on {rm.branch_link(base)} as {rm.commit_link(sha)}"
+    ]
 
 
 def main():
