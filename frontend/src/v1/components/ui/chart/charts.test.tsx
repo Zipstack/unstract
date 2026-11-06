@@ -777,6 +777,38 @@ describe("cartesian options", () => {
     expect(anchorWith("right")).toBe("end");
   });
 
+  it("keeps the ready chart's footprint while loading and empty: the same legend, reserved invisibly", async () => {
+    const legendOf = (container: HTMLElement) =>
+      container.querySelector("[data-slot=chart-legend]");
+    const items = (legend: Element | null) =>
+      [...(legend?.querySelectorAll("li") ?? [])].map((li) => li.textContent);
+    for (const position of ["top", "bottom"] as const) {
+      const ready = renderV1(<LineChart {...props({ legend: position })} />);
+      const readyItems = items(legendOf(ready.container));
+      ready.unmount();
+      for (const state of ["loading", "empty"] as const) {
+        const { container, unmount } = renderV1(
+          <LineChart {...props({ legend: position, state })} />,
+        );
+        const root = container.querySelector("[data-slot=line-chart]");
+        expect(root).toHaveClass("ui:flex", "ui:flex-col", "ui:gap-3");
+        const legend = legendOf(container);
+        expect(items(legend)).toEqual(readyItems);
+        expect(legend).toHaveClass("ui:invisible");
+        expect(legend).toHaveAttribute("aria-hidden", "true");
+        // Same order as the ready chart: legend first when it sits on top.
+        expect(root?.firstElementChild === legend).toBe(position === "top");
+        await expect(container).toHaveNoA11yViolations();
+        unmount();
+      }
+    }
+    // No legend, nothing reserved.
+    const { container } = renderV1(
+      <LineChart {...props({ legend: "none", state: "loading" })} />,
+    );
+    expect(legendOf(container)).toBeNull();
+  });
+
   it("separates stacked segments with a card-coloured stroke", () => {
     const { container } = renderV1(<StackedBarChart {...props()} />);
     const segments = container.querySelectorAll(".recharts-bar-rectangle path");

@@ -57,52 +57,23 @@ export function ChartFrame({
     "ui:h-(--chart-height)",
     width === undefined ? "ui:w-full" : "ui:w-(--chart-width)",
   );
-  if (state === "loading") {
-    return (
-      <div
-        data-slot={slot}
-        data-state="loading"
-        style={{
-          "--chart-height": `${height}px`,
-          "--chart-width": width === undefined ? undefined : `${width}px`,
-        }}
-        className={cn(sized, className)}
-      >
-        <Skeleton label={`Loading ${title}`}>
-          <SkeletonBlock className="ui:h-(--chart-height)" />
-        </Skeleton>
-      </div>
-    );
-  }
-  if (state === "empty") {
-    return (
-      <div
-        data-slot={slot}
-        data-state="empty"
-        style={{
-          "--chart-height": `${height}px`,
-          "--chart-width": width === undefined ? undefined : `${width}px`,
-        }}
-        className={cn(
-          sized,
-          "ui:flex ui:items-center ui:justify-center",
-          className,
-        )}
-      >
-        {emptySlot ?? (
-          <p className="ui:text-body-small ui:text-muted-foreground">
-            <span className="ui:sr-only">{`${title}: `}</span>
-            {emptyMessage}
-          </p>
-        )}
-      </div>
-    );
-  }
-  const legendList =
+  const outer = cn(
+    "ui:flex ui:flex-col ui:gap-3",
+    width === undefined ? "ui:w-full" : "ui:w-(--chart-width)",
+    className,
+  );
+  // The legend's items are known before the data, so loading and empty draw
+  // it too, invisibly, so the chart keeps one footprint across its states
+  // (the card does not jump when data arrives, wrapping included).
+  const legendList = (reserveOnly: boolean) =>
     legend === undefined || legend.items.length === 0 ? null : (
       <ul
         data-slot="chart-legend"
-        className="ui:flex ui:flex-wrap ui:gap-x-4 ui:gap-y-1 ui:text-caption ui:text-muted-foreground"
+        aria-hidden={reserveOnly || undefined}
+        className={cn(
+          "ui:flex ui:flex-wrap ui:gap-x-4 ui:gap-y-1 ui:text-caption ui:text-muted-foreground",
+          reserveOnly && "ui:invisible",
+        )}
       >
         {legend.items.map((item) => (
           <li
@@ -119,6 +90,40 @@ export function ChartFrame({
         ))}
       </ul>
     );
+  if (state === "loading" || state === "empty") {
+    return (
+      <div
+        data-slot={slot}
+        data-state={state}
+        style={{
+          "--chart-height": `${height}px`,
+          "--chart-width": width === undefined ? undefined : `${width}px`,
+        }}
+        className={outer}
+      >
+        {legend?.position === "top" ? legendList(true) : null}
+        {state === "loading" ? (
+          <div className={sized}>
+            <Skeleton label={`Loading ${title}`}>
+              <SkeletonBlock className="ui:h-(--chart-height)" />
+            </Skeleton>
+          </div>
+        ) : (
+          <div
+            className={cn(sized, "ui:flex ui:items-center ui:justify-center")}
+          >
+            {emptySlot ?? (
+              <p className="ui:text-body-small ui:text-muted-foreground">
+                <span className="ui:sr-only">{`${title}: `}</span>
+                {emptyMessage}
+              </p>
+            )}
+          </div>
+        )}
+        {legend?.position === "bottom" ? legendList(true) : null}
+      </div>
+    );
+  }
   return (
     <div
       data-slot={slot}
@@ -127,15 +132,11 @@ export function ChartFrame({
         "--chart-height": `${height}px`,
         "--chart-width": width === undefined ? undefined : `${width}px`,
       }}
-      className={cn(
-        "ui:flex ui:flex-col ui:gap-3",
-        width === undefined ? "ui:w-full" : "ui:w-(--chart-width)",
-        className,
-      )}
+      className={outer}
     >
-      {legend?.position === "top" ? legendList : null}
+      {legend?.position === "top" ? legendList(false) : null}
       <div className={cn(sized, "ui:text-caption")}>{children}</div>
-      {legend?.position === "bottom" ? legendList : null}
+      {legend?.position === "bottom" ? legendList(false) : null}
       <p id={summaryId} className="ui:sr-only">
         {summary}
       </p>

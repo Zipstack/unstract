@@ -162,6 +162,8 @@ sparkline without a tooltip is a static `role="img"` outside the tab order.
 - `loading`: the shared `Skeleton` with one `SkeletonBlock` at the chart's
   height, announced as "Loading {title}". Never a spinner.
 - `empty`: a centred message at the chart's height, or `emptySlot`.
+- Both keep the ready chart's footprint: its legend is laid out, invisibly,
+  in the same place, so a card does not jump when data arrives.
 - error: not a chart state. Render `InlineAlert` with `onRetry` in its place.
 
 A point with no defined neighbour (a single row, or a value between two gaps)

@@ -4,6 +4,8 @@ import type { Formatters } from "./describe";
 export type TooltipEntry = Readonly<{
   dataKey?: unknown;
   value?: unknown;
+  /** The hovered row, as Recharts plotted it. */
+  payload?: unknown;
 }>;
 
 export type TooltipSeries = Readonly<{
@@ -20,8 +22,13 @@ type ChartTooltipProps = Readonly<{
   payload?: readonly TooltipEntry[];
   series: readonly TooltipSeries[];
   fmt: Formatters;
-  /** Maps Recharts' label to the category, where it passes something else (a row index). */
-  labelOf?: (label: unknown) => unknown;
+  /**
+   * Read the category from this field of the hovered row instead of from
+   * Recharts' `label`, where the label is something else (a row index). The
+   * row comes from Recharts with the values, so heading and values always
+   * describe the same row.
+   */
+  categoryKey?: string;
 }>;
 
 /**
@@ -38,12 +45,18 @@ export function ChartTooltip({
   payload,
   series,
   fmt,
-  labelOf,
+  categoryKey,
 }: ChartTooltipProps): JSX.Element | null {
   if (!active) {
     return null;
   }
-  const category = labelOf === undefined ? label : labelOf(label);
+  const row = payload?.[0]?.payload;
+  const category =
+    categoryKey === undefined
+      ? label
+      : typeof row === "object" && row !== null
+        ? (row as Record<string, unknown>)[categoryKey]
+        : undefined;
   return (
     <div
       data-slot="chart-tooltip"

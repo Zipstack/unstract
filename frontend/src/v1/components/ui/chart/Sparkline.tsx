@@ -84,12 +84,9 @@ export function Sparkline<Row extends ChartDatum>({
           filterNull={false}
           content={
             <ChartTooltip
-              // The x key is not an axis here, so Recharts passes the index.
-              labelOf={(label) =>
-                typeof label === "number"
-                  ? (data[label] as Record<string, unknown> | undefined)?.[xKey]
-                  : label
-              }
+              // The x key is not an axis here, so Recharts' label is the
+              // row index; read the category from the hovered row instead.
+              categoryKey={xKey}
               series={series.map((s, i) => ({
                 key: s.key,
                 label: s.label,
