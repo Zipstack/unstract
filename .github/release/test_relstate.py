@@ -1395,20 +1395,18 @@ class Scenario(unittest.TestCase):
 
 
 class PrFixClass(unittest.TestCase):
-    """Lint PR / Backport class rule: title type plus fix/ labels."""
+    """Lint PR / Backport class rule: labels only; the title is validated but does not route."""
 
     def test_pr_fix_class(self):
         c = rm.pr_fix_class
-        self.assertEqual(c("UN-1 [FIX] x"), "fix")
-        self.assertIsNone(c("UN-1 [MISC] x"))
-        self.assertEqual(c("UN-1 [MISC] x", ["fix/needs-backport"]), "fix")
-        self.assertEqual(
-            c("UN-1 [FIX] x", ["fix/needs-backport"]), "fix"
-        )  # no-op on a fix title
-        self.assertEqual(
-            c("UN-1 [MISC] x", ["fix/security", "fix/needs-backport"]), "security"
-        )
+        nb = ["fix/needs-backport"]
+        self.assertEqual(c("UN-1 [MISC] x", nb), "fix")
+        self.assertEqual(c("UN-1 [FIX] x", nb), "fix")
+        self.assertIsNone(c("UN-1 [FIX] x", ["main-only"]))
+        self.assertIsNone(c("UN-1 [MISC] x", ["main-only", "bug"]))
+        self.assertEqual(c("UN-1 [MISC] x", ["fix/security", *nb]), "security")
         self.assertEqual(c("UN-1 [FEAT] x", ["fix/critical", "bug"]), "critical")
+        self.assertEqual(c("UN-1 [FEAT] x", ["fix/security"]), "security")
         for labels in (
             ["fix/typo"],
             ["fix-class/security"],
@@ -1423,32 +1421,70 @@ class PrFixClass(unittest.TestCase):
                     "fix/security, fix/critical, fix/needs-backport", str(e.exception)
                 )
 
-    def test_revert_takes_inner_class(self):
-        c = rm.pr_fix_class
-        self.assertEqual(c('Revert "UN-1 [FIX] x"'), "fix")
-        self.assertIsNone(c('Revert "UN-1 [MISC] x"'))
-        self.assertEqual(c('Revert "Revert "UN-1 [FIX] x""'), "fix")
-        for title in ('Revert "fix x"', "Revert UN-1 [FIX] x", 'revert "UN-1 [FIX] x"'):
-            with self.assertRaises(ValueError, msg=title):
-                c(title)
-        with self.assertRaises(ValueError):
-            c("no prefix")
-        self.assertEqual(c("no prefix", ["fix/needs-backport"]), "fix")
+    def test_main_needs_one_routing_label(self):
+        c = rm.main_fix_class
+        for title in ("UN-1 [FIX] x", "UN-1 [HOT-FIX] x", "UN-1 [MISC] x"):
+            for labels in ([], ["bug"]):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "no backport label: add fix/needs-backport .* or main-only",
+                ):
+                    c(title, labels)
+                self.assertIsNone(rm.pr_fix_class(title, labels))
+            self.assertIsNone(c(title, ["main-only"]))
+            self.assertEqual(c(title, ["fix/needs-backport"]), "fix")
+        for fix in ("fix/needs-backport", "fix/security", "fix/critical"):
+            with self.assertRaisesRegex(
+                ValueError, rf"conflicting labels: main-only with \['{fix}'\]"
+            ):
+                c("UN-1 [MISC] x", ["main-only", fix])
+        with self.assertRaisesRegex(ValueError, "no recognised"):
+            c("no prefix", [])  # the title error wins over the missing label
 
-    def test_ticketless_title_same_class(self):
+    def test_a_release_pr_needs_no_routing_label(self):
+        f = rm.release_only_refusal
+        self.assertIsNone(f("release/0.186", []))
+        self.assertIsNone(f("release/0.186", ["bug"]))
+        for labels in ([], ["bug"], ["release-branch-only"]):
+            self.assertIsNone(rm.pr_fix_class("UN-1 [FIX] x", labels))
+        self.assertIn("no backport label", f("main", []))
+        self.assertIn("no backport label", f("main", ["bug"]))
+        for label in ("main-only", "fix/needs-backport", "fix/security", "fix/critical"):
+            self.assertIsNone(f("main", [label]), label)
+
+    def test_revert_validates_the_inner_title(self):
         c = rm.pr_fix_class
-        self.assertEqual(c("[FIX] x"), "fix")
-        self.assertEqual(c("[HOT-FIX] x"), "fix")
-        self.assertIsNone(c("[MISC] x"))
-        self.assertEqual(c("[MISC] x", ["fix/needs-backport"]), "fix")
+        nb = ["fix/needs-backport"]
+        self.assertEqual(c('Revert "UN-1 [FIX] x"', nb), "fix")
+        self.assertIsNone(c('Revert "UN-1 [FIX] x"', ["main-only"]))
+        self.assertEqual(c('Revert "Revert "UN-1 [FIX] x""', nb), "fix")
+        with self.assertRaisesRegex(ValueError, "no backport label"):
+            rm.main_fix_class('Revert "UN-1 [FIX] x"')  # GitHub's revert PR is unlabelled
+        for title in ('Revert "fix x"', "Revert UN-1 [FIX] x", 'revert "UN-1 [FIX] x"'):
+            with self.assertRaisesRegex(ValueError, "no recognised", msg=title):
+                c(title, ["main-only"])
+        with self.assertRaisesRegex(ValueError, "no recognised"):
+            c("no prefix", ["main-only"])
+        # A fix/ label does not excuse a bad title.
+        for labels in (nb, ["fix/security"], ["fix/critical"]):
+            with self.assertRaisesRegex(ValueError, "no recognised", msg=labels):
+                c("no prefix", labels)
+        self.assertIsNone(c("[MISC] x", ["main-only"]))
+
+    def test_ticketless_title_validated(self):
+        c = rm.pr_fix_class
+        self.assertEqual(c("[HOT-FIX] x", ["fix/needs-backport"]), "fix")
+        self.assertIsNone(c("[MISC] x", ["main-only"]))
         self.assertEqual(c("[FEAT] x", ["fix/security"]), "security")
-        self.assertEqual(c('Revert "[FIX] x"'), "fix")
-        self.assertEqual(c(" UN-1 [FIX] x"), "fix")  # GitHub keeps a typo'd leading space
+        self.assertIsNone(c('Revert "[FIX] x"', ["main-only"]))
+        self.assertIsNone(
+            c(" UN-1 [FIX] x", ["main-only"])
+        )  # GitHub keeps a typo'd leading space
         # The revert button copies the title, leading space included.
-        self.assertEqual(c('Revert " UN-1 [FIX] x"'), "fix")
+        self.assertIsNone(c('Revert " UN-1 [FIX] x"', ["main-only"]))
         for title in ("[fix] x", "[FIX]x", "UN-1[FIX] x", "un-1 [FIX] x"):
-            with self.assertRaises(ValueError, msg=title):
-                c(title)
+            with self.assertRaisesRegex(ValueError, "no recognised", msg=title):
+                c(title, ["main-only"])
 
     def test_release_only_label_refused_off_release(self):
         f = rm.release_only_refusal
@@ -1457,6 +1493,15 @@ class PrFixClass(unittest.TestCase):
         )
         self.assertIsNone(f("release/0.192", ["release-branch-only"]))
         self.assertIsNone(f("main", ["fix/critical"]))
+
+    def test_main_only_label_refused_on_release(self):
+        f = rm.release_only_refusal
+        self.assertEqual(
+            f("release/0.192", ["main-only"]),
+            "label `main-only` is for PRs into main; remove it here",
+        )
+        self.assertIsNone(f("main", ["main-only"]))
+        self.assertIsNone(f("release/0.192", ["fix/needs-backport"]))
 
     def test_rbo_key_ticket_else_pr(self):
         self.assertEqual(rm.rbo_key("UN-1 [FIX] x", "45"), "UN-1")

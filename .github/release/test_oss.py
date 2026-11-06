@@ -2780,7 +2780,16 @@ class PendingPicksWorkflow(Workflow):
         dev_git(self.cloud, "push", "-q", "origin", "pick:release/1.6")
         dev_git(self.cloud, "checkout", "-q", "main")
         self.write(
-            "pulls.json", json.dumps([{"number": 5, "title": "[FIX] y", "labels": []}])
+            "pulls.json",
+            json.dumps(
+                [
+                    {
+                        "number": 5,
+                        "title": "[FIX] y",
+                        "labels": [{"name": "fix/needs-backport"}],
+                    }
+                ]
+            ),
         )
         r = self.promote(GITHUB_SERVER_URL="")
         self.blocked(r, "::error::convergence gate: MISSING picks (summary above)")
@@ -2854,13 +2863,13 @@ class PendingPicksWorkflow(Workflow):
                 '{"id": 9, "digest": "sha256:rc", "pushed_at": "2026-09-01T00:00:00Z", "tags": ["v1.7.1-rc.1"]}\n'
             )
         dev_git(
-            self.cloud, "commit", "-q", "--allow-empty", "-m", "fix: x (#9)"
+            self.cloud, "commit", "-q", "--allow-empty", "-m", "[FIX] x (#9)"
         )  # on main only: held for 1.7
         dev_git(self.cloud, "push", "-q", "origin", "main")
         self.write(
             "pulls.json",
             json.dumps(
-                [{"number": 9, "title": "fix: x", "labels": [{"name": "fix/security"}]}]
+                [{"number": 9, "title": "[FIX] x", "labels": [{"name": "fix/security"}]}]
             ),
         )
         r = self.promote("v1.7.1-rc.1")
@@ -3002,7 +3011,16 @@ class LateTargetWorkflow(Workflow):
         dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "fix on main")
         dev_git(self.cloud, "push", "-q", "origin", "main")
         self.write(
-            "pulls.json", json.dumps([{"number": 5, "title": "[FIX] y", "labels": []}])
+            "pulls.json",
+            json.dumps(
+                [
+                    {
+                        "number": 5,
+                        "title": "[FIX] y",
+                        "labels": [{"name": "fix/needs-backport"}],
+                    }
+                ]
+            ),
         )
         dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
 
@@ -4181,6 +4199,62 @@ elif a[:2] in (["release", "edit"], ["release", "create"]):
     def test_a_rerun_with_nothing_new_does_not_edit(self):
         self.prerelease("", view_body="| targets | cloud |\n\nbody", targets="cloud")
         self.assertEqual(self.read("calls"), "release view\n")
+
+
+class LintPrStep(unittest.TestCase):
+    """The Classify PR step judges each PR against its own base."""
+
+    def classify(self, title, labels, base):
+        with tempfile.TemporaryDirectory() as d:
+            r = subprocess.run(
+                ["bash", "-e", "-c", step("lint-pr.yaml", "Classify PR")],
+                cwd=os.path.join(HERE, "..", ".."),
+                env={
+                    **os.environ,
+                    "TITLE": title,
+                    "LABELS": json.dumps(labels),
+                    "BASE": base,
+                    "GITHUB_STEP_SUMMARY": os.path.join(d, "summary"),
+                    "GITHUB_OUTPUT": os.path.join(d, "output"),
+                },
+                capture_output=True,
+                text=True,
+            )
+            return r.returncode, r.stdout
+
+    def test_a_main_pr_needs_a_backport_label(self):
+        rc, out = self.classify("UN-1 [FIX] x", [], "main")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("::error title=Lint PR::no backport label", out)
+        self.assertIn("`main-only`: keep it on main", out)
+        self.assertEqual(
+            self.classify("UN-1 [FIX] x", ["main-only"], "main"), (0, "class=none\n")
+        )
+
+    def test_calls_only_what_every_relmgr_has(self):
+        # The rule is read from main, and release lines keep older copies of this step: both sides must accept these calls.
+        body = step("lint-pr.yaml", "Classify PR")
+        self.assertEqual(
+            re.findall(r"relmgr\.\w+\([^)]*\)", body),
+            [
+                "relmgr.pr_fix_class(title, labels)",
+                'relmgr.release_only_refusal(os.environ["BASE"], labels)',
+            ],
+        )
+
+    def test_a_release_pr_needs_none_and_refuses_main_only(self):
+        self.assertEqual(
+            self.classify("UN-1 [FIX] x", [], "release/0.186"), (0, "class=none\n")
+        )
+        rc, out = self.classify("UN-1 [FIX] x", ["main-only"], "release/0.186")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("label `main-only` is for PRs into main", out)
+
+    def test_one_run_names_a_bad_title_and_a_missing_label(self):
+        rc, out = self.classify("fix: x", [], "main")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("::error title=Lint PR::no recognised '[TYPE]'", out)
+        self.assertIn("%0Ano backport label", out)
 
 
 if __name__ == "__main__":
