@@ -6,7 +6,6 @@ from unittest import mock
 
 import pytest
 import requests
-
 from app import unstructured_url as uu
 
 PRIVATE_URLS = [

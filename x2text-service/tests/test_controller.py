@@ -3,13 +3,12 @@
 import io
 from unittest import mock
 
+import app.authentication_middleware as am
 import pytest
 import requests
-from flask import Flask
-
-import app.authentication_middleware as am
 from app import unstructured_url
 from app.controllers import controller
+from flask import Flask
 
 TIMEOUT = (10.0, 900.0)
 
@@ -347,3 +346,114 @@ def test_transport_error_level_separates_adapter_from_egress(
         _post(client, "/x2text/process", "http://localhost:8000/x", with_file=True)
     [record] = [r for r in caplog.records if "could not reach" in r.getMessage()]
     assert record.levelname == level
+
+
+@pytest.mark.parametrize("allow_private", ["", "false"])
+@pytest.mark.parametrize(
+    ("path", "with_file"), [("/x2text/test-connection", False), ("/x2text/process", True)]
+)
+def test_nul_in_url_is_400_not_500(
+    client, audit, monkeypatch, allow_private, path, with_file
+):
+    monkeypatch.setenv("UNSTRUCTURED_URL_ALLOW_PRIVATE", allow_private)
+    with (
+        mock.patch.object(controller.requests, "request") as rq,
+        mock.patch.object(controller.requests.Session, "request") as srq,
+    ):
+        r = _post(client, path, "http://a\x00b/general", with_file)
+    assert r.status_code == 400
+    assert r.get_json()["detail"] == "Unstructured URL is not allowed (unparseable-url)"
+    rq.assert_not_called()
+    srq.assert_not_called()
+
+
+def test_block_mode_nul_in_redirect_is_refused_as_unparseable(
+    client, audit, block_private
+):
+    hop = _response(307, "", {"Location": "http://a\x00b/x"})
+    with mock.patch.object(controller.requests.Session, "request", return_value=hop):
+        r = _post(client, "/x2text/process", PUBLIC, with_file=True)
+    assert r.status_code == 400
+    assert r.get_json()["detail"] == unstructured_url.RedirectUnparseable.user_message
+    assert audit.status == "Failed"
+
+
+@pytest.mark.parametrize(
+    ("path", "with_file", "status"),
+    [("/x2text/test-connection", False, 400), ("/x2text/process", True, 502)],
+)
+def test_connect_timeout_is_unreachable_not_timed_out(
+    client, audit, caplog, path, with_file, status
+):
+    # ConnectTimeout is both a ConnectionError and a Timeout: an unreachable
+    # adapter URL, the tenant's to fix, so a warning and no "timed out" message.
+    with mock.patch.object(
+        controller.requests, "request", side_effect=requests.ConnectTimeout()
+    ):
+        r = _post(client, path, "http://10.9.9.9:8000/x", with_file)
+    assert r.status_code == status
+    assert r.get_json()["detail"] == controller.UNREACHABLE
+    [record] = [r for r in caplog.records if "could not reach" in r.getMessage()]
+    assert record.levelname == "WARNING"
+    assert "10.9.9.9" in record.getMessage()
+
+
+@pytest.mark.parametrize(
+    ("path", "with_file"), [("/x2text/test-connection", False), ("/x2text/process", True)]
+)
+def test_read_timeout_log_names_the_host(client, audit, caplog, path, with_file):
+    with mock.patch.object(
+        controller.requests, "request", side_effect=requests.ReadTimeout()
+    ):
+        _post(client, path, "http://10.9.9.9:8000/x?api_key=SECRET", with_file)
+    assert "host=10.9.9.9" in caplog.text
+    assert "SECRET" not in caplog.text
+
+
+def test_block_mode_timeout_is_set_and_each_hop_closed(client, audit, block_private):
+    hop = mock.MagicMock(is_redirect=True, status_code=307)
+    hop.headers = {"Location": "/v1/general"}
+    done = _response(200, '[{"text": "hello"}]', {"Content-Type": "application/json"})
+    with mock.patch.object(
+        controller.requests.Session, "request", side_effect=[hop, done]
+    ) as rq:
+        r = _post(client, "/x2text/process", PUBLIC, with_file=True)
+    assert r.status_code == 200
+    assert [c.kwargs["timeout"] for c in rq.call_args_list] == [TIMEOUT, TIMEOUT]
+    hop.close.assert_called_once()
+
+
+def test_block_mode_refusal_log_has_host_not_query(client, block_private, caplog):
+    with mock.patch.object(controller.requests.Session, "request") as rq:
+        r = _post(client, "/x2text/test-connection", "http://10.0.0.5/x?api_key=SECRET")
+    assert r.status_code == 400
+    rq.assert_not_called()
+    assert "Refusing unstructured-url" in caplog.text
+    assert "10.0.0.5" in caplog.text
+    assert "SECRET" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("path", "with_file"), [("/x2text/test-connection", False), ("/x2text/process", True)]
+)
+def test_block_mode_unparseable_adapter_url_is_400(
+    client, audit, block_private, path, with_file
+):
+    with mock.patch.object(controller.requests.Session, "request") as rq:
+        r = _post(client, path, "http://[abc/x", with_file)
+    assert r.status_code == 400
+    assert r.get_json() == {
+        "message": "Unstructured URL is not allowed (unparseable-url)",
+        "detail": "Unstructured URL is not allowed (unparseable-url)",
+    }
+    rq.assert_not_called()
+
+
+def test_test_connection_unexpected_error_is_logged_with_traceback(client, caplog):
+    with mock.patch.object(
+        controller.requests, "request", side_effect=RuntimeError("boom")
+    ):
+        _post(client, "/x2text/test-connection", "http://localhost:8000/x")
+    [record] = [r for r in caplog.records if "Test connection failed" in r.getMessage()]
+    assert record.levelname == "ERROR"
+    assert record.exc_info is not None

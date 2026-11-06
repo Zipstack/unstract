@@ -130,8 +130,13 @@ def test_connection() -> Any:
         }, response.status_code
     except RedirectRefused as e:
         return _redirect_refused(e, url)
-    except requests.Timeout:
-        logging.error("Test connection timed out waiting for the Unstructured API")
+    except requests.ReadTimeout:
+        # ReadTimeout only: a ConnectTimeout is also a ConnectionError, an
+        # unreachable adapter URL, and is handled as one below.
+        logging.error(
+            "Test connection timed out waiting for the Unstructured API (host=%s)",
+            safe_host(url),
+        )
         return _error(TIMED_OUT, 504)
     except requests.RequestException as e:
         _log_transport_error("Test connection", e, url)
@@ -201,10 +206,15 @@ def process() -> Any:
         x2_text_audit.status = "Failed"
         x2_text_audit.save()
         return _redirect_refused(e, url)
-    except requests.Timeout:
+    except requests.ReadTimeout:
+        # As in test_connection: a ConnectTimeout falls through to the
+        # transport-error branch.
         x2_text_audit.status = "Failed"
         x2_text_audit.save()
-        logging.error("Text extraction timed out waiting for the Unstructured API")
+        logging.error(
+            "Text extraction timed out waiting for the Unstructured API (host=%s)",
+            safe_host(url),
+        )
         return _error(TIMED_OUT, 504)
     except requests.RequestException as e:
         x2_text_audit.status = "Failed"

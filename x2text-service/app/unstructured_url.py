@@ -46,6 +46,7 @@ import requests
 from unstract.core.network.ssrf import (
     REFUSED_INTERNAL_LITERAL,
     REFUSED_NON_PUBLIC,
+    REFUSED_UNPARSEABLE,
     UNRESOLVABLE,
     safe_host,
     webhook_url_refusal,
@@ -236,6 +237,8 @@ def _checked_redirect_target(url: str, response: requests.Response) -> str:
     if reason := refusal_reason(next_url):
         if reason == UNRESOLVABLE:
             raise RedirectUnresolvable(reason)
+        if reason == REFUSED_UNPARSEABLE:
+            raise RedirectUnparseable(reason)
         raise RedirectNotAllowed(reason)
     return next_url
 
@@ -259,7 +262,7 @@ def post(
     """
     timeout = request_timeout()
     if allow_private():
-        # Unchanged from before the guard: requests follows redirects itself.
+        # Redirects are followed by requests itself, as before the guard.
         return requests.request(
             "POST", url, headers=headers, data=data, files=files(), timeout=timeout
         )
