@@ -498,16 +498,15 @@ it("centres a highlight, across as well as down for a box", () => {
   expect(ref.current?.scrollToHighlight("missing")).toBe(false);
 });
 
-it("keeps the same spot of the same page in view across a zoom change", () => {
+/** Scrolls at zoom 1 with `place`, then zooms to 2; returns the scroller. */
+function zoomInAfter(place: (root: HTMLElement) => void): HTMLElement {
   const { document } = fakeDocument(10);
   let zoom = 1;
   const { container, rerender } = render(
     <PdfPageList document={document} pageSizes={sizes(10)} zoom={zoom} />,
   );
   const root = layOut(container, () => zoom);
-  show([0]);
-  // Half way down page 0.
-  root.scrollTop = 400;
+  place(root);
   act(() => {
     root.dispatchEvent(new Event("scroll"));
   });
@@ -515,7 +514,25 @@ it("keeps the same spot of the same page in view across a zoom change", () => {
   rerender(
     <PdfPageList document={document} pageSizes={sizes(10)} zoom={zoom} />,
   );
+  return root;
+}
+
+it("keeps the same spot of the same page in view across a zoom change", () => {
+  const root = zoomInAfter((scroller) => {
+    show([0]);
+    // Half way down page 0.
+    scroller.scrollTop = 400;
+  });
   expect(root.scrollTop).toBe(800);
+});
+
+it("keeps the same spot across the page in view across a zoom change", () => {
+  // The middle of the 500 px view is 434 px into the 600 px page.
+  const root = zoomInAfter((scroller) => {
+    scroller.scrollLeft = 200;
+  });
+  // Still 434/600 across the now 1200 px page.
+  expect(root.scrollLeft).toBeCloseTo(16 + 868 - 250);
 });
 
 function scrollTo(root: HTMLElement, top: number) {
