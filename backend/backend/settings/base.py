@@ -344,6 +344,43 @@ AGENT_KV_STRUCTURED_OUTPUT_ENABLED = (
     os.environ.get("AGENT_KV_STRUCTURED_OUTPUT_ENABLED", "false").lower() == "true"
 )
 
+#: Whether this deployment ACCEPTS `kv` submits. False by default, and that
+#: default is the whole point.
+#:
+#: `EXTRACTOR_ROUTES` records where an extractor's work is dispatched. It cannot
+#: record whether anything DRAINS that queue, and the backend has no way to see
+#: the worker fleet's subscription list -- the engine probe in `SubmitView`
+#: (`get_plugin("agent_kv")`) is per-deployment, so it is already truthy
+#: wherever the `table` extractor shipped and says nothing about `kv`.
+#:
+#: A routed-but-undrained extractor is the worst shape available: the submit is
+#: accepted with a 202, the file is staged, a concurrency slot is taken, and the
+#: row sits in DISPATCHED until the sweep force-fails it -- with no error at the
+#: producer and nothing in any log naming the cause.
+#:
+#: The CHART sets this flag in the same values file that adds
+#: `celery_executor_agentic_kv` to the executor fleet's queue list, which is
+#: what keeps those two together on that surface. It is NOT an invariant of
+#: every surface, and an earlier version of this comment claimed it was: the
+#: compose stacks in this repo add that queue (`docker/docker-compose.yaml`,
+#: `tests/compose/docker-compose.test.yaml`, `workers/run-worker.sh`) and set
+#: this flag nowhere, so they ship drained-but-not-accepting. That direction is
+#: the safe one -- a refusal, not a hang -- but it is drift, so do not read
+#: "they travel together" as a guarantee.
+#:
+#: Nor does one values file give one cutover. The backend and executor
+#: Deployments roll independently inside a single `helm upgrade`, so a backend
+#: replica can pick the flag up before the executor fleet has replaced its
+#: pods, and for the length of that window a `kv` submit takes the accepted-
+#: but-undrained path below. Order the rollout (subscription first) if that
+#: window matters. Defaulting false is what makes merge ORDER safe: this
+#: repo merges before the chart (the cloud half imports `unstract-agent-kv-schema`
+#: from here), and until the chart lands a `kv` submit is refused at validation
+#: rather than accepted into a queue nothing serves.
+AGENT_KV_KV_EXTRACTOR_ENABLED = (
+    os.environ.get("AGENT_KV_KV_EXTRACTOR_ENABLED", "false").lower() == "true"
+)
+
 
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")
 DB_USER = os.environ.get("DB_USER", "unstract_dev")
@@ -1224,6 +1261,7 @@ PLATFORM_METRICS_QUEUES = [
                 "celery_api_deployments",
                 "celery_callback",
                 "celery_executor_agentic",
+                "celery_executor_agentic_kv",
                 "celery_executor_agentic_table",
                 "celery_executor_legacy",
                 "celery_executor_lookup_test",
@@ -1240,6 +1278,14 @@ PLATFORM_METRICS_QUEUES = [
                 "notifications_priority",
                 "notifications_sms",
                 "notifications_webhook",
+                # The sandbox codegen fleet's PG queue. Listed for the same
+                # reason as every sibling: `QueueMetricGroup.families()`
+                # reports `configured | observed`, and the table holds only
+                # undelivered rows, so an UNLISTED queue vanishes from the
+                # scrape the moment it drains instead of reporting 0 --
+                # indistinguishable from a broken scrape to a dashboard or a
+                # queue-depth autoscaler.
+                "sandbox_codegen",
                 "scheduler",
             ]
         ),

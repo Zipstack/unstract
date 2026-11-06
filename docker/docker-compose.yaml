@@ -74,6 +74,143 @@ services:
       - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`) || PathPrefix(`/public`))
       - traefik.http.services.backend.loadbalancer.server.port=8000
 
+  # Codegen sandbox worker (WorkerType.SANDBOX) — drains sandbox_codegen and
+  # runs generated code out-of-process in a scrubbed, rlimit-bounded
+  # subprocess (spec §6.3).
+  #
+  # On the PG transport, not the broker: UN-4046 retired RabbitMQ as the task
+  # transport, so a broker-only consumer accepts work and drains none — silently
+  # (the producer's enqueue still succeeds). It loads the SAME
+  # workers/sandbox/tasks.py as before via WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE,
+  # so every §6.3 layer is enforced identically; only the transport changed.
+  #
+  # Hardened and isolated: no host_gateway (must not reach the host), no
+  # published ports (the health port is internal-only — 8090/8091 are reserved
+  # for pg_queue_consumer / pluggable-worker auto-discovery, 8092 is the
+  # sandbox's fixed slot), read-only rootfs, all capabilities dropped, no
+  # privilege escalation.
+  worker-sandbox:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-sandbox
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # BOUNDED, and the bound matters more here than in Kubernetes. A bare
+    # `tmpfs: - /tmp` takes Docker's default size (half of host RAM), and this
+    # is the one writable path in a read-only container, so generated code can
+    # fill it with host MEMORY: `open()` stays available to the script by
+    # design, and RLIMIT_FSIZE caps each file, never their total. Files written
+    # outside the per-job tempdir also outlive its cleanup, so the cost
+    # accumulates across jobs until the daemon's host is affected.
+    #
+    # 256m mirrors the chart's `emptyDir.sizeLimit: 256Mi` for this same mount,
+    # so the two deployment surfaces agree on the budget. Note the chart's
+    # emptyDir is DISK-backed (no `medium: Memory`), which is why compose needs
+    # the explicit cap more, not less.
+    tmpfs:
+      - /tmp:size=256m
+    # Mirrors the chart's `workerPgSandbox.resources.limits.memory: 1Gi`.
+    #
+    # These are NOT two independent bounds. A Docker tmpfs is RAM-backed and
+    # its pages are charged to this same cgroup, so the budget is:
+    #   tmpfs (256m) + SANDBOX_MEMORY_MB (512) x in-flight jobs + the worker
+    #   process itself (Celery / SDK1 / litellm imports)
+    # At one lane that is 768m of the 1g, leaving ~256m for the parent -- tight
+    # but closed. It is only closed because concurrency is pinned to 1 below;
+    # raise either knob without the other and the cgroup OOM killer fires on
+    # the CONTAINER, whose victim is not guaranteed to be the offending child.
+    #
+    # (The chart's emptyDir is DISK-backed, so its 1Gi is process memory only.)
+    #
+    # The two surfaces do NOT use the same per-job figure, and this is the
+    # number to carry when checking the chart: the chart sets
+    # `SANDBOX_MEMORY_MB: "192"`, not the 512 default used above. That is what
+    # closes its budget at CONCURRENCY 2 -- 2 x 192 + 512Mi of requests = 896Mi
+    # of its 1Gi -- and it is enforced at render time by a `fail` in
+    # templates/worker-sandbox/deployment.yaml that computes the product from
+    # the live values rather than asserting agreement.
+    #
+    # Stated explicitly because omitting it was costly: four separate reviewers
+    # read "1Gi" and "CONCURRENCY 2" from this comment, multiplied by the 512
+    # above, got 1408 > 1024, and each reported the chart as over-committed.
+    # The arithmetic was right and the missing input was 192.
+    #
+    # No other service in this file sets a limit -- a deliberate exception for
+    # the one service that executes code it did not write.
+    mem_limit: 1g
+    # Must stay ABOVE the consumer's own drain budget, not just above the task
+    # ceiling. Two budgets exist and the larger governs:
+    #   - CONCURRENCY=1 (this file's default) takes the single-process path,
+    #     which never reaches `shutdown_grace_from_env()`. SIGTERM only sets
+    #     `_running = False`, so the drain is the current task: SANDBOX_TIMEOUT_MAX
+    #     (60, wall clock) + ~5s `_reap` + up to 10s `_LEASE_JOIN_TIMEOUT_SECONDS`
+    #     ~= 75s. NOTE SANDBOX_TIMEOUT_GRACE is CPU-seconds on RLIMIT_CPU, not
+    #     wall clock; an earlier version of this comment added it here and was
+    #     right only by accident.
+    #   - CONCURRENCY>1 takes `run_supervised`, whose budget is
+    #     `max(30, VT_SECONDS)` = 120s with VT pinned below. The CHART ships this
+    #     worker at CONCURRENCY 2, so 120 is the production number.
+    # 150 clears both. `workers/queue_backend/pg_queue/README.md` states
+    # drain <= grace as an invariant, so a value under 120 tears the container
+    # down mid-drain and loses the supervisor's ordered SIGKILL step.
+    # Re-derive if SANDBOX_TIMEOUT_MAX or PG_SANDBOX_VT_SECONDS moves.
+    stop_grace_period: ${PG_SANDBOX_STOP_GRACE:-150s}
+    # NOTE: `./essentials.env` is deliberately NOT loaded here, unlike every
+    # other worker service. Nothing under `workers/` reads any key in it
+    # (MINIO_ROOT_*, MINIO_*_KEY, POSTGRES_*, QDRANT_*, RABBITMQ_DEFAULT_*), so
+    # it is surplus everywhere -- but this is the one container that executes
+    # code an LLM wrote, and `gate.py` records that generated code reads the
+    # parent's unscrubbed environment through /proc/<ppid>/environ with no
+    # import. Omitting the file takes MinIO root, the Postgres superuser and
+    # the broker admin out of that blast radius for free. The accepted residual
+    # (R12 / UN-4218) is the remaining `../workers/.env` reach.
+    env_file:
+      - ../workers/.env
+    depends_on:
+      - db
+      - redis
+    environment:
+      - APPLICATION_NAME=unstract-worker-sandbox
+      - WORKER_NAME=sandbox-worker
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=sandbox
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=sandbox_codegen
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8092
+      # Pinned here, like every sibling PG consumer in this file, so the shared
+      # `../workers/.env` cannot set it for this service. One lane is also what
+      # the memory budget above is sized for.
+      - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=${PG_SANDBOX_CONCURRENCY:-1}
+      # Both default well below this role's worst case. SANDBOX_TIMEOUT_MAX is
+      # 60s, plus up to 5s of reap and the gate/file I/O around it. The
+      # liveness heartbeat is stamped before a claim and frozen while the batch
+      # runs, so HEALTH_STALE_SECONDS doubles as an upper bound on one task's
+      # wall clock: left at 60 a job that uses its full timeout trips the probe
+      # and is killed and redelivered. VT at 30 would also re-claim mid-run.
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${PG_SANDBOX_VT_SECONDS:-120}
+      # Pinned for the same reason CONCURRENCY is: VT (120) equals the
+      # consumer's `_DEFAULT_LEASE_SECONDS`, so `lease_seconds < vt_seconds` is
+      # False and the batch>1 clamp never fires -- this is the only consumer in
+      # the file in that state, every sibling having VT 180-3660. With BATCH>1
+      # from the shared `../workers/.env` the batch tail's lease lapses while
+      # the head runs and the generated code executes twice.
+      - WORKER_PG_QUEUE_CONSUMER_BATCH=1
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${PG_SANDBOX_HEALTH_STALE_SECONDS:-180}
+      # Same requirement the chart documents for this image under a read-only
+      # rootfs: worker-unified sets HOME=/home/worker and WORKDIR=/app and
+      # redirects neither TMPDIR nor XDG_CACHE_HOME, so any boot-time write to
+      # ~/.cache or the CWD (Celery / SDK1 / litellm import) hits a read-only
+      # filesystem. The chart points all three at its writable /tmp mount;
+      # this service has the same `read_only: true` + tmpfs shape and was
+      # missing them.
+      - HOME=/tmp
+      - TMPDIR=/tmp
+      - XDG_CACHE_HOME=/tmp/.cache
+    labels:
+      - traefik.enable=false
+
   # Celery Flower
   celery-flower:
     <<: *host_gateway
@@ -495,7 +632,7 @@ services:
       - APPLICATION_NAME=unstract-worker-pg-executor
       - WORKER_BARRIER_BACKEND=pg
       - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=executor
-      - WORKER_PG_QUEUE_CONSUMER_QUEUE=celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test,celery_executor_agentic_kv
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
       # Log publisher — see the note on the backend service (UN-4046).
       - LOG_TRANSPORT=redis

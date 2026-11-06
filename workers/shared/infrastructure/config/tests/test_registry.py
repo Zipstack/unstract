@@ -14,6 +14,17 @@ from shared.enums.worker_enums_base import QueueName
 from shared.infrastructure.config.registry import WorkerRegistry
 
 
+def test_sandbox_worker_registered():
+    cfg = WorkerRegistry._QUEUE_CONFIGS[WorkerType.SANDBOX]
+    assert cfg.primary_queue == QueueName.SANDBOX_CODEGEN
+
+
+def test_sandbox_task_route():
+    routing = WorkerRegistry._TASK_ROUTES[WorkerType.SANDBOX]
+    routed = {r.pattern: r.queue for r in routing.routes}
+    assert routed["execute_sandboxed_code"] == QueueName.SANDBOX_CODEGEN
+
+
 def test_ide_callback_worker_also_subscribes_to_the_agent_kv_callback_queue():
     cfg = WorkerRegistry._QUEUE_CONFIGS[WorkerType.IDE_CALLBACK]
     assert QueueName.AGENT_KV_CALLBACK in cfg.additional_queues, (
@@ -34,11 +45,42 @@ def test_both_agent_kv_terminal_callbacks_route_to_that_queue():
     assert routed["agent_kv_error"] == QueueName.AGENT_KV_CALLBACK
 
 
-def test_no_worker_type_claims_the_unshipped_sandbox_queue():
-    """This deployment ships no codegen sandbox (UN-4215 is the fast-follow).
+def test_the_sandbox_queue_is_claimed_now_that_the_sandbox_ships():
+    """Inverted from main's `test_no_worker_type_claims_the_unshipped_sandbox_queue`.
 
-    A registry entry for a worker that is never deployed is how a queue ends up
-    advertised and undrained, so the absence is asserted rather than assumed.
+    That guard existed because the table-only slice (UN-4232) shipped the API
+    without a codegen sandbox, and "a registry entry for a worker that is never
+    deployed is how a queue ends up advertised and undrained". This PR is the
+    change that deploys it, so the same concern now points the other way: the
+    queue must be claimed, or `execute_sandboxed_code` is enqueued and nothing
+    drains it. Kept as an explicit assertion rather than deleted, so the
+    transition is visible in the history instead of looking like a lost test.
     """
-    assert not hasattr(QueueName, "SANDBOX_CODEGEN")
-    assert not hasattr(WorkerType, "SANDBOX")
+    assert hasattr(QueueName, "SANDBOX_CODEGEN")
+    assert hasattr(WorkerType, "SANDBOX")
+    assert WorkerType.SANDBOX in WorkerRegistry._QUEUE_CONFIGS
+
+
+def test_the_sandbox_route_names_a_task_that_actually_exists():
+    """Ties the route literal to the registered task, which nothing did.
+
+    `test_sandbox_route` compares the literal in `registry.py` against a
+    literal in the test, so the two could disagree with the decorator in
+    `sandbox/tasks.py` and both stay green. A typo in either declaration
+    produces the failure this feature's comments cite repeatedly: work enqueued
+    onto a served queue, no task registered under that name, nothing at the
+    producer.
+
+    (The same gap exists for every other worker; closing it here is a
+    precedent, not a claim that this PR introduced it.)
+    """
+    import sandbox.tasks  # noqa: F401 -- importing registers the task
+    from shared.infrastructure.config.registry import WorkerRegistry
+
+    routed = {r.pattern for r in WorkerRegistry._TASK_ROUTES[WorkerType.SANDBOX].routes}
+    registered = {sandbox.tasks.execute_sandboxed_code.name}
+    missing = routed - registered
+    assert not missing, (
+        f"registry.py routes {sorted(missing)}, but sandbox.tasks registers "
+        f"{sorted(registered)} -- work on that queue would find no handler"
+    )

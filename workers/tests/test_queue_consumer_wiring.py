@@ -10,15 +10,15 @@ The assertions run in BOTH directions, which is the part to read carefully:
 
 * ``celery_executor_agentic_table`` and ``agent_kv_callback`` must HAVE a
   consumer -- they are what this deployment dispatches onto.
-* ``celery_executor_agentic_kv`` must NOT be advertised. This deployment ships
-  no ``agentic_kv`` plugin, so a fleet listing that queue would accept work
-  nothing can drain -- the same silent failure, arrived at from the other side.
+* ``celery_executor_agentic_kv`` must ALSO have a consumer. ``kv`` is routed
+  now, so this file asserts the queue is SERVED -- see
+  ``test_every_fleet_serves_the_kv_queue``. An earlier revision of this
+  paragraph asserted the opposite and survived the change that inverted the
+  tests below it, which is exactly the drift it warned about.
 
-**These names are literals, and that is a known limitation.** Re-enabling the
-``kv`` extractor is one ``EXTRACTOR_ROUTES`` entry, after which
-``celery_executor_agentic_kv`` must be SERVED -- and the inverse assertion
-above would have to be deleted to go green, which is the one moment a guard
-should not be getting deleted. The derived version of both directions lives in
+**These names are literals, and that is a known limitation.** The direction
+these assertions take follows ``EXTRACTOR_ROUTES``, so a change there has to be
+mirrored here by hand. The derived version of both directions lives in
 ``backend/agent_kv/tests/test_queue_wiring_is_derived.py``, where
 ``EXTRACTOR_ROUTES`` is actually importable (the backend package is not
 importable from this test venv -- that asymmetry is why the duplication
@@ -53,15 +53,24 @@ DEV_COMPOSE = REPO_ROOT / "docker" / "docker-compose.yaml"
 TEST_COMPOSE = REPO_ROOT / "tests" / "compose" / "docker-compose.test.yaml"
 RUN_WORKER = REPO_ROOT / "workers" / "run-worker.sh"
 
-# The queue the `kv` extractor WOULD dispatch onto, and which this deployment
-# deliberately does not serve: the `agentic_kv` plugin ships on a separate PR.
-# `kv` is absent from EXTRACTOR_ROUTES so a submit is refused at the serializer
-# with a 400 -- these assertions are the second half of that, pinning that no
-# fleet advertises a consumer for it. A queue that is listed but unserved
-# accepts work and drains nothing, with no error at the producer: the job sits
-# in DISPATCHED forever. That failure has already cost this team ~30 hours of
-# firings with zero executions, which is why it is guarded from both ends.
-UNSERVED_KV_QUEUE = "celery_executor_agentic_kv"
+# The queue the `kv` extractor dispatches onto. Every fleet MUST serve it.
+#
+# These assertions were the exact inverse until `kv` became routable: the
+# `agentic_kv` plugin shipped on a separate PR, `kv` was absent from
+# EXTRACTOR_ROUTES so a submit was refused with a 400, and the second half of
+# that guarantee was that no fleet advertised a consumer for a queue nothing
+# produced to. `kv` is in EXTRACTOR_ROUTES now, so the risk has flipped ends
+# and so have these: a fleet that does NOT serve this queue accepts Agent-KV
+# work and drains nothing, with no error at the producer, and the job sits in
+# DISPATCHED forever. That failure has already cost this team ~30 hours of
+# firings with zero executions, which is why it stays guarded from both ends.
+#
+# The authoritative version of this check is derived rather than literal:
+# `backend/agent_kv/tests/test_queue_wiring_is_derived.py` computes the
+# expected queue set from EXTRACTOR_ROUTES for each of these same three
+# fleets. This file is the cheap second opinion -- two independent statements
+# of one fact, which is the point of keeping both.
+KV_QUEUE = "celery_executor_agentic_kv"
 
 # The terminal-callback queue. Its consumer is what moves a job out of
 # RUNNING: finalize persists the result, deletes the staged input, releases
@@ -111,19 +120,18 @@ def _queues(raw: str) -> set[str]:
     ("compose_path", "label"),
     [(DEV_COMPOSE, "dev compose"), (TEST_COMPOSE, "e2e test compose")],
 )
-def test_no_fleet_advertises_the_unserved_kv_queue(compose_path, label):
-    """The executor fleet must not list a queue with no plugin behind it."""
+def test_every_fleet_serves_the_kv_queue(compose_path, label):
+    """The executor fleet must drain the queue `kv` dispatches onto."""
     env = _service_env(compose_path, "worker-pg-executor")
     raw = env.get(PG_QUEUE_VAR)
     assert raw is not None, (
         f"{label}: worker-pg-executor sets no {PG_QUEUE_VAR}; the running "
         f"pg-queue-consumer would fall back to a default of unknown content"
     )
-    assert UNSERVED_KV_QUEUE not in _queues(raw), (
-        f"{label}: {UNSERVED_KV_QUEUE} is advertised but this deployment "
-        f"carries no agentic_kv plugin to drain it. Work routed there is "
-        f"accepted and never runs, silently. Remove it from {PG_QUEUE_VAR}, "
-        f"or ship the plugin."
+    assert KV_QUEUE in _queues(raw), (
+        f"{label}: {KV_QUEUE} is not served, but `kv` is routable in "
+        f"EXTRACTOR_ROUTES and dispatches onto it. Agent-KV work is accepted "
+        f"with a 202 and never runs, silently. Add it to {PG_QUEUE_VAR}."
     )
 
 
@@ -186,18 +194,18 @@ def test_the_dead_celery_var_never_advertises_an_unserved_queue(compose_path, la
     )
 
 
-def test_run_worker_pg_executor_role_omits_the_unserved_kv_queue():
+def test_run_worker_pg_executor_role_serves_the_kv_queue():
     """The host-run fleet's hardcoded role default must match the compose stacks.
 
-    ``run-worker.sh`` carries its own PG_CONSUMER_ROLES map; a queue listed
-    here but not in compose is just as unconsumed for anyone running the fleet
-    directly.
+    ``run-worker.sh`` carries its own PG_CONSUMER_ROLES map; a queue missing
+    here but present in compose is just as unconsumed for anyone running the
+    fleet directly.
     """
     text = RUN_WORKER.read_text()
     match = re.search(r'\["\$PG_ROLE_EXECUTOR"\]="executor;([^"]+)"', text)
     assert match, "could not find the PG_ROLE_EXECUTOR entry in run-worker.sh"
-    assert UNSERVED_KV_QUEUE not in _queues(match.group(1)), (
-        f"run-worker.sh's pg-executor role advertises {UNSERVED_KV_QUEUE}; a "
+    assert KV_QUEUE in _queues(match.group(1)), (
+        f"run-worker.sh's pg-executor role does not serve {KV_QUEUE}; a "
         f"host-run fleet would accept Agent-KV work and never drain it."
     )
 
@@ -256,6 +264,92 @@ def test_run_worker_pg_ide_callback_role_drains_the_callback_queue():
     match = re.search(r'\["\$PG_ROLE_IDE_CALLBACK"\]="ide_callback;([^"]+)"', text)
     assert match, "could not find the PG_ROLE_IDE_CALLBACK entry in run-worker.sh"
     assert AGENT_KV_CALLBACK_QUEUE in _queues(match.group(1))
+
+
+# --------------------------------------------------------------------------
+# The sandbox role's operability and its resource bounds. Both are about the
+# one service in these stacks that runs code it did not write.
+
+
+def test_the_sandbox_role_is_individually_controllable():
+    """`PG_CONSUMER_ROLES` alone does not make a role usable.
+
+    The launcher resolves the name a user types through WORKERS, and the
+    status/stop paths build their process list from it too. With the role in
+    PG_CONSUMER_ROLES only, `run-worker.sh pg-sandbox` is rejected as an
+    unknown worker, and a sandbox started as part of the `pg` group is invisible
+    to `status` and survives `stop` -- an orphaned consumer of untrusted code
+    is the worst process to leave running unattended.
+
+    (`pg-ide-callback` and `pg-notification` have the same gap. They predate
+    this and are deliberately not changed here.)
+    """
+    text = RUN_WORKER.read_text()
+    match = re.search(r"declare -A WORKERS=\((.*?)\n\)", text, re.S)
+    assert match, "could not find the WORKERS map in run-worker.sh"
+    assert "PG_ROLE_SANDBOX" in match.group(1), (
+        "pg-sandbox is not in WORKERS: `run-worker.sh pg-sandbox` is rejected, "
+        "and status/stop miss the process the `pg` group starts."
+    )
+
+
+def test_the_compose_sandbox_bounds_its_in_memory_scratch_dir():
+    """An unbounded tmpfs on the one writable path is host MEMORY.
+
+    `open()` stays available to generated code by design, and RLIMIT_FSIZE caps
+    each file rather than their total, so a script can fill /tmp with many
+    small files. Docker's default tmpfs size is half of host RAM, and files
+    written outside the per-job tempdir outlive its cleanup, so the cost
+    accumulates across jobs. The bound mirrors the chart's
+    `emptyDir.sizeLimit: 256Mi` for the same mount.
+    """
+    compose = yaml.safe_load(DEV_COMPOSE.read_text())
+    service = compose["services"]["worker-sandbox"]
+    mounts = service.get("tmpfs") or []
+    tmp = [m for m in mounts if m.split(":")[0] == "/tmp"]
+    assert tmp, "worker-sandbox does not mount /tmp as tmpfs"
+    assert "size=" in tmp[0], (
+        f"worker-sandbox's /tmp tmpfs is unbounded ({tmp[0]!r}); generated code "
+        f"can fill it with host memory."
+    )
+
+
+def test_the_compose_sandbox_bounds_its_memory():
+    """The only service here that executes untrusted code is the only one that
+    needs a memory ceiling; without it the container can take the host down by
+    allocating. Mirrors the chart's limits.memory for the same role.
+    """
+    compose = yaml.safe_load(DEV_COMPOSE.read_text())
+    service = compose["services"]["worker-sandbox"]
+    assert service.get("mem_limit"), (
+        "worker-sandbox has no mem_limit: an untrusted-code container with an "
+        "unbounded memory budget."
+    )
+
+
+def test_the_compose_sandbox_redirects_its_caches_into_the_writable_mount():
+    """read_only rootfs + worker-unified means HOME must move.
+
+    The chart documents this for the same image: it sets HOME=/home/worker and
+    WORKDIR=/app and redirects neither TMPDIR nor XDG_CACHE_HOME, so a
+    boot-time write to ~/.cache (Celery / SDK1 / litellm import) lands on a
+    read-only filesystem. The chart points all three at its writable /tmp; this
+    service has the identical read_only + tmpfs shape.
+    """
+    compose = yaml.safe_load(DEV_COMPOSE.read_text())
+    service = compose["services"]["worker-sandbox"]
+    env = dict(
+        item.split("=", 1) for item in service.get("environment", []) if "=" in item
+    )
+    for key in ("HOME", "TMPDIR", "XDG_CACHE_HOME"):
+        assert key in env, (
+            f"worker-sandbox does not set {key}; with read_only: true a "
+            f"boot-time write outside /tmp fails."
+        )
+        assert env[key].startswith("/tmp"), (
+            f"worker-sandbox points {key} at {env[key]!r}, which is not inside "
+            f"the writable tmpfs."
+        )
 
 
 # --------------------------------------------------------------------------
@@ -322,3 +416,54 @@ def test_every_backend_prefix_is_excluded_from_the_frontend():
         f"{sorted(missing)} route to the backend but are not excluded from the "
         f"frontend router; the SPA will claim them"
     )
+
+
+def test_the_compose_sandbox_memory_budget_closes():
+    """`mem_limit` must cover the tmpfs, the per-job rlimit and the parent.
+
+    The sibling bounds-test asserts only that `mem_limit` is truthy, which
+    cannot see the arithmetic. A Docker tmpfs is RAM-backed and charged to the
+    same cgroup, so these are one budget:
+
+        tmpfs + (SANDBOX_MEMORY_MB x concurrency) + parent headroom <= mem_limit
+
+    If this fails, the cgroup OOM killer -- not the per-job RLIMIT_AS -- is
+    what enforces the limit, and its victim is not guaranteed to be the
+    offending child.
+    """
+    svc = yaml.safe_load(DEV_COMPOSE.read_text())["services"]["worker-sandbox"]
+
+    def _mb(v):
+        v = str(v).strip().lower()
+        return int(v[:-1]) * 1024 if v.endswith("g") else int(v.rstrip("m"))
+
+    limit = _mb(svc["mem_limit"])
+    tmpfs = next(m for m in svc["tmpfs"] if m.startswith("/tmp:"))
+    scratch = _mb(tmpfs.split("size=")[1])
+    env = dict(e.split("=", 1) for e in svc["environment"] if "=" in e)
+    lanes = int(env["WORKER_PG_QUEUE_CONSUMER_CONCURRENCY"].split(":-")[1].rstrip("}"))
+    # The runner's default, which this service does not override.
+    per_job = 512
+    parent_headroom = 128
+    need = scratch + per_job * lanes + parent_headroom
+    assert need <= limit, (
+        f"mem_limit={limit}m does not cover tmpfs {scratch}m + "
+        f"{lanes} x SANDBOX_MEMORY_MB {per_job}m + {parent_headroom}m parent "
+        f"= {need}m"
+    )
+
+
+def test_the_compose_sandbox_does_not_load_the_broad_essentials_env():
+    """The one container that executes code it did not write must not carry
+    credentials it never reads.
+
+    `gate.py` records that generated code reads the parent's unscrubbed
+    environment via /proc/<ppid>/environ with no import, so every key in this
+    service's environment is reachable by the code it runs. No key in
+    `essentials.env` (MINIO_ROOT_*, POSTGRES_*, QDRANT_*, RABBITMQ_DEFAULT_*)
+    is read anywhere under `workers/`, so loading it bought nothing and cost
+    the whole blast radius.
+    """
+    svc = yaml.safe_load(DEV_COMPOSE.read_text())["services"]["worker-sandbox"]
+    files = [str(f) for f in (svc.get("env_file") or [])]
+    assert not any("essentials" in f for f in files), files

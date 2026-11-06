@@ -40,6 +40,9 @@ PAID_OPERATIONS = {
     "structure_pipeline",
     # Drives two LLMs (advanced + lite) on every run.
     "table_extract_api",
+    # Drives three (advanced for extraction, lite for per-page presence,
+    # advanced again for the challenger) on every run.
+    "kv_extract",
 }
 
 
