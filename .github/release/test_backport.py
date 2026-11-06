@@ -68,13 +68,13 @@ class Held(unittest.TestCase):
         self.assertEqual(
             bp.held_warnings(rows),
             [
-                "::warning::release/0.189: 1 held security/critical fix, Backport with confirm_stabilized",
-                "::warning::release/0.182: 2 held security/critical fixes, Backport with confirm_stabilized",
+                "::warning::release/0.189: 1 held security/critical fix, Backport with patch_released_lines",
+                "::warning::release/0.182: 2 held security/critical fixes, Backport with patch_released_lines",
             ],
         )
         self.assertEqual(
             bp.held_line(b, "critical", "#2", "release/0.182"),
-            "::warning::bbbbbbb (critical, PR #2) held for release/0.182: stabilized, needs confirm_stabilized",
+            "::warning::bbbbbbb (critical, PR #2) held for release/0.182: stabilized, needs patch_released_lines",
         )
 
         self.assertIsNone(bp.held_note([], "release/0.182"))
@@ -87,7 +87,7 @@ class Held(unittest.TestCase):
                     "release/0.182",
                 ),
                 f"⚠ Held for the RM on `release/0.182` (stabilized; Promote blocks unless forced): #2 critical. "
-                "Pick with `gh workflow run backport.yaml -f commits=#2 -f lines=0.182 -f confirm_stabilized=true` "
+                "Pick with `gh workflow run backport.yaml -f commits=#2 -f lines=0.182 -f patch_released_lines=true` "
                 f"{bp.UNCLASSIFIABLE}, add a backport label or fix its PR title, or record a decline: `{d[:7]}` (no PR) t",
             )
             note = bp.held_note(
@@ -126,7 +126,7 @@ class Held(unittest.TestCase):
         ):
             note = bp.warn_held("o/r", ".", "release/0.186", "error")
         self.assertIn("PR #42, x (no backport label: y)) held", out.getvalue())
-        self.assertNotIn("confirm_stabilized", out.getvalue() + note)
+        self.assertNotIn("patch_released_lines", out.getvalue() + note)
 
 
 class Rescan(unittest.TestCase):
@@ -430,7 +430,7 @@ class OwedSummary(unittest.TestCase):
         )
         self.assertTrue(
             out.endswith(
-                "To pick a fix: dispatch Backport with its commit, `confirm_stabilized=true` and `lines=0.187`"
+                "To pick a fix: dispatch Backport with its commit, `patch_released_lines=true` and `lines=0.187`"
                 " plus every newer released line. Backport skips an unclassifiable row."
             )
         )
@@ -802,7 +802,7 @@ class DispatchHold(unittest.TestCase):
 
 
 class DispatchPatch(unittest.TestCase):
-    """confirm_stabilized + lines: a plain fix goes onto the stabilized lines named, and only those."""
+    """patch_released_lines + lines: a plain fix goes onto the stabilized lines named, and only those."""
 
     def setUp(self):
         self.fix = "f" * 40
@@ -849,7 +849,7 @@ class DispatchPatch(unittest.TestCase):
                     "#4",
                     "fix",
                     "release/0.190",
-                    "failed: stabilized; needs confirm_stabilized",
+                    "failed: stabilized; needs patch_released_lines",
                     "-",
                 ),
                 (self.fix, "#4", "fix", "release/0.150", "failed: not a target", "-"),
@@ -1227,7 +1227,7 @@ class PushSummary(unittest.TestCase):
         )
         self.assertIn(
             "gh workflow run backport.yaml -f commits=#247 -f lines=0.190,0.189 "
-            "-f confirm_stabilized=true",
+            "-f patch_released_lines=true",
             out,
         )
         self.assertEqual(bp.pending_block([], []), [])
@@ -2325,7 +2325,7 @@ class StateCheck(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(
             out,
-            "::notice::ddddddd (security, PR #9) held for release/0.190: stabilized, needs confirm_stabilized\n",
+            "::notice::ddddddd (security, PR #9) held for release/0.190: stabilized, needs patch_released_lines\n",
         )
 
 
