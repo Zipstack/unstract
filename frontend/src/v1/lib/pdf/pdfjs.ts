@@ -66,8 +66,21 @@ export function toDocumentParams(source: PdfSource): DocumentInitParameters {
   return { ...shared, data: bytes };
 }
 
-const dataSourceIds = new WeakMap<object, number>();
-let nextDataSourceId = 0;
+const objectKeys = new WeakMap<object, number>();
+let nextObjectKey = 0;
+
+/**
+ * A number for an object's identity, the same for as long as the object
+ * lives. The one notion of identity for documents and byte sources.
+ */
+export function objectKey(value: object): number {
+  let key = objectKeys.get(value);
+  if (key === undefined) {
+    key = nextObjectKey++;
+    objectKeys.set(value, key);
+  }
+  return key;
+}
 
 /**
  * A key that changes only when the document would: the URL and request options
@@ -89,12 +102,7 @@ export function pdfSourceKey(source: PdfSource | null): string {
       headers,
     ]);
   }
-  let id = dataSourceIds.get(source.data);
-  if (id === undefined) {
-    id = nextDataSourceId++;
-    dataSourceIds.set(source.data, id);
-  }
-  return `data:${id}`;
+  return `data:${objectKey(source.data)}`;
 }
 
 function pageSize(page: PDFPageProxy): PageSize {
@@ -145,12 +153,21 @@ export async function readPageSizes(
   });
 }
 
+/** The `name` pdf.js gives an error (`PasswordException`, …), or "". */
+export function pdfErrorName(error: unknown): string {
+  return typeof error === "object" && error !== null && "name" in error
+    ? String(error.name)
+    : "";
+}
+
+/** Whether a render task ended because it was cancelled, not because it failed. */
+export function isRenderCancelled(error: unknown): boolean {
+  return pdfErrorName(error) === "RenderingCancelledException";
+}
+
 /** Maps a pdf.js load error to what the viewer shows. */
 export function classifyLoadError(error: unknown): PdfLoadFailure {
-  const name =
-    typeof error === "object" && error !== null && "name" in error
-      ? String(error.name)
-      : "";
+  const name = pdfErrorName(error);
   if (name === "PasswordException") {
     // pdf.js PasswordResponses: 1 needs a password, 2 the one given was wrong.
     const code = (error as { code?: unknown }).code;

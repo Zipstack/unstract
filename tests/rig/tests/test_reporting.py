@@ -175,3 +175,32 @@ def test_passed_critical_path_ids_missing_or_malformed_junit(tmp_path: Path) -> 
     assert passed_critical_path_ids("absent", tmp_path) == set()
     _write_junit(tmp_path / "broken", "<testsuite", exit_code=1)
     assert passed_critical_path_ids("broken", tmp_path) == set()
+
+
+# vitest's junit for a run with no test files (`passWithNoTests`): counters on
+# the <testsuites> root, no <testsuite> child. Verbatim shape from vitest 3.2.6.
+VITEST_ZERO_TESTS = (
+    '<?xml version="1.0" encoding="UTF-8" ?>\n'
+    '<testsuites name="vitest tests" tests="0" failures="0" errors="0" time="0.01">\n'
+    "</testsuites>\n"
+)
+
+
+def test_vitest_zero_test_report_is_empty_not_truncated(tmp_path: Path) -> None:
+    """The rig maps a zero-test vitest run to exit 5, which must read as ⚪,
+    not as the ❌ "no counters" truncated-report error.
+    """
+    _write_junit(tmp_path / "g", VITEST_ZERO_TESTS, exit_code=5)
+    result = parse_junit("g", "unit", tmp_path)
+    assert result is not None
+    assert (result.passed, result.failed, result.errors) == (0, 0, 0)
+    assert result.status == "empty"
+
+
+def test_counterless_testsuites_root_is_still_an_error(tmp_path: Path) -> None:
+    """Only a root that carries counters is a complete zero-test report."""
+    _write_junit(tmp_path / "g", '<?xml version="1.0"?><testsuites/>', exit_code=0)
+    result = parse_junit("g", "unit", tmp_path)
+    assert result is not None
+    assert result.errors >= 1
+    assert result.status == "fail"
