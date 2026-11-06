@@ -1,0 +1,18 @@
+{
+  "name": "@unstract/ui-v1-e2e",
+  "private": true,
+  "type": "module",
+  "//": "Self-contained like tests/e2e/ui: this suite installs its own Playwright, so v1 and v0 E2E never share a resolver or a lock. Pins are exact on purpose.",
+  "scripts": {
+    "test": "playwright test",
+    "lint": "biome check .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@biomejs/biome": "2.3.13",
+    "@playwright/test": "1.62.1",
+    "@types/node": "22.20.3",
+    "typescript": "7.0.2"
+  }
+}
