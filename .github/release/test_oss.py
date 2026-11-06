@@ -1294,6 +1294,11 @@ class RetireWorkflow(Workflow):
         self.kept_line(
             "1.7", "::error::retire release/1.7: on-prem still supported", **env
         )
+        self.retire(FORCE="true", DRY_RUN="true", **env)
+        self.assertIn(
+            "would retire release/1.7: customer moved (forced past on-prem)",
+            self.read("summary"),
+        )
         self.retire(FORCE="true", **env)
         self.assertIn(
             "retired release/1.7: customer moved (forced past on-prem)",
@@ -1311,6 +1316,15 @@ class RetireWorkflow(Workflow):
         )
         self.assertNotIn(
             "release/1.7", rm.git(self.repos["cloud"][0], "branch", "-l", "release/*")
+        )
+
+    def test_retire_one_records_a_force_that_held_nothing(self):
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
+        self.line("1.8", "v1.8.0-rc.1", "v1.8.0")
+        self.retire(ACTION=ONE, LINE="1.7", REASON="early", FORCE="true")
+        self.assertIn(
+            "retired release/1.7: early (forced past nothing held)",
+            self.read("summary"),
         )
 
     def test_retire_one_links_only_what_survives(self):

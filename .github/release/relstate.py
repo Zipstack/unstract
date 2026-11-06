@@ -538,7 +538,7 @@ def _set_states(rows, now):
         row["enabled"] = sorted(row["targets"])
         # No enabled target (cut, nothing built yet) is stabilizing: every line builds cloud by default.
         # A late target with no GA counts as stabilized: it adds no auto-picks, and the line stays supported (Retire one
-        # shipped line now needs force) until it has a GA.
+        # shipped line now needs force) until it has a GA; a line where no target has a GA goes by Abandon.
         row["state"] = _line_state(
             {
                 "stabilized" if tt["late"] and not tt["ga"] else tt["state"]
