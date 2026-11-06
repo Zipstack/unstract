@@ -1203,6 +1203,16 @@ class RetireWorkflow(Workflow):
             LINE="1.7",
         )
 
+    def test_past_eos_refuses_a_reason(self):
+        # Past-eos archive tags carry a fixed reason, so a typed one would be dropped without a word.
+        self.line("1.6", "v1.6.0-rc.1", "v1.6.0")
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
+        self.kept_line(
+            "1.6",
+            "::error::reason is set: pick the never-shipped action, or clear reason",
+            REASON="cut by mistake",
+        )
+
     def test_derived_list(self):
         self.line("1.6", "v1.6.0-rc.1", "v1.6.0")
         self.line(
@@ -3189,6 +3199,7 @@ class InputSteps(unittest.TestCase):
             (PAST_EOS, "", False, "Retire past end of support"),
             (NEVER_SHIPPED, "1.7", True, "Delete never-shipped 1.7 (dry run)"),
             (NEVER_SHIPPED, "1.7", False, "Delete never-shipped 1.7"),
+            (NEVER_SHIPPED, "", False, "Delete never-shipped (no line)"),
         ):
             self.assertEqual(
                 run_name(
@@ -3256,7 +3267,7 @@ class InputSteps(unittest.TestCase):
     def test_backport_run_name(self):
         dispatch = {"github.event_name": "workflow_dispatch", "inputs.commits": "#12 #13"}
         self.assertEqual(
-            run_name("backport.yaml", **dispatch), "Backport · #12 #13 → all lines"
+            run_name("backport.yaml", **dispatch), "Backport · #12 #13 → default lines"
         )
         self.assertEqual(
             run_name("backport.yaml", **dispatch, **{"inputs.lines": "0.186,0.188"}),

@@ -366,7 +366,7 @@ def target_state(t, name, rows, now):
     """
     ga = rows[name]["targets"][t]["ga"]
     # Known limit: a target never GA stays stabilizing; Retire deletes such a line only as never-shipped (no GA on
-    # any target, no non-bot commits).
+    # any target; see abandon_plan).
     if not ga:
         return "stabilizing"
     if t in KEPT:

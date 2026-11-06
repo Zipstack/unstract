@@ -1135,20 +1135,14 @@ class Scenario(unittest.TestCase):
         self.assertFalse(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.2"))
 
     def test_newest_line_retired_before_ga_frees_its_minor(self):
-        self.onprem_rc()
         self.cut("1.6")
-        self.push("cloud/backend", "v1.6.0-rc.1", git_ref="release/1.6")
-        self.push("cloud/backend", "v1.6.0", git_ref="release/1.6")
-        self.push(
-            "chart/unstract-platform", "v1.5.1", git_ref="release/1.5"
-        )  # on-prem chart in its window
         # The newest line retired before any GA (its RCs deleted): the next cut reuses its minor.
         self.cut("1.7")
         tip = self.g("rev-parse", "release/1.7")
         self.g("tag", f"retired/1.7-{tip[:7]}", tip)
         self.g("branch", "-D", "release/1.7")
         self.assertEqual(self.state()["next_minor"], "1.7")
-        # Retired after a GA (forced on-prem, say): the minor shipped and is skipped.
+        # Retired after a GA: the minor shipped and is skipped.
         self.g("tag", "v1.7.0", tip)
         self.assertEqual(self.state()["next_minor"], "1.8")
 
