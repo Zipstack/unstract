@@ -315,6 +315,9 @@ class TestcontainersRuntime:
 
     For full platform e2e against testcontainers, use ``ComposeRuntime`` for now
     or set ``UNSTRACT_E2E_RUNTIME=local`` after running ``run-platform.sh``.
+    With ``local``, x2text-service must be reachable at ``UNSTRACT_X2TEXT_URL``
+    (default ``localhost:3004``), which ``docker/docker-compose.yaml`` does not
+    publish: uncomment its loopback ``ports`` entry or add the e2e overlay.
     """
 
     name: ClassVar[str] = "testcontainers"
