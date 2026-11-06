@@ -123,33 +123,27 @@ own stack.
 - Series without a `tone` take the ordinal ramp `--chart-1` … `--chart-5` in
   order (the first untoned series is `--chart-1` whatever comes before it).
   The ramp is one hue (blue), lightest (`--chart-1`) to darkest (`--chart-5`)
-  in every mode, so a category keeps its shade across modes. Use it for
-  ordered categories: modes, tiers, buckets.
-- Neighbouring steps differ only in lightness (about 1.2–1.4:1 to each other),
-  which reads in a stack, where a stroke splits the segments, but not reliably
-  between two lines or side-by-side bars.
-- There is no palette yet for series that are not an order (this week and
-  last week, two products) on a line, area or grouped bar: no tone or step
-  is checked against another, and some pairs are close (in light mode
-  `primary` and `muted` differ in hue but hardly in lightness). Until the
-  design system settles one, chart such series separately or group the tail
-  into "Other"; never borrow `success`, `warning` or `destructive` for a
-  plain category.
-- After five untoned series the ramp repeats. Keep a stack to five or fewer:
-  group the tail into "Other".
-- A `tone` takes a series out of the ramp for meaning: `primary`,
-  `destructive` (failures), `success`, `warning`, `muted`
-  (`muted-foreground`).
-- Keep `primary` off charts that also use the ramp: it sits close to the
-  ramp's dark end (in dark mode about 1.1–1.2:1 from `--chart-4` and
-  `--chart-5`; in the Unstract theme, navy, about 1.4–1.8:1).
-  `palette.test.ts` checks each colour against `card`, not against the
-  others.
-- Every ramp step and tone reaches 3:1 against `card` in every mode (WCAG
-  1.4.11), enforced by `palette.test.ts`. Change a value in
-  `styles/tokens.json` and that test tells you if it got too light.
-- Stacked segments are split by a 1px `card`-coloured stroke, so neighbouring
-  steps read apart.
+  in every mode. Use it for the segments of a stack, ordered buckets such as
+  modes or tiers, as the LLMWhisperer dashboard's "Pages by mode" does. Its
+  steps differ only in lightness, which reads in a stack, where a 1px
+  `card`-coloured stroke splits the segments, but not between separate lines
+  or bars.
+- Keep a stack to five segments. Past five the ramp repeats, so group the
+  tail into "Other".
+- Series that are not stacked (several lines, overlaid areas, grouped bars)
+  are coloured by meaning, a `tone` each, as the Document Studio dashboard's
+  "Throughput and failures" chart does: `primary` for pages processed,
+  `destructive` for failed pages. The tones are `primary`, `destructive`
+  (failures), `success`, `warning` and `muted` (`muted-foreground`); use each
+  only for what it means.
+- Series with no meaning to give them (two products, this week against last
+  week) have no designed palette. Do not leave them untoned on a line or
+  grouped bar, and do not borrow a tone for them: chart them separately.
+- Do not mix tones and ramp steps on one chart. Every ramp step and tone
+  reaches 3:1 against `card` in every mode (WCAG 1.4.11), enforced by
+  `palette.test.ts`, but no two colours are checked for separation from each other.
+  Change a value in `styles/tokens.json` and that test tells you if it got
+  too light.
 
 ## Markers: drawn from the series, never a reference line
 
