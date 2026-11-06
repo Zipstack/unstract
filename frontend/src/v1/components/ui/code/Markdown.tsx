@@ -4,7 +4,6 @@ import {
   type ComponentProps,
   createContext,
   type JSX,
-  type ReactNode,
   useContext,
 } from "react";
 import ReactMarkdown, { uriTransformer } from "react-markdown";
@@ -49,14 +48,16 @@ function isExternal(href: string | undefined): boolean {
 type Props<T extends keyof JSX.IntrinsicElements> = ComponentProps<T> & {
   node?: unknown;
   level?: number;
+  depth?: number;
 };
 type CodeProps = Props<"code"> & { inline?: boolean };
 
-// Strip react-markdown's own props (`node`, and `level` on headings) before
-// spreading onto DOM elements.
-function dom<T extends { node?: unknown; level?: number }>({
+// Strip react-markdown's own props (`node`, `level` on headings, `depth` on
+// lists) before spreading onto DOM elements.
+function dom<T extends { node?: unknown; level?: number; depth?: number }>({
   node: _node,
   level: _level,
+  depth: _depth,
   ...rest
 }: T) {
   return rest;
@@ -268,12 +269,7 @@ export function Markdown({
         // Links get the safe-URL filter by default; images only when asked.
         transformLinkUri={uriTransformer}
         transformImageUri={uriTransformer}
-        // react-markdown 8's types are written against React 18's global JSX.
-        components={
-          (loadImages
-            ? WITH_LOADED_IMAGES
-            : WITH_LINKED_IMAGES) as unknown as Record<string, () => ReactNode>
-        }
+        components={loadImages ? WITH_LOADED_IMAGES : WITH_LINKED_IMAGES}
       >
         {children}
       </ReactMarkdown>

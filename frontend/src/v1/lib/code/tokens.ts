@@ -17,6 +17,11 @@ export type TokenKind = (typeof TOKEN_KINDS)[number];
 export type CodeToken = Readonly<{ text: string; kind?: TokenKind }>;
 export type CodeLine = readonly CodeToken[];
 
+/** "1 key", "3 keys": `count` and the word, plural unless it is one. */
+export function plural(count: number, one: string, many = `${one}s`): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
 /** The text of a line, tokens joined. */
 export function lineText(line: CodeLine): string {
   return line.map((token) => token.text).join("");

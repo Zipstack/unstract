@@ -11,8 +11,10 @@ import {
   lazy,
   type ReactNode,
   Suspense,
+  useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -33,6 +35,35 @@ function importMonaco() {
   return monacoModule;
 }
 const MonacoEditor = lazy(importMonaco);
+
+/*
+ * Monaco has one theme per page: `monaco.editor.setTheme` restyles every
+ * editor on screen, and @monaco-editor/react applies an editor's theme when
+ * it is created and whenever its `theme` prop changes. v1 and v0 never share
+ * a page (the version switch renders one tree or the other, UN-4271), and
+ * v0's one editor sets its own theme when it mounts, so a v1 editor cannot
+ * leave v0 restyled. Should both ever render together, the last to mount or
+ * change wins. The names below mark the themes as v1's; they inherit Monaco's
+ * own, and defining them changes no other editor.
+ */
+const V1_THEMES = { light: "unstract-v1-light", dark: "unstract-v1-dark" };
+function defineV1Themes(monaco: {
+  editor: {
+    defineTheme: (
+      name: string,
+      data: {
+        base: "vs" | "vs-dark";
+        inherit: boolean;
+        rules: [];
+        colors: Record<string, string>;
+      },
+    ) => void;
+  };
+}): void {
+  const theme = { inherit: true, rules: [] as [], colors: {} };
+  monaco.editor.defineTheme(V1_THEMES.light, { ...theme, base: "vs" });
+  monaco.editor.defineTheme(V1_THEMES.dark, { ...theme, base: "vs-dark" });
+}
 
 /**
  * How long the editor may stay on its skeleton before it says it is taking a
@@ -122,6 +153,29 @@ export function CodeEditor({
   const [load, setLoad] = useState<"loading" | "slow" | "ready" | "failed">(
     "loading",
   );
+  // Monaco reapplies options and re-subscribes its change listener whenever
+  // these change identity, so both stay stable across parent re-renders.
+  const latestOnChange = useRef(onChange);
+  latestOnChange.current = onChange;
+  const handleChange = useCallback(
+    (next: string | undefined) => latestOnChange.current?.(next ?? ""),
+    [],
+  );
+  const handleMount = useCallback(() => setLoad("ready"), []);
+  const options = useMemo(
+    () => ({
+      ariaLabel,
+      readOnly,
+      domReadOnly: readOnly,
+      lineNumbers: showLineNumbers ? ("on" as const) : ("off" as const),
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      automaticLayout: true,
+      fontSize: 12,
+      ...(theme.font ? { fontFamily: theme.font } : {}),
+    }),
+    [ariaLabel, readOnly, showLineNumbers, theme.font],
+  );
 
   useEffect(() => {
     const timer = setTimeout(
@@ -200,21 +254,12 @@ export function CodeEditor({
               defaultValue={defaultValue}
               language={MONACO_LANGUAGE[language]}
               height={height}
-              theme={theme.dark ? "vs-dark" : "light"}
+              theme={theme.dark ? V1_THEMES.dark : V1_THEMES.light}
+              beforeMount={defineV1Themes}
               loading={loading}
-              onMount={() => setLoad("ready")}
-              onChange={(next) => onChange?.(next ?? "")}
-              options={{
-                ariaLabel,
-                readOnly,
-                domReadOnly: readOnly,
-                lineNumbers: showLineNumbers ? "on" : "off",
-                minimap: { enabled: false },
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                fontSize: 12,
-                ...(theme.font ? { fontFamily: theme.font } : {}),
-              }}
+              onMount={handleMount}
+              onChange={handleChange}
+              options={options}
             />
           </Suspense>
         </LoadBoundary>

@@ -144,3 +144,19 @@ it("treats fence names that are Object's own keys as plain text", () => {
     "text",
   ]);
 });
+
+it("passes none of react-markdown's own props to the DOM", () => {
+  const { container } = renderV1(
+    <Markdown>{"# H\n\n- a\n  - b\n\n1. one"}</Markdown>,
+  );
+  for (const attr of [
+    "depth",
+    "ordered",
+    "level",
+    "node",
+    "index",
+    "checked",
+  ]) {
+    expect(container.querySelector(`[${attr}]`), attr).toBeNull();
+  }
+});

@@ -8,7 +8,7 @@ import {
   type LineDiff,
 } from "@v1/lib/code/diff";
 import { type CodeLanguage, highlightLines } from "@v1/lib/code/highlight";
-import type { CodeLine } from "@v1/lib/code/tokens";
+import { type CodeLine, plural } from "@v1/lib/code/tokens";
 import { type ComponentProps, type JSX, type ReactNode, useMemo } from "react";
 import { GUTTER, gutterWidth, MONO, Tokens } from "./CodeLines";
 
@@ -70,10 +70,6 @@ const SPOKEN: Readonly<Record<DiffRowKind, string>> = {
   added: "Added: ",
   removed: "Removed: ",
 };
-
-function plural(count: number, word: string): string {
-  return `${count} ${word}${count === 1 ? "" : "s"}`;
-}
 
 export type DiffSummaryProps = Readonly<{
   /** From `diffStats(oldText, newText)`. */

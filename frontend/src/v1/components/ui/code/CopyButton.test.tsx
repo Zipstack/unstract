@@ -92,3 +92,31 @@ it("works from the keyboard and can be disabled", async () => {
   rerender(<CopyButton text="x" disabled />);
   expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(true);
 });
+
+it("leaves no timer behind when it unmounts while the clipboard is busy", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    const onCopy = vi.fn();
+    const { user, unmount } = renderV1(
+      <CopyButton text="x" onCopy={onCopy} />,
+      {
+        userEventOptions: { advanceTimers: vi.advanceTimersByTime },
+      },
+    );
+    let finish: () => void = () => undefined;
+    vi.spyOn(navigator.clipboard, "writeText").mockReturnValue(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Copy" }));
+    unmount();
+    await act(async () => {
+      finish();
+    });
+    expect(onCopy).toHaveBeenCalledWith("copied");
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});

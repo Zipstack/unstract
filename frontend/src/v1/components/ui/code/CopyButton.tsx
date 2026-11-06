@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { BUTTON_BASE } from "./CodeLines";
 
 /** How long the button shows its result before returning to "Copy". */
 export const COPY_FEEDBACK_MS = 2000;
@@ -62,8 +63,15 @@ export function CopyButton({
 }: CopyButtonProps): JSX.Element {
   const [result, setResult] = useState<CopyResult | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const mounted = useRef(false);
 
-  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      clearTimeout(timer.current);
+    };
+  }, []);
 
   const copy = async () => {
     const outcome = await copyText(typeof text === "function" ? text() : text);
@@ -80,10 +88,15 @@ export function CopyButton({
         });
       }
     }
+    onCopy?.(outcome);
+    // Unmounted while the clipboard was busy: no inline state, and no timer
+    // left behind after the cleanup has run.
+    if (!mounted.current) {
+      return;
+    }
     setResult(outcome);
     clearTimeout(timer.current);
     timer.current = setTimeout(() => setResult(null), COPY_FEEDBACK_MS);
-    onCopy?.(outcome);
   };
 
   const Icon = result === "copied" ? Check : Copy;
@@ -99,7 +112,8 @@ export function CopyButton({
           void copy();
         }}
         className={cn(
-          "ui:border-0 ui:bg-transparent ui:font-sans ui:inline-flex ui:shrink-0 ui:cursor-pointer ui:items-center ui:justify-center ui:gap-1.5 ui:rounded-sm ui:text-muted-foreground ui:hover:bg-accent ui:hover:text-foreground ui:focus-visible:focus-ring ui:disabled:cursor-not-allowed ui:disabled:opacity-50",
+          BUTTON_BASE,
+          "ui:shrink-0 ui:justify-center ui:gap-1.5 ui:disabled:cursor-not-allowed ui:disabled:opacity-50",
           showLabel
             ? "ui:h-7 ui:px-2 ui:text-body-small ui:font-medium"
             : "ui:size-7",

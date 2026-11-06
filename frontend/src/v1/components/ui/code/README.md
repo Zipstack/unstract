@@ -136,11 +136,14 @@ props pass through to the root.
 
 Changed lines are tinted, marked `+` / `−`, and read as "Added:" / "Removed:"
 by screen readers. `DiffSummary` (with `diffStats(old, new)`) shows the
-summary on its own, for a row like H20's "what changed". Two texts that
-have more than 10,000 lines between them, differ by more than 2,000 added plus
-removed lines (an edited line counts as both), or take longer than a second,
-show "Too large to compare" instead of freezing the page (`diffStats` returns
-`null` then).
+summary on its own, for a row like H20's "what changed"; it counts without
+building rows. Texts that differ only in line endings (CRLF or a final
+newline) show no changed line and read "Only line endings differ"
+(`stats.endingsOnly`). DiffView renders every row at once, so two texts with
+more than 2,000 lines between them, more than 2,000 added plus removed lines
+(an edited line counts as both), or a diff slower than a second show "Too
+large to compare" instead of freezing the page (`diffStats` returns `null`
+then).
 
 ## Markdown
 
@@ -197,8 +200,13 @@ announces the result instead, so it is heard once. The toast needs the
 | `height` | `number \| string` | `320` | pixels or a CSS length |
 | `aria-label` | `string` | required | the editor has no visible label of its own |
 
-It follows the v1 theme (dark → Monaco's `vs-dark`, otherwise `light`) and the
-mono font token, and shows a skeleton while Monaco loads. Monaco keeps Tab
+It follows the v1 theme (dark → `unstract-v1-dark`, otherwise
+`unstract-v1-light`, both built on Monaco's own) and the mono font token.
+Monaco has **one theme per page**: the last editor to mount, or to change
+theme, sets it for every editor on screen. v0 and v1 never render together
+(the version switch shows one tree or the other), and v0's editor sets its own
+theme when it mounts, so v1 does not restyle v0; a page that ever showed both
+would need them to agree on a theme. It shows a skeleton while Monaco loads. Monaco keeps Tab
 inside the editor; its own "Toggle Tab Key Moves Focus" binding (Ctrl+M, or
 Ctrl+Shift+M on macOS) lets keyboard users leave.
 

@@ -18,7 +18,12 @@ function diffOf(oldText: string, newText: string) {
 
 it("counts changes as separate runs of changed lines", () => {
   const diff = diffOf("a\nb\nc\nd\ne", "a\nB\nc\nd\nE\nF");
-  expect(diff.stats).toEqual({ changes: 2, added: 3, removed: 2 });
+  expect(diff.stats).toEqual({
+    changes: 2,
+    added: 3,
+    removed: 2,
+    endingsOnly: false,
+  });
   expect(describeChanges(diff.stats)).toBe("2 changes");
 });
 
@@ -37,15 +42,27 @@ it("pairs removed and added lines side by side, padding the shorter side", () =>
     { kind: "added", newLine: 2 },
     { kind: "context", oldLine: 2, newLine: 3 },
   ]);
-  expect(diff.stats).toEqual({ changes: 1, added: 2, removed: 1 });
+  expect(diff.stats).toEqual({
+    changes: 1,
+    added: 2,
+    removed: 1,
+    endingsOnly: false,
+  });
   expect(describeChanges(diff.stats)).toBe("1 change");
 });
 
-it("ignores a trailing newline and CRLF, so only real edits count", () => {
+it("counts no line change for CRLF or a final newline, but says the texts differ", () => {
   const diff = diffOf("a\r\nb\r\n", "a\nb");
   expect(diff.stats.changes).toBe(0);
-  expect(describeChanges(diff.stats)).toBe("No changes");
+  expect(diff.stats.endingsOnly).toBe(true);
+  expect(describeChanges(diff.stats)).toBe("Only line endings differ");
   expect(diff.oldLines).toEqual(["a", "b"]);
+  expect(describeChanges(diffOf("a", "a\n").stats)).toBe(
+    "Only line endings differ",
+  );
+  const same = diffOf("a\nb", "a\nb").stats;
+  expect(same.endingsOnly).toBe(false);
+  expect(describeChanges(same)).toBe("No changes");
 });
 
 it("handles an empty side", () => {
@@ -53,6 +70,7 @@ it("handles an empty side", () => {
     changes: 1,
     added: 2,
     removed: 0,
+    endingsOnly: false,
   });
   expect(diffOf("x", "").split).toEqual([
     { old: { kind: "removed", line: 0 } },
@@ -98,7 +116,11 @@ it("diffStats gives the counts on their own", () => {
     changes: 1,
     added: 2,
     removed: 1,
+    endingsOnly: false,
   });
+  // The same limits as DiffView, so the two never disagree.
+  const long = Array.from({ length: 1001 }, (_, i) => `l${i}`).join("\n");
+  expect(diffStats(long, `${long}\nx`)).toBeNull();
 });
 
 it("gives up on long texts even when they barely differ", () => {

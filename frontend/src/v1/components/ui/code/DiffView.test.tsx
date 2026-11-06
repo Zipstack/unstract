@@ -68,9 +68,11 @@ it("lists removals before additions in one column when unified", () => {
 
 it("says so when nothing changed, and can drop the summary and numbers", () => {
   const { container, rerender } = renderV1(
-    <DiffView oldText="same" newText={"same\n"} />,
+    <DiffView oldText="same" newText="same" />,
   );
   expect(screen.getByText("No changes")).toBeTruthy();
+  rerender(<DiffView oldText="same" newText={"same\r\n"} />);
+  expect(screen.getByText("Only line endings differ")).toBeTruthy();
   expect(container.querySelector("[data-kind=added]")).toBeNull();
   rerender(
     <DiffView

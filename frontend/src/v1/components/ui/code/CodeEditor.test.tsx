@@ -18,6 +18,7 @@ type MonacoProps = {
   loading?: ReactNode;
   onChange?: (value: string | undefined) => void;
   onMount?: () => void;
+  beforeMount?: (monaco: unknown) => void;
   options?: Record<string, unknown>;
 };
 const seen: MonacoProps[] = [];
@@ -36,11 +37,13 @@ vi.mock("@monaco-editor/react", () => ({
   loader: { init: () => monaco.init() },
   default: (props: MonacoProps) => {
     seen.push(props);
+    // Reports a mount once the runtime "loads", as Monaco does.
+    const loads = monaco.loads;
     useEffect(() => {
-      if (monaco.loads) {
+      if (loads) {
         props.onMount?.();
       }
-    }, [props.onMount]);
+    }, [props.onMount, loads]);
     if (!monaco.loads) {
       return <>{props.loading}</>;
     }
@@ -103,10 +106,10 @@ it("is read-only and numberless when asked, and defaults to plain text", async (
 it("follows the v1 theme, including a later switch", async () => {
   renderV1(<CodeEditor aria-label="E" />, { theme: "dark" });
   const editor = await screen.findByRole("textbox", { name: "E" });
-  expect(last().theme).toBe("vs-dark");
+  expect(last().theme).toBe("unstract-v1-dark");
   const root = editor.closest("[data-theme]") as HTMLElement;
   act(() => root.setAttribute("data-theme", "unstract"));
-  await waitFor(() => expect(last().theme).toBe("light"));
+  await waitFor(() => expect(last().theme).toBe("unstract-v1-light"));
 });
 
 it("uses the mono font token when the page defines it", async () => {
@@ -177,4 +180,42 @@ it("says the editor could not load when the Monaco runtime fails to load", async
     monaco.loads = true;
     monaco.init = () => Promise.resolve({});
   }
+});
+
+it("defines its own named themes, built on Monaco's, before the editor exists", async () => {
+  renderV1(<CodeEditor aria-label="Named" />);
+  await screen.findByRole("textbox", { name: "Named" });
+  const defineTheme = vi.fn();
+  last().beforeMount?.({ editor: { defineTheme } });
+  expect(
+    defineTheme.mock.calls.map(([name, data]) => [name, data.base]),
+  ).toEqual([
+    ["unstract-v1-light", "vs"],
+    ["unstract-v1-dark", "vs-dark"],
+  ]);
+  expect(last().theme).toBe("unstract-v1-light");
+});
+
+it("keeps options and the change handler stable across re-renders, calling the latest onChange", async () => {
+  const first = vi.fn();
+  const second = vi.fn();
+  const { rerender } = renderV1(
+    <CodeEditor aria-label="Stable" value="a" onChange={first} />,
+  );
+  await screen.findByRole("textbox", { name: "Stable" });
+  const before = last();
+  rerender(<CodeEditor aria-label="Stable" value="ab" onChange={second} />);
+  const after = last();
+  expect(after).not.toBe(before);
+  expect(after.options).toBe(before.options);
+  expect(after.onChange).toBe(before.onChange);
+  act(() => {
+    after.onChange?.("abc");
+  });
+  expect(second).toHaveBeenCalledWith("abc");
+  expect(first).not.toHaveBeenCalled();
+  rerender(
+    <CodeEditor aria-label="Stable" value="ab" onChange={second} readOnly />,
+  );
+  expect(last().options).not.toBe(before.options);
 });

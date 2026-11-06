@@ -12,6 +12,16 @@ export const KIND_CLASS: Readonly<Record<TokenKind, string>> = {
   comment: "ui:text-code-comment ui:italic",
 };
 
+/**
+ * A native button with v1's look: v1 ships no preflight, so the browser's
+ * border, fill and font are reset here. Shared by every control in this module.
+ */
+export const BUTTON_BASE =
+  "ui:border-0 ui:bg-transparent ui:font-sans ui:inline-flex ui:cursor-pointer ui:items-center ui:rounded-sm ui:text-muted-foreground ui:hover:bg-accent ui:hover:text-foreground ui:focus-visible:focus-ring";
+
+/** A text button in a code toolbar ("Expand all", "Raw"). */
+export const TOOLBAR_BUTTON = `${BUTTON_BASE} ui:h-7 ui:px-2 ui:text-body-small ui:font-medium`;
+
 /** The mono text every code surface uses: the font-mono token and the mono type role. */
 export const MONO = "ui:font-mono ui:text-mono";
 

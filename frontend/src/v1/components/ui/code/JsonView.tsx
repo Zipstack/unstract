@@ -25,7 +25,7 @@ import {
   useState,
 } from "react";
 import { CodeBlock } from "./CodeBlock";
-import { GUTTER, gutterWidth, MONO, Tokens } from "./CodeLines";
+import { GUTTER, gutterWidth, MONO, TOOLBAR_BUTTON, Tokens } from "./CodeLines";
 import { CopyButton } from "./CopyButton";
 
 /** Above this many showing lines, only the rows in view are rendered. */
@@ -142,8 +142,17 @@ function initialFold(lines: readonly JsonLine[], depth?: number): Set<number> {
   return containersFrom(lines, start);
 }
 
-function useLineHeight(ref: RefObject<HTMLElement | null>): number {
+/**
+ * The mono line height from its token, read from the scroll element. `element`
+ * names which element is mounted (none while showing an error or "No data",
+ * a tree or a raw region), so the token is read again when that changes.
+ */
+function useLineHeight(
+  ref: RefObject<HTMLElement | null>,
+  element: string,
+): number {
   const [height, setHeight] = useState(FALLBACK_LINE_HEIGHT);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `element` is the trigger; the ref is read inside
   useLayoutEffect(() => {
     if (!ref.current) {
       return;
@@ -154,7 +163,7 @@ function useLineHeight(ref: RefObject<HTMLElement | null>): number {
     if (token > 0) {
       setHeight(token);
     }
-  }, [ref]);
+  }, [ref, element]);
   return height;
 }
 
@@ -179,9 +188,6 @@ const SCROLL_AREA = cn(
   "ui:min-h-0 ui:flex-1 ui:overflow-auto ui:py-2 ui:focus-visible:focus-ring",
   MONO,
 );
-
-const TOOL_BUTTON =
-  "ui:border-0 ui:bg-transparent ui:font-sans ui:inline-flex ui:h-7 ui:cursor-pointer ui:items-center ui:rounded-sm ui:px-2 ui:text-body-small ui:font-medium ui:text-muted-foreground ui:hover:bg-accent ui:hover:text-foreground ui:focus-visible:focus-ring";
 
 /**
  * JSON as an expandable tree or as raw pretty-printed text, over one line
@@ -254,7 +260,10 @@ export function JsonView({
   );
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const lineHeight = useLineHeight(scrollRef);
+  const lineHeight = useLineHeight(
+    scrollRef,
+    !model.ok || lines.length === 0 ? "none" : currentMode,
+  );
   const virtual = rows.length > VIRTUALIZE_ABOVE;
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -264,6 +273,12 @@ export function JsonView({
     enabled: virtual,
     initialRect: INITIAL_VIEWPORT,
   });
+  // Rows are placed from estimateSize, which the virtualiser caches: a new
+  // line height must re-measure, or rows keep the old spacing.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `lineHeight` is the trigger; estimateSize reads it
+  useLayoutEffect(() => {
+    virtualizer.measure();
+  }, [lineHeight, virtualizer]);
 
   // A new document starts at the top, where its active row (the root) is:
   // otherwise a scrolled view keeps its offset and the active row is off screen.
@@ -514,7 +529,7 @@ export function JsonView({
                   aria-pressed={currentMode === m}
                   onClick={() => setMode(m)}
                   className={cn(
-                    TOOL_BUTTON,
+                    TOOLBAR_BUTTON,
                     currentMode === m && "ui:bg-card ui:text-foreground",
                   )}
                 >
@@ -527,14 +542,14 @@ export function JsonView({
             <>
               <button
                 type="button"
-                className={TOOL_BUTTON}
+                className={TOOLBAR_BUTTON}
                 onClick={() => setCollapsed(new Set())}
               >
                 Expand all
               </button>
               <button
                 type="button"
-                className={TOOL_BUTTON}
+                className={TOOLBAR_BUTTON}
                 onClick={() => setCollapsed(containersFrom(lines, 1))}
               >
                 Collapse all

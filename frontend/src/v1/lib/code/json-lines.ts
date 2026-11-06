@@ -1,4 +1,9 @@
-import type { CodeLine, CodeToken, TokenKind } from "./tokens";
+import {
+  type CodeLine,
+  type CodeToken,
+  plural,
+  type TokenKind,
+} from "./tokens";
 
 /*
  * The line model behind JsonView: a JSON document flattened once into the
@@ -173,10 +178,6 @@ function escapePointer(segment: string): string {
   return segment.replaceAll("~", "~0").replaceAll("/", "~1");
 }
 
-function plural(count: number, one: string, many: string): string {
-  return `${count} ${count === 1 ? one : many}`;
-}
-
 function print(root: JsonNode): JsonLine[] {
   const lines: JsonLine[] = [];
   const walk = (
@@ -259,8 +260,8 @@ function print(root: JsonNode): JsonLine[] {
       closeIndex,
       closeTokens,
       summary: isArray
-        ? plural(children.length, "item", "items")
-        : plural(children.length, "key", "keys"),
+        ? plural(children.length, "item")
+        : plural(children.length, "key"),
     };
   };
   walk(root, 0, "", "root", undefined, false);

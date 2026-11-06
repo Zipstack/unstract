@@ -344,3 +344,24 @@ it("starts a new document at the top, with its active row in view", async () => 
   act(() => screen.getByRole("tree").focus());
   await waitFor(() => expect(active()).toMatch(/^1\s*\[/));
 });
+
+it("reads the line height once the tree mounts, even after an error state", async () => {
+  stubLayout();
+  const real = window.getComputedStyle;
+  vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+    const style = real(element);
+    return {
+      ...style,
+      getPropertyValue: (name: string) =>
+        name === "--type-mono-line-height"
+          ? "30px"
+          : style.getPropertyValue(name),
+    } as CSSStyleDeclaration;
+  });
+  const { container, rerender } = renderV1(<JsonView text="{bad" />);
+  rerender(<JsonView value={largeJson(5000)} />);
+  await waitFor(() => {
+    const second = container.querySelector("[data-pos='1']") as HTMLElement;
+    expect(second.style.getPropertyValue("--json-row-y")).toBe("30px");
+  });
+});
