@@ -120,30 +120,41 @@ own stack.
 
 ## Colour
 
-- Series without a `tone` take the ordinal ramp `--chart-1` … `--chart-5` in
-  order (the first untoned series is `--chart-1` whatever comes before it).
-  The ramp is one hue (blue), lightest (`--chart-1`) to darkest (`--chart-5`)
-  in every mode. Use it for the segments of a stack, ordered buckets such as
-  modes or tiers, as the LLMWhisperer dashboard's "Pages by mode" does. Its
-  steps differ only in lightness, which reads in a stack, where a 1px
-  `card`-coloured stroke splits the segments, but not between separate lines
-  or bars.
-- Keep a stack to five segments. Past five the ramp repeats, so group the
-  tail into "Other".
-- Series that are not stacked (several lines, overlaid areas, grouped bars)
-  are coloured by meaning, a `tone` each, as the Document Studio dashboard's
-  "Throughput and failures" chart does: `primary` for pages processed,
-  `destructive` for failed pages. The tones are `primary`, `destructive`
-  (failures), `success`, `warning` and `muted` (`muted-foreground`); use each
-  only for what it means.
-- Series with no meaning to give them (two products, this week against last
-  week) have no designed palette. Do not leave them untoned on a line or
-  grouped bar, and do not borrow a tone for them: chart them separately.
-- Do not mix tones and ramp steps on one chart. Every ramp step and tone
-  reaches 3:1 against `card` in every mode (WCAG 1.4.11), enforced by
-  `palette.test.ts`, but no two colours are checked for separation from each other.
-  Change a value in `styles/tokens.json` and that test tells you if it got
-  too light.
+- A single series takes `primary`, or the tone for its meaning
+  (`destructive` for failures).
+- Series that are not stacked (several lines, overlaid areas, grouped bars):
+  give each a `tone` for what it means, as the Document Studio dashboard
+  design does for "Throughput and failures" (`primary` for pages processed,
+  `destructive` for failed pages). The tones are `primary`, `destructive`
+  (failures), `success`, `warning` and `muted` (`muted-foreground`). A series
+  left untoned takes the next ramp step, with no warning.
+- The segments of a stack, ordered buckets such as modes or tiers, take the
+  ordinal ramp `--chart-1` … `--chart-5`: leave them untoned and they take
+  it in order. The ramp is the LLMWhisperer design's mode colours
+  (`--mode-native-text` … `--mode-table`), lightest to darkest, per mode as
+  designed; its "Pages by mode" stack is the model. A 1px `card`-coloured
+  stroke splits the segments.
+- Keep a chart to five untoned series, counting both stacks together when
+  some series sit on the right axis: the ramp has five steps and the sixth
+  untoned series repeats `--chart-1`, with no warning. Group the tail into
+  "Other".
+- Use tones or the ramp on a chart, not both. Nothing checks colours against
+  each other or against the background.
+
+## Known gaps
+
+Designed charts these components do not cover yet. Each is for its page's
+owner to settle, not part of P1-T17.
+
+- **Categorical donuts** (Human Review H29, changes by field and by user): no
+  Pie or Donut chart here, and the design's segment colours are not tokens.
+- **A free-choice comparison series** (Document Studio D12, "Compare on this
+  chart"; P4-T04): a series picked from nine metrics has no meaning to give
+  it a tone, and no colour is designed for it.
+- **KPI sparklines whose colour is not a meaning** (Document Studio D01):
+  "LLM spend" is drawn in `warning` and "Documents processed" in a blue that
+  is not a token. The single-series rule above gives them `primary` until
+  the design names a token.
 
 ## Markers: drawn from the series, never a reference line
 

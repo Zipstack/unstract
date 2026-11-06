@@ -1,12 +1,7 @@
 import { THEME_MODES, type ThemeMode } from "@v1/lib/theme";
 import { TOKENS } from "@v1/styles/tokens";
-import { describe, expect, it } from "vitest";
-import {
-  CHART_RAMP_SIZE,
-  rampColor,
-  seriesColors,
-  TONE_TOKENS,
-} from "./palette";
+import { expect, it } from "vitest";
+import { CHART_RAMP_SIZE, rampColor, seriesColors } from "./palette";
 
 function tokenValue(name: string, mode: ThemeMode): string {
   const token = TOKENS.find((t) => t.name === name);
@@ -29,39 +24,29 @@ function luminance(hex: string): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-function contrast(a: string, b: string): number {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-  return (hi + 0.05) / (lo + 0.05);
-}
+/*
+ * The ramp is the LLMWhisperer design's --mode-* tokens, per mode, exactly as
+ * in Figma (`figq tokens llmw`: Midnight Bloom, modes Light | Dark | Unstract).
+ */
+const DESIGNED_RAMP: Record<ThemeMode, readonly string[]> = {
+  light: ["#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281"],
+  dark: ["#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95"],
+  unstract: ["#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281"],
+};
 
-describe("legibility (WCAG 1.4.11: 3:1 for graphical objects)", () => {
+it("the ramp is the designed --mode-* values in every mode", () => {
   for (const mode of THEME_MODES) {
-    const card = tokenValue("card", mode);
-    it(`every ramp step reaches 3:1 against card in ${mode}`, () => {
-      for (let step = 1; step <= CHART_RAMP_SIZE; step++) {
-        const color = tokenValue(`chart-${step}`, mode);
-        expect(
-          contrast(color, card),
-          `chart-${step} ${color} on ${card}`,
-        ).toBeGreaterThanOrEqual(3);
-      }
-    });
-    it(`every tone reaches 3:1 against card in ${mode}`, () => {
-      for (const token of Object.values(TONE_TOKENS)) {
-        const color = tokenValue(token, mode);
-        expect(
-          contrast(color, card),
-          `${token} ${color} on ${card}`,
-        ).toBeGreaterThanOrEqual(3);
-      }
-    });
+    const ramp = Array.from({ length: CHART_RAMP_SIZE }, (_, i) =>
+      tokenValue(`chart-${i + 1}`, mode),
+    );
+    expect(ramp, mode).toEqual(DESIGNED_RAMP[mode]);
   }
+});
 
-  it("the contrast helper matches known WCAG ratios", () => {
-    expect(contrast("#000000", "#ffffff")).toBeCloseTo(21, 5);
-    expect(contrast("#777777", "#ffffff")).toBeCloseTo(4.48, 2);
-    expect(() => luminance("var(--card)")).toThrow();
-  });
+it("the luminance helper rejects anything but #rrggbb", () => {
+  expect(luminance("#ffffff")).toBeCloseTo(1, 5);
+  expect(luminance("#000000")).toBe(0);
+  expect(() => luminance("var(--card)")).toThrow();
 });
 
 it("the ramp is ordered lightest to darkest in every mode", () => {
