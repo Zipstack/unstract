@@ -202,7 +202,12 @@ def only_listed(targets, listed):
     return [b for b in targets if b in listed], [b for b in listed if b not in targets]
 
 
-def held_line(sha, cls, pr, branch, annotate="warning", slug=None):
+def held_line(sha, cls, pr, branch, annotate="warning", slug=None, title=""):
+    if cls == UNCLASSIFIABLE:  # a pick would fail: name the error, not confirm_stabilized
+        return (
+            f"::{annotate}::{sha[:7]} ({cls}, PR {slug or ''}{pr}, {title}) held for {branch}: "
+            "add a backport label or fix its PR title, or record a decline"
+        )
     return f"::{annotate}::{sha[:7]} ({cls}, PR {slug or ''}{pr}) held for {branch}: stabilized, needs confirm_stabilized"
 
 
@@ -620,21 +625,31 @@ def warn_held(slug, repo, branch, annotate="warning", token=None):
     """For Take RC / Promote on a stabilized branch: Promote blocks on held fixes unless forced."""
     rows = held(slug, repo, branch, token=token)
     other = slug if token else None  # a token means another repo: name it
-    for s, cls, pr, _ in rows:
-        print(held_line(s, cls, pr, branch, annotate, other))
+    for s, cls, pr, title in rows:
+        print(held_line(s, cls, pr, branch, annotate, other, title))
     return held_note(rows, branch, other)
 
 
 def held_note(rows, branch, slug=None):
     if not rows:
         return None
-    commits = ",".join(_commit_arg(s, pr) for s, _, pr, _ in rows)
-    return (
-        f"⚠ Held for the RM on {f'{slug} ' if slug else ''}{rm.branch_link(branch, slug)} (stabilized; Promote blocks unless forced): "
-        + ", ".join(f"{link_src(s, pr, slug)} {cls}" for s, cls, pr, _ in rows)
-        + f". Pick with `gh workflow run backport.yaml{f' -R {slug}' if slug else ''} -f commits={commits} "
-        f"-f lines={rm.line(branch)} -f confirm_stabilized=true`"
-    )
+    # Backport refuses an unclassifiable commit, so it stays out of the suggested pick.
+    pick = [r for r in rows if r[1] != UNCLASSIFIABLE]
+    bad = [r for r in rows if r[1] == UNCLASSIFIABLE]
+    note = f"⚠ Held for the RM on {f'{slug} ' if slug else ''}{rm.branch_link(branch, slug)} (stabilized; Promote blocks unless forced): "
+    if pick:
+        commits = ",".join(_commit_arg(s, pr) for s, _, pr, _ in pick)
+        note += (
+            ", ".join(f"{link_src(s, pr, slug)} {cls}" for s, cls, pr, _ in pick)
+            + f". Pick with `gh workflow run backport.yaml{f' -R {slug}' if slug else ''} -f commits={commits} "
+            f"-f lines={rm.line(branch)} -f confirm_stabilized=true`"
+        )
+    if bad:
+        note += (" " if pick else "") + (
+            f"{UNCLASSIFIABLE}, add a backport label or fix its PR title, or record a decline: "
+            + ", ".join(f"{link_src(s, pr, slug)} {title}" for s, _, pr, title in bad)
+        )
+    return note
 
 
 def patch_lines(state, slug=None):

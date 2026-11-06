@@ -86,10 +86,48 @@ class Held(unittest.TestCase):
                     [(b, "critical", "#2", "t"), (d, bp.UNCLASSIFIABLE, "no PR", "t")],
                     "release/0.182",
                 ),
-                f"⚠ Held for the RM on `release/0.182` (stabilized; Promote blocks unless forced): #2 critical, "
-                f"`{d[:7]}` (no PR) {bp.UNCLASSIFIABLE}. Pick with `gh workflow run backport.yaml -f commits=#2,{d[:12]} "
-                "-f lines=0.182 -f confirm_stabilized=true`",
+                f"⚠ Held for the RM on `release/0.182` (stabilized; Promote blocks unless forced): #2 critical. "
+                "Pick with `gh workflow run backport.yaml -f commits=#2 -f lines=0.182 -f confirm_stabilized=true` "
+                f"{bp.UNCLASSIFIABLE}, add a backport label or fix its PR title, or record a decline: `{d[:7]}` (no PR) t",
             )
+            # Only unlabelled rows: no pick to suggest, since Backport would refuse it.
+            note = bp.held_note(
+                [(d, bp.UNCLASSIFIABLE, "#42", "x (no backport label: y)")],
+                "release/0.182",
+            )
+            self.assertNotIn("commits=", note)
+            self.assertIn("add a backport label", note)
+            self.assertIn("#42 x (no backport label: y)", note)
+
+    def test_unclassifiable_held_line_names_the_error_not_confirm(self):
+        line = bp.held_line(
+            "a" * 40,
+            bp.UNCLASSIFIABLE,
+            "#42",
+            "release/0.186",
+            "error",
+            None,
+            "x (no backport label: y)",
+        )
+        self.assertEqual(
+            line,
+            f"::error::aaaaaaa ({bp.UNCLASSIFIABLE}, PR #42, x (no backport label: y)) held for release/0.186: "
+            "add a backport label or fix its PR title, or record a decline",
+        )
+
+    def test_warn_held_passes_the_title(self):
+        rows = [("a" * 40, bp.UNCLASSIFIABLE, "#42", "x (no backport label: y)")]
+        out = io.StringIO()
+        with (
+            mock.patch.object(bp, "held", return_value=rows),
+            mock.patch.dict(
+                os.environ, {"GITHUB_SERVER_URL": "", "GITHUB_REPOSITORY": ""}
+            ),
+            contextlib.redirect_stdout(out),
+        ):
+            note = bp.warn_held("o/r", ".", "release/0.186", "error")
+        self.assertIn("PR #42, x (no backport label: y)) held", out.getvalue())
+        self.assertNotIn("confirm_stabilized", out.getvalue() + note)
 
 
 class Rescan(unittest.TestCase):
@@ -463,10 +501,13 @@ class SummaryLinks(unittest.TestCase):
             )
             self.assertIn(
                 f"on Zipstack/unstract [`release/0.182`]({oss}/tree/release/0.182) (stabilized; Promote blocks "
-                f"unless forced): [Zipstack/unstract#2]({oss}/pull/2) critical, [`bbbbbbb`]({oss}/commit/{b}) (no PR)",
+                f"unless forced): [Zipstack/unstract#2]({oss}/pull/2) critical. Pick with",
                 note,
             )
-            self.assertIn(f"-f commits=#2,{b[:12]} -f lines=0.182", note)
+            self.assertIn(
+                f"record a decline: [`bbbbbbb`]({oss}/commit/{b}) (no PR) t", note
+            )
+            self.assertIn("-f commits=#2 -f lines=0.182", note)
             pending = bp.pending_block(
                 [(261, "release/0.190", 1)],
                 [(b, "release/0.189", "security", "no PR", 1)],
