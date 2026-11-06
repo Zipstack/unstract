@@ -1,4 +1,5 @@
 import datetime
+import logging
 import os
 import re
 from typing import Any
@@ -16,6 +17,8 @@ from unstract.connectors.databases.sql_safety import (
 )
 from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.connectors.exceptions import ConnectorError
+
+logger = logging.getLogger(__name__)
 
 INVALID_URL_MESSAGE = "The connection URL is not valid."
 CONNECT_FAILED_MESSAGE = (
@@ -119,15 +122,24 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
     @staticmethod
     def _connect(conn_params: dict[str, Any]) -> connection:
         """Open a connection, hiding libpq's error when it may echo a password."""
+        url = conn_params.get("dsn", "")
+        PostgreSQL._check_url(url)
         try:
             return psycopg2.connect(**conn_params)
-        except (psycopg2.ProgrammingError, UnicodeError):
-            # These echo the URL or its bytes, password included.
-            raise ConnectorError(INVALID_URL_MESSAGE) from None
         except psycopg2.OperationalError:
-            if PostgreSQL._password_may_be_misread(conn_params.get("dsn", "")):
+            if PostgreSQL._password_may_be_misread(url):
                 raise ConnectorError(CONNECT_FAILED_MESSAGE) from None
             raise
+
+    @staticmethod
+    def _check_url(url: str) -> None:
+        """Reject a URL libpq can't parse, with a fixed message."""
+        try:
+            parse_dsn(url)
+        except (psycopg2.ProgrammingError, UnicodeError) as exc:
+            # These echo the URL or its bytes, password included.
+            logger.warning("Connection URL could not be parsed: %s", type(exc).__name__)
+            raise ConnectorError(INVALID_URL_MESSAGE) from None
 
     @staticmethod
     def _password_may_be_misread(url: str) -> bool:

@@ -73,6 +73,7 @@ class TestConnectionFailureReason(unittest.TestCase):
             {"connection_url": "postgresql://alice:pw@db.invalid:000080/prod"},
             {"connection_url": "postgresql://alice:pa%40ss@db.invalid/prod"},
             {"connection_url": "postgresql://alice:pw@db1.invalid:5432,db2.invalid:5433/prod"},
+            {"connection_url": "postgresql://db1.invalid:1,db2.invalid:65535/prod?user=alice&password=pw"},
             {"connection_url": "host=db.invalid user=alice password=pa@ss dbname=prod"},
             {
                 "user": "alice",
@@ -87,6 +88,26 @@ class TestConnectionFailureReason(unittest.TestCase):
                     _connect_error(settings, "connection refused").message,
                     "Error while connecting to DB: connection refused",
                 )
+
+    def test_error_that_is_not_about_the_url_keeps_its_reason(self) -> None:
+        # A server whose error text isn't UTF-8 fails the decode.
+        error = UnicodeDecodeError("utf-8", b"\xfc", 0, 1, "invalid start byte")
+        for settings in (
+            {"connection_url": "postgresql://alice:pw@db.invalid/prod"},
+            {
+                "user": "alice",
+                "password": "pw",
+                "host": "db.invalid",
+                "port": "5432",
+                "database": "prod",
+            },
+        ):
+            with self.subTest(settings=settings):
+                with patch("psycopg2.connect", side_effect=error):
+                    with self.assertRaises(ConnectorError) as caught:
+                        PostgreSQL(settings).test_credentials()
+
+                self.assertIn("can't decode byte 0xfc", caught.exception.message)
 
     def test_mistyped_port_after_the_at_sign_keeps_its_reason(self) -> None:
         for port, reason in (
