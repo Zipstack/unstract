@@ -4,7 +4,8 @@ See [docs.unstract.com](https://docs.unstract.com/unstract/contributing/unstract
 
 ## PR titles, labels and release branches
 
-Every change merges to `main` first. Release lines are `release/X.Y` branches, and
+Every change merges to `main` first, except a release-only change (see
+`release-branch-only` below). Release lines are `release/X.Y` branches, and
 the Backport workflow copies fixes from `main` to the lines that need them. The PR
 labels decide what it copies, so set them when you open the PR.
 
@@ -24,3 +25,5 @@ labels decide what it copies, so set them when you open the PR.
     whoever raised the PR. Never add a backport label by automation.
 - **A PR into `release/X.Y`** needs no backport label, and `lint-pr` refuses `main-only`
   there.
+- **`release-branch-only`:** only for a PR into `release/X.Y` with a change that is not
+  on `main`. Add it when you open the PR. `lint-pr` refuses it on a PR into `main`.
