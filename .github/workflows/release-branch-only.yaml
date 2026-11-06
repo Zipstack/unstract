@@ -40,13 +40,13 @@ jobs:
           esac
 
       # The head's tip SHA, so a push to the head after the label makes the bot push fail, not skip a check.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0 # every branch, so origin/<base> is current
           persist-credentials: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: main
           path: .relmgr
