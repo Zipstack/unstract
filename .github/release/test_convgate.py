@@ -455,7 +455,7 @@ class Gate(unittest.TestCase):
         table = self.checks(
             out,
             [
-                "release/1.5 is not GA for cloud yet: promote and publish it first or retire it (Retire one shipped line now); "
+                "release/1.5 is not GA for cloud yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); "
                 "a release manager may override this with force and a reason"
             ],
         )
@@ -467,7 +467,7 @@ class Gate(unittest.TestCase):
         self.assertEqual(
             table[4],
             "| ⛔ promote order | release/1.5 is not GA for cloud yet | "
-            "promote or retire `release/1.5` (Retire one shipped line now) |",
+            "promote or retire `release/1.5` (Retire one shipped line now; Abandon a line that never shipped when it has no GA) |",
         )
         _, out = self.run_gate(
             "release/1.5", prs={f"backport/1.6/{self.c[:7]}": (12, "u")}
@@ -607,7 +607,7 @@ class Gate(unittest.TestCase):
             dict(self.lines[0], todo=["take a new RC build first."])
         )  # a message's full stop goes
         order = [
-            "release/1.5 is not GA for cloud yet: promote and publish it first or retire it (Retire one shipped line now); a release manager may override this with force and a reason"
+            "release/1.5 is not GA for cloud yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); a release manager may override this with force and a reason"
         ]
         todo = f"merge or close conflict PR {rm.pr_link(12)}, then Take RC again"
         self.assertEqual(
@@ -615,7 +615,7 @@ class Gate(unittest.TestCase):
             [
                 todo,
                 "take a new RC build first",
-                "promote or retire `release/1.5` (Retire one shipped line now)",
+                "promote or retire `release/1.5` (Retire one shipped line now; Abandon a line that never shipped when it has no GA)",
             ],
         )
         self.assertEqual(
@@ -627,7 +627,7 @@ class Gate(unittest.TestCase):
         )
         self.assertTrue(
             table[4].endswith(
-                "| promote or retire `release/1.5` (Retire one shipped line now) |"
+                "| promote or retire `release/1.5` (Retire one shipped line now; Abandon a line that never shipped when it has no GA) |"
             ),
             table[4],
         )

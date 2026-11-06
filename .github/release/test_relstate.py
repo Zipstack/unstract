@@ -608,7 +608,7 @@ class Scenario(unittest.TestCase):
 
     def test_promote_blockers(self):
         """Promote order per target: only an older line with the target enabled and not GA for it blocks."""
-        msg = "release/{} is not GA for {} yet: promote and publish it first or retire it (Retire one shipped line now); a release manager may override this with force and a reason"
+        msg = "release/{} is not GA for {} yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); a release manager may override this with force and a reason"
         self.onprem_rc()
         self.cut("1.6")
         self.push("cloud/backend", "v1.6.0-rc.1", git_ref="release/1.6")
@@ -1112,7 +1112,7 @@ class Scenario(unittest.TestCase):
         self.assertEqual(
             rs.promote_blockers(st, "release/1.8", "oss"),
             [
-                "release/1.7 is not GA for oss yet: promote and publish it first or retire it (Retire one shipped line now); a release manager may override this with force and a reason"
+                "release/1.7 is not GA for oss yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); a release manager may override this with force and a reason"
             ],
         )
 

@@ -1131,16 +1131,27 @@ class RetireWorkflow(Workflow):
             REASON="cut by mistake",
         )
 
-    def test_abandon_refuses_a_line_with_a_dev_commit(self):
+    def test_abandon_lists_human_commits_the_archive_keeps(self):
         self.line("1.7", "v1.7.0-rc.1", "v1.7.0-rc.2")
         dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "work on 1.7")
         dev_git(self.cloud, "push", "-q", "origin", "HEAD:release/1.7")
-        self.kept_line(
-            "1.7",
-            "::error::abandon release/1.7: non-bot commits above the cut",
-            ACTION=ABANDON,
-            LINE="release/1.7",
-            REASON="cut by mistake",
+        work = dev_git(self.cloud, "rev-parse", "HEAD")
+        env = {
+            "ACTION": ABANDON,
+            "LINE": "1.7",
+            "REASON": "cut by mistake",
+            "GITHUB_SERVER_URL": "https://github.com",
+            "RELSTATE_AR_TOKEN": "t",
+        }
+        self.retire(DRY_RUN="true", **env)
+        web = "https://github.com/Zipstack/unstract-cloud"
+        line = f"- human commit [`{work[:12]}`]({web}/commit/{work[:12]}) (kept by the archive tag)"
+        self.assertIn(line, self.read("summary"))
+        self.retire(**env)
+        self.assertIn(line, self.read("summary").split("abandoned release/1.7")[1])
+        tag = rm.git(self.repos["cloud"][0], "tag", "-l", "retired/1.7-*")
+        self.assertEqual(
+            rm.git(self.repos["cloud"][0], "rev-parse", f"{tag}^{{commit}}"), work
         )
 
     def test_links_only_what_survives(self):
@@ -1284,7 +1295,20 @@ class RetireWorkflow(Workflow):
             "1.7", "::error::retire release/1.7: on-prem still supported", **env
         )
         self.retire(FORCE="true", **env)
-        self.assertIn("retired release/1.7: customer moved", self.read("summary"))
+        self.assertIn(
+            "retired release/1.7: customer moved (forced past on-prem)",
+            self.read("summary"),
+        )
+        self.assertIn(
+            "retired release/1.7: customer moved (forced past on-prem)",
+            rm.git(
+                self.repos["cloud"][0],
+                "tag",
+                "-l",
+                "retired/1.7-*",
+                "--format=%(contents)",
+            ),
+        )
         self.assertNotIn(
             "release/1.7", rm.git(self.repos["cloud"][0], "branch", "-l", "release/*")
         )
@@ -1347,6 +1371,12 @@ class RetireWorkflow(Workflow):
             REASON="x",
             FORCE="true",
         )
+
+    def test_an_omitted_action_retires_past_end_of_support(self):
+        self.line("1.6", "v1.6.0-rc.1", "v1.6.0")
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
+        self.retire(ACTION="")
+        self.assert_gone("1.6")
 
     def test_derived_list(self):
         self.line("1.6", "v1.6.0-rc.1", "v1.6.0")
@@ -1444,6 +1474,13 @@ class RetireWorkflow(Workflow):
         tag = self.moved("1.7")
         self.line("1.8", "v1.8.0-rc.1", "v1.8.0")
         self.refused("1.7", tag, ACTION=ONE, LINE="release/1.7", REASON="early")
+
+    def test_abandon_refuses_a_line_moved_after_its_archive(self):
+        self.line("1.7", "v1.7.0-rc.1")
+        tag = self.moved("1.7")
+        self.refused(
+            "1.7", tag, ACTION=ABANDON, LINE="release/1.7", REASON="cut by mistake"
+        )
 
     def test_derived_list_keeps_a_branch_pushed_after_its_tip_was_read(self):
         self.line("1.6", "v1.6.0-rc.1", "v1.6.0")
@@ -3355,7 +3392,12 @@ class InputSteps(unittest.TestCase):
         for action, line, dry, want in (
             (PAST_EOS, "", True, "Retire past end of support (dry run)"),
             (PAST_EOS, "", False, "Retire past end of support"),
-            ("", "", False, "Retire past end of support"),  # schedule: no inputs
+            (
+                "",
+                "",
+                False,
+                "Retire past end of support",
+            ),  # an API dispatch may omit action
             (ONE, "1.7", True, "Retire 1.7 (dry run)"),
             (ONE, "1.7", False, "Retire 1.7"),
             (ONE, "", False, "Retire (no line)"),

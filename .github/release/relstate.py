@@ -366,7 +366,7 @@ def target_state(t, name, rows, now):
     """
     ga = rows[name]["targets"][t]["ga"]
     # Known limit: a target never GA stays stabilizing. Its line goes by Retire one shipped line now (force when the
-    # target is late), or by Abandon when no target has a GA.
+    # target is late; not while its cloud is production), or by Abandon when no target has a GA.
     if not ga:
         return "stabilizing"
     if t in KEPT:
@@ -625,16 +625,21 @@ def retire_line_refusal(state, branch, force=False):
     row = _branch_row(state, branch)
     if not row:
         return "no such branch"
-    held = [
-        t
-        for t, tt in sorted(row["targets"].items())
-        if tt["state"] == "stabilized" or (tt["late"] and not tt["ga"])
-    ]
+    held = retire_line_held(state, branch)
     if row["targets"].get("cloud", {}).get("state") == "stabilized":
         return "cloud is production (newest cloud GA); it retires once a newer line is promoted"
     if held and not force:
         return f"{', '.join(held)} still supported (stabilized, or late with no GA yet); a release manager may retire it inside the window with force"
     return None
+
+
+def retire_line_held(state, branch):
+    """Targets that keep branch supported: stabilized, or late with no GA."""
+    return [
+        t
+        for t, tt in sorted(_branch_row(state, branch)["targets"].items())
+        if tt["state"] == "stabilized" or (tt["late"] and not tt["ga"])
+    ]
 
 
 def _branch_row(state, branch):
@@ -687,8 +692,8 @@ def abandon_plan(repo, branch, registry=registry_tags, services=rc_service_tags)
     """What Abandon a line that never shipped deletes for release/X.Y (cut by mistake, or built only as RCs).
 
     {"ga": [...], "used": [...], "rc_tags": [...], "versions": {artifact: [{id, digest, tags}]}, "kept": [...]}.
-    A non-empty ga or used (commits that are not bot, pick or decline) refuses the abandon. A registry version is
-    deleted only when every tag on it is an RC of this line.
+    A non-empty ga refuses the abandon. used (commits that are not bot, pick or decline) are listed; the archive tag
+    keeps them. A registry version is deleted only when every tag on it is an RC of this line.
     """
     x, y = rm._line(branch)
     # The on-prem RC chart's versions have no "v".
@@ -744,7 +749,7 @@ def promote_blockers(state, branch, target):
         return []
     line = _key(branch.split("/", 1)[1])
     return [
-        f"{b['branch']} is not GA for {target} yet: promote and publish it first or retire it (Retire one shipped line now); a release manager may override this with force and a reason"
+        f"{b['branch']} is not GA for {target} yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); a release manager may override this with force and a reason"
         for b in state["branches"]
         if _key(b["line"]) < line
         and target in b["targets"]
