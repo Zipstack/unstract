@@ -46,12 +46,16 @@ it("the ramp is the designed --mode-* values in every mode", () => {
 it("the luminance helper follows WCAG 2 and rejects anything but #rrggbb", () => {
   expect(luminance("#ffffff")).toBeCloseTo(1, 5);
   expect(luminance("#000000")).toBe(0);
-  // Mid-grey pins the sRGB curve and the equal-channel weights.
-  expect(luminance("#777777")).toBeCloseTo(0.1845, 4);
-  // A red-only colour pins the red weight on its own.
+  // Each primary pins its own weight.
   expect(luminance("#ff0000")).toBeCloseTo(0.2126, 4);
-  expect(() => luminance("var(--card)")).toThrow();
-  expect(() => luminance("#ffffff80")).toThrow();
+  expect(luminance("#00ff00")).toBeCloseTo(0.7152, 4);
+  expect(luminance("#0000ff")).toBeCloseTo(0.0722, 4);
+  // Mid-grey is on the power segment of the sRGB curve, 10/255 on the linear one.
+  expect(luminance("#777777")).toBeCloseTo(0.1845, 4);
+  expect(luminance("#0a0a0a")).toBeCloseTo(0.003035, 6);
+  for (const bad of ["var(--card)", "#ffffff80", "x#ffffff"]) {
+    expect(() => luminance(bad)).toThrow(`${bad} is not #rrggbb`);
+  }
 });
 
 it("the ramp is ordered lightest to darkest in every mode", () => {
