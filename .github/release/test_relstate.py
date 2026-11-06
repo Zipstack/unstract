@@ -264,18 +264,11 @@ class Scenario(unittest.TestCase):
         )
         self.assertEqual(st["retire"], [])
         self.assertNotIn("release/1.5", st["backport_targets"]["fix"])
-        self.assertEqual(
-            rs.retire_line_refusal(st, "release/1.5"),
-            "on-prem still supported (stabilized, or late with no GA yet); a release manager may retire it inside the "
-            "window with force",
-        )
-        self.assertIsNone(rs.retire_line_refusal(st, "release/1.5", force=True))
         self.push("chart/unstract-platform", "1.5.0", days=0)  # GA after its RC
         st = rs.derive(  # window over
             self.repo, NOW + dt.timedelta(days=200), lambda a: self.reg.get(a, {})
         )
         self.assertTrue(self.branch(st, "release/1.5")["targets"]["on-prem"]["late"])
-        self.assertIsNone(rs.retire_line_refusal(st, "release/1.5"))
 
     def test_onprem_rc_after_cloud_ga_is_not_late_when_enabled_before(self):
         # Late is judged by the target's first RC: a later RC after cloud GA keeps the line taking fixes.
@@ -304,7 +297,7 @@ class Scenario(unittest.TestCase):
             (b["state"], b["targets"]["on-prem"]["late"]), ("stabilizing", False)
         )
 
-    def test_late_cloud_with_no_ga_retires_with_force(self):
+    def test_late_cloud_with_no_ga_is_stabilized(self):
         # Shipped on-prem first, cloud enabled later: cloud is not production until its own GA.
         self.cut("1.5")
         self.push("on-prem/backend", "v1.5.0-rc.1", days=400, git_ref="release/1.5")
@@ -316,12 +309,6 @@ class Scenario(unittest.TestCase):
         self.assertEqual(
             (b["state"], b["targets"]["cloud"]["late"]), ("stabilized", True)
         )
-        self.assertEqual(
-            rs.retire_line_refusal(st, "release/1.5"),
-            "cloud, on-prem still supported (stabilized, or late with no GA yet); a release manager may retire it "
-            "inside the window with force",
-        )
-        self.assertIsNone(rs.retire_line_refusal(st, "release/1.5", force=True))
 
     def test_failed_registry_read_is_never_not_late(self):
         self.late_onprem()
@@ -1147,31 +1134,14 @@ class Scenario(unittest.TestCase):
         bump("release: chart 1.5.0-rc.2")  # the chart subject needs a chart
         self.assertFalse(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.2"))
 
-    def test_retire_line(self):
-        refusal = lambda force=False: rs.retire_line_refusal(
-            self.state(), "release/1.5", force
-        )
+    def test_newest_line_retired_before_ga_frees_its_minor(self):
         self.onprem_rc()
-        self.assertEqual(
-            refusal(True),
-            "cloud is production (newest cloud GA); it retires once a newer line is promoted",
-        )
         self.cut("1.6")
         self.push("cloud/backend", "v1.6.0-rc.1", git_ref="release/1.6")
         self.push("cloud/backend", "v1.6.0", git_ref="release/1.6")
-        self.assertIsNone(refusal())  # cloud past-eos, on-prem never promoted: may go
         self.push(
             "chart/unstract-platform", "v1.5.1", git_ref="release/1.5"
         )  # on-prem chart in its window
-        self.assertEqual(
-            refusal(),
-            "on-prem still supported (stabilized, or late with no GA yet); a release manager may retire it inside the "
-            "window with force",
-        )
-        self.assertIsNone(refusal(True))
-        self.assertEqual(
-            rs.retire_line_refusal(self.state(), "release/9.9"), "no such branch"
-        )
         # The newest line retired before any GA (its RCs deleted): the next cut reuses its minor.
         self.cut("1.7")
         tip = self.g("rev-parse", "release/1.7")
