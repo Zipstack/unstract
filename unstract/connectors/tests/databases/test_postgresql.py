@@ -40,7 +40,10 @@ class TestMalformedConnectionUrl(unittest.TestCase):
             "postgresql://alice:STAND\ud800INPW@db.invalid/prod",
         ):
             with self.subTest(url=url):
-                self._assert_hidden(url, "The connection URL is not valid.")
+                with self.assertLogs(PostgreSQL.__module__, "WARNING") as logs:
+                    self._assert_hidden(url, "The connection URL is not valid.")
+
+                self.assertNotIn("INPW", "\n".join(logs.output))
 
     def test_misread_password_stays_out_of_the_error_and_its_traceback(self) -> None:
         for url in (
