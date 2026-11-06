@@ -210,7 +210,7 @@ cp sample.env .env
 
 Then edit `workers/.env` — change all Docker hostnames to `localhost`:
 
-> The runner's port 5002 and the x2text service's port 3004 are not published on the host by default. Uncomment the loopback `ports` entries for `runner` and `x2text-service` in `docker/docker-compose.yaml` then re-run `./run-platform.sh` so the containers are recreated with them, or workers on the host cannot reach them.
+> The runner's port 5002 and the x2text service's port 3004 are not published on the host by default. Uncomment the loopback `ports` entries for `runner` and `x2text-service` in `docker/docker-compose.yaml` then recreate them from `docker/` with the same tag you started the stack with (`VERSION=<tag> docker compose up -d runner x2text-service`), or workers on the host cannot reach them.
 
 ```ini
 # === CRITICAL CHANGES FOR LOCAL DEV ===
