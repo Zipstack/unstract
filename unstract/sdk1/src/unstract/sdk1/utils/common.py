@@ -62,7 +62,7 @@ class Utils:
             if abs(num) < 1024.0:
                 return f"{num:.2f} {unit}{suffix}"
             num /= 1024.0
-        return f"{num:.2f} {suffix}"
+        return f"{num:.2f} P{suffix}"
 
     @staticmethod
     def get_msg_from_request_exc(
