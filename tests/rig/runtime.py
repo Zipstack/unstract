@@ -137,9 +137,9 @@ class PlatformEndpoints:
         """Build a ``PlatformEndpoints`` from ``UNSTRACT_*`` env vars.
 
         Used by every runtime so the lookup logic stays single-sourced.
-        Defaults are the localhost ports of the dev compose stack at
-        ``docker/docker-compose.yaml``. The runner and x2text-service are not
-        published there by default; see the loopback ``ports`` entries.
+        Defaults are localhost URLs for a developer-managed stack. Not every
+        one is published by ``docker/docker-compose.yaml`` as shipped; see the
+        commented-out loopback ``ports`` entries there.
         """
         return cls(
             backend_url=os.environ.get("UNSTRACT_BACKEND_URL", "http://localhost:8000"),
