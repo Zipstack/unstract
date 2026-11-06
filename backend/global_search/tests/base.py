@@ -64,6 +64,7 @@ def _pipeline(pipeline_type: str) -> Callable[..., Pipeline]:
 
 
 def build_adapter(org, user, name, description="", **overrides):
+    """An LLM adapter unless ``adapter_type`` is overridden."""
     fields = {
         "adapter_name": name,
         "adapter_id": "openai|test",
@@ -75,6 +76,13 @@ def build_adapter(org, user, name, description="", **overrides):
     }
     fields.update(overrides)
     return AdapterInstance.objects.create(**fields)
+
+
+def _adapter(adapter_type: str) -> Callable[..., AdapterInstance]:
+    def build(org, user, name, description=""):
+        return build_adapter(org, user, name, description, adapter_type=adapter_type)
+
+    return build
 
 
 def build_connector(org, user, name, description=""):
@@ -93,7 +101,10 @@ OSS_BUILDERS: dict[str, Callable[..., Any]] = {
     OSSSearchType.API_DEPLOYMENT: build_api_deployment,
     OSSSearchType.ETL_PIPELINE: _pipeline(Pipeline.PipelineType.ETL),
     OSSSearchType.TASK_PIPELINE: _pipeline(Pipeline.PipelineType.TASK),
-    OSSSearchType.ADAPTER: build_adapter,
+    OSSSearchType.LLM: _adapter("LLM"),
+    OSSSearchType.VECTOR_DB: _adapter("VECTOR_DB"),
+    OSSSearchType.EMBEDDING: _adapter("EMBEDDING"),
+    OSSSearchType.TEXT_EXTRACTOR: _adapter("X2TEXT"),
     OSSSearchType.CONNECTOR: build_connector,
 }
 
@@ -102,7 +113,18 @@ DESCRIBED_TYPES = {
     OSSSearchType.PROMPT_STUDIO_PROJECT,
     OSSSearchType.WORKFLOW,
     OSSSearchType.API_DEPLOYMENT,
-    OSSSearchType.ADAPTER,
+    OSSSearchType.LLM,
+    OSSSearchType.VECTOR_DB,
+    OSSSearchType.EMBEDDING,
+    OSSSearchType.TEXT_EXTRACTOR,
+}
+
+# The adapter kinds, keyed by type key; every one opens on adapter.detail.
+ADAPTER_TYPES = {
+    OSSSearchType.LLM: "LLM",
+    OSSSearchType.VECTOR_DB: "VECTOR_DB",
+    OSSSearchType.EMBEDDING: "EMBEDDING",
+    OSSSearchType.TEXT_EXTRACTOR: "X2TEXT",
 }
 
 
