@@ -62,9 +62,11 @@ export function ChartFrame({
     width === undefined ? "ui:w-full" : "ui:w-(--chart-width)",
     className,
   );
-  // The legend's items are known before the data, so loading and empty draw
-  // it too, invisibly, so the chart keeps one footprint across its states
-  // (the card does not jump when data arrives, wrapping included).
+  // The legend's items come from `series`, not the data, so when the series
+  // are known before the data, loading and empty draw the legend too,
+  // invisibly, and the chart keeps one footprint across its states (the card
+  // does not jump when data arrives, wrapping included). Series built from
+  // the response are empty until it arrives, so nothing is reserved then.
   const legendList = (reserveOnly: boolean) =>
     legend === undefined || legend.items.length === 0 ? null : (
       <ul

@@ -777,7 +777,7 @@ describe("cartesian options", () => {
     expect(anchorWith("right")).toBe("end");
   });
 
-  it("keeps the ready chart's footprint while loading and empty: the same legend, reserved invisibly", async () => {
+  it("lays out the ready chart's legend, invisibly and once, while loading and empty", async () => {
     const legendOf = (container: HTMLElement) =>
       container.querySelector("[data-slot=chart-legend]");
     const items = (legend: Element | null) =>
@@ -796,8 +796,13 @@ describe("cartesian options", () => {
         expect(items(legend)).toEqual(readyItems);
         expect(legend).toHaveClass("ui:invisible");
         expect(legend).toHaveAttribute("aria-hidden", "true");
-        // Same order as the ready chart: legend first when it sits on top.
-        expect(root?.firstElementChild === legend).toBe(position === "top");
+        // On the same side as the ready chart's, and only once.
+        expect(
+          container.querySelectorAll("[data-slot=chart-legend]"),
+        ).toHaveLength(1);
+        expect(
+          position === "top" ? root?.firstElementChild : root?.lastElementChild,
+        ).toBe(legend);
         await expect(container).toHaveNoA11yViolations();
         unmount();
       }

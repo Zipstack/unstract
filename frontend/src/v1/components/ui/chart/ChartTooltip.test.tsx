@@ -7,6 +7,14 @@ const series = [
 ];
 const fmt = { value: String, x: String };
 
+/*
+ * The sparkline's heading used to be looked up in its `data` prop by row
+ * index; it now comes from the row Recharts hands over with the values. The
+ * two only differ for the frame before Recharts' store takes new data, which
+ * happy-dom flushes inside act(), so no chart-level test can see it. These
+ * tests pin the mechanism instead: with a category key, the heading is read
+ * from that row and never from the label.
+ */
 it("names the category from the hovered row when given a category key, not from the label", () => {
   // Recharts' label here is a row index (1); the row it hands over is the
   // one plotted, which is what the values belong to.
@@ -48,4 +56,19 @@ it("renders nothing while inactive", () => {
     <ChartTooltip active={false} series={series} fmt={fmt} />,
   );
   expect(container).toBeEmptyDOMElement();
+});
+
+it("names no category, and does not throw, when the hovered row is missing", () => {
+  const { container } = render(
+    <ChartTooltip
+      active
+      label={1}
+      payload={[]}
+      series={series}
+      fmt={fmt}
+      categoryKey="day"
+    />,
+  );
+  expect(container.querySelector("p")).toBeNull();
+  expect(container).toHaveTextContent("Pages–");
 });
