@@ -34,7 +34,7 @@ export type DiffStats = Readonly<{
    * No line changed, but the texts are not identical: they differ only in
    * line endings (CRLF or LF) or a final newline, which the diff ignores.
    */
-  endingsOnly?: boolean;
+  endingsOnly: boolean;
 }>;
 
 export type LineDiff = Readonly<{
@@ -70,7 +70,7 @@ export const DIFF_MAX_EDIT_LENGTH = 2000;
 /**
  * DiffView renders (and highlights) every line at once, without windowing, so
  * two long texts with few changes must stop somewhere too: past this many
- * lines between them it gives up. Prompts and records diff well inside it.
+ * lines between them, both DiffView and diffStats give up.
  */
 export const DIFF_MAX_LINES = 2000;
 /** A backstop on slow machines; DIFF_MAX_EDIT_LENGTH is the limit that normally applies. */
@@ -210,8 +210,8 @@ export function computeLineDiff(
 }
 
 /**
- * The "1 change +2 −1" counts for two texts, or `null` past the limits. Counts
- * only: no rows are built, so it is cheap to call per prompt version.
+ * The "1 change +2 −1" counts for two texts, or `null` past the same limits
+ * as DiffView. Counts only: no rows are built, but the diff itself still runs.
  */
 export function diffStats(oldText: string, newText: string): DiffStats | null {
   return runDiff(oldText, newText, {})?.stats ?? null;

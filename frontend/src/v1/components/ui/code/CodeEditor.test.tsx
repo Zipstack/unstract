@@ -188,10 +188,14 @@ it("defines its own named themes, built on Monaco's, before the editor exists", 
   const defineTheme = vi.fn();
   last().beforeMount?.({ editor: { defineTheme } });
   expect(
-    defineTheme.mock.calls.map(([name, data]) => [name, data.base]),
+    defineTheme.mock.calls.map(([name, data]) => [
+      name,
+      data.base,
+      data.inherit,
+    ]),
   ).toEqual([
-    ["unstract-v1-light", "vs"],
-    ["unstract-v1-dark", "vs-dark"],
+    ["unstract-v1-light", "vs", true],
+    ["unstract-v1-dark", "vs-dark", true],
   ]);
   expect(last().theme).toBe("unstract-v1-light");
 });

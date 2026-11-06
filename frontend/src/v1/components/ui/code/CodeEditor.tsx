@@ -153,15 +153,19 @@ export function CodeEditor({
   const [load, setLoad] = useState<"loading" | "slow" | "ready" | "failed">(
     "loading",
   );
-  // Monaco reapplies options and re-subscribes its change listener whenever
-  // these change identity, so both stay stable across parent re-renders.
+  // Monaco reapplies `options` and re-subscribes its change listener whenever
+  // they change identity, so both stay stable across parent re-renders. The
+  // latest onChange is kept in a ref, updated after commit (as DocumentViewer
+  // does) so a render React throws away cannot leave it stale.
   const latestOnChange = useRef(onChange);
-  latestOnChange.current = onChange;
+  useLayoutEffect(() => {
+    latestOnChange.current = onChange;
+  }, [onChange]);
   const handleChange = useCallback(
     (next: string | undefined) => latestOnChange.current?.(next ?? ""),
     [],
   );
-  const handleMount = useCallback(() => setLoad("ready"), []);
+  const handleMount = () => setLoad("ready");
   const options = useMemo(
     () => ({
       ariaLabel,

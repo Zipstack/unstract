@@ -88,15 +88,14 @@ export function CopyButton({
         });
       }
     }
-    onCopy?.(outcome);
     // Unmounted while the clipboard was busy: no inline state, and no timer
-    // left behind after the cleanup has run.
-    if (!mounted.current) {
-      return;
+    // left behind after the cleanup has run. The caller still hears the result.
+    if (mounted.current) {
+      setResult(outcome);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => setResult(null), COPY_FEEDBACK_MS);
     }
-    setResult(outcome);
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => setResult(null), COPY_FEEDBACK_MS);
+    onCopy?.(outcome);
   };
 
   const Icon = result === "copied" ? Check : Copy;

@@ -20,7 +20,7 @@ const NO_DIFF: LineDiff = {
   newLines: [],
   unified: [],
   split: [],
-  stats: { changes: 0, added: 0, removed: 0 },
+  stats: { changes: 0, added: 0, removed: 0, endingsOnly: false },
 };
 
 export type DiffViewProps = Omit<ComponentProps<"div">, "children"> &
@@ -218,7 +218,8 @@ export function DiffView({
           title="Too large to compare"
           className="ui:m-2"
         >
-          These texts differ too much to compare line by line here.
+          These texts are too long, or differ in too many lines, to compare line
+          by line here.
         </InlineAlert>
       ) : null}
       {showSummary && computed !== null ? (

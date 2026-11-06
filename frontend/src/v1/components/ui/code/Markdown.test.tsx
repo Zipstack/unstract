@@ -146,17 +146,13 @@ it("treats fence names that are Object's own keys as plain text", () => {
 });
 
 it("passes none of react-markdown's own props to the DOM", () => {
+  // Non-boolean props would become attributes. (React drops boolean ones such
+  // as `ordered`, with a warning it prints once per process, so those are not
+  // observable here.)
   const { container } = renderV1(
-    <Markdown>{"# H\n\n- a\n  - b\n\n1. one"}</Markdown>,
+    <Markdown>{"# H\n\n- a\n  - b\n\n1. one\n\n| a |\n| - |\n| 1 |"}</Markdown>,
   );
-  for (const attr of [
-    "depth",
-    "ordered",
-    "level",
-    "node",
-    "index",
-    "checked",
-  ]) {
+  for (const attr of ["depth", "level", "node", "index", "isheader"]) {
     expect(container.querySelector(`[${attr}]`), attr).toBeNull();
   }
 });

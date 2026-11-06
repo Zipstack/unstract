@@ -130,7 +130,11 @@ it("is a named, focusable region that passes axe in every mode", async () => {
 });
 
 it("DiffSummary stands alone", () => {
-  renderV1(<DiffSummary stats={{ changes: 3, added: 1, removed: 0 }} />);
+  renderV1(
+    <DiffSummary
+      stats={{ changes: 3, added: 1, removed: 0, endingsOnly: false }}
+    />,
+  );
   expect(screen.getByText("3 changes")).toBeTruthy();
   expect(screen.getByText("1 line added")).toBeTruthy();
   expect(screen.getByText("0 lines removed")).toBeTruthy();
