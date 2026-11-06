@@ -1402,9 +1402,7 @@ class PrFixClass(unittest.TestCase):
         nb = ["fix/needs-backport"]
         self.assertEqual(c("UN-1 [MISC] x", nb), "fix")
         self.assertEqual(c("UN-1 [FIX] x", nb), "fix")
-        self.assertIsNone(
-            c("UN-1 [FIX] x", ["main-only"])
-        )  # the title type does not route
+        self.assertIsNone(c("UN-1 [FIX] x", ["main-only"]))
         self.assertIsNone(c("UN-1 [MISC] x", ["main-only", "bug"]))
         self.assertEqual(c("UN-1 [MISC] x", ["fix/security", *nb]), "security")
         self.assertEqual(c("UN-1 [FEAT] x", ["fix/critical", "bug"]), "critical")

@@ -15,7 +15,7 @@ _FORMAT_BODY = "--format=%B"
 PICK_RE = re.compile(r"\(cherry picked from commit ([0-9a-f]{7,40})\)")
 # At any line start; also after "* ", as a COMMIT_MESSAGES squash lists each subject that way.
 RBO_RE = re.compile(r"^(?:\* )?Release-branch-only: (\S+)", re.M)
-# Known limit: one ticket only; `A-1 B-2 [FIX] x` passes only with a fix/ label.
+# Known limit: one ticket only, so `A-1 B-2 [FIX] x` fails.
 PR_TITLE_RE = re.compile(
     r"^(?:(?P<ticket>[A-Z][A-Z0-9]*-\d+) )?\[(?P<type>FIX|HOT-FIX|FEAT|GATED-FEAT|DOCS|DEPS|MISC|DEV|WIP)\] \S"
 )
@@ -320,7 +320,7 @@ MAIN_ONLY = "main-only"
 
 
 def pr_fix_class(title, labels=()):
-    """The class comes from labels only; None without a fix/ label. A main merge also needs one: main_fix_class."""
+    """The class comes from labels only; None without a fix/ label. A main merge also needs a backport label: main_fix_class."""
     # Reject near-miss class labels (fix/<x>, fix-class/<x>, typos) so a typo cannot drop the class.
     bad = [
         l
@@ -336,8 +336,7 @@ def pr_fix_class(title, labels=()):
     if len(classes) > 1:
         raise ValueError(f"conflicting fix labels: {sorted('fix/' + c for c in classes)}")
     fixes = sorted(set(labels) & set(FIX_LABELS))
-    # Validated for the changelogs, not for the class, so a fix/ label does not excuse it. Unwrap reverts;
-    # strip: GitHub keeps a leading space.
+    # The changelogs read the title, so no label excuses it. strip: GitHub keeps a leading space.
     inner = title.strip()
     while r := REVERT_RE.match(inner):
         inner = r.group(1).strip()

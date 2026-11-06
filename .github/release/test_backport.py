@@ -90,7 +90,6 @@ class Held(unittest.TestCase):
                 "Pick with `gh workflow run backport.yaml -f commits=#2 -f lines=0.182 -f confirm_stabilized=true` "
                 f"{bp.UNCLASSIFIABLE}, add a backport label or fix its PR title, or record a decline: `{d[:7]}` (no PR) t",
             )
-            # Only unlabelled rows: no pick to suggest, since Backport would refuse it.
             note = bp.held_note(
                 [(d, bp.UNCLASSIFIABLE, "#42", "x (no backport label: y)")],
                 "release/0.182",
