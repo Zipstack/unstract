@@ -126,7 +126,11 @@ export type BaseChartProps<Row extends ChartDatum> = Readonly<{
    * `onRetry`) instead of the chart, so a failure never reads as "no data".
    */
   state?: ChartState;
-  /** Replaces the default empty message, e.g. with a page's EmptyState. */
+  /**
+   * Replaces the default empty message. It is centred in a box of `height`
+   * that does not grow, so it must fit, and it replaces the screen-reader
+   * title prefix, so it should name the chart.
+   */
   emptySlot?: ReactNode;
   /** Default "No data for this period". */
   emptyMessage?: string;

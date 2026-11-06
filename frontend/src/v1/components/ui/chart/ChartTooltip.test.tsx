@@ -87,3 +87,18 @@ it("names no category when the hovered row lacks the category key, rather than t
   expect(container.querySelector("p")).toBeNull();
   expect(container).toHaveTextContent("Pages7");
 });
+
+it("names no category, and does not throw, when the hovered row is null", () => {
+  const { container } = render(
+    <ChartTooltip
+      active
+      label={1}
+      payload={[{ dataKey: "pages", value: 7, payload: null }]}
+      series={series}
+      fmt={fmt}
+      categoryKey="day"
+    />,
+  );
+  expect(container.querySelector("p")).toBeNull();
+  expect(container).toHaveTextContent("Pages7");
+});
