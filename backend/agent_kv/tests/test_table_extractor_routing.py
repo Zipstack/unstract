@@ -492,10 +492,16 @@ def test_an_undefined_gate_setting_refuses_loudly_rather_than_silently(caplog):
     """
     from unittest import mock
 
+    from agent_kv import execution_serializers as es
     from agent_kv.execution_serializers import (
         _EXTRACTOR_ENABLE_FLAGS,
         enabled_extractors,
     )
+
+    # The fault log is once-per-process (it is a static wiring property read on
+    # every submit, so unguarded it went to Sentry at request rate). Clear the
+    # ledger so this test sees the first occurrence regardless of run order.
+    es._WIRING_FAULTS_LOGGED.clear()
 
     patched = dict(_EXTRACTOR_ENABLE_FLAGS)
     patched[V1_EXTRACTOR_NAME] = "AGENT_KV_THIS_SETTING_DOES_NOT_EXIST"
@@ -509,3 +515,35 @@ def test_an_undefined_gate_setting_refuses_loudly_rather_than_silently(caplog):
     assert V1_EXTRACTOR_NAME not in result
     assert "AGENT_KV_THIS_SETTING_DOES_NOT_EXIST" in caplog.text
     assert "do not define" in caplog.text
+
+
+def test_a_wiring_fault_is_logged_once_per_process_not_once_per_submit(caplog):
+    """The fault is a static property of the table, read on every request.
+
+    `enabled_extractors()` runs per submit, so an unguarded `logger.error` here
+    emitted one ERROR per request, unbounded, into Sentry at request rate --
+    while `tasks._CAPS_LOGGED` in this same PR goes to real trouble to make an
+    equivalent operator message fire once per process.
+    """
+    from unittest import mock
+
+    from agent_kv import execution_serializers as es
+
+    es._WIRING_FAULTS_LOGGED.clear()
+    patched = dict(es._EXTRACTOR_ENABLE_FLAGS)
+    patched[V1_EXTRACTOR_NAME] = "AGENT_KV_STILL_DOES_NOT_EXIST"
+    with mock.patch.dict(
+        "agent_kv.execution_serializers._EXTRACTOR_ENABLE_FLAGS",
+        patched,
+        clear=True,
+    ):
+        with caplog.at_level("ERROR"):
+            for _ in range(5):
+                es.enabled_extractors()
+    # Count RECORDS, not substring hits: the message names the setting twice
+    # (once as the gate value, once as what the operator would set), so
+    # `caplog.text.count(name)` is 2 per occurrence and would never equal 1.
+    fired = [
+        r for r in caplog.records if "AGENT_KV_STILL_DOES_NOT_EXIST" in r.getMessage()
+    ]
+    assert len(fired) == 1, [r.getMessage() for r in fired]

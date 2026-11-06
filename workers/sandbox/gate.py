@@ -513,8 +513,8 @@ def _outer_evaluated(scope) -> set[int]:
     return out
 
 
-def _guarded_body(stmt) -> set[int]:
-    """The node ids of the sub-tree that only runs AFTER `stmt` binds its target.
+def _in_guarded_body(stmt, child) -> bool:
+    """Is `child` one of the statements that only runs AFTER `stmt` binds?
 
     `for`/`with`/`except` bind their target before their BODY runs -- but not
     before every sub-tree of the statement. `For.iter`,
@@ -529,30 +529,36 @@ def _guarded_body(stmt) -> set[int]:
     there was a measured bypass before it was excluded, and so was every
     region excluded here -- at module scope `for eval in [eval]: e = eval`
     gate-passed and then executed `__import__('os').getuid()` as the worker's
-    own uid. Measured across 12 pre-binding regions x 10 denylisted names:
-    120/120 refused with this, 0/120 without it.
+    own uid. Measured across 13 pre-binding regions x 10 denylisted names:
+    130/130 refused with this, 0/130 without it.
 
-    Not memoised deliberately. An `id()`-keyed cache can collide once a tree is
-    collected, and a stale hit here returns the WRONG id set -- which exempts a
-    Load that should be refused. That is the one direction this layer must not
-    fail in, and the gate runs once per job on at most `SANDBOX_MAX_CODE_BYTES`.
+    `child` is the caller's trailing ancestor -- the direct child of `stmt` on
+    the path down to the Load -- so this is an identity scan of a statement
+    list, not a traversal. An earlier version collected the body's node ids
+    with `ast.walk` on every call, which is correct and quadratic: a legal
+    32,916-byte script with 2,000 reads inside one loop took 61.5s to check
+    against 0.066s before, occupying a worker lane for a minute before the
+    child's timeout even starts. Caching that id set is NOT the alternative --
+    an `id()`-keyed cache can collide once a tree is collected, and a stale hit
+    exempts a Load that should be refused, which is the one direction this
+    layer must not fail in.
     """
-    ids: set[int] = set()
     body = getattr(stmt, "body", None)
-    if isinstance(body, list):
-        for sub in body:
-            ids.update(id(n) for n in ast.walk(sub))
-    return ids
+    if not isinstance(body, list):
+        return False
+    return any(child is sub for sub in body)
 
 
-def _binds_as_own_target(stmt, name: str, node) -> bool:
-    """Does `stmt` bind `name` as the target guarding the region `node` is in?
+def _binds_as_own_target(stmt, name: str, child) -> bool:
+    """Does `stmt` bind `name` as the target guarding the region `child` is in?
 
     Both halves are load-bearing. `stmt` must bind the name as its own target,
     AND the Load must sit in the body that binding guards -- see
-    `_guarded_body` for why the rest of the statement is not covered.
+    `_in_guarded_body` for why the rest of the statement is not covered.
+    `child` is the caller's trailing ancestor, the direct child of `stmt` on
+    the path to the Load.
     """
-    if id(node) not in _guarded_body(stmt):
+    if not _in_guarded_body(stmt, child):
         return False
     if isinstance(stmt, (ast.For, ast.AsyncFor)):
         return any(
@@ -597,10 +603,14 @@ def _shadows_builtin(node, parents) -> bool:
     sites and was the one a reader would cite to conclude the exemption is safe.
     Being right about where a binding applies is a soundness claim, and each
     region where it was wrong -- parameter defaults, bare annotations, and the
-    pre-binding regions `_guarded_body` now excludes -- reached a real builtin
+    pre-binding regions `_in_guarded_body` now excludes -- reached a real builtin
     and executed arbitrary code. Both helpers this calls carry the measurement
     rather than a reassurance; read them before widening anything here.
     """
+    # `prev` trails `cur` by one, so it is always the direct child of `cur` on
+    # the path down to the Load. That is what makes the guarded-region test
+    # below an identity check against `cur.body` instead of a walk of it.
+    prev = node
     cur = parents.get(node)
     while cur is not None:
         # Does THIS scope actually enclose the Load at runtime? A parameter
@@ -608,7 +618,7 @@ def _shadows_builtin(node, parents) -> bool:
         # iterable is evaluated in the ENCLOSING scope, so the scope it is
         # written inside does not shadow anything for it.
         if id(node) in _outer_evaluated(cur):
-            cur = parents.get(cur)
+            prev, cur = cur, parents.get(cur)
             continue
         # An ENCLOSING compound statement that binds the name as its own target
         # exempts the Load, at any scope: a `for`/`with`/`except` body only runs
@@ -616,7 +626,7 @@ def _shadows_builtin(node, parents) -> bool:
         # builtin. This is what makes `for input in rows: print(input)` work at
         # module level, where the `for` itself is not an unconditional binding
         # (an empty `rows` binds nothing, so a Load AFTER the loop is refused).
-        if _binds_as_own_target(cur, node.id, node):
+        if _binds_as_own_target(cur, node.id, prev):
             return True
         if isinstance(cur, _FUNCTION_SCOPES):
             if _function_scope_binds(cur, node.id):
@@ -625,7 +635,7 @@ def _shadows_builtin(node, parents) -> bool:
             pos = _unconditional_module_bindings(cur).get(node.id)
             if pos is not None and pos < node.lineno:
                 return True
-        cur = parents.get(cur)
+        prev, cur = cur, parents.get(cur)
     return False
 
 

@@ -170,9 +170,14 @@ when the hardening lands:
   `statistics.random._os`, `collections._sys` and `statistics.sys` (the last
   walking around the `sys.argv` restriction, which only constrains the NAME
   `sys`) were all GATE-PASS; the gate now refuses every underscore-prefixed
-  attribute and any attribute named `sys`, which closes all two-hop paths from
-  the allowlist to a dangerous module (asserted exhaustively, not case by case,
-  in `test_no_allowlisted_module_still_reaches_a_dangerous_one`).
+  attribute and any attribute named `sys`.
+  `test_no_allowlisted_module_still_reaches_a_dangerous_one` walks those paths
+  by derivation rather than case by case, so a new allowlist entry that
+  re-exports something dangerous is caught by the test instead of by
+  inspection — but **it is not a closure proof and must not be cited as one**:
+  `workers/sandbox/gate.py` (the "three complementary rules" block) names the
+  seven modules its `dangerous` set omits, `json.codecs.builtins` among them.
+  Read that block before adding to the allowlist on the strength of this test.
   **That does not make layer 1 a boundary.** It is a static check over a
   dynamic language, the closure is of the paths that exist in today's stdlib,
   and the worst case above needs no import at all — `open()` alone reaches

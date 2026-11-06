@@ -640,3 +640,43 @@ def test_a_from_import_of_an_allowlisted_module_is_permitted():
     """
     ok, reason = check_code_safe("from json import dumps\nx = dumps({})\n")
     assert ok is True, reason
+
+
+def test_checking_a_large_script_stays_roughly_linear():
+    """The shadowing exemption must not make gate checking quadratic.
+
+    The first version of `_in_guarded_body` collected the enclosing statement
+    body's node ids with `ast.walk` on EVERY denylisted-name read, which is
+    correct and quadratic in the body size. Measured on the script below
+    (32,916 bytes, 2,000 reads of `vars` inside one loop): 61.5s, against 0.066s
+    before the exemption existed and 0.094s after it was reworked to an
+    identity check against the trailing ancestor.
+
+    This runs in the worker BEFORE the child's timeout starts, so no cap bounds
+    it -- a legal script simply occupies a lane. `SANDBOX_MAX_CODE_BYTES`
+    defaults to 65536, twice this fixture, so the shape is well inside what a
+    caller may submit.
+
+    This is a wall-clock assertion, which this suite otherwise avoids. The
+    bound is deliberately ~50x the observed time and ~1/8th of the regression
+    it guards, so it discriminates the algorithmic change it is about without
+    being sensitive to machine speed. Asserting on a visit count instead would
+    need instrumentation inside the rule chain, which is a worse trade than one
+    wide bound.
+    """
+    import time
+
+    body = "\n".join(f"    a{i} = vars" for i in range(2000))
+    code = "vars = {}\nfor row in [1]:\n" + body + "\n"
+    assert len(code.encode()) < 65536, "fixture must stay a submittable size"
+
+    start = time.perf_counter()
+    ok, reason = check_code_safe(code)
+    elapsed = time.perf_counter() - start
+
+    # The script is legal: `vars` is a local bound at module scope before use.
+    assert ok is True, reason
+    assert elapsed < 5.0, (
+        f"gate check took {elapsed:.2f}s for a {len(code.encode())}-byte "
+        "script; the shadowing exemption has gone quadratic again"
+    )

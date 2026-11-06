@@ -2,7 +2,7 @@
 
 > **SUPERSEDED IN PART — read `docs/agent-kv-architecture.md` first.** This is a
 > dated design record (approved 2026-09-01), not a description of what shipped.
-> **Five** of its statements are now known false. Three are corrected in the
+> **Four** of its statements are now known false. Three are corrected in the
 > architecture doc; the fourth -- the CPU-rlimit / wall-clock-kill order,
 > annotated in §5 below -- is corrected by `workers/sandbox/runner.py`'s module
 > docstring, which is the only one of the four that file speaks to:

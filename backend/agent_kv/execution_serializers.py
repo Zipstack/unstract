@@ -67,6 +67,23 @@ _EXTRACTOR_ENABLE_FLAGS: dict[str, object] = {
 }
 
 
+#: Wiring faults below are static properties of `_EXTRACTOR_ENABLE_FLAGS`, not
+#: of a request, but `enabled_extractors()` is called per submit -- so logging
+#: them unguarded emitted one ERROR per request, unbounded, straight into
+#: Sentry at request rate. Keyed by (extractor, kind) so a second, different
+#: fault is still reported. Same reasoning as `tasks._CAPS_LOGGED`, which this
+#: PR added for an equivalent operator message.
+_WIRING_FAULTS_LOGGED: set[tuple[str, str]] = set()
+
+
+def _log_wiring_fault_once(kind: str, name: str, *args) -> None:
+    key = (name, kind)
+    if key in _WIRING_FAULTS_LOGGED:
+        return
+    _WIRING_FAULTS_LOGGED.add(key)
+    logger.error(*args)
+
+
 def enabled_extractors() -> tuple[str, ...]:
     """The routed extractors this deployment will ACCEPT at submit.
 
@@ -91,7 +108,9 @@ def enabled_extractors() -> tuple[str, ...]:
         # the structure has to carry it rather than the derived test alone.
         gate = _EXTRACTOR_ENABLE_FLAGS.get(name, _NO_DECISION)
         if gate is _NO_DECISION:
-            logger.error(
+            _log_wiring_fault_once(
+                "no-decision",
+                name,
                 "agent_kv: extractor %r is routed but has no entry in "
                 "_EXTRACTOR_ENABLE_FLAGS; refusing it at submit. Add a setting "
                 "name to gate it, or _UNGATED to accept it everywhere.",
@@ -115,7 +134,9 @@ def enabled_extractors() -> tuple[str, ...]:
         # case here passes against a settings module that never declares the
         # name. Verified by probe. So the check has to be at runtime.
         if not hasattr(settings, gate):
-            logger.error(
+            _log_wiring_fault_once(
+                "undefined-setting",
+                name,
                 "agent_kv: extractor %r is gated on setting %r, which this "
                 "deployment's settings do not define; refusing it at submit. "
                 "This is a wiring bug, NOT the operator's flag being off -- "
