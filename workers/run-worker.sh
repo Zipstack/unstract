@@ -212,10 +212,12 @@ declare -A WORKER_HEALTH_PORTS=(
     ["${IDE_CALLBACK_WORKER_TYPE}"]="8089"
     # sandbox: 8092 — 8090/8091 are reserved below for pg_queue_consumer /
     # pluggable-worker auto-discovery; 8092 is the sandbox worker's fixed slot.
-    # This map is what EXPORTS SANDBOX_HEALTH_PORT. `to_health_port()` reads no
-    # environment variable at all -- it is a pure lookup over `port_mapping`;
-    # the env-first precedence lives in `shared/infrastructure/config/builder.py`
-    # (`os.getenv(f"{name}_HEALTH_PORT", str(to_health_port()))`). What changed
+    # This map is what EXPORTS SANDBOX_HEALTH_PORT. `to_health_port()` reads
+    # `{NAME}_HEALTH_PORT` ITSELF, before consulting `port_mapping`
+    # (worker_enums_base.py), so this export is honoured there; the lookup in
+    # `shared/infrastructure/config/builder.py`
+    # (`os.getenv(f"{name}_HEALTH_PORT", str(to_health_port()))`) is a second,
+    # redundant layer rather than the only one. What changed
     # on the Python side is that `port_mapping` now carries
     # WorkerType.SANDBOX: 8092, which it previously lacked, so an unset
     # variable resolved to 8080 -- api-deployment's port.

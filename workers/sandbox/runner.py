@@ -30,6 +30,7 @@ import json
 import logging
 import os
 import resource
+import shutil
 import signal
 import subprocess
 import sys
@@ -282,8 +283,8 @@ def _result_from_output(
         # The file check above bounds what we READ; this bounds what we RETURN.
         # Both are needed and they are different quantities: `errors="replace"`
         # turns each undecodable byte into U+FFFD, which re-encodes to 3, so a
-        # 308-byte file of invalid bytes comes back as a 908-byte string
-        # (measured). Without this, `rows_jsonl` could carry ~3x the documented
+        # 310-byte file of invalid bytes comes back as a 910-byte string
+        # (measured against the fixture in `test_runner.py`: 7 + 300 + 3). Without this, `rows_jsonl` could carry ~3x the documented
         # `SANDBOX_MAX_OUTPUT_BYTES` budget past a check that had just passed.
         #
         # A DISTINCT message, deliberately. An earlier revision used the
@@ -436,6 +437,54 @@ def _run_code_unguarded(
         logger.warning("sandbox: gate rejected generated code: %s", reason)
         return RunResult(success=False, error=reason)
 
+    # Refuse BEFORE spawning when the scratch filesystem is too full to hold a
+    # job, and say so distinctly.
+    #
+    # `open()` is deliberately unchecked (R12) and RLIMIT_FSIZE bounds each file
+    # the child writes but nothing bounds their SUM, so a script writing outside
+    # the per-job tempdir can fill the service's tmpfs (256 MiB in compose) with
+    # ~292 files of 900 KB. `TemporaryDirectory` reclaims only its own
+    # directory, so those files survive the job -- and the job itself returns an
+    # ordinary failure, which the consumer ACKS, so there is no redelivery and
+    # no trace.
+    #
+    # Without this check every LATER job on the container died at
+    # `TemporaryDirectory()` or `write_text` with ENOSPC, surfaced by the outer
+    # guard as the opaque `execution failed: OSError` and attributed to the
+    # submitted code. It never recovered: the consumer's poll loop keeps
+    # cycling, so the progress-only liveness probe answers 200 forever and
+    # `restart: unless-stopped` never fires because nothing exits. With N
+    # replicas that is 1/N of codegen traffic failing indefinitely, naming no
+    # cause. At the chart's CONCURRENCY 2 the two lanes share one /tmp, so one
+    # tenant's script starves the co-resident one.
+    #
+    # Three files per job are bounded by `max_output_bytes`, hence the 3x; the
+    # slack covers `script.py` and `input.json`, which are separately capped by
+    # SANDBOX_MAX_CODE_BYTES and SANDBOX_MAX_INPUT_BYTES.
+    needed = 3 * max_output_bytes + len(code.encode()) + len(input_json.encode())
+    try:
+        free = shutil.disk_usage(tempfile.gettempdir()).free
+    except OSError:
+        # Cannot measure: proceed rather than refuse. A failure here means the
+        # scratch path is unreadable, which the spawn below will report with a
+        # better message than a guess made at this point.
+        free = None
+    if free is not None and free < needed:
+        logger.error(
+            "sandbox: refusing to run: %s has %d bytes free, a job needs %d. "
+            "Generated code may write anywhere under it (open() is not "
+            "restricted) and only the per-job directory is reclaimed, so this "
+            "does not clear on its own -- recycle the container to get a fresh "
+            "tmpfs, and size the mount against SANDBOX_MAX_OUTPUT_BYTES x 3.",
+            tempfile.gettempdir(),
+            free,
+            needed,
+        )
+        return RunResult(
+            success=False,
+            error="execution failed: sandbox scratch space exhausted",
+        )
+
     # RLIMIT_CPU backstop, strictly above the wall-clock timeout (ruling
     # R1): equal thresholds make the two kill mechanisms race and produce a
     # nondeterministic error string for the same input.
@@ -505,16 +554,39 @@ def _run_code_unguarded(
         stderr_path = d / "stderr.txt"
 
         def _captured() -> tuple[str, str]:
-            """Read back both streams, each capped, tolerant of a missing file."""
+            """Read back both streams, each capped, tolerant of a missing file.
+
+            stdout is read from the FRONT and stderr from the END, because that
+            is where each one's useful content is. Python writes its traceback
+            to stderr LAST, and RLIMIT_FSIZE lets stderr.txt reach
+            `max_output_bytes` (1 MiB by default, ~256x `_CAPTURE_LIMIT`), so a
+            script that writes progress or warnings to stderr before failing
+            used to return `exit 1` with 4 KiB of noise and no cause. Measured:
+            8000 bytes of stderr followed by `raise ValueError('THE REAL
+            CAUSE')` returned neither the message nor the word "Traceback", and
+            the non-zero-exit path logs nothing, so the reason existed nowhere.
+            """
             texts = []
-            for path in (stdout_path, stderr_path):
+            for path, from_end in ((stdout_path, False), (stderr_path, True)):
                 # Per stream, so one unreadable file does not mask the other.
                 # Logged because `""` here is indistinguishable from "the child
                 # printed nothing", and this is the only path that produces the
                 # diagnostics an operator reads.
                 try:
                     with open(path, encoding="utf-8", errors="replace") as fh:
-                        texts.append(fh.read(_CAPTURE_LIMIT))
+                        if from_end:
+                            # Seek in BYTES on the underlying buffer, then let
+                            # the decoder resync: `errors="replace"` turns a
+                            # split leading character into one U+FFFD rather
+                            # than raising. Seeking past a short file is
+                            # harmless -- `seek` clamps to the end and the read
+                            # returns "" -- so no stat is needed first.
+                            fh.buffer.seek(0, 2)
+                            size = fh.buffer.tell()
+                            fh.buffer.seek(max(0, size - _CAPTURE_LIMIT))
+                            texts.append(fh.buffer.read().decode("utf-8", "replace"))
+                        else:
+                            texts.append(fh.read(_CAPTURE_LIMIT))
                 except OSError:
                     logger.warning(
                         "sandbox: could not read back %s; the job's diagnostics "
@@ -536,15 +608,19 @@ def _run_code_unguarded(
                     [sys.executable, "-I", "-S", "-E", str(script), str(inp), str(out)],
                     cwd=tmp,
                     env={"PATH": _MINIMAL_PATH},
-                    # Explicit, not inherited. The gate exempts a bare
-                    # reference to `input`, and `_rule_denylisted_call` only
-                    # matches a Call on a Name, so `f = input; f()` reaches
-                    # the builtin. Measured before this line: the child read
-                    # the parent's stdin and returned it in the job output.
-                    # (The capability was already R12's -- `open('/dev/stdin')`
-                    # reaches the same place -- but this makes the gate's own
-                    # stated warrant true by construction rather than by
-                    # deployment accident.)
+                    # Explicit, not inherited. Measured before this line: the
+                    # child read the parent's stdin and returned it in the job
+                    # output. `open('/dev/stdin')` reaches the same place and
+                    # is R12's accepted residual, so this does not add a
+                    # boundary -- it makes the one the gate claims true by
+                    # construction rather than by deployment accident.
+                    #
+                    # An earlier version of this comment justified the line by
+                    # a gate exemption for a bare `input` reference. That
+                    # exemption (`_SAFE_AS_BARE_NAME`) was deleted in this same
+                    # change and `f = input` is now refused, so the hole it
+                    # described no longer exists. The /dev/stdin reason above
+                    # does not depend on any gate rule and is why the line stays.
                     stdin=subprocess.DEVNULL,
                     stdout=f_out,
                     stderr=f_err,

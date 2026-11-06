@@ -2,6 +2,7 @@ import json
 import os
 from unittest import mock
 
+import pytest
 from sandbox import tasks
 
 _ECHO = (
@@ -99,8 +100,24 @@ class TestIntEnvGuards:
 
     @mock.patch.dict(os.environ, {"SANDBOX_MEMORY_MB": "0"})
     def test_a_zero_cap_is_clamped_to_the_floor(self):
+        # 64, not 1. This expectation was deliberately raised: every cap used to
+        # share `minimum=1`, which is legal for all eight and USABLE for none of
+        # the memory/byte ones. A clamp to 1 cleared the floor silently and gave
+        # the child a 1 MiB RLIMIT_AS, so the interpreter died on SIGSEGV with
+        # empty stdout AND stderr and the caller was told its own code failed.
+        # 64 is measured as the lowest value that completes the workload the
+        # codegen prompt produces -- see the floors in `tasks.py`.
         kwargs = self._memory_mb_passed_to_run_code()
-        assert kwargs["memory_mb"] == 1
+        assert kwargs["memory_mb"] == 64
+
+    @mock.patch.dict(os.environ, {"SANDBOX_MEMORY_MB": "0"})
+    def test_clamping_to_the_floor_is_loud(self, caplog):
+        # The clamp is the operator's only signal that the value they set was
+        # unusable. Deleting the warning left the suite green before this.
+        with caplog.at_level("WARNING"):
+            self._memory_mb_passed_to_run_code()
+        assert "SANDBOX_MEMORY_MB" in caplog.text
+        assert "clamping" in caplog.text.lower()
 
     @mock.patch.dict(os.environ, {"SANDBOX_MEMORY_MB": "256m"})
     def test_a_malformed_cap_falls_back_to_the_default_loudly(self):
@@ -145,3 +162,72 @@ def test_the_configured_caps_are_logged_once_per_process(caplog):
         assert caplog.text.count("configured caps") == 1, caplog.text
     finally:
         tasks._CAPS_LOGGED = False
+
+
+@pytest.mark.parametrize(
+    "label,kwargs",
+    [
+        # `len(x.encode())` raises UnicodeEncodeError on a lone surrogate, and
+        # `json.loads('"\\udcff"')` produces one without complaint -- so both
+        # LLM-generated code and document-derived input can carry it.
+        ("lone surrogate in code", {"code": "x = 1  # \udcff"}),
+        ("lone surrogate in input_json", {"input_json": '{"k": "\udcff"}'}),
+        # `int(inf)` raises OverflowError, which the named numeric guard does
+        # NOT catch. `json.loads("1e400")` is strictly valid JSON and yields inf,
+        # so any producer can emit it.
+        ("infinite timeout", {"timeout": float("inf")}),
+    ],
+)
+def test_inputs_that_raise_outside_the_named_guards_still_return_a_result(label, kwargs):
+    """No input may RAISE out of the task; every one degrades to a result dict.
+
+    Raising is strictly worse than returning a failure here: the task does not
+    raise to signal retry, so an exception reaches the PG consumer, which
+    redelivers to `max_attempts` -- re-running the same doomed payload each time
+    -- and then poison-parks it with "exceeded max_attempts" instead of a
+    message naming the actual problem.
+
+    These three inputs are the ones that escaped the per-site guards. The guard
+    is the wrapper in `_execute_sandboxed_code_impl`, not three more
+    except-clauses, so this test pins the wrapper: it fails if the wrapper is
+    removed, whatever new site a later edit adds.
+    """
+    out = _call(**kwargs)
+    assert out["success"] is False, label
+    assert out["error"].startswith("invalid request: "), (label, out["error"])
+    assert out["rows_written"] == 0
+
+
+def test_the_named_guards_still_give_their_specific_reason():
+    """The wrapper must not swallow the cases that already had a good message.
+
+    A bare `except Exception` around the body would make every bad input report
+    `invalid request: <TypeError>`, which is a regression in diagnosis even
+    though the shape is right. The named guards run first and keep their text.
+    """
+    assert "timeout" in _call(timeout="not-a-number")["error"].lower()
+    assert "string" in _call(code=None)["error"].lower()
+
+
+def test_zero_timeout_clamps_to_the_floor_not_the_ceiling():
+    """0 must not select the server MAXIMUM.
+
+    `if timeout` sent 0 down the absent branch and returned `timeout_max`, the
+    loosest value available, while -5 clamped to 1 -- two adjacent nonsense
+    values resolving to opposite extremes, silently. 0 reads as
+    none/immediate/unset, never as "give me the ceiling".
+    """
+    with mock.patch.dict(os.environ, {"SANDBOX_TIMEOUT_MAX": "60"}):
+        with mock.patch.object(tasks, "run_code") as m:
+            m.return_value = tasks.RunResult(success=True)
+            _call(timeout=0)
+            assert m.call_args.kwargs["timeout"] == 1
+
+
+def test_absent_timeout_still_takes_the_server_ceiling():
+    """The documented advisory default survives the fix above."""
+    with mock.patch.dict(os.environ, {"SANDBOX_TIMEOUT_MAX": "60"}):
+        with mock.patch.object(tasks, "run_code") as m:
+            m.return_value = tasks.RunResult(success=True)
+            _call(timeout=None)
+            assert m.call_args.kwargs["timeout"] == 60

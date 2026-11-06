@@ -6,6 +6,7 @@ import subprocess
 import time
 from unittest.mock import MagicMock, patch
 
+from sandbox import runner
 from sandbox.runner import _MINIMAL_PATH, run_code
 
 _DEFAULTS = dict(
@@ -195,8 +196,8 @@ def test_a_non_utf8_file_that_inflates_past_the_cap_names_the_encoding(tmp_path)
 
     An earlier revision measured the cap on the re-encoded decode ONLY, so a
     compliant file was told to shrink. The fix measured the file ONLY, which
-    then let the RETURNED string carry ~3x the budget (measured: a 308-byte
-    file of invalid bytes comes back as 908). Both checks now exist, and this
+    then let the RETURNED string carry ~3x the budget (measured: the 310-byte
+    fixture below comes back as 910). Both checks now exist, and this
     pins that the inflation case names the encoding rather than reporting a
     bare "too big" -- the complaint that started this.
     """
@@ -602,3 +603,83 @@ def test_an_oversized_valid_utf8_file_is_refused_as_too_big_not_as_bad_encoding(
     r = _result_from_output(out, max_output_bytes=512, max_rows=100, stdout="", stderr="")
     assert r.success is False
     assert r.error == "execution failed: output exceeds size cap", r.error
+
+
+def test_a_full_scratch_filesystem_is_refused_distinctly(monkeypatch):
+    """A full tmpfs must give its own error, not the opaque harness OSError.
+
+    Generated code may write anywhere under /tmp (`open()` is unrestricted, per
+    R12) and only the per-job directory is reclaimed, so one script can leave
+    the mount full for every later job on that container. Before this guard
+    those jobs failed at `TemporaryDirectory()`/`write_text` with ENOSPC,
+    reported as `execution failed: OSError` and attributed to the submitted
+    code -- permanently, since the poll loop keeps the liveness probe green and
+    nothing exits to trigger a restart.
+    """
+    import shutil as _shutil
+
+    real = _shutil.disk_usage
+
+    def tiny(path):
+        u = real(path)
+        return type(u)(total=u.total, used=u.total, free=1024)
+
+    monkeypatch.setattr(runner.shutil, "disk_usage", tiny)
+    r = runner.run_code(
+        "x = 1\n",
+        "{}",
+        timeout=10,
+        max_output_bytes=1_048_576,
+        max_rows=100,
+        memory_mb=256,
+        max_pids=16,
+        grace=5,
+    )
+    assert r.success is False
+    assert r.error == "execution failed: sandbox scratch space exhausted"
+    # Distinct from the harness-failure string, which is what it used to be.
+    assert "OSError" not in r.error
+
+
+def test_stderr_is_captured_from_the_END_so_the_traceback_survives():
+    """Python writes its traceback LAST; a head-truncated stderr loses it.
+
+    RLIMIT_FSIZE lets stderr.txt reach `max_output_bytes` (~256x the capture
+    limit), so a script that writes progress before failing returned 4 KiB of
+    noise and no cause -- and the non-zero-exit path logs nothing, so the
+    reason existed nowhere at all.
+    """
+    code = (
+        "import sys\n"
+        "sys.stderr.write('N' * 8000)\n"
+        "raise ValueError('THE REAL CAUSE')\n"
+    )
+    r = runner.run_code(
+        code,
+        "{}",
+        timeout=20,
+        max_output_bytes=1_048_576,
+        max_rows=100,
+        memory_mb=256,
+        max_pids=16,
+        grace=5,
+    )
+    assert r.success is False
+    assert "THE REAL CAUSE" in r.stderr
+    assert "Traceback" in r.stderr
+
+
+def test_stdout_is_still_captured_from_the_FRONT():
+    """Only stderr flipped. stdout's useful content is at the beginning."""
+    code = "print('FIRST')\n" + "print('x' * 200)\n" * 60
+    r = runner.run_code(
+        code,
+        "{}",
+        timeout=20,
+        max_output_bytes=1_048_576,
+        max_rows=100,
+        memory_mb=256,
+        max_pids=16,
+        grace=5,
+    )
+    assert "FIRST" in r.stdout

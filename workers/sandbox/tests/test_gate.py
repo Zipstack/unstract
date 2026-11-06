@@ -394,6 +394,56 @@ class TestShadowedBuiltinsAreScopeResolved:
             ("outermost comprehension iterable", "ys = [0 for eval in (eval,)]\n"),
             # A bare annotation binds NOTHING; the name stays unassigned.
             ("annotation without a value", "eval: int\nf = eval\nx = f('1')\n"),
+            # ---- The PRE-BINDING region of each target-binding statement. ----
+            # The entries above cover each compound statement's BODY (accepted,
+            # correctly) and its AFTER side (refused, correctly). This is the
+            # third region, and it is the one that was missing: `for`/`with`/
+            # `except` bind their target before the BODY runs, not before the
+            # whole statement, and `For.orelse` can run with the target never
+            # bound at all. Every entry below gate-passed and then EXECUTED
+            # `__import__('os').getuid()` as the worker's uid before
+            # `_guarded_body` existed.
+            (
+                "for target, read in the ITERABLE",
+                "for eval in [eval]:\n    e = eval\nx = e('1')\n",
+            ),
+            (
+                "for target, __import__ through the iterable",
+                "for __import__ in [__import__]:\n    f = __import__\nf('os')\n",
+            ),
+            (
+                "for target, iterable via a subscript call",
+                "for eval in [[eval][0]('1')]:\n    pass\n",
+            ),
+            (
+                "for target, read in the ELSE clause",
+                "for eval in []:\n    pass\nelse:\n    e = eval\n    x = e('1')\n",
+            ),
+            (
+                "with target, read in the CONTEXT EXPR",
+                "def mk(v):\n    return open\nwith mk(eval) as eval:\n    pass\n",
+            ),
+            (
+                "except target, read in the EXCEPTION TYPE",
+                "def cap(v):\n    return ValueError\n"
+                "try:\n    pass\nexcept (ValueError, cap(eval)) as eval:\n    pass\n",
+            ),
+            # The `global declaration` entry above binds nothing anywhere, so it
+            # is refused for a different reason than the one its comment gives.
+            # THIS is the shape the `global` arm was written for, and the one
+            # that defeated it: you declare `global X` in order to assign X, and
+            # the assignment's Store answered the walk before the Global arm
+            # could. The module global is unset at the read, so it fell through
+            # to builtins.
+            (
+                "global declaration WITH an assignment",
+                "def f():\n"
+                "    global eval\n"
+                "    e = eval\n"
+                "    eval = 1\n"
+                "    return e\n"
+                "x = f()('1')\n",
+            ),
         ],
     )
     def test_the_alias_bypass_shapes_are_all_refused(self, label, code):

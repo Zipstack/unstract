@@ -82,16 +82,16 @@ kept there as defense-in-depth). It rejects imports outside the allowed set,
 dynamic-exec calls, dunder attribute access, introspection-escape names, an
 attribute REFERENCE (not only a call) to a dangerous builtin (``f = b.eval``),
 and a string subscript naming a dunder / ``__builtins__`` / ``__globals__``
-mapping (``x['__builtins__']``); it permits the name ``sys`` used ONLY as
-``sys.argv`` (the runner invokes generated scripts as ``argv[1]=input path,
-argv[2]=output path``, so scripts legitimately read ``sys.argv`` — nothing
-else on ``sys`` is needed, and ``sys`` is the one allowed name with a
-dangerous surface: ``sys.modules`` reaches already-imported modules like
-``os`` without an ``import os``, ``sys._getframe``/``sys.settrace`` are classic
-sandbox-escape primitives, and the bare name itself can be aliased —
-``x = sys`` — to reach any of that through a different name, so any Load
-reference to ``sys`` other than the immediate ``sys.argv`` attribute access is
-rejected, not just a denylist of attributes).
+mapping (``x['__builtins__']``); and it restricts the name ``sys`` to an
+allowlist of attributes, defined by ``_SYS_ALLOWED_ATTRS`` and enforced by
+``_rule_sys_name`` — read those two for what is permitted, rather than a count
+restated here. ``sys`` is the one allowed name with a dangerous surface:
+``sys.modules`` reaches already-imported modules like ``os`` without an
+``import os``, ``sys._getframe``/``sys.settrace`` are classic sandbox-escape
+primitives, and the bare name itself can be aliased — ``x = sys`` — to reach
+any of that through a different name, so the rule works on the NAME and
+permits only an immediate attribute access drawn from that allowlist, rather
+than denylisting individual attributes.
 
 **``open()`` is NOT restricted, and this gate attempts no path or argument check
 of any kind.** An earlier version of this docstring said ``open()`` was permitted
@@ -425,6 +425,26 @@ def _function_scope_binds(scope, name: str) -> bool:
     """
     nested = _FUNCTION_SCOPES + (ast.ClassDef,)
 
+    # `global eval` / `nonlocal eval` removes the name from this scope's local
+    # namespace for the WHOLE scope, so the scope binds nothing locally and the
+    # Load must fall through to the module rule. This has to be decided BEFORE
+    # the walk below, not inside it: the walk's own Global arm returns False for
+    # that one node, and the `any(...)` recursion around it then finds the
+    # assignment's Store and answers True -- defeating the exemption in exactly
+    # the case it exists for, since one writes `global X` in order to assign X.
+    # Measured: `def f(): global eval; e = eval; eval = 1` gate-passed and
+    # executed `__import__('os').getuid()` through the real builtin, because the
+    # module global is unset at the read and falls through to builtins.
+    def declares_global(n, top=False):
+        if not top and isinstance(n, nested):
+            return False
+        if isinstance(n, (ast.Global, ast.Nonlocal)) and name in n.names:
+            return True
+        return any(declares_global(c) for c in ast.iter_child_nodes(n))
+
+    if declares_global(scope, top=True):
+        return False
+
     def walk(n, top=False):
         if not top and isinstance(n, nested):
             # A nested scope: only its NAME is bound out here.
@@ -493,13 +513,47 @@ def _outer_evaluated(scope) -> set[int]:
     return out
 
 
-def _binds_as_own_target(stmt, name: str) -> bool:
-    """Does `stmt` bind `name` as the target its own body is guarded by?
+def _guarded_body(stmt) -> set[int]:
+    """The node ids of the sub-tree that only runs AFTER `stmt` binds its target.
 
-    `for x in ...:`, `with ... as x:` and `except E as x:` all assign before
-    their body runs, so a Load of `x` inside that body is the binding, never
-    the builtin -- independently of scope or lexical order.
+    `for`/`with`/`except` bind their target before their BODY runs -- but not
+    before every sub-tree of the statement. `For.iter`,
+    `With.items[].context_expr` and `ExceptHandler.type` are all evaluated
+    FIRST, while the name still resolves to the builtin, and `For.orelse` can
+    run with the target never bound at all (an empty iterable). So the
+    exemption covers the body and nothing else.
+
+    This is the statement-level mirror of `_outer_evaluated`, which draws the
+    same distinction for parameter defaults, annotations, decorators, class
+    bases and a comprehension's outermost iterable. Every region excluded
+    there was a measured bypass before it was excluded, and so was every
+    region excluded here -- at module scope `for eval in [eval]: e = eval`
+    gate-passed and then executed `__import__('os').getuid()` as the worker's
+    own uid. Measured across 12 pre-binding regions x 10 denylisted names:
+    120/120 refused with this, 0/120 without it.
+
+    Not memoised deliberately. An `id()`-keyed cache can collide once a tree is
+    collected, and a stale hit here returns the WRONG id set -- which exempts a
+    Load that should be refused. That is the one direction this layer must not
+    fail in, and the gate runs once per job on at most `SANDBOX_MAX_CODE_BYTES`.
     """
+    ids: set[int] = set()
+    body = getattr(stmt, "body", None)
+    if isinstance(body, list):
+        for sub in body:
+            ids.update(id(n) for n in ast.walk(sub))
+    return ids
+
+
+def _binds_as_own_target(stmt, name: str, node) -> bool:
+    """Does `stmt` bind `name` as the target guarding the region `node` is in?
+
+    Both halves are load-bearing. `stmt` must bind the name as its own target,
+    AND the Load must sit in the body that binding guards -- see
+    `_guarded_body` for why the rest of the statement is not covered.
+    """
+    if id(node) not in _guarded_body(stmt):
+        return False
     if isinstance(stmt, (ast.For, ast.AsyncFor)):
         return any(
             isinstance(n, ast.Name) and n.id == name for n in ast.walk(stmt.target)
@@ -535,8 +589,17 @@ def _shadows_builtin(node, parents) -> bool:
 
     Where the Load sits in a function and only the module binds the name, this
     refuses: the function may be called before the module-level assignment runs
-    and we cannot know. That over-refuses rather than under-refuses, which is
-    the correct direction for this layer to be wrong in.
+    and we cannot know. That particular case over-refuses, which is the safe
+    direction.
+
+    **It does not follow that the rule as a whole errs that way, and an earlier
+    version of this docstring claimed it did.** That sentence was false at six
+    sites and was the one a reader would cite to conclude the exemption is safe.
+    Being right about where a binding applies is a soundness claim, and each
+    region where it was wrong -- parameter defaults, bare annotations, and the
+    pre-binding regions `_guarded_body` now excludes -- reached a real builtin
+    and executed arbitrary code. Both helpers this calls carry the measurement
+    rather than a reassurance; read them before widening anything here.
     """
     cur = parents.get(node)
     while cur is not None:
@@ -553,7 +616,7 @@ def _shadows_builtin(node, parents) -> bool:
         # builtin. This is what makes `for input in rows: print(input)` work at
         # module level, where the `for` itself is not an unconditional binding
         # (an empty `rows` binds nothing, so a Load AFTER the loop is refused).
-        if _binds_as_own_target(cur, node.id):
+        if _binds_as_own_target(cur, node.id, node):
             return True
         if isinstance(cur, _FUNCTION_SCOPES):
             if _function_scope_binds(cur, node.id):

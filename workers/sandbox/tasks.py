@@ -105,10 +105,18 @@ def _log_configured_caps(caps: dict[str, int]) -> None:
 
     "Configured", not "effective": these are `_int_env`'s return values -- what
     the parent decided -- and nothing here reads back what the kernel accepted.
-    Four of the eight become rlimits in `_limits._apply`, where a failed
-    `setrlimit` is swallowed per limit, so a cap named here can be absent in the
-    child. The dump also omits the two limits that are not env-derived at all:
-    the `RLIMIT_CPU` backstop and the hard-coded `RLIMIT_NOFILE`.
+    THREE of the eight become rlimits directly in `_limits._apply`:
+    `SANDBOX_MAX_OUTPUT_BYTES` -> `RLIMIT_FSIZE`, `SANDBOX_MEMORY_MB` ->
+    `RLIMIT_AS`, `SANDBOX_MAX_PIDS` -> `RLIMIT_NPROC`. A failed `setrlimit` is
+    swallowed per limit, so a cap named here can be absent in the child.
+
+    `_apply` sets five rlimits in all, and the other two are not in this dump
+    for different reasons. `RLIMIT_CPU` IS env-derived -- `runner` computes it
+    as `max(timeout + grace, timeout + 1)`, i.e. from `SANDBOX_TIMEOUT_GRACE`
+    and a timeout already clamped by `SANDBOX_TIMEOUT_MAX` -- so it is omitted
+    as a derived value rather than a fixed one, and an operator should know
+    that `SANDBOX_TIMEOUT_GRACE` sets a kernel CPU limit. Only `RLIMIT_NOFILE`
+    is genuinely not env-derived: it is hard-coded to 64.
 
     The one thing `_int_env`'s per-call warnings cannot tell an operator is
     what the caps ENDED UP as -- an unset variable and a blank one are both
@@ -130,14 +138,72 @@ def _log_configured_caps(caps: dict[str, int]) -> None:
 def _execute_sandboxed_code_impl(
     request_id: str, code: str, input_json: str, timeout: int
 ) -> dict:
-    max_code = _int_env("SANDBOX_MAX_CODE_BYTES", 65536)
-    max_input = _int_env("SANDBOX_MAX_INPUT_BYTES", 1_048_576)
-    max_output = _int_env("SANDBOX_MAX_OUTPUT_BYTES", 1_048_576)
-    max_rows = _int_env("SANDBOX_MAX_ROWS", 100_000)
-    timeout_max = _int_env("SANDBOX_TIMEOUT_MAX", 60)
-    grace = _int_env("SANDBOX_TIMEOUT_GRACE", 5)
-    memory_mb = _int_env("SANDBOX_MEMORY_MB", 512)
-    max_pids = _int_env("SANDBOX_MAX_PIDS", 16)
+    r"""Always return a result dict, never raise.
+
+    The guard is here rather than at each site that can fail, for the reason
+    `runner.run_code`'s own wrapper gives: guarding each site individually is a
+    rule a future edit has to remember, and three sites had already forgotten
+    it. Measured before this wrapper existed:
+
+    - `len(code.encode())` raised `UnicodeEncodeError` on a lone surrogate, and
+      `json.loads('"x = 1 # \\udcff"')` yields one without complaint, so
+      LLM-generated text could carry it.
+    - the same on `input_json`, which is document-derived.
+    - `int(timeout)` raised `OverflowError` on `inf`, which the numeric handler
+      below does not catch; `json.loads("1e400")` is valid JSON and yields it.
+
+    Raising out of the task is worse than returning a failure: the PG consumer
+    redelivers to `max_attempts`, re-running the same doomed payload each time,
+    and then poison-parks it with "exceeded max_attempts" instead of the
+    specific message the guards below were written to produce.
+
+    The named guards are kept rather than replaced -- they give the caller an
+    actionable reason, and this only stops the unnamed ones escaping.
+    """
+    try:
+        return _execute_sandboxed_code_unguarded(request_id, code, input_json, timeout)
+    except Exception as exc:
+        logger.warning(
+            "sandbox: request %s failed outside the guarded region: %s",
+            request_id,
+            exc,
+            exc_info=True,
+        )
+        return _fail(request_id, f"invalid request: {type(exc).__name__}")
+
+
+def _execute_sandboxed_code_unguarded(
+    request_id: str, code: str, input_json: str, timeout: int
+) -> dict:
+    # Each cap passes its OWN floor. `minimum=1` is legal for all eight and
+    # usable for none of the byte/memory ones, and a value that clears the floor
+    # is silent -- so the floors below are what make a unit slip loud instead of
+    # fatal. Measured, one child per value: SANDBOX_MEMORY_MB=1 becomes
+    # RLIMIT_AS=1MiB and the interpreter dies on SIGSEGV (rc -11) with EMPTY
+    # stdout AND stderr; =8 dies loading libc ("failed to map segment");
+    # =32 runs. SANDBOX_MAX_OUTPUT_BYTES=1 becomes RLIMIT_FSIZE=1 and the child
+    # is killed on its first write -- including the write of its own error --
+    # giving `exit 120` with stdout 'h' and stderr 'E'. Both are configuration
+    # faults reported to the caller as the generated code's fault.
+    #
+    # The byte floors are a payload's worth, not a kernel minimum: below 4 KiB
+    # the cap rejects every realistic script or document, which is an outage
+    # rather than a tightening.
+    #
+    # The 64 MiB memory floor is measured against the workload the codegen
+    # prompt actually produces -- `import json, sys`, read `argv[1]`, write
+    # `argv[2]` -- not against a bare interpreter: 16 and 24 MiB fail to exec
+    # at all (rc 127, libc cannot map), 32 and 48 start and then die (rc 1),
+    # and 64 is the first value that completes. A bare `print()` survives on
+    # 32, which is why the floor is set from the real workload instead.
+    max_code = _int_env("SANDBOX_MAX_CODE_BYTES", 65536, minimum=4096)
+    max_input = _int_env("SANDBOX_MAX_INPUT_BYTES", 1_048_576, minimum=4096)
+    max_output = _int_env("SANDBOX_MAX_OUTPUT_BYTES", 1_048_576, minimum=4096)
+    max_rows = _int_env("SANDBOX_MAX_ROWS", 100_000, minimum=1)
+    timeout_max = _int_env("SANDBOX_TIMEOUT_MAX", 60, minimum=1)
+    grace = _int_env("SANDBOX_TIMEOUT_GRACE", 5, minimum=1)
+    memory_mb = _int_env("SANDBOX_MEMORY_MB", 512, minimum=64)
+    max_pids = _int_env("SANDBOX_MAX_PIDS", 16, minimum=1)
     _log_configured_caps(
         {
             "SANDBOX_MAX_CODE_BYTES": max_code,
@@ -165,7 +231,17 @@ def _execute_sandboxed_code_impl(
         return _fail(request_id, "input exceeds size cap")
 
     try:
-        eff_timeout = max(1, min(int(timeout) if timeout else timeout_max, timeout_max))
+        # `is None` rather than falsiness. `if timeout` sent 0 down the
+        # "absent" branch and handed it `timeout_max` -- the LOOSEST value
+        # available -- while -5 clamped to 1, so two adjacent nonsense values
+        # resolved to opposite extremes and neither said anything. 0 reads as
+        # "none"/"immediate"/"unset" far more naturally than "give me the
+        # server ceiling", and every other ambiguous input in this module
+        # resolves toward the floor and logs (`_int_env`). Absent still means
+        # the ceiling, which is the documented advisory default.
+        eff_timeout = (
+            timeout_max if timeout is None else max(1, min(int(timeout), timeout_max))
+        )
     except (TypeError, ValueError):
         return _fail(request_id, "timeout must be numeric")
     r: RunResult = run_code(

@@ -447,3 +447,65 @@ def test_every_routed_extractor_has_a_gate_entry():
         "`_EXTRACTOR_ENABLE_FLAGS` -- a setting name to gate it, or `_UNGATED` "
         "to accept it everywhere."
     )
+
+
+def test_every_gate_setting_name_exists_in_the_real_settings_module():
+    """A gate pointing at a setting Django does not define must not read as off.
+
+    This is the one the sibling tests above structurally cannot catch:
+    `override_settings` FABRICATES the attribute on the settings object whether
+    or not the settings module declares it, so every
+    `@override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=...)` case passes against
+    a settings module that never defines the name. This test therefore reads
+    the live settings WITHOUT an override.
+
+    Why it matters: `getattr(settings, gate, False)` made an absent or mistyped
+    name indistinguishable from a flag deliberately set false. The operator sets
+    the variable, nothing changes, and the refusal says the extractor "is not
+    enabled on this deployment" -- the opposite of the truth.
+    """
+    from django.conf import settings
+
+    from agent_kv.execution_serializers import (
+        _EXTRACTOR_ENABLE_FLAGS,
+        _UNGATED,
+    )
+
+    undefined = [
+        (name, gate)
+        for name, gate in _EXTRACTOR_ENABLE_FLAGS.items()
+        if gate is not _UNGATED and not hasattr(settings, gate)
+    ]
+    assert not undefined, (
+        "these extractors are gated on settings this deployment does not "
+        f"define, so they refuse unconditionally: {undefined}. Declare each in "
+        "backend/backend/settings/base.py or use _UNGATED."
+    )
+
+
+def test_an_undefined_gate_setting_refuses_loudly_rather_than_silently(caplog):
+    """The runtime half of the guard above, since a test cannot cover every future entry.
+
+    A derived test only covers the entries that exist today. This pins the
+    behaviour for the next one: refuse, and say it is a wiring bug rather than
+    the operator's flag being off.
+    """
+    from unittest import mock
+
+    from agent_kv.execution_serializers import (
+        _EXTRACTOR_ENABLE_FLAGS,
+        enabled_extractors,
+    )
+
+    patched = dict(_EXTRACTOR_ENABLE_FLAGS)
+    patched[V1_EXTRACTOR_NAME] = "AGENT_KV_THIS_SETTING_DOES_NOT_EXIST"
+    with mock.patch.dict(
+        "agent_kv.execution_serializers._EXTRACTOR_ENABLE_FLAGS",
+        patched,
+        clear=True,
+    ):
+        with caplog.at_level("ERROR"):
+            result = enabled_extractors()
+    assert V1_EXTRACTOR_NAME not in result
+    assert "AGENT_KV_THIS_SETTING_DOES_NOT_EXIST" in caplog.text
+    assert "do not define" in caplog.text

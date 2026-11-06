@@ -124,8 +124,20 @@ services:
     # raise either knob without the other and the cgroup OOM killer fires on
     # the CONTAINER, whose victim is not guaranteed to be the offending child.
     #
-    # (The chart's emptyDir is DISK-backed, so its 1Gi is process memory only.
-    # The two surfaces agree on the numbers and not on what they cover.)
+    # (The chart's emptyDir is DISK-backed, so its 1Gi is process memory only.)
+    #
+    # The two surfaces do NOT use the same per-job figure, and this is the
+    # number to carry when checking the chart: the chart sets
+    # `SANDBOX_MEMORY_MB: "192"`, not the 512 default used above. That is what
+    # closes its budget at CONCURRENCY 2 -- 2 x 192 + 512Mi of requests = 896Mi
+    # of its 1Gi -- and it is enforced at render time by a `fail` in
+    # templates/worker-sandbox/deployment.yaml that computes the product from
+    # the live values rather than asserting agreement.
+    #
+    # Stated explicitly because omitting it was costly: four separate reviewers
+    # read "1Gi" and "CONCURRENCY 2" from this comment, multiplied by the 512
+    # above, got 1408 > 1024, and each reported the chart as over-committed.
+    # The arithmetic was right and the missing input was 192.
     #
     # No other service in this file sets a limit -- a deliberate exception for
     # the one service that executes code it did not write.

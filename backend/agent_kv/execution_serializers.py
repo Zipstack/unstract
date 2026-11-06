@@ -98,7 +98,34 @@ def enabled_extractors() -> tuple[str, ...]:
                 name,
             )
             continue
-        if gate is _UNGATED or getattr(settings, gate, False):
+        if gate is _UNGATED:
+            enabled.append(name)
+            continue
+        # `getattr(settings, gate, False)` conflated two different things, one
+        # level below the conflation `_NO_DECISION` was introduced to end: a
+        # setting this deployment does not define read exactly like a flag
+        # deliberately set false. The operator then sets the variable, nothing
+        # changes, and the refusal message tells them the extractor "is not
+        # enabled" -- which is the opposite of the truth, because they did
+        # enable it.
+        #
+        # A derived test cannot close this: `override_settings` FABRICATES the
+        # attribute on the settings object whether or not the settings module
+        # defines it, so every `@override_settings(AGENT_KV_..._ENABLED=...)`
+        # case here passes against a settings module that never declares the
+        # name. Verified by probe. So the check has to be at runtime.
+        if not hasattr(settings, gate):
+            logger.error(
+                "agent_kv: extractor %r is gated on setting %r, which this "
+                "deployment's settings do not define; refusing it at submit. "
+                "This is a wiring bug, NOT the operator's flag being off -- "
+                "setting %s in the environment will not change it.",
+                name,
+                gate,
+                gate,
+            )
+            continue
+        if getattr(settings, gate):
             enabled.append(name)
     return tuple(enabled)
 
