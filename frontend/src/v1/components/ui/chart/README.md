@@ -103,8 +103,8 @@ Every chart:
 `series` and `markers` may be inline literals: the chart keys its work on
 what they say, not on their identity. `data` is different: pass a stable
 array (the query result, or a `useMemo` over it). A new array on every
-render makes the chart recompute its rows and Recharts reset its data
-store. Rows typed with a string index
+render makes Recharts reset its data store (and the axis charts recompute
+their rows). Rows typed with a string index
 signature (`Record<string, number>`, pivoted rows with one field per dynamic
 series) accept any key whose field could hold a number, since the type
 cannot check them per field (`Record<string, string>` accepts none;
@@ -127,20 +127,24 @@ own stack.
   ordered categories: modes, tiers, buckets.
 - Neighbouring steps differ only in lightness (about 1.2–1.4:1 to each other),
   which reads in a stack, where a stroke splits the segments, but not reliably
-  between two lines or side-by-side bars. Two series that are not an order
-  (this week and last week, two products) on a line, area or grouped bar
-  take the two tones that carry no meaning, `primary` and `muted`. With more
-  than two, chart them separately or group the tail into "Other"; never
-  borrow `success`, `warning` or `destructive` for a plain category.
+  between two lines or side-by-side bars.
+- There is no palette yet for series that are not an order (this week and
+  last week, two products) on a line, area or grouped bar: no tone or step
+  is checked against another, and some pairs are close (in light mode
+  `primary` and `muted` differ in hue but hardly in lightness). Until the
+  design system settles one, chart such series separately or group the tail
+  into "Other"; never borrow `success`, `warning` or `destructive` for a
+  plain category.
 - After five untoned series the ramp repeats. Keep a stack to five or fewer:
   group the tail into "Other".
 - A `tone` takes a series out of the ramp for meaning: `primary`,
   `destructive` (failures), `success`, `warning`, `muted`
   (`muted-foreground`).
-- Keep `primary` off charts that also use the ramp: in the Unstract theme it
-  is navy, the ramp's hue, and only 1.45:1 from `--chart-5` (1.79:1 from
-  `--chart-4`). `palette.test.ts` checks each colour against `card`, not
-  against the others.
+- Keep `primary` off charts that also use the ramp: it sits close to the
+  ramp's dark end (in dark mode about 1.1–1.2:1 from `--chart-4` and
+  `--chart-5`; in the Unstract theme, navy, about 1.4–1.8:1).
+  `palette.test.ts` checks each colour against `card`, not against the
+  others.
 - Every ramp step and tone reaches 3:1 against `card` in every mode (WCAG
   1.4.11), enforced by `palette.test.ts`. Change a value in
   `styles/tokens.json` and that test tells you if it got too light.
