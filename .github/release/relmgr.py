@@ -336,14 +336,13 @@ def pr_fix_class(title, labels=()):
     if len(classes) > 1:
         raise ValueError(f"conflicting fix labels: {sorted('fix/' + c for c in classes)}")
     fixes = sorted(set(labels) & set(FIX_LABELS))
-    # Validated for the changelogs, not for the class. Unwrap reverts; strip: GitHub keeps a leading space.
+    # Validated for the changelogs, not for the class, so a fix/ label does not excuse it. Unwrap reverts;
+    # strip: GitHub keeps a leading space.
     inner = title.strip()
     while r := REVERT_RE.match(inner):
         inner = r.group(1).strip()
-    if not PR_TITLE_RE.match(inner) and not fixes:
-        raise ValueError(
-            f"no recognised '[TYPE]' or 'TICKET [TYPE]' prefix and no fix/ label: {title!r}"
-        )
+    if not PR_TITLE_RE.match(inner):
+        raise ValueError(f"no recognised '[TYPE]' or 'TICKET [TYPE]' prefix: {title!r}")
     if MAIN_ONLY in labels and fixes:
         raise ValueError(f"conflicting labels: {MAIN_ONLY} with {fixes}")
     if classes:

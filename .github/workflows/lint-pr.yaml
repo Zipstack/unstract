@@ -1,6 +1,6 @@
 name: Lint PR
 
-# Every PR into main or a release branch needs a recognised `[TYPE]` title prefix, unless it has a fix/ label.
+# Every PR into main or a release branch needs a recognised `[TYPE]` title prefix, whatever its labels.
 # A PR into main also needs a backport label: fix/needs-backport, main-only, fix/security or fix/critical.
 # Release branches too: the release changelog is built from their PR titles.
 # The backport class is only printed here; Backport recomputes it at pick time.
@@ -42,13 +42,18 @@ jobs:
 
           title, labels = os.environ["TITLE"], json.loads(os.environ["LABELS"])
           summary = open(os.environ["GITHUB_STEP_SUMMARY"], "a")
+          # Two-argument calls: the rule comes from main, so they must work with main's relmgr before and after a change.
+          errors = []
           try:
-              # Two-argument call: the rule comes from main, so it must work with main's relmgr before and after a change.
               cls = relmgr.pr_fix_class(title, labels) or "none"
-              if refusal := relmgr.release_only_refusal(os.environ["BASE"], labels):
-                  raise ValueError(refusal)
           except ValueError as e:
-              msg = (f"{e}\nA PR into main needs one backport label; the title type does not choose it:\n"
+              errors.append(str(e))
+          # Also when the title failed, so one run names every error.
+          if refusal := relmgr.release_only_refusal(os.environ["BASE"], labels):
+              errors.append(refusal)
+          if errors:
+              msg = ("\n".join(errors) + "\n"
+                     "A PR into main needs one backport label; the title type does not choose it:\n"
                      "- `fix/needs-backport`: copy it to the release lines still awaiting GA.\n"
                      "- `main-only`: keep it on main. Never with a fix/ label, and not on a PR into a release branch.\n"
                      "- `fix/security` or `fix/critical` (at most one): also copy it to released lines, once the release "

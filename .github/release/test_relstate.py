@@ -1467,7 +1467,11 @@ class PrFixClass(unittest.TestCase):
                 c(title, ["main-only"])
         with self.assertRaisesRegex(ValueError, "no recognised"):
             c("no prefix", ["main-only"])
-        self.assertEqual(c("no prefix", nb), "fix")
+        # A fix/ label does not excuse a bad title.
+        for labels in (nb, ["fix/security"], ["fix/critical"]):
+            with self.assertRaisesRegex(ValueError, "no recognised", msg=labels):
+                c("no prefix", labels)
+        self.assertIsNone(c("[MISC] x", ["main-only"]))
 
     def test_ticketless_title_validated(self):
         c = rm.pr_fix_class

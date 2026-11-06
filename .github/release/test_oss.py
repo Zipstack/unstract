@@ -2592,13 +2592,13 @@ class PendingPicksWorkflow(Workflow):
                 '{"id": 9, "digest": "sha256:rc", "pushed_at": "2026-09-01T00:00:00Z", "tags": ["v1.7.1-rc.1"]}\n'
             )
         dev_git(
-            self.cloud, "commit", "-q", "--allow-empty", "-m", "fix: x (#9)"
+            self.cloud, "commit", "-q", "--allow-empty", "-m", "[FIX] x (#9)"
         )  # on main only: held for 1.7
         dev_git(self.cloud, "push", "-q", "origin", "main")
         self.write(
             "pulls.json",
             json.dumps(
-                [{"number": 9, "title": "fix: x", "labels": [{"name": "fix/security"}]}]
+                [{"number": 9, "title": "[FIX] x", "labels": [{"name": "fix/security"}]}]
             ),
         )
         r = self.promote("v1.7.1-rc.1")
@@ -3844,6 +3844,12 @@ class LintPrStep(unittest.TestCase):
         rc, out = self.classify("UN-1 [FIX] x", ["main-only"], "release/0.186")
         self.assertEqual(rc, 1, out)
         self.assertIn("label `main-only` is for PRs into main", out)
+
+    def test_one_run_names_a_bad_title_and_a_missing_label(self):
+        rc, out = self.classify("fix: x", [], "main")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("::error title=Lint PR::no recognised '[TYPE]'", out)
+        self.assertIn("%0Ano backport label", out)
 
 
 if __name__ == "__main__":
