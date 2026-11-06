@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { expect, it } from "vitest";
+import { render } from "@testing-library/react";
+import { expect, it, vi } from "vitest";
 import { ChartTooltip } from "./ChartTooltip";
 
 const series = [
@@ -103,17 +103,24 @@ it("names no category, and does not throw, when the hovered row is null", () => 
   expect(container).toHaveTextContent("Pages7");
 });
 
-it("is a live region, so a screen reader hears each move of the tooltip", () => {
-  const { container } = render(
+it("reports the active point's sentence while open and an empty one when closed", () => {
+  const onAnnounce = vi.fn();
+  const view = (active: boolean, value = 7) => (
     <ChartTooltip
-      active
+      active={active}
       label="10 Aug"
-      payload={[{ dataKey: "pages", value: 7 }]}
+      payload={[{ dataKey: "pages", value }]}
       series={series}
       fmt={fmt}
-    />,
+      onAnnounce={onAnnounce}
+    />
   );
-  const tooltip = container.querySelector("[data-slot=chart-tooltip]");
-  expect(screen.getByRole("status")).toBe(tooltip);
-  expect(tooltip).toHaveAttribute("aria-live", "assertive");
+  const { rerender } = render(view(false));
+  expect(onAnnounce).toHaveBeenLastCalledWith("");
+  rerender(view(true));
+  expect(onAnnounce).toHaveBeenLastCalledWith("10 Aug: Pages 7");
+  rerender(view(true, 8));
+  expect(onAnnounce).toHaveBeenLastCalledWith("10 Aug: Pages 8");
+  rerender(view(false));
+  expect(onAnnounce).toHaveBeenLastCalledWith("");
 });

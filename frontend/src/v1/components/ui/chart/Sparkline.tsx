@@ -1,4 +1,4 @@
-import { type JSX, useId } from "react";
+import { type JSX, useId, useState } from "react";
 import {
   Line,
   LineChart as RechartsLineChart,
@@ -56,6 +56,8 @@ export function Sparkline<Row extends ChartDatum>({
   className,
 }: SparklineProps<Row>): JSX.Element {
   const summaryId = useId();
+  // The active point's sentence, for the live region (see ChartTooltip).
+  const [live, setLive] = useState("");
   const fmt: Formatters = { value: valueFormat, x: xFormat };
   const colors = seriesColors(series);
   const resolved = data.length === 0 && state === "ready" ? "empty" : state;
@@ -87,6 +89,7 @@ export function Sparkline<Row extends ChartDatum>({
               // The x key is not an axis here, so Recharts' label is the
               // row index; read the category from the hovered row instead.
               categoryKey={xKey}
+              onAnnounce={setLive}
               series={series.map((s, i) => ({
                 key: s.key,
                 label: s.label,
@@ -118,6 +121,7 @@ export function Sparkline<Row extends ChartDatum>({
   return (
     <ChartFrame
       slot="sparkline"
+      live={live}
       title={title}
       state={resolved}
       height={height}

@@ -29,6 +29,8 @@ type ChartFrameProps = Readonly<{
     items: readonly LegendItem[];
   }>;
   className?: string;
+  /** The active point, read out by a polite live region (see ChartTooltip). */
+  live?: string;
   children: ReactNode;
 }>;
 
@@ -50,6 +52,7 @@ export function ChartFrame({
   table,
   legend,
   className,
+  live,
   children,
 }: ChartFrameProps): JSX.Element {
   // Runtime geometry reaches the classes through custom properties (styling rule S1).
@@ -142,6 +145,12 @@ export function ChartFrame({
       <p id={summaryId} className="ui:sr-only">
         {summary}
       </p>
+      {/* Mounted with the chart and filled in place, so each move is read
+          out; polite, so hovering does not cut the reader off. No status
+          role, so a page's own status queries still find one element. */}
+      <div data-slot="chart-live" aria-live="polite" className="ui:sr-only">
+        {live}
+      </div>
       {/* sr-only on a wrapper, not the table: a table's width and height are
           minimums, so the 1px box would not hold on the table itself. */}
       <div className="ui:sr-only">

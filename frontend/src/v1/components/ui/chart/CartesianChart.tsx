@@ -1,4 +1,4 @@
-import { type JSX, useEffect, useId, useMemo } from "react";
+import { type JSX, useEffect, useId, useMemo, useState } from "react";
 import {
   Area,
   Bar,
@@ -76,6 +76,8 @@ export function CartesianChart<Row extends ChartDatum>({
   className,
 }: Props<Row>): JSX.Element {
   const summaryId = useId();
+  // The active point's sentence, for the live region (see ChartTooltip).
+  const [live, setLive] = useState("");
   const fmt: Formatters = { value: valueFormat, x: xFormat };
   const colors = seriesColors(series);
   const stacked = kind === "stacked-bar";
@@ -264,7 +266,9 @@ export function CartesianChart<Row extends ChartDatum>({
         // Keep gap entries, so a category where every series is a gap still
         // shows its tooltip (Recharts hides one with an empty payload).
         filterNull={false}
-        content={<ChartTooltip series={tooltipSeries} fmt={fmt} />}
+        content={
+          <ChartTooltip series={tooltipSeries} fmt={fmt} onAnnounce={setLive} />
+        }
       />
       {marks}
       {markerMarks}
@@ -274,6 +278,7 @@ export function CartesianChart<Row extends ChartDatum>({
   return (
     <ChartFrame
       slot={slot}
+      live={live}
       title={title}
       state={resolved}
       height={height}

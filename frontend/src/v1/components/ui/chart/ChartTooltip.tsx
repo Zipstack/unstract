@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+import { type JSX, useEffect } from "react";
 import type { Formatters } from "./describe";
 
 export type TooltipEntry = Readonly<{
@@ -29,6 +29,12 @@ type ChartTooltipProps = Readonly<{
    * describe the same row.
    */
   categoryKey?: string;
+  /**
+   * Called with a sentence for the active point (category, then each series
+   * and its value), and with "" when the tooltip closes. The chart puts it in
+   * a live region that stays mounted, outside Recharts' tooltip wrapper.
+   */
+  onAnnounce?: (text: string) => void;
 }>;
 
 /**
@@ -46,10 +52,8 @@ export function ChartTooltip({
   series,
   fmt,
   categoryKey,
+  onAnnounce,
 }: ChartTooltipProps): JSX.Element | null {
-  if (!active) {
-    return null;
-  }
   const row = payload?.[0]?.payload;
   const category =
     categoryKey === undefined
@@ -57,40 +61,56 @@ export function ChartTooltip({
       : typeof row === "object" && row !== null
         ? (row as Record<string, unknown>)[categoryKey]
         : undefined;
-  // A live region (`output` has the status role), as Recharts' own tooltip is
-  // under its accessibility layer: the arrow keys move this tooltip, and a
-  // screen reader hears each move.
+  const heading =
+    typeof category === "string" || typeof category === "number"
+      ? fmt.x(category)
+      : undefined;
+  const rows = series.map((s) => {
+    const value = payload?.find((p) => p.dataKey === s.key)?.value;
+    return {
+      series: s,
+      text:
+        typeof value === "number" && Number.isFinite(value)
+          ? s.format(value)
+          : "–",
+    };
+  });
+  const sentence = active
+    ? [heading, rows.map((r) => `${r.series.label} ${r.text}`).join(", ")]
+        .filter((part) => part !== undefined)
+        .join(": ")
+    : "";
+  // Recharts keeps this element mounted while the tooltip is closed (it
+  // re-renders it with `active` false), so the effect reports the close too.
+  useEffect(() => {
+    onAnnounce?.(sentence);
+  }, [onAnnounce, sentence]);
+  if (!active) {
+    return null;
+  }
   return (
-    <output
+    <div
       data-slot="chart-tooltip"
-      aria-live="assertive"
       className="ui:flex ui:min-w-40 ui:flex-col ui:gap-1.5 ui:rounded-md ui:border ui:border-border ui:bg-popover ui:px-3 ui:py-2 ui:text-caption ui:text-popover-foreground ui:shadow-md"
     >
-      {typeof category === "string" || typeof category === "number" ? (
-        <p className="ui:text-foreground">{fmt.x(category)}</p>
-      ) : null}
+      {heading === undefined ? null : (
+        <p className="ui:text-foreground">{heading}</p>
+      )}
       <ul className="ui:flex ui:flex-col ui:gap-1">
-        {series.map((s) => {
-          const value = payload?.find((p) => p.dataKey === s.key)?.value;
-          return (
-            <li key={s.key} className="ui:flex ui:items-center ui:gap-2">
-              <span
-                aria-hidden
-                style={{ "--swatch": s.color }}
-                className="ui:size-2 ui:shrink-0 ui:rounded-full ui:bg-(--swatch)"
-              />
-              <span className="ui:flex-1 ui:text-muted-foreground">
-                {s.label}
-              </span>
-              <span className="ui:tabular-nums">
-                {typeof value === "number" && Number.isFinite(value)
-                  ? s.format(value)
-                  : "–"}
-              </span>
-            </li>
-          );
-        })}
+        {rows.map(({ series: s, text }) => (
+          <li key={s.key} className="ui:flex ui:items-center ui:gap-2">
+            <span
+              aria-hidden
+              style={{ "--swatch": s.color }}
+              className="ui:size-2 ui:shrink-0 ui:rounded-full ui:bg-(--swatch)"
+            />
+            <span className="ui:flex-1 ui:text-muted-foreground">
+              {s.label}
+            </span>
+            <span className="ui:tabular-nums">{text}</span>
+          </li>
+        ))}
       </ul>
-    </output>
+    </div>
   );
 }

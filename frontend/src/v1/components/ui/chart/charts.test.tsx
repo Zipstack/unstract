@@ -132,6 +132,9 @@ describe.each(VARIANTS)("%s", (slot, Chart) => {
       /^Throughput\. .* chart, 3 points from 9 Aug to 11 Aug\. Pages processed: highest 2,981 at 10 Aug/,
     );
     const table = screen.getByRole("table", { name: "Throughput" });
+    // Hidden by its wrapper: a table's width and height are minimums.
+    expect(table.parentElement).toHaveClass("ui:sr-only");
+    expect(table).not.toHaveClass("ui:sr-only");
     expect(
       within(table)
         .getAllByRole("columnheader")
@@ -176,6 +179,21 @@ describe.each(VARIANTS)("%s", (slot, Chart) => {
     expect(tooltip()).toHaveTextContent(/^11 Aug/);
     await user.keyboard("{ArrowLeft}");
     expect(tooltip()).toHaveTextContent(/^10 Aug/);
+  });
+
+  it("reads the active point out through a live region that is mounted before the first move", async () => {
+    const { container, user } = renderV1(<Chart {...props()} />);
+    const live = container.querySelector("[data-slot=chart-live]");
+    expect(live).toHaveAttribute("aria-live", "polite");
+    expect(live).toBeEmptyDOMElement();
+    await user.tab();
+    await user.keyboard("{ArrowRight}");
+    expect(live).toHaveTextContent(
+      "10 Aug: Pages processed 2,981, Failed pages 600",
+    );
+    await user.keyboard("{ArrowRight}");
+    expect(container.querySelector("[data-slot=chart-live]")).toBe(live);
+    expect(live).toHaveTextContent(/^11 Aug: Pages processed/);
   });
 
   it("draws markers as a dot series, labelled, and never as a reference line or dot", () => {
@@ -885,6 +903,9 @@ describe("Sparkline", () => {
     expect(
       container.querySelector("[data-slot=chart-tooltip]"),
     ).toHaveTextContent("10 AugPages2,981");
+    expect(container.querySelector("[data-slot=chart-live]")).toHaveTextContent(
+      "10 Aug: Pages 2,981",
+    );
   });
 
   it("still names the category in its tooltip on a gap", async () => {
