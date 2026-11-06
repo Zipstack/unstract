@@ -29,9 +29,14 @@ const ORGS = [
 ];
 
 // The backend's answers, by URL; anything else would be an unexpected call.
-function serveBackend() {
+// `fail` maps a URL suffix to the error that call rejects with.
+function serveBackend(fail = {}) {
   axios.mockImplementation(({ method, url }) => {
     calledUrls.push(url);
+    const failure = Object.keys(fail).find((suffix) => url.endsWith(suffix));
+    if (failure) {
+      return Promise.reject(fail[failure]);
+    }
     if (url === "/api/v1/organization") {
       return Promise.resolve({ data: { organizations: ORGS } });
     }
@@ -51,9 +56,9 @@ function serveBackend() {
   });
 }
 
-async function validateSession(session) {
+async function validateSession(session, fail) {
   sessionData.mockResolvedValue(session);
-  serveBackend();
+  serveBackend(fail);
   const { result } = renderHook(() => useSessionValid());
   await result.current();
   return useSessionStore.getState().sessionDetails;
@@ -65,6 +70,13 @@ const calledUrls = [];
 
 function setOrgUrls() {
   return calledUrls.filter((url) => url.endsWith("/set"));
+}
+
+// What the org-scoped APIs answer once the organization's trial has ended.
+function trialExpired() {
+  const err = new Error("Request failed with status code 403");
+  err.response = { status: 403, data: { detail: "Trial period expired" } };
+  return err;
 }
 
 afterEach(() => {
@@ -98,5 +110,43 @@ describe("useSessionValid", () => {
 
     expect(setOrgUrls()).toEqual(["/api/v1/organization/org-a/set"]);
     expect(details.orgSwitchViaLogin).toBe(false);
+  });
+
+  it.each([
+    ["the profile", "/users/profile/"],
+    ["the adapters", "/adapter/"],
+  ])("keeps the organizations when %s call is refused", async (_label, suffix) => {
+    const details = await validateSession(
+      { organization_id: "org-a", org_switch_via_login: true, role: "admin" },
+      { [suffix]: trialExpired() },
+    );
+
+    expect(details.isLoggedIn).toBe(true);
+    expect(details.orgId).toBe("org-a");
+    expect(details.allOrganization).toEqual(ORGS);
+    expect(details.orgSwitchViaLogin).toBe(true);
+    expect(details.role).toBe("admin");
+  });
+
+  it("keeps the organizations when the feature flags call is refused", async () => {
+    const { listFlags } = await import("../helpers/FeatureFlagsData.js");
+    listFlags.mockRejectedValueOnce(trialExpired());
+
+    const details = await validateSession({
+      organization_id: "org-a",
+      org_switch_via_login: true,
+    });
+
+    expect(details.allOrganization).toEqual(ORGS);
+    expect(details.orgSwitchViaLogin).toBe(true);
+  });
+
+  it("ends signed out when setting the organization fails", async () => {
+    const details = await validateSession(
+      { organization_id: "org-a" },
+      { "/set": new Error("Network Error") },
+    );
+
+    expect(details).toEqual({ isLoggedIn: false });
   });
 });

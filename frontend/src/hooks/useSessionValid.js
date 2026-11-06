@@ -121,6 +121,21 @@ function useSessionValid() {
       userAndOrgDetails["csrfToken"] = csrfToken;
       userAndOrgDetails["logEventsId"] = setOrgRes?.data?.log_events_id;
       userAndOrgDetails["is_staff"] = userSessionData?.is_staff;
+      // Set before the org-scoped calls below, which an organization whose
+      // trial has ended refuses: the subscription-expired page still needs
+      // the organization list to offer a switch.
+      userAndOrgDetails["allOrganization"] = orgs;
+      userAndOrgDetails["role"] = userSessionData.role;
+      userAndOrgDetails["provider"] = userSessionData.provider;
+      userAndOrgDetails["disable_sso_idp_authorization"] =
+        userSessionData.disable_sso_idp_authorization;
+      userAndOrgDetails["orgSwitchViaLogin"] =
+        isOrgSwitchViaLogin(userSessionData);
+      const zCode = ("; " + document.cookie)
+        .split(`; z_code=`)
+        .pop()
+        .split(";")[0];
+      userAndOrgDetails["zCode"] = zCode;
 
       requestOptions["method"] = "GET";
 
@@ -135,11 +150,6 @@ function useSessionValid() {
       userAndOrgDetails["promptOnboardingMessage"] =
         getUserInfo?.data?.user?.prompt_onboarding_message_displayed;
 
-      const zCode = ("; " + document.cookie)
-        .split(`; z_code=`)
-        .pop()
-        .split(";")[0];
-      userAndOrgDetails["zCode"] = zCode;
       if (isUnstract) {
         requestOptions["method"] = "GET";
 
@@ -163,16 +173,9 @@ function useSessionValid() {
         userAndOrgDetails["flags"] = flags;
       }
 
-      userAndOrgDetails["allOrganization"] = orgs;
       if (isPlatformAdmin) {
         userAndOrgDetails["isPlatformAdmin"] = await isPlatformAdmin();
       }
-      userAndOrgDetails["role"] = userSessionData.role;
-      userAndOrgDetails["provider"] = userSessionData.provider;
-      userAndOrgDetails["disable_sso_idp_authorization"] =
-        userSessionData.disable_sso_idp_authorization;
-      userAndOrgDetails["orgSwitchViaLogin"] =
-        isOrgSwitchViaLogin(userSessionData);
     } catch (err) {
       // TODO: Throw popup error message
       // REVIEW: Add condition to check for trial period status
