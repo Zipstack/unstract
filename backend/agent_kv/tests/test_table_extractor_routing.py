@@ -19,6 +19,8 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
 if not apps.ready:
     django.setup()
 
+from unittest.mock import patch  # noqa: E402
+
 from agent_kv.constants import (  # noqa: E402
     EXTRACTOR_ROUTES,
     STAGE_NAMES_BY_EXTRACTOR,
@@ -61,10 +63,57 @@ def test_the_table_route_targets_the_existing_executor():
     """R1: the queue is derived from the executor name, and
     celery_executor_agentic_table is already wired. A new executor name here
     would be accepted, dispatch silently, and never drain.
+
+    Stated as literals: these two strings are the wire contract with the
+    deployed worker, so the test says what it expects independently of the
+    catalogue. That the route is DERIVED from the catalogue is pinned
+    separately, below.
     """
-    executor, operation = EXTRACTOR_ROUTES[TABLE_EXTRACTOR_NAME]
-    assert executor == "agentic_table"
-    assert operation == "table_extract_api"
+    assert EXTRACTOR_ROUTES[TABLE_EXTRACTOR_NAME] == (
+        "agentic_table",
+        "table_extract_api",
+    )
+
+
+def test_extractor_routes_is_derived_from_the_shared_catalogue():
+    """UN-4214's whole point, and asserted BEHAVIOURALLY, not by value.
+
+    A value comparison cannot do this job: the literal `api_routes()` replaced
+    equals what it returns, so `EXTRACTOR_ROUTES == api_routes()` passes just
+    as well with the literal restored. The first version of this test made
+    exactly that mistake and read as a guard while pinning nothing.
+
+    So re-execute this module under a patched catalogue and check the value
+    MOVED. A fresh module object, not `importlib.reload` -- reloading would
+    mutate the live `agent_kv.constants` that the rest of the suite imports.
+    """
+    import importlib.util
+    from dataclasses import replace
+
+    from extractor_registry import EXTRACTOR_AGENTS, ExtractorAgentKey, api_routes
+
+    from agent_kv import constants as _constants
+
+    kv = EXTRACTOR_AGENTS[ExtractorAgentKey.MULTI_STAGE]
+    spec = importlib.util.spec_from_file_location("_probe", _constants.__file__)
+    probe = importlib.util.module_from_spec(spec)
+    with patch.dict(
+        EXTRACTOR_AGENTS,
+        {ExtractorAgentKey.MULTI_STAGE: replace(kv, available=True)},
+    ):
+        spec.loader.exec_module(probe)
+
+    assert "kv" in probe.EXTRACTOR_ROUTES, (
+        "EXTRACTOR_ROUTES did not follow the catalogue, so it is no longer "
+        "derived from it. If it has gone back to a literal dict, the blind API "
+        "and the Studio are reading two separate tables again -- the "
+        "divergence UN-4214 removed. Equality with api_routes() cannot catch "
+        "this, because the literal and the derived value are equal."
+    )
+
+    # ...and the live value agrees with what the serializer admits.
+    assert EXTRACTOR_ROUTES == api_routes()
+    assert SUPPORTED_EXTRACTORS == tuple(api_routes())
 
 
 def test_a_table_entry_validates_with_its_own_options():
@@ -136,7 +185,7 @@ def _job(extractor=TABLE_EXTRACTOR_NAME, **overrides):
 def test_the_kv_route_constants_survive_for_re_enablement():
     """`kv` is unroutable, not deleted. The executor/operation pair, the stage
     list and the options serializer all stay so the branch carrying the engine
-    re-enables the extractor by restoring one dict entry -- not by merging
+    re-enables the extractor (see the procedure in `agent_kv/constants.py`) -- not by merging
     content back into the files it rewrites most.
     """
     from agent_kv.constants import (
@@ -146,10 +195,35 @@ def test_the_kv_route_constants_survive_for_re_enablement():
     )
     from agent_kv.execution_serializers import _OPTIONS_SERIALIZERS
 
-    assert EXECUTOR_NAME == "agentic_kv"
-    assert OPERATION_KV_EXTRACT == "kv_extract"
     assert V1_EXTRACTOR_NAME in STAGE_NAMES_BY_EXTRACTOR
     assert V1_EXTRACTOR_NAME in _OPTIONS_SERIALIZERS
+    assert EXECUTOR_NAME and OPERATION_KV_EXTRACT
+
+
+def test_the_kv_route_constants_match_the_catalogue():
+    """The pair above used to be asserted against its own literals.
+
+    `EXECUTOR_NAME == "agentic_kv"` and `OPERATION_KV_EXTRACT == "kv_extract"`
+    compared each constant to a copy of itself, so renaming the catalogue's kv
+    row left both green. That matters for `EXECUTOR_NAME` in particular: it
+    feeds `ALL_KNOWN_EXECUTORS` in `test_queue_wiring_is_derived.py`, so the
+    drift would leave the carve-out's inverse guard forbidding a queue name
+    nothing uses while not forbidding the live one.
+    """
+    from extractor_registry import EXTRACTOR_AGENTS, ExtractorAgentKey
+
+    from agent_kv.constants import EXECUTOR_NAME, OPERATION_KV_EXTRACT
+
+    kv = EXTRACTOR_AGENTS[ExtractorAgentKey.MULTI_STAGE]
+    assert EXECUTOR_NAME == kv.executor, (
+        f"agent_kv.constants.EXECUTOR_NAME is {EXECUTOR_NAME!r} but the "
+        f"catalogue's multi_stage row says {kv.executor!r}; ALL_KNOWN_EXECUTORS "
+        f"reads the former, so the queue guards would follow the stale name."
+    )
+    assert OPERATION_KV_EXTRACT == kv.api_operation, (
+        f"agent_kv.constants.OPERATION_KV_EXTRACT is {OPERATION_KV_EXTRACT!r} "
+        f"but the catalogue's multi_stage row says {kv.api_operation!r}."
+    )
 
 
 def test_the_status_document_keys_stages_by_the_extractor_that_ran():
