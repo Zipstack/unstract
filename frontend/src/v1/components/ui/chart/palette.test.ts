@@ -50,10 +50,12 @@ it("the luminance helper follows WCAG 2 and rejects anything but #rrggbb", () =>
   expect(luminance("#ff0000")).toBeCloseTo(0.2126, 4);
   expect(luminance("#00ff00")).toBeCloseTo(0.7152, 4);
   expect(luminance("#0000ff")).toBeCloseTo(0.0722, 4);
-  // Mid-grey is on the power segment of the sRGB curve, 10/255 on the linear one.
+  // Mid-grey is on the power segment of the sRGB curve. 5/255 is on the
+  // linear one, far enough below the knee that the power formula misses it.
   expect(luminance("#777777")).toBeCloseTo(0.1845, 4);
-  expect(luminance("#0a0a0a")).toBeCloseTo(0.003035, 6);
-  for (const bad of ["var(--card)", "#ffffff80", "x#ffffff"]) {
+  expect(luminance("#050505")).toBeCloseTo(0.0015176, 7);
+  expect(luminance("#FFFFFF")).toBeCloseTo(1, 5);
+  for (const bad of ["var(--card)", "#ffffff80", "x#ffffff", "#fff"]) {
     expect(() => luminance(bad)).toThrow(`${bad} is not #rrggbb`);
   }
 });

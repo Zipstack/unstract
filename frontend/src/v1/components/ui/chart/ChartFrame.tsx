@@ -142,37 +142,41 @@ export function ChartFrame({
       <p id={summaryId} className="ui:sr-only">
         {summary}
       </p>
-      <table data-slot="chart-table" className="ui:sr-only">
-        <caption>{title}</caption>
-        <thead>
-          <tr>
-            {table.head.map((cell, c) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: columns follow series order, and labels may repeat.
-              <th key={c} scope="col">
-                {cell}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {table.rows.map((row, r) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: rows follow data order, and categories may repeat.
-            <tr key={r}>
-              {row.map((cell, c) =>
-                c === 0 ? (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: cells follow series order.
-                  <th key={c} scope="row">
-                    {cell}
-                  </th>
-                ) : (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: cells follow series order.
-                  <td key={c}>{cell}</td>
-                ),
-              )}
+      {/* sr-only on a wrapper, not the table: a table's width and height are
+          minimums, so the 1px box would not hold on the table itself. */}
+      <div className="ui:sr-only">
+        <table data-slot="chart-table">
+          <caption>{title}</caption>
+          <thead>
+            <tr>
+              {table.head.map((cell, c) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: columns follow series order, and labels may repeat.
+                <th key={c} scope="col">
+                  {cell}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {table.rows.map((row, r) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: rows follow data order, and categories may repeat.
+              <tr key={r}>
+                {row.map((cell, c) =>
+                  c === 0 ? (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: cells follow series order.
+                    <th key={c} scope="row">
+                      {cell}
+                    </th>
+                  ) : (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: cells follow series order.
+                    <td key={c}>{cell}</td>
+                  ),
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

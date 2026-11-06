@@ -57,9 +57,13 @@ export function ChartTooltip({
       : typeof row === "object" && row !== null
         ? (row as Record<string, unknown>)[categoryKey]
         : undefined;
+  // A live region (`output` has the status role), as Recharts' own tooltip is
+  // under its accessibility layer: the arrow keys move this tooltip, and a
+  // screen reader hears each move.
   return (
-    <div
+    <output
       data-slot="chart-tooltip"
+      aria-live="assertive"
       className="ui:flex ui:min-w-40 ui:flex-col ui:gap-1.5 ui:rounded-md ui:border ui:border-border ui:bg-popover ui:px-3 ui:py-2 ui:text-caption ui:text-popover-foreground ui:shadow-md"
     >
       {typeof category === "string" || typeof category === "number" ? (
@@ -87,6 +91,6 @@ export function ChartTooltip({
           );
         })}
       </ul>
-    </div>
+    </output>
   );
 }

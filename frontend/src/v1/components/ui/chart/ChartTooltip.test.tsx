@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { expect, it } from "vitest";
 import { ChartTooltip } from "./ChartTooltip";
 
@@ -101,4 +101,19 @@ it("names no category, and does not throw, when the hovered row is null", () => 
   );
   expect(container.querySelector("p")).toBeNull();
   expect(container).toHaveTextContent("Pages7");
+});
+
+it("is a live region, so a screen reader hears each move of the tooltip", () => {
+  const { container } = render(
+    <ChartTooltip
+      active
+      label="10 Aug"
+      payload={[{ dataKey: "pages", value: 7 }]}
+      series={series}
+      fmt={fmt}
+    />,
+  );
+  const tooltip = container.querySelector("[data-slot=chart-tooltip]");
+  expect(screen.getByRole("status")).toBe(tooltip);
+  expect(tooltip).toHaveAttribute("aria-live", "assertive");
 });
