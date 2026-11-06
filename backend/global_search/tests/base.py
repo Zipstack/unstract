@@ -119,7 +119,7 @@ DESCRIBED_TYPES = {
     OSSSearchType.TEXT_EXTRACTOR,
 }
 
-# The adapter kinds, keyed by type key; every one opens on adapter.detail.
+# The adapter kinds, keyed by type key.
 ADAPTER_TYPES = {
     OSSSearchType.LLM: "LLM",
     OSSSearchType.VECTOR_DB: "VECTOR_DB",

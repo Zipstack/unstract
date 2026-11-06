@@ -126,8 +126,16 @@ empty 200 (see the errors above).
 Adapters are split by kind into four types, one per rail destination
 (`adapter_type` `LLM`, `VECTOR_DB`, `EMBEDDING` and `X2TEXT`), each with its
 own `limit` and `has_more`. OCR adapters are not searchable. All four kinds
-share the `adapter.*` route keys, as the notifications inbox does;
-`adapter_type` in the params says which adapter page to open.
+share the `adapter.*` route keys (the notifications inbox sends `adapter.info`
+with the same params); `adapter_type` in the params says which adapter page to
+open.
+
+**Changed (UN-4628):** these four types replace the single `adapter` type
+(order 80, label "Adapters") that the endpoint returned from v0.194.0. A
+request for `types=adapter` now returns no adapter groups, since unknown keys
+are ignored, and OCR adapters, which `adapter` returned, are no longer
+returned at all. No released client used the `adapter` key when it was
+removed: the frontend panel (P2-T10) was not built yet.
 
 An adapter opens on `adapter.detail` only for a caller who may edit it
 (owner or co-owner, org admin, service account), the same rule as the

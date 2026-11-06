@@ -2,8 +2,8 @@
 
 Each provider starts from the same ``Model.objects.for_user(user)`` its list
 view uses, so search never returns a row the caller could not open from the
-list. Search may narrow further (pipeline type, No Op and frictionless
-adapters), never widen.
+list. Search may narrow further (pipeline type; adapter kind, which leaves
+OCR adapters out; No Op and frictionless adapters), never widen.
 """
 
 from __future__ import annotations
@@ -151,9 +151,10 @@ class AdapterProvider(ModelSearchProvider):
     """Adapters of one kind (``adapter_type``), one search type per rail
     destination. Not registered itself; the kinds below are.
 
-    All kinds share the ``adapter.detail`` / ``adapter.info`` route keys,
-    which the notifications inbox uses too; ``adapter_type`` in the route
-    params tells the client which adapter page to open.
+    All kinds share the ``adapter.detail`` / ``adapter.info`` route keys
+    (the notifications inbox sends ``adapter.info`` with the same params);
+    ``adapter_type`` in the route params tells the client which adapter page
+    to open.
     """
 
     adapter_type: str
