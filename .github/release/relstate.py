@@ -365,8 +365,8 @@ def target_state(t, name, rows, now):
     nothing removes it, so a target added later does not reopen it), then stabilized while the branch exists; the cloud lines pinning it decide its retirement, and cloud Retire names it.
     """
     ga = rows[name]["targets"][t]["ga"]
-    # Known limit: a target never GA stays stabilizing; Retire deletes such a line only as never-shipped (no GA on
-    # any target; see abandon_plan).
+    # Known limit: a target never GA stays stabilizing. Its line goes by Retire one shipped line now (force when the
+    # target is late), or by Abandon when no target has a GA.
     if not ga:
         return "stabilizing"
     if t in KEPT:
@@ -537,8 +537,8 @@ def _set_states(rows, now):
             tt["state"] = target_state(t, name, rows, now)
         row["enabled"] = sorted(row["targets"])
         # No enabled target (cut, nothing built yet) is stabilizing: every line builds cloud by default.
-        # A late target with no GA counts as stabilized: it adds no auto-picks, and the line stays supported (Retire
-        # needs force) until it has a GA.
+        # A late target with no GA counts as stabilized: it adds no auto-picks, and the line stays supported (Retire one
+        # shipped line now needs force) until it has a GA.
         row["state"] = _line_state(
             {
                 "stabilized" if tt["late"] and not tt["ga"] else tt["state"]
@@ -616,6 +616,27 @@ def derive(repo, now, registry=registry_tags, rc=None):
     return out
 
 
+def retire_line_refusal(state, branch, force=False):
+    """Why Retire one shipped line now refuses branch, or None. A stabilizing target (RCs, no GA: an on-prem line never
+    promoted, say) may go. A stabilized on-prem target (chart in its window), or a late target with no GA, goes only
+    with force. Stabilized cloud is production and never goes: relstate would make the next older cloud GA production
+    again.
+    """
+    row = _branch_row(state, branch)
+    if not row:
+        return "no such branch"
+    held = [
+        t
+        for t, tt in sorted(row["targets"].items())
+        if tt["state"] == "stabilized" or (tt["late"] and not tt["ga"])
+    ]
+    if row["targets"].get("cloud", {}).get("state") == "stabilized":
+        return "cloud is production (newest cloud GA); it retires once a newer line is promoted"
+    if held and not force:
+        return f"{', '.join(held)} still supported (stabilized, or late with no GA yet); a release manager may retire it inside the window with force"
+    return None
+
+
 def _branch_row(state, branch):
     return next((b for b in state["branches"] if b["branch"] == branch), None)
 
@@ -663,7 +684,7 @@ def _abandon_versions(reg, rc_re):
 
 
 def abandon_plan(repo, branch, registry=registry_tags, services=rc_service_tags):
-    """What Retire's never-shipped action deletes for a release/X.Y line (cut by mistake, or built only as RCs).
+    """What Abandon a line that never shipped deletes for release/X.Y (cut by mistake, or built only as RCs).
 
     {"ga": [...], "used": [...], "rc_tags": [...], "versions": {artifact: [{id, digest, tags}]}, "kept": [...]}.
     A non-empty ga or used (commits that are not bot, pick or decline) refuses the abandon. A registry version is
@@ -723,7 +744,7 @@ def promote_blockers(state, branch, target):
         return []
     line = _key(branch.split("/", 1)[1])
     return [
-        f"{b['branch']} is not GA for {target} yet: promote and publish it first or retire it; a release manager may override this with force and a reason"
+        f"{b['branch']} is not GA for {target} yet: promote and publish it first or retire it (Retire one shipped line now); a release manager may override this with force and a reason"
         for b in state["branches"]
         if _key(b["line"]) < line
         and target in b["targets"]

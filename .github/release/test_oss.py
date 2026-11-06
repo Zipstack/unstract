@@ -1,6 +1,7 @@
 """Run: python test_oss.py"""
 
 import contextlib
+import datetime as dt
 import hashlib
 import io
 import itertools
@@ -757,9 +758,9 @@ def inline(workflow, step):
     )
 
 
-# Retire's action options, as its dispatch form lists them.
-PAST_EOS = "Delete branches past end of support (keeps tags and images)"
-NEVER_SHIPPED = "Delete a never-shipped line: branch, RC tags, RC releases, RC images"
+PAST_EOS = "Retire shipped lines past end of support"
+ONE = "Retire one shipped line now"
+ABANDON = "Abandon a line that never shipped"
 
 
 def run_name(workflow, **ctx):
@@ -977,13 +978,13 @@ class RetireWorkflow(Workflow):
 
     def test_abandon(self):
         self.line("1.7")
-        self.retire(ACTION=NEVER_SHIPPED, LINE="1.7", REASON="cut by mistake")
+        self.retire(ACTION=ABANDON, LINE="1.7", REASON="cut by mistake")
         self.assert_gone("1.7")
 
     def test_abandon_deletes_one_rc_and_keeps_the_last(self):
         self.line("1.7", "v1.7.0-rc.1", "v1.7.0-rc.2")
         self.retire(
-            ACTION=NEVER_SHIPPED,
+            ACTION=ABANDON,
             LINE="release/1.7",
             REASON="cut by mistake",
             RELSTATE_AR_TOKEN="t",
@@ -1002,7 +1003,7 @@ class RetireWorkflow(Workflow):
                     f'"tags": ["v1.7.0-rc.{i}"]}}\n'
                 )
         self.retire(
-            ACTION=NEVER_SHIPPED,
+            ACTION=ABANDON,
             LINE="release/1.7",
             REASON="cut by mistake",
             RELSTATE_AR_TOKEN="t",
@@ -1043,7 +1044,7 @@ class RetireWorkflow(Workflow):
                         + "\n"
                     )
         self.retire(
-            ACTION=NEVER_SHIPPED,
+            ACTION=ABANDON,
             LINE="release/1.7",
             REASON="cut by mistake",
             RELSTATE_AR_TOKEN="t",
@@ -1074,7 +1075,7 @@ class RetireWorkflow(Workflow):
                     + "\n"
                 )
         self.retire(
-            ACTION=NEVER_SHIPPED,
+            ACTION=ABANDON,
             LINE="release/1.7",
             REASON="cut by mistake",
             RELSTATE_AR_TOKEN="t",
@@ -1091,7 +1092,7 @@ class RetireWorkflow(Workflow):
                 )
         r = self.run_step(
             inline("retire.yaml", "Derive and retire"),
-            ACTION=NEVER_SHIPPED,
+            ACTION=ABANDON,
             LINE="release/1.7",
             REASON="cut by mistake",
             DRY_RUN="false",
@@ -1124,8 +1125,8 @@ class RetireWorkflow(Workflow):
         self.line("1.7", "v1.7.0-rc.1", "v1.7.0-rc.2", "v1.7.0")
         self.kept_line(
             "1.7",
-            "::error::never-shipped release/1.7: line has GA v1.7.0, cloud/backend:v1.7.0",
-            ACTION=NEVER_SHIPPED,
+            "::error::abandon release/1.7: line has GA v1.7.0, cloud/backend:v1.7.0; use 'Retire one shipped line now'",
+            ACTION=ABANDON,
             LINE="release/1.7",
             REASON="cut by mistake",
         )
@@ -1136,8 +1137,8 @@ class RetireWorkflow(Workflow):
         dev_git(self.cloud, "push", "-q", "origin", "HEAD:release/1.7")
         self.kept_line(
             "1.7",
-            "::error::never-shipped release/1.7: non-bot commits above the cut",
-            ACTION=NEVER_SHIPPED,
+            "::error::abandon release/1.7: non-bot commits above the cut",
+            ACTION=ABANDON,
             LINE="release/1.7",
             REASON="cut by mistake",
         )
@@ -1149,48 +1150,57 @@ class RetireWorkflow(Workflow):
         self.line("1.8")
         tip = rm.git(self.repos["cloud"][0], "rev-parse", "release/1.6")
         tag = f"retired/1.6-{tip[:7]}"
-        never = {"ACTION": NEVER_SHIPPED, "LINE": "1.8", "REASON": "x"}
+        never = {"ACTION": ABANDON, "LINE": "1.8", "REASON": "x"}
         self.retire(DRY_RUN="true")
         self.retire(DRY_RUN="true", **never)
         dry = self.read("summary")
         self.assertIn(f"- tag `{tag}`: past end of support", dry)
-        self.assertIn(f"- branch [`release/1.8`]({web}/tree/release/1.8)\n", dry)
+        self.assertIn(f"- branch [`release/1.8`]({web}/tree/release/1.8) (tip ", dry)
         self.retire()
         self.retire(**never)
         real = self.read("summary")[len(dry) :]
         self.assertIn(
             f"- tag [`{tag}`]({web}/releases/tag/{tag}): past end of support", real
         )
-        self.assertIn("- branch `release/1.8`\n", real)
+        self.assertIn("- branch `release/1.8` (tip ", real)
 
     def test_refuses_a_value_not_a_line(self):
         self.line("1.7")
-        self.kept_line(
-            "1.7",
-            "::error::never-shipped 1.7.0: not a release line X.Y (e.g. 0.186): '1.7.0'",
-            ACTION=NEVER_SHIPPED,
-            LINE="1.7.0",
-            REASON="x",
-        )
+        for action, verb in ((ABANDON, "abandon"), (ONE, "retire")):
+            self.kept_line(
+                "1.7",
+                f"::error::{verb} 1.7.0: not a release line X.Y (e.g. 0.186): '1.7.0'",
+                ACTION=action,
+                LINE="1.7.0",
+                REASON="x",
+            )
 
-    def test_never_shipped_needs_a_line(self):
+    def test_one_line_needs_a_line(self):
         self.line("1.6", "v1.6.0-rc.1", "v1.6.0")
         self.line("1.7", "v1.7.0-rc.1", "v1.7.0")  # 1.6 is past end of support, and stays
+        for action, verb in ((ABANDON, "abandon"), (ONE, "retire")):
+            self.kept_line(
+                "1.6", f"::error::{verb}: line X.Y is required", ACTION=action, REASON="x"
+            )
+
+    def test_one_line_needs_a_reason(self):
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
+        for action, verb in ((ABANDON, "abandon"), (ONE, "retire")):
+            self.kept_line(
+                "1.7",
+                f"::error::{verb} release/1.7: reason is required",
+                ACTION=action,
+                LINE="1.7",
+                REASON=" ",
+            )
+
+    def test_refuses_an_unknown_action(self):
+        self.line("1.6", "v1.6.0-rc.1", "v1.6.0")
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
         self.kept_line(
             "1.6",
-            "::error::never-shipped: line X.Y is required",
-            ACTION=NEVER_SHIPPED,
-            REASON="x",
-        )
-
-    def test_never_shipped_needs_a_reason(self):
-        self.line("1.7")
-        self.kept_line(
-            "1.7",
-            "::error::never-shipped release/1.7: reason is required",
-            ACTION=NEVER_SHIPPED,
-            LINE="1.7",
-            REASON=" ",
+            "::error::unknown action 'Delete everything'",
+            ACTION="Delete everything",
         )
 
     def test_past_eos_refuses_a_line(self):
@@ -1199,7 +1209,7 @@ class RetireWorkflow(Workflow):
         self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
         self.kept_line(
             "1.6",
-            "::error::line 1.7 is set: pick the never-shipped action, or clear line",
+            "::error::line set for 'Retire shipped lines past end of support': pick the matching action, or clear it",
             LINE="1.7",
         )
 
@@ -1209,8 +1219,133 @@ class RetireWorkflow(Workflow):
         self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
         self.kept_line(
             "1.6",
-            "::error::reason is set: pick the never-shipped action, or clear reason",
+            "::error::reason set for 'Retire shipped lines past end of support': pick the matching action, or clear it",
             REASON="cut by mistake",
+        )
+
+    def test_retire_one_with_ga_keeps_its_rcs(self):
+        # 1.8 is cloud production, so 1.7 may retire early; it shipped, so its RCs stay as history.
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0-rc.2", "v1.7.0")
+        self.line("1.8", "v1.8.0-rc.1", "v1.8.0")
+        self.retire(ACTION=ONE, LINE="release/1.7", REASON="early", RELSTATE_AR_TOKEN="t")
+        summary = self.read("summary")
+        self.assertIn("retired release/1.7: early", summary)
+        self.assertIn("has GA, tags and artifacts kept", summary)
+        origin = self.repos["cloud"][0]
+        self.assertEqual(
+            rm.git(origin, "tag", "-l", "v1.7.*").split(),
+            ["v1.7.0", "v1.7.0-rc.1", "v1.7.0-rc.2"],
+        )
+        self.assertRegex(
+            rm.git(origin, "tag", "-l", "retired/1.7-*"), r"^retired/1\.7-[0-9a-f]{7}$"
+        )
+        self.assertFalse(os.path.exists(os.path.join(self.d, "ar.log")))
+        self.assertNotIn("release/1.7", rm.git(origin, "branch", "-l", "release/*"))
+        self.assertEqual(
+            rs._next_minor(origin, []), "1.9"
+        )  # a shipped line's minor stays used
+
+    def test_retire_one_refuses_a_line_with_no_ga(self):
+        self.line("1.7", "v1.7.0-rc.1")
+        self.kept_line(
+            "1.7",
+            "::error::retire release/1.7: line has no GA; use 'Abandon a line that never shipped'",
+            ACTION=ONE,
+            LINE="1.7",
+            REASON="not shipping",
+        )
+
+    def test_retire_one_refuses_cloud_production_even_with_force(self):
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
+        for force in ("false", "true"):
+            self.kept_line(
+                "1.7",
+                "::error::retire release/1.7: cloud is production (newest cloud GA)",
+                ACTION=ONE,
+                LINE="1.7",
+                REASON="early",
+                FORCE=force,
+            )
+
+    def test_retire_one_needs_force_for_on_prem_in_its_window(self):
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
+        self.line("1.8", "v1.8.0-rc.1", "v1.8.0")  # 1.7's cloud is past end of support
+        pushed = f"{dt.datetime.now(dt.UTC) - dt.timedelta(days=1):%Y-%m-%dT%H:%M:%SZ}"
+        self.write(
+            "reg-on-prem_backend.jsonl",
+            f'{{"id": 1, "digest": "sha256:o", "pushed_at": "{pushed}", "tags": ["v1.7.0-rc.1"]}}\n',
+        )
+        self.write(  # the on-prem chart GA, in its support window
+            "reg-chart_unstract-platform.jsonl",
+            f'{{"id": 2, "digest": "sha256:c", "pushed_at": "{pushed}", "tags": ["1.7.0"]}}\n',
+        )
+        env = {"ACTION": ONE, "LINE": "1.7", "REASON": "customer moved"}
+        self.kept_line(
+            "1.7", "::error::retire release/1.7: on-prem still supported", **env
+        )
+        self.retire(FORCE="true", **env)
+        self.assertIn("retired release/1.7: customer moved", self.read("summary"))
+        self.assertNotIn(
+            "release/1.7", rm.git(self.repos["cloud"][0], "branch", "-l", "release/*")
+        )
+
+    def test_retire_one_links_only_what_survives(self):
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
+        self.line("1.8", "v1.8.0-rc.1", "v1.8.0")
+        tip = rm.git(self.repos["cloud"][0], "rev-parse", "release/1.7")
+        web = "https://github.com/Zipstack/unstract-cloud"
+        tag = f"retired/1.7-{tip[:7]}"
+        env = {
+            "ACTION": ONE,
+            "LINE": "1.7",
+            "REASON": "x",
+            "GITHUB_SERVER_URL": "https://github.com",
+        }
+        self.retire(DRY_RUN="true", **env)
+        dry = self.read("summary")
+        self.assertIn(
+            f"- branch [`release/1.7`]({web}/tree/release/1.7) (tip [`{tip[:12]}`]({web}/commit/{tip});",
+            dry,
+        )
+        self.assertIn(f"- tag `{tag}`: x", dry)
+        self.retire(**env)
+        real = self.read("summary")[len(dry) :]
+        self.assertIn(
+            f"- branch `release/1.7` (tip [`{tip[:12]}`]({web}/commit/{tip});", real
+        )
+        self.assertIn(f"- tag [`{tag}`]({web}/releases/tag/{tag}): x", real)
+
+    def test_abandon_archives_the_tip_and_frees_the_minor(self):
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
+        self.line("1.8", "v1.8.0-rc.1")
+        origin = self.repos["cloud"][0]
+        tip = rm.git(origin, "rev-parse", "release/1.8")
+        self.retire(
+            ACTION=ABANDON, LINE="1.8", REASON="cut by mistake", RELSTATE_AR_TOKEN="t"
+        )
+        self.assertIn("abandoned release/1.8 (1 RC tag(s)", self.read("summary"))
+        self.assertEqual(
+            rm.git(origin, "tag", "-l", "retired/*"), f"retired/1.8-{tip[:7]}"
+        )
+        self.assertEqual(rm.git(origin, "tag", "-l", "v1.8.*"), "")
+        self.assertEqual(rs._next_minor(origin, []), "1.8")  # the next cut reuses it
+
+    def test_past_eos_and_abandon_refuse_force(self):
+        self.line("1.6", "v1.6.0-rc.1", "v1.6.0")
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
+        self.line("1.8")
+        self.kept_line(
+            "1.6",
+            "::error::force set for 'Retire shipped lines past end of support'",
+            FORCE="true",
+        )
+        self.kept_line(
+            "1.8",
+            "::error::force set for 'Abandon a line that never shipped'",
+            ACTION=ABANDON,
+            LINE="1.8",
+            REASON="x",
+            FORCE="true",
         )
 
     def test_derived_list(self):
@@ -1288,10 +1423,27 @@ class RetireWorkflow(Workflow):
         self.kept(
             "1.7",
             self.lands_mid_run("1.7"),
-            ACTION=NEVER_SHIPPED,
+            ACTION=ABANDON,
             LINE="release/1.7",
             REASON="cut by mistake",
         )
+
+    def test_retire_one_keeps_a_branch_pushed_after_its_tip_was_read(self):
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
+        self.line("1.8", "v1.8.0-rc.1", "v1.8.0")
+        self.kept(
+            "1.7",
+            self.lands_mid_run("1.7"),
+            ACTION=ONE,
+            LINE="release/1.7",
+            REASON="early",
+        )
+
+    def test_retire_one_refuses_a_line_moved_after_its_archive(self):
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
+        tag = self.moved("1.7")
+        self.line("1.8", "v1.8.0-rc.1", "v1.8.0")
+        self.refused("1.7", tag, ACTION=ONE, LINE="release/1.7", REASON="early")
 
     def test_derived_list_keeps_a_branch_pushed_after_its_tip_was_read(self):
         self.line("1.6", "v1.6.0-rc.1", "v1.6.0")
@@ -3176,42 +3328,55 @@ class InputSteps(unittest.TestCase):
 
     def test_retire_form(self):
         form = dispatch_inputs("retire.yaml")
-        self.assertEqual(list(form), ["action", "line", "reason", "dry_run"])
+        self.assertEqual(list(form), ["action", "line", "reason", "force", "dry_run"])
         self.assertEqual(
             form["action"],
             [
-                'description: "What to delete"',
+                'description: "What to retire"',
                 "type: choice",
                 "options:",
                 f'- "{PAST_EOS}"',
-                f'- "{NEVER_SHIPPED}"',
+                f'- "{ONE}"',
+                f'- "{ABANDON}"',
                 f'default: "{PAST_EOS}"',
             ],
         )
+        self.assertEqual(
+            form["force"][0],
+            'description: "Force: retire a line that is still supported (on-prem in window, or a late target)"',
+        )
         with open(os.path.join(HERE, "..", "workflows", "retire.yaml")) as fh:
             text = fh.read()
-        for gone in ("abandon", "retire_line", "now", "force"):
+        for gone in ("abandon", "retire_line", "now"):
             self.assertNotIn(f"inputs.{gone}", text)
+        self.assertIn("\n      FORCE: ${{ inputs.force }}\n", text)
 
     def test_retire_run_name(self):
         for action, line, dry, want in (
             (PAST_EOS, "", True, "Retire past end of support (dry run)"),
             (PAST_EOS, "", False, "Retire past end of support"),
-            (NEVER_SHIPPED, "1.7", True, "Delete never-shipped 1.7 (dry run)"),
-            (NEVER_SHIPPED, "1.7", False, "Delete never-shipped 1.7"),
-            (NEVER_SHIPPED, "", False, "Delete never-shipped (no line)"),
+            ("", "", False, "Retire past end of support"),  # schedule: no inputs
+            (ONE, "1.7", True, "Retire 1.7 (dry run)"),
+            (ONE, "1.7", False, "Retire 1.7"),
+            (ONE, "", False, "Retire (no line)"),
+            (ABANDON, "1.7", True, "Abandon 1.7 (dry run)"),
+            (ABANDON, "1.7", False, "Abandon 1.7"),
+            (ABANDON, "", False, "Abandon (no line)"),
         ):
-            self.assertEqual(
-                run_name(
-                    "retire.yaml",
-                    **{
-                        "inputs.action": action,
-                        "inputs.line": line,
-                        "inputs.dry_run": dry,
-                    },
-                ),
-                want,
-            )
+            ctx = {"inputs.action": action, "inputs.line": line, "inputs.dry_run": dry}
+            self.assertEqual(run_name("retire.yaml", **ctx), want)
+        self.assertEqual(
+            run_name(
+                "retire.yaml",
+                **{
+                    "inputs.action": ONE,
+                    "inputs.line": "1.7",
+                    "inputs.dry_run": True,
+                    "inputs.force": True,
+                },
+            ),
+            "Retire 1.7 (dry run) (forced)",
+        )
 
     def test_advisory_sync_run_name(self):
         wf = "security-advisory-sync.yaml"
