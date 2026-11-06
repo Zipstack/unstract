@@ -25,7 +25,7 @@ import { LineChart } from "@v1/components/ui/chart";
   ]}
   markers={[{ index: peakIndex, series: "pages", label: "10 Aug · 2,981 pages" }]}
   state={query.isPending ? "loading" : "ready"}
-  emptySlot={<EmptyState … />}
+  emptySlot={<YourEmptyState … />}        // must fit `height`
 />
 ```
 
@@ -79,7 +79,7 @@ Every chart:
 | `summary` | `string` | generated | The sentence screen readers hear. Pass one when the page knows the story ("10 Aug alone carries 49% of the month's pages"). |
 | `xLabel` | `string` | `"Category"` | First column header of the data table. |
 | `state` | `"ready" \| "loading" \| "empty"` | `"ready"` | `ready` with no rows shows the empty state. |
-| `emptySlot` | `ReactNode` | — | Replaces the empty message, e.g. with the page's EmptyState. |
+| `emptySlot` | `ReactNode` | — | Replaces the empty message. It is centred in a box of the chart's `height` (40 on a sparkline) and the box does not grow, so the slot must fit; it replaces the screen-reader title prefix too, so name the chart in it. |
 | `emptyMessage` | `string` | `"No data for this period"` | |
 | `height` | `number` | 240 (sparkline 40) | Plot height in pixels. |
 | `width` | `number` | fills the container | Fixed width in pixels. |
@@ -122,8 +122,13 @@ own stack.
   The ramp is one hue (blue), lightest (`--chart-1`) to darkest (`--chart-5`)
   in every mode, so a category keeps its shade across modes. Use it for
   ordered categories: modes, tiers, buckets.
-- After five untoned series the ramp repeats. Do not go past five: a single-hue
-  ramp cannot separate more. Group the tail into "Other", or use tones.
+- Neighbouring steps differ only in lightness (about 1.2–1.4:1 to each other),
+  which reads in a stack, where a stroke splits the segments, but not reliably
+  between two lines or side-by-side bars. Give series that are not an order
+  (this week and last week, two products) on a line, area or grouped bar a
+  `tone` each instead.
+- After five untoned series the ramp repeats. Keep a stack to five or fewer:
+  group the tail into "Other", or use tones.
 - A `tone` takes a series out of the ramp for meaning: `primary`,
   `destructive` (failures), `success`, `warning`, `muted`
   (`muted-foreground`).
@@ -161,7 +166,8 @@ sparkline without a tooltip is a static `role="img"` outside the tab order.
 
 - `loading`: the shared `Skeleton` with one `SkeletonBlock` at the chart's
   height, announced as "Loading {title}". Never a spinner.
-- `empty`: a centred message at the chart's height, or `emptySlot`.
+- `empty`: a centred message at the chart's height, or `emptySlot`, which must
+  fit that height.
 - Both keep the ready chart's footprint when `series` is known before the
   data: its legend is laid out, invisibly, in the same place, so a card does
   not jump when data arrives. Series built from the response (pivoted rows)
