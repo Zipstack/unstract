@@ -44,6 +44,8 @@ from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import requests
+from urllib3.exceptions import LocationParseError
+from urllib3.util import parse_url
 
 from unstract.core.network.ssrf import (
     REFUSED_INTERNAL_LITERAL,
@@ -178,11 +180,17 @@ def request_timeout() -> tuple[float, float]:
 
 
 def _without_userinfo(url: str) -> str:
-    """``url`` with any ``user:pass@`` removed, for the checks that follow it.
+    r"""``url`` with any ``user:pass@`` removed, for the checks that follow it.
 
     The shared guard stops at its credential check, so the host checks after it
     (parser agreement, control characters, empty host) are run on this copy.
     The original URL, credentials included, is still what gets dialled.
+
+    The copy is rebuilt the way ``urlparse`` reads the URL, which is not
+    always how the transport reads it (``http://a@b\@c/`` is ``c`` to one and
+    ``b`` to the other). So the copy is used only when urllib3, which the
+    transport dials with, finds the same host in both. Otherwise ``url`` is
+    returned unchanged and the guard refuses it as ``credentials-in-url``.
     """
     try:
         parsed = urlparse(url)
@@ -190,7 +198,12 @@ def _without_userinfo(url: str) -> str:
         return url
     if "@" not in (parsed.netloc or ""):
         return url
-    return parsed._replace(netloc=parsed.netloc.rpartition("@")[2]).geturl()
+    stripped = parsed._replace(netloc=parsed.netloc.rpartition("@")[2]).geturl()
+    try:
+        same_host = parse_url(url).host == parse_url(stripped).host
+    except LocationParseError:
+        return url
+    return stripped if same_host else url
 
 
 def refusal_reason(url: str) -> str | None:
@@ -201,7 +214,8 @@ def refusal_reason(url: str) -> str | None:
     allowed. There they could steer the request to a host the guard did not
     approve. Where any destination is allowed they gain an attacker nothing,
     and a self-hosted Unstructured behind basic auth needs them, so the host
-    checks run on the URL without its userinfo instead. The destination check
+    checks run on the URL without its userinfo instead, unless removing it
+    changes the host the transport would dial (see :func:`_without_userinfo`). The destination check
     applies only when private destinations are not allowed and the host is not
     in :func:`allowed_hosts`; otherwise no lookup is made here.
     """

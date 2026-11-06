@@ -79,6 +79,21 @@ def test_default_allows_credentials_in_url(url):
     resolve.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        # urlparse reads host c, the transport dials b.
+        "http://a@b\\@c/x",
+        # urlparse drops the tab, the transport keeps it.
+        "http://u@exa\tmple.com/x",
+        # The transport cannot parse it, so the copy cannot be vouched for.
+        "http://u@host:99999/x",
+    ],
+)
+def test_default_refuses_credentials_that_change_the_dialled_host(url):
+    assert uu.refusal_reason(url) == "credentials-in-url"
+
+
 def test_block_mode_refuses_credentials_in_url(monkeypatch):
     monkeypatch.setenv(uu.ALLOW_PRIVATE_ENV, "false")
     with _resolve_to("93.184.216.34"):
