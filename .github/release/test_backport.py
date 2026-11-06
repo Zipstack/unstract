@@ -86,10 +86,47 @@ class Held(unittest.TestCase):
                     [(b, "critical", "#2", "t"), (d, bp.UNCLASSIFIABLE, "no PR", "t")],
                     "release/0.182",
                 ),
-                f"⚠ Held for the RM on `release/0.182` (stabilized; Promote blocks unless forced): #2 critical, "
-                f"`{d[:7]}` (no PR) {bp.UNCLASSIFIABLE}. Pick with `gh workflow run backport.yaml -f commits=#2,{d[:12]} "
-                "-f lines=0.182 -f confirm_stabilized=true`",
+                f"⚠ Held for the RM on `release/0.182` (stabilized; Promote blocks unless forced): #2 critical. "
+                "Pick with `gh workflow run backport.yaml -f commits=#2 -f lines=0.182 -f confirm_stabilized=true` "
+                f"{bp.UNCLASSIFIABLE}, add a backport label or fix its PR title, or record a decline: `{d[:7]}` (no PR) t",
             )
+            note = bp.held_note(
+                [(d, bp.UNCLASSIFIABLE, "#42", "x (no backport label: y)")],
+                "release/0.182",
+            )
+            self.assertNotIn("commits=", note)
+            self.assertIn("add a backport label", note)
+            self.assertIn("#42 x (no backport label: y)", note)
+
+    def test_unclassifiable_held_line_names_the_error_not_confirm(self):
+        line = bp.held_line(
+            "a" * 40,
+            bp.UNCLASSIFIABLE,
+            "#42",
+            "release/0.186",
+            "error",
+            None,
+            "x (no backport label: y)",
+        )
+        self.assertEqual(
+            line,
+            f"::error::aaaaaaa ({bp.UNCLASSIFIABLE}, PR #42, x (no backport label: y)) held for release/0.186: "
+            "add a backport label or fix its PR title, or record a decline",
+        )
+
+    def test_warn_held_passes_the_title(self):
+        rows = [("a" * 40, bp.UNCLASSIFIABLE, "#42", "x (no backport label: y)")]
+        out = io.StringIO()
+        with (
+            mock.patch.object(bp, "held", return_value=rows),
+            mock.patch.dict(
+                os.environ, {"GITHUB_SERVER_URL": "", "GITHUB_REPOSITORY": ""}
+            ),
+            contextlib.redirect_stdout(out),
+        ):
+            note = bp.warn_held("o/r", ".", "release/0.186", "error")
+        self.assertIn("PR #42, x (no backport label: y)) held", out.getvalue())
+        self.assertNotIn("confirm_stabilized", out.getvalue() + note)
 
 
 class Rescan(unittest.TestCase):
@@ -231,9 +268,9 @@ class Listing(unittest.TestCase):
                 "mergeCommit": {"oid": sha},
             }
             listing = [
-                pr(1, fix, "UN-1 [FIX] a"),
+                pr(1, fix, "UN-1 [FIX] a", ["fix/needs-backport"]),
                 pr(2, sec, "UN-2 [FIX] b", ["fix/security"]),
-                pr(3, misc, "UN-3 [MISC] c"),
+                pr(3, misc, "UN-3 [MISC] c", ["main-only"]),
                 pr(4, bad, "no prefix"),
                 {"number": 5, "title": "open", "labels": [], "mergeCommit": None},
             ]
@@ -241,9 +278,9 @@ class Listing(unittest.TestCase):
             self.assertEqual(classes[fix], ("fix", "#1", "UN-1 [FIX] a"))
             self.assertEqual(classes[sec], ("security", "#2", "UN-2 [FIX] b"))
             self.assertEqual(classes[misc], (None, "#3", "UN-3 [MISC] c"))
-            self.assertEqual(classes[bad][0], bp.UNCLASSIFIABLE)
+            self.assertEqual(classes[bad][:2], (bp.UNCLASSIFIABLE, "#4"))
             self.assertIn(
-                "no recognised '[TYPE]' or 'TICKET [TYPE]' prefix", classes[bad][1]
+                "no recognised '[TYPE]' or 'TICKET [TYPE]' prefix", classes[bad][2]
             )
             self.assertEqual(
                 len(classes), 4
@@ -463,10 +500,13 @@ class SummaryLinks(unittest.TestCase):
             )
             self.assertIn(
                 f"on Zipstack/unstract [`release/0.182`]({oss}/tree/release/0.182) (stabilized; Promote blocks "
-                f"unless forced): [Zipstack/unstract#2]({oss}/pull/2) critical, [`bbbbbbb`]({oss}/commit/{b}) (no PR)",
+                f"unless forced): [Zipstack/unstract#2]({oss}/pull/2) critical. Pick with",
                 note,
             )
-            self.assertIn(f"-f commits=#2,{b[:12]} -f lines=0.182", note)
+            self.assertIn(
+                f"record a decline: [`bbbbbbb`]({oss}/commit/{b}) (no PR) t", note
+            )
+            self.assertIn("-f commits=#2 -f lines=0.182", note)
             pending = bp.pending_block(
                 [(261, "release/0.190", 1)],
                 [(b, "release/0.189", "security", "no PR", 1)],
@@ -533,7 +573,7 @@ class DispatchNonFix(unittest.TestCase):
                     "#250",
                     "none",
                     "-",
-                    "skipped: not a fix; label #250 fix/needs-backport (or the fix label it needs) and rerun",
+                    "skipped: not a fix; swap #250's main-only label for fix/needs-backport (or the fix label it needs) and rerun",
                     "-",
                 ),
                 (b, "no PR", "error", "-", "failed: no PR found", "-"),
@@ -548,7 +588,9 @@ SUBJECT = "UN-4160 [MISC] Log in to prod through Unstract ID (#1946)"
 PR_1946 = {
     "number": 1946,
     "title": "UN-4160 [MISC] Log in to prod through Unstract ID",
-    "labels": [],
+    "labels": [
+        {"name": "main-only"}
+    ],  # set for the not-a-fix path; the live PR carries fix/needs-backport
     "merged": True,
     "merge_commit_sha": MERGED,
 }
@@ -572,6 +614,25 @@ def api(pulls="[]", message=SUBJECT, pr=PR_1946):
     return gh, calls
 
 
+class ListingUnlabelled(unittest.TestCase):
+    def test_a_main_pr_without_a_routing_label_is_unclassifiable(self):
+        pr = {
+            "number": 8,
+            "title": "UN-8 [FIX] x",
+            "labels": [],
+            "mergeCommit": {"oid": "s"},
+        }
+        cls, ref, title = bp.classes_from_listing([pr])["s"]
+        self.assertEqual((cls, ref), (bp.UNCLASSIFIABLE, "#8"))
+        self.assertRegex(title, r"^UN-8 \[FIX\] x \(no backport label: ")
+
+    def test_a_looked_up_pr_without_a_routing_label_keeps_its_number(self):
+        pr = {"number": 8, "title": "UN-8 [FIX] x", "labels": []}
+        cls, ref, title = bp.pr_class(pr)
+        self.assertEqual((cls, ref), (bp.UNCLASSIFIABLE, "#8"))
+        self.assertRegex(title, r"^UN-8 \[FIX\] x \(no backport label: ")
+
+
 class FixClassSubject(unittest.TestCase):
     """GitHub's commit-to-PR index can miss a squash merge; the subject's (#N) is checked against the PR."""
 
@@ -590,11 +651,24 @@ class FixClassSubject(unittest.TestCase):
         self.assertIn("::notice::6d49d9f: no PR indexed", self.out)
 
     def test_indexed_pr_wins(self):
-        listed = [{**PR_1946, "number": 7, "title": "UN-7 [FIX] x"}]
+        listed = [
+            {
+                **PR_1946,
+                "number": 7,
+                "title": "UN-7 [FIX] x",
+                "labels": [{"name": "fix/needs-backport"}],
+            }
+        ]
         self.assertEqual(
             self.fix_class(pulls=json.dumps(listed)), ("fix", "#7", "UN-7 [FIX] x")
         )
         self.assertEqual(len(self.calls), 1)
+
+    def test_unlabelled_indexed_pr_keeps_its_number(self):
+        listed = [{**PR_1946, "number": 7, "title": "UN-7 [FIX] x", "labels": []}]
+        cls, ref, title = self.fix_class(pulls=json.dumps(listed))
+        self.assertEqual((cls, ref), (bp.UNCLASSIFIABLE, "#7"))
+        self.assertRegex(title, r"^UN-7 \[FIX\] x \(no backport label: ")
 
     def test_no_pr_unless_the_subject_names_one_that_merged_it(self):
         cases = {
@@ -639,7 +713,7 @@ class DispatchNamedPr(unittest.TestCase):
                     "#1946",
                     "none",
                     "-",
-                    "skipped: not a fix; label #1946 fix/needs-backport (or the fix label it needs) and rerun",
+                    "skipped: not a fix; swap #1946's main-only label for fix/needs-backport (or the fix label it needs) and rerun",
                     "-",
                 )
             ],
@@ -1721,6 +1795,20 @@ class PushTitle(unittest.TestCase):
             )
         self.assertIn("::warning::ccccccc: fix class: no [TYPE]", out.getvalue())
 
+    def test_unlabelled_push_keeps_its_pr(self):
+        row = (bp.UNCLASSIFIABLE, "#8", "UN-8 [FIX] x (no backport label: ...)")
+        with (
+            mock.patch.object(bp, "fix_class", return_value=row),
+            mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+        ):
+            title = bp.push_title("o/r", "c" * 40)
+        self.assertIn(f"{bp.UNCLASSIFIABLE})", title)
+        self.assertIn("#8", title)
+        self.assertIn(
+            "::warning::ccccccc: fix class: UN-8 [FIX] x (no backport label",
+            out.getvalue(),
+        )
+
 
 class DispatchCommit(unittest.TestCase):
     def test_unclassifiable_named_commit_fails(self):
@@ -1730,6 +1818,13 @@ class DispatchCommit(unittest.TestCase):
         ):
             rows = bp._dispatch_commit("o/r", {}, "c" * 40, False, [], [])
         self.assertEqual(rows, [("c" * 40, "?", "error", "-", "failed: no [TYPE]", "-")])
+
+    def test_unlabelled_named_commit_fails_with_its_pr(self):
+        pr = {"number": 8, "title": "UN-8 [FIX] x", "labels": []}
+        with mock.patch("sys.stdout", io.StringIO()):
+            rows = bp._dispatch_commit("o/r", {}, "c" * 40, False, [], [], named_pr=pr)
+        self.assertEqual(rows[0][1:4], ("#8", "error", "-"))
+        self.assertRegex(rows[0][4], r"^failed: UN-8 \[FIX\] x \(no backport label: ")
 
 
 class Soft(unittest.TestCase):
