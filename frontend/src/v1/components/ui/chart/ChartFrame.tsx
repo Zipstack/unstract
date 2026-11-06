@@ -145,9 +145,11 @@ export function ChartFrame({
       <p id={summaryId} className="ui:sr-only">
         {summary}
       </p>
-      {/* Mounted with the chart and filled in place, so each move is read
-          out; polite, so hovering does not cut the reader off. No status
-          role, so a page's own status queries still find one element. */}
+      {/* Mounted with the chart and filled in place, so a move to a point
+          with a different sentence is read out (two points that read the
+          same are not re-read). Polite, so hovering does not cut the reader
+          off. No status role: a page's tests that query getByRole("status")
+          should still find only their own. */}
       <div data-slot="chart-live" aria-live="polite" className="ui:sr-only">
         {live}
       </div>

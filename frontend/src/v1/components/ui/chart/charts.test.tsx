@@ -196,6 +196,35 @@ describe.each(VARIANTS)("%s", (slot, Chart) => {
     expect(live).toHaveTextContent(/^11 Aug: Pages processed/);
   });
 
+  it("empties the live region when the pointer leaves the plot", async () => {
+    stubLayout();
+    const { container } = renderV1(<Chart {...props()} />);
+    const wrapper = container.querySelector(".recharts-wrapper") as Element;
+    const live = container.querySelector("[data-slot=chart-live]");
+    fireEvent.mouseMove(wrapper, { clientX: WIDTH / 2, clientY: 100 });
+    await waitFor(() => expect(live).toHaveTextContent(/^10 Aug: /));
+    fireEvent.mouseLeave(wrapper);
+    await waitFor(() => expect(live).toBeEmptyDOMElement());
+    expect(container.querySelector("[data-slot=chart-live]")).toBe(live);
+  });
+
+  it("leaves no sentence behind across loading", async () => {
+    const view = (state: "loading" | "ready") => (
+      <Chart {...props({ state })} />
+    );
+    const { container, user, rerender } = renderV1(view("ready"));
+    await user.tab();
+    await user.keyboard("{ArrowRight}");
+    expect(container.querySelector("[data-slot=chart-live]")).toHaveTextContent(
+      /^10 Aug: /,
+    );
+    rerender(view("loading"));
+    rerender(view("ready"));
+    expect(
+      container.querySelector("[data-slot=chart-live]"),
+    ).toBeEmptyDOMElement();
+  });
+
   it("draws markers as a dot series, labelled, and never as a reference line or dot", () => {
     const { container } = renderV1(
       <Chart

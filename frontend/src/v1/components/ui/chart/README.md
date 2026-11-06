@@ -174,7 +174,10 @@ Every chart renders, beside the plot:
 - the `summary` (or a generated sentence: chart kind, category range, each
   series' highest and lowest point, and the markers), which the plot names
   through `aria-describedby`;
-- a visually hidden table of every value, captioned with `title`.
+- a visually hidden table of every value, captioned with `title`;
+- a polite live region (`data-slot="chart-live"`) that reads out the active
+  point as the tooltip moves ("no data" for a gap), and empties when it
+  closes.
 
 The plot itself is a focusable `role="application"` with `aria-label={title}`:
 Tab to it, then the arrow keys move the tooltip from category to category. A

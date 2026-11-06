@@ -73,6 +73,39 @@ it("names no category, and does not throw, when the hovered row is missing", () 
   expect(container).toHaveTextContent("Pages–");
 });
 
+it("speaks a gap as no data, with no category and no stray separator", () => {
+  const onAnnounce = vi.fn();
+  render(
+    <ChartTooltip
+      active
+      label={1}
+      payload={[]}
+      series={series}
+      fmt={fmt}
+      categoryKey="day"
+      onAnnounce={onAnnounce}
+    />,
+  );
+  expect(onAnnounce).toHaveBeenLastCalledWith("Pages no data");
+});
+
+it("clears the sentence when it unmounts while open", () => {
+  const onAnnounce = vi.fn();
+  const { unmount } = render(
+    <ChartTooltip
+      active
+      label="10 Aug"
+      payload={[{ dataKey: "pages", value: 7 }]}
+      series={series}
+      fmt={fmt}
+      onAnnounce={onAnnounce}
+    />,
+  );
+  expect(onAnnounce).toHaveBeenLastCalledWith("10 Aug: Pages 7");
+  unmount();
+  expect(onAnnounce).toHaveBeenLastCalledWith("");
+});
+
 it("names no category when the hovered row lacks the category key, rather than the label", () => {
   const { container } = render(
     <ChartTooltip

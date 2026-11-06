@@ -31,8 +31,10 @@ type ChartTooltipProps = Readonly<{
   categoryKey?: string;
   /**
    * Called with a sentence for the active point (category, then each series
-   * and its value), and with "" when the tooltip closes. The chart puts it in
-   * a live region that stays mounted, outside Recharts' tooltip wrapper.
+   * and its value, "no data" for a gap), and with "" when Recharts reports
+   * the tooltip inactive or this element unmounts. An Escape dismissal hides
+   * the tooltip without either, so the last sentence stays. The chart puts it
+   * in a live region that stays mounted, outside Recharts' tooltip wrapper.
    */
   onAnnounce?: (text: string) => void;
 }>;
@@ -67,23 +69,26 @@ export function ChartTooltip({
       : undefined;
   const rows = series.map((s) => {
     const value = payload?.find((p) => p.dataKey === s.key)?.value;
+    const known = typeof value === "number" && Number.isFinite(value);
     return {
       series: s,
-      text:
-        typeof value === "number" && Number.isFinite(value)
-          ? s.format(value)
-          : "–",
+      text: known ? s.format(value) : "–",
+      // Screen readers skip a lone dash, so a gap is said in words.
+      spoken: known ? s.format(value) : "no data",
     };
   });
   const sentence = active
-    ? [heading, rows.map((r) => `${r.series.label} ${r.text}`).join(", ")]
+    ? [heading, rows.map((r) => `${r.series.label} ${r.spoken}`).join(", ")]
         .filter((part) => part !== undefined)
         .join(": ")
     : "";
   // Recharts keeps this element mounted while the tooltip is closed (it
   // re-renders it with `active` false), so the effect reports the close too.
+  // The cleanup clears the sentence when this element unmounts while open
+  // (the chart going to loading, or a sparkline's tooltip turned off).
   useEffect(() => {
     onAnnounce?.(sentence);
+    return () => onAnnounce?.("");
   }, [onAnnounce, sentence]);
   if (!active) {
     return null;
