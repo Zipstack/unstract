@@ -16,7 +16,9 @@ exact hostnames, matched case-insensitively after trimming, with no wildcards,
 ports or address ranges. A deployment that runs Unstructured in-cluster lists
 that Service's name here. It is empty by default, so nothing is exempt, and it
 is not consulted where private destinations are allowed. The scheme, credential
-and parser-agreement checks still apply to an allowlisted host. Because the
+and parser-agreement checks still apply to an allowlisted host. Where private
+destinations are allowed, credentials in the URL (basic auth in front of a
+self-hosted Unstructured) are accepted, as they were before this guard. Because the
 match is exact, list every form of the name that saved adapters use (short
 name, FQDN), and set it no later than ``UNSTRUCTURED_URL_ALLOW_PRIVATE=false``,
 or those adapters are refused in between.
@@ -175,22 +177,45 @@ def request_timeout() -> tuple[float, float]:
     return CONNECT_TIMEOUT, read
 
 
+def _without_userinfo(url: str) -> str:
+    """``url`` with any ``user:pass@`` removed, for the checks that follow it.
+
+    The shared guard stops at its credential check, so the host checks after it
+    (parser agreement, control characters, empty host) are run on this copy.
+    The original URL, credentials included, is still what gets dialled.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return url
+    if "@" not in (parsed.netloc or ""):
+        return url
+    return parsed._replace(netloc=parsed.netloc.rpartition("@")[2]).geturl()
+
+
 def refusal_reason(url: str) -> str | None:
     """The guard's reason ``url`` may not be dialled, or None if it may.
 
-    The scheme, credential and parser-agreement checks always apply. The
-    destination check applies only when private destinations are not allowed
-    and the host is not in :func:`allowed_hosts`; otherwise no lookup is made
-    here.
+    The scheme and host-syntax checks always apply. Credentials in the URL
+    (``user:pass@host``) are refused only when private destinations are not
+    allowed. There they could steer the request to a host the guard did not
+    approve. Where any destination is allowed they gain an attacker nothing,
+    and a self-hosted Unstructured behind basic auth needs them, so the host
+    checks run on the URL without its userinfo instead. The destination check
+    applies only when private destinations are not allowed and the host is not
+    in :func:`allowed_hosts`; otherwise no lookup is made here.
     """
-    if allow_private() or _is_allowlisted(url):
+    if allow_private():
+        reason = webhook_url_refusal(_without_userinfo(url), resolve=False)
+    elif _is_allowlisted(url):
         reason = webhook_url_refusal(url, resolve=False)
-        # resolve=False reports an internal literal (or localhost) as its last
-        # check, after every syntactic one, so waiving it waives nothing else.
-        if reason == REFUSED_INTERNAL_LITERAL:
-            reason = None
     else:
         reason = webhook_url_refusal(url)
+    # resolve=False reports an internal literal (or localhost) as its last
+    # check, after every syntactic one, so waiving it waives nothing else. On
+    # the full guard this reason means a refused destination and stands.
+    if reason == REFUSED_INTERNAL_LITERAL and (allow_private() or _is_allowlisted(url)):
+        reason = None
 
     if reason is not None:
         # The host only: the URL can carry a key in its query string.

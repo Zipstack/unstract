@@ -53,10 +53,38 @@ def test_default_allows_private_destinations(url):
 
 @pytest.mark.parametrize(
     "url",
-    ["ftp://10.0.0.5/x", "http://user:pass@10.0.0.5/x", "file:///etc/passwd"],
+    [
+        "ftp://10.0.0.5/x",
+        "file:///etc/passwd",
+        "http://user:pass@a\x00b/x",
+        "http://user:pass@[abc/x",
+    ],
 )
 def test_default_still_applies_syntactic_checks(url):
     assert uu.refusal_message(url) is not None
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://user:pass@10.0.0.5:8000/general/v0/general",
+        "https://user:pass@unstructured.example.com/general/v0/general",
+        "http://user@localhost:8000/x",
+    ],
+)
+def test_default_allows_credentials_in_url(url):
+    # Basic auth in front of a self-hosted Unstructured worked before the guard.
+    with _resolve_to() as resolve:
+        assert uu.refusal_reason(url) is None
+    resolve.assert_not_called()
+
+
+def test_block_mode_refuses_credentials_in_url(monkeypatch):
+    monkeypatch.setenv(uu.ALLOW_PRIVATE_ENV, "false")
+    with _resolve_to("93.184.216.34"):
+        assert uu.refusal_reason("https://user:pass@example.com/x") == (
+            "credentials-in-url"
+        )
 
 
 @pytest.mark.parametrize("url", PRIVATE_URLS)
