@@ -560,6 +560,7 @@ _OPENROUTER_PROVIDER_PREFIX = "openrouter/"
 _MINIMAX_PROVIDER_PREFIX = "minimax/"
 _MINIMAX_ANTHROPIC_PROVIDER_PREFIX = "anthropic/"
 _MINIMAX_CONTEXT_WINDOWS = {
+    "MiniMax-M3.1-Flash": 1_000_000,
     "MiniMax-M3": 1_000_000,
 }
 # All M2.x variants share one window. Kept local because LiteLLM overstates it.
@@ -584,6 +585,40 @@ def _minimax_context_window(model_id: str) -> int | None:
     if _is_minimax_m2_model(model_id):
         return _MINIMAX_M2_CONTEXT_WINDOW
     return None
+
+
+def _normalize_minimax_thinking(
+    adapter_metadata: dict[str, "Any"], model_id: str
+) -> None:
+    is_m2_model = _is_minimax_m2_model(model_id)
+    if "enable_thinking" in adapter_metadata:
+        enable_thinking = adapter_metadata.pop("enable_thinking")
+        if not isinstance(enable_thinking, bool):
+            raise ValueError("enable_thinking must be a boolean.")
+        if is_m2_model and not enable_thinking:
+            raise ValueError(f"{model_id} does not support disabling thinking.")
+        if not is_m2_model:
+            adapter_metadata["thinking"] = {
+                "type": "adaptive" if enable_thinking else "disabled"
+            }
+
+    thinking = adapter_metadata.get("thinking")
+    if model_id == "MiniMax-M3.1-Flash":
+        if thinking is not None and thinking != {"type": "adaptive"}:
+            raise ValueError("MiniMax-M3.1-Flash requires adaptive thinking.")
+        adapter_metadata["thinking"] = {"type": "adaptive"}
+        return
+    if thinking is None:
+        return
+    if is_m2_model:
+        # M2.x always thinks; the provider accepts this parameter but ignores it.
+        adapter_metadata.pop("thinking")
+        return
+    if not isinstance(thinking, dict) or thinking.get("type") not in {
+        "adaptive",
+        "disabled",
+    }:
+        raise ValueError("thinking.type must be adaptive or disabled.")
 
 
 class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
@@ -622,32 +657,18 @@ class MiniMaxLLMParameters(BaseChatCompletionParameters):
         if service_tier not in {None, "standard", "priority"}:
             raise ValueError("service_tier must be standard or priority.")
 
-        if "enable_thinking" in adapter_metadata:
-            enable_thinking = adapter_metadata.pop("enable_thinking")
-            if not isinstance(enable_thinking, bool):
-                raise ValueError("enable_thinking must be a boolean.")
-            adapter_metadata["thinking"] = {
-                "type": "adaptive" if enable_thinking else "disabled"
-            }
-
-        thinking = adapter_metadata.get("thinking")
-        if thinking is None and _is_minimax_m2_model(model_id):
-            thinking = {"type": "adaptive"}
-            adapter_metadata["thinking"] = thinking
-        if thinking is not None:
-            if not isinstance(thinking, dict) or thinking.get("type") not in {
-                "adaptive",
-                "disabled",
-            }:
-                raise ValueError("thinking.type must be adaptive or disabled.")
-            if _is_minimax_m2_model(model_id) and thinking["type"] == "disabled":
-                raise ValueError(f"{model_id} does not support disabling thinking.")
+        _normalize_minimax_thinking(adapter_metadata, model_id)
 
         validated = MiniMaxLLMParameters(**adapter_metadata).model_dump()
         validated["cost_model"] = f"{_MINIMAX_PROVIDER_PREFIX}{model_id}"
         if context_window := _minimax_context_window(model_id):
             validated["context_window"] = context_window
         validated["allowed_openai_params"] = ["service_tier", "thinking"]
+        if model_id == "MiniMax-M3.1-Flash":
+            # Older saved forms populated a standard tier for every model.
+            # Flash has no service-tier parameter; never forward that setting.
+            validated.pop("service_tier", None)
+            validated["allowed_openai_params"] = ["thinking"]
         return validated
 
     @staticmethod
