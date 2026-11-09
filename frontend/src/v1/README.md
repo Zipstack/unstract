@@ -85,6 +85,18 @@ is convention.
   `Spinner` sits only in buttons and running text. Errors on a screen are an
   `InlineAlert` above the content, with `onRetry`.
 
+## Code and data
+
+- Code, JSON, diffs, Markdown, copy controls and code editors come from
+  `components/ui/code/` (`CodeBlock`, `JsonView`, `DiffView`, `Markdown`,
+  `CopyButton`, `CodeEditor`, `InlineCode`); its README lists every prop.
+  Do not build another highlighter, JSON tree, diff or Markdown renderer.
+- Mono text (IDs, token counts) is `<InlineCode variant="plain">`; the font
+  comes only from the `font-mono` token. Syntax and diff colours are the
+  `code-*` and `diff-*` tokens.
+- `CodeEditor` uses Monaco from its default CDN, as v0 does. Never call
+  `loader.config()` in v1: the loader is shared with v0.
+
 ## Folders and what each may import
 
 Every folder may import from itself. Test files (`*.test.ts(x)`,
