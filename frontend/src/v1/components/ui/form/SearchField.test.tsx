@@ -110,8 +110,10 @@ it("is a searchbox", () => {
 /** A Radix dialog that follows the documented contract: skip dismissal while Escape would clear. */
 function SearchDialog({
   onOpenChange,
+  onKeyDown,
 }: {
   onOpenChange: (open: boolean) => void;
+  onKeyDown?: SearchFieldProps["onKeyDown"];
 }) {
   return (
     <Dialog.Root defaultOpen onOpenChange={onOpenChange}>
@@ -128,7 +130,7 @@ function SearchDialog({
         >
           <Dialog.Title>Find a document</Dialog.Title>
           <Dialog.Description>Search by name</Dialog.Description>
-          <SearchField aria-label="Search" />
+          <SearchField aria-label="Search" onKeyDown={onKeyDown} />
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
@@ -149,6 +151,40 @@ it("inside a Radix dialog, Escape clears a value without closing, then closes wh
 
   await user.keyboard("{Escape}");
   expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
+});
+
+it("inside a Radix dialog, the caller's onKeyDown can still cancel the clear", async () => {
+  const user = userEvent.setup();
+  const onOpenChange = vi.fn();
+  render(
+    <SearchDialog
+      onOpenChange={onOpenChange}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+        }
+      }}
+    />,
+  );
+  const input = screen.getByLabelText("Search") as HTMLInputElement;
+  await user.type(input, "invoice");
+  await user.keyboard("{Escape}");
+  expect(input.value).toBe("invoice");
+  expect(onOpenChange).not.toHaveBeenCalled();
+});
+
+it("returns an uncontrolled field to its defaultValue when its form resets", async () => {
+  const user = userEvent.setup();
+  render(
+    <form>
+      <SearchField aria-label="Search" defaultValue="draft" />
+    </form>,
+  );
+  const input = screen.getByLabelText("Search") as HTMLInputElement;
+  await user.type(input, " edited");
+  expect(input.value).toBe("draft edited");
+  fireEvent.reset(input.form as HTMLFormElement);
+  expect(input.value).toBe("draft");
 });
 
 it("lets the caller's onKeyDown cancel the clear, and forwards onChange", async () => {

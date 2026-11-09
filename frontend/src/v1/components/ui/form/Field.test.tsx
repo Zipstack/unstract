@@ -72,6 +72,16 @@ it.each(
   expect(frameOf(control()).hasAttribute("data-disabled")).toBe(true);
 });
 
+it.each([
+  ["Input", <Input key="i" id="own" />],
+  ["Textarea", <Textarea key="t" id="own" />],
+])("names a %s that has its own id: the Field's id wins", (_, control) => {
+  render(<Field label="Name">{control}</Field>);
+  const named = screen.getByLabelText("Name");
+  expect(named.id).not.toBe("own");
+  expect(document.querySelector("label")?.htmlFor).toBe(named.id);
+});
+
 it("associates a standalone Label through htmlFor", () => {
   render(
     <>
