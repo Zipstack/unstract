@@ -20,6 +20,7 @@ class WallClockTimeCalculator:
         execution_id: str,
         organization_id: str,
         fallback_results: list[dict[str, Any]] = None,
+        execution_context: dict[str, Any] | None = None,
     ) -> float:
         """Calculate wall-clock execution time with multiple fallback strategies.
 
@@ -28,6 +29,7 @@ class WallClockTimeCalculator:
             execution_id: Workflow execution ID
             organization_id: Organization context
             fallback_results: List of file results for summing as fallback
+            execution_context: Already-fetched execution context to reuse, if any
 
         Returns:
             Execution time in seconds
@@ -35,7 +37,7 @@ class WallClockTimeCalculator:
         try:
             # Primary: Get workflow execution start time from backend
             return WallClockTimeCalculator._get_wall_clock_time(
-                api_client, execution_id, organization_id
+                api_client, execution_id, organization_id, execution_context
             )
         except Exception as e:
             logger.error(f"Error calculating wall-clock time: {e}")
@@ -44,30 +46,39 @@ class WallClockTimeCalculator:
 
     @staticmethod
     def _get_wall_clock_time(
-        api_client: InternalAPIClient, execution_id: str, organization_id: str
+        api_client: InternalAPIClient,
+        execution_id: str,
+        organization_id: str,
+        execution_context: dict[str, Any] | None = None,
     ) -> float:
-        """Get wall-clock time from execution created_at timestamp."""
-        execution_response = api_client.get_workflow_execution(
-            execution_id, organization_id
-        )
+        """Get wall-clock time from execution created_at timestamp.
 
-        if not (execution_response.success and execution_response.data):
-            raise ValueError("Failed to get execution data from API")
+        ``execution_context`` is an already-fetched execution context; when it is
+        non-empty, no API call is made (created_at never changes).
+        """
+        if not execution_context:
+            execution_response = api_client.get_workflow_execution(
+                execution_id, organization_id
+            )
+
+            if not (execution_response.success and execution_response.data):
+                raise ValueError("Failed to get execution data from API")
+            execution_context = execution_response.data
 
         # Extract execution data from the nested structure
-        execution_data = execution_response.data.get("execution", {})
-        if not execution_data:
+        execution = execution_context.get("execution", {})
+        if not execution:
             logger.error(
-                f"No 'execution' key in API response. Available keys: {list(execution_response.data.keys())}"
+                f"No 'execution' key in API response. Available keys: {list(execution_context.keys())}"
             )
             raise ValueError("No execution data found in API response")
 
         # Get created_at from the execution data
-        created_at_str = execution_data.get("created_at")
+        created_at_str = execution.get("created_at")
 
         if not created_at_str:
             logger.error(
-                f"Missing timestamp field in API response. Available fields: {list(execution_response.data.keys())}"
+                f"Missing timestamp field in API response. Available fields: {list(execution_context.keys())}"
             )
             # Don't raise error, let it fall back to file timing calculation
             raise ValueError("No created_at timestamp found in execution data")

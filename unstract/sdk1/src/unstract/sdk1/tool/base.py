@@ -63,10 +63,7 @@ class BaseTool(ABC, StreamMixin):
                 )
             except FileStorageError as e:
                 self.stream_error_and_exit(
-                    "Error while initialising storage: %s",
-                    e,
-                    stack_info=True,
-                    exc_info=True,
+                    f"Error while initialising storage: {e}", err=e
                 )
 
     @classmethod

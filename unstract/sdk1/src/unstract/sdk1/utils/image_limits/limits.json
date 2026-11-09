@@ -1,0 +1,2020 @@
+{
+  "_meta": {
+    "schema_version": 1,
+    "verified_on": "2026-10-09",
+    "litellm_version": "1.104.0",
+    "status": "Independently verified 2026-10-09 against the live provider pages and litellm 1.104.0. Per-field verdicts, URLs and quotes live in the source dataset (_meta.source_dataset), outside the repo.",
+    "units": "Bytes are decimal (1 MB = 1,000,000). Providers do not say whether 'MB' means 10^6 or 2^20; decimal is the stricter reading.",
+    "field_shape": "Each limit field is {value, confidence, source, scope?, base64_counted?, note?}. value null = unknown. confidence: 'verified' = the number is stated on the cited official page for this scope; 'unverified' = inferred, observed, assumed by analogy, or undocumented. source = key(s) into the top-level 'sources' map.",
+    "fields": {
+      "max_images_per_request": "image blocks per request (scope says if the provider counts per message or per request; Unstract sends one user message, so these are equivalent)",
+      "max_request_bytes": "total request body on the wire; base64_counted=true when the limit is on the JSON body that carries base64 images",
+      "max_image_bytes": "per image",
+      "max_image_px": "max pixels on the longer side, per image",
+      "many_images_threshold / many_images_max_px": "Anthropic: when a request has more than threshold images, each image must be <= many_images_max_px per side",
+      "max_image_patches": "OpenAI: per-image patch budget"
+    },
+    "source_dataset": "claudedocs/vlm-consumer/model-limits/limits.verified.json (independently verified 2026-10-09)",
+    "lookup_rules": "See README.md in this directory (\"Lookup rules\"): the single statement of how a provider and model resolve to an entry."
+  },
+  "sources": {
+    "ANTH_VISION": {
+      "url": "https://platform.claude.com/docs/en/build-with-claude/vision",
+      "verified_on": "2026-10-09",
+      "quote": "\"100 per request on the API, for models with a 200k-token context window. 600 per request on the API, for all other models. The maximum dimensions per image are 8000x8000 px. If a single API request contains more than 20 images, a stricter per-image dimension limit applies ... resize each image so that neither dimension exceeds 2000 px ... On Amazon Bedrock and Google Cloud, document blocks such as PDFs also count toward this threshold. The maximum size per image is: 10 MB (base64-encoded) when using the Claude API directly. 5 MB (base64-encoded) on Amazon Bedrock and Google Cloud.\""
+    },
+    "ANTH_REQSIZE": {
+      "url": "https://platform.claude.com/docs/en/api/overview#request-size-limits",
+      "verified_on": "2026-10-09",
+      "quote": "\"Messages, Token Counting | 32 MB ... If you exceed these limits, you'll receive a 413 request_too_large error. Partner-operated platforms have their own request size limits: Bedrock limits requests to 20 MB, and Google Cloud limits requests to 30 MB. Claude Platform on AWS uses the same limits as the direct Claude API.\""
+    },
+    "ANTH_CONTEXT": {
+      "url": "https://platform.claude.com/docs/en/build-with-claude/context-windows",
+      "verified_on": "2026-10-09",
+      "quote": "\"Claude Fable 5.1, Claude Mythos 5.1, Claude Fable 5, Claude Mythos 5, Claude Opus 5.5, Claude Opus 5, Claude Opus 4.8, Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet 5.5, Claude Sonnet 5, Claude Sonnet 4.6, Claude Haiku 5.5, and Claude Mythos Preview have a 1M-token context window ... Other Claude models, including Claude Sonnet 4.5 (deprecated), have a 200k-token context window. ... A single request can include up to 600 images or PDF pages (100 for models with a 200k-token context window).\""
+    },
+    "ANTH_GCP": {
+      "url": "https://platform.claude.com/docs/en/build-with-claude/claude-on-vertex-ai",
+      "verified_on": "2026-10-09",
+      "quote": "\"Agent Platform limits request payloads to 30 MB. When sending large documents or many images, you might reach this limit before the token limit.\" Also: \"Other Claude models, including Sonnet 4.5 (deprecated) and Sonnet 4 (deprecated), have a 200k-token context window.\""
+    },
+    "ANTH_FOUNDRY": {
+      "url": "https://platform.claude.com/docs/en/build-with-claude/claude-in-microsoft-foundry",
+      "verified_on": "2026-10-09",
+      "quote": "Hosting options table: \"Anthropic-operated service running on Azure infrastructure\" / \"Anthropic-operated service running on Anthropic infrastructure\". No request-size or image limit stated. \"Other Claude models, including Claude Sonnet 4.5 (deprecated), have a 200k-token context window.\""
+    },
+    "BEDROCK_MESSAGE": {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Message.html",
+      "verified_on": "2026-10-09",
+      "quote": "\"You can include up to 20 images. Each image's size, height, and width must be no more than 3.75 MB, 8000 px, and 8000 px, respectively.\" (Converse/ConverseStream Message.content)"
+    },
+    "BEDROCK_CLAUDE_REQ": {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-anthropic-claude-messages-request-response.html",
+      "verified_on": "2026-10-09",
+      "quote": "\"data – (required) The base64 encoded image bytes for the image. The maximum image size is 3.75MB. The maximum height and width of an image is 8000 pixels.\""
+    },
+    "NOVA1": {
+      "url": "https://docs.aws.amazon.com/nova/latest/userguide/modalities-image.html",
+      "verified_on": "2026-10-09",
+      "quote": "\"Amazon Nova models allow you to include multiple images in the payload with a total payload limit of 25 MB.\" ... \"There's a maximum resolution of 8,000x8,000 pixels\""
+    },
+    "NOVA2": {
+      "url": "https://docs.aws.amazon.com/nova/latest/nova2-userguide/using-multimodal-models.html",
+      "verified_on": "2026-10-09",
+      "quote": "Image row: \"Input method: Embedding data in the request ... Size limitations: 25 MB / Number of objects: 5\"; \"Input method: Amazon S3 URI / Size limitations: 2 GB total / Number of objects: 1000\"; \"Supports up to 8,000 × 8,000 px resolution\"; \"billed at a flat rate of 230 tokens per image\""
+    },
+    "MANTLE_GPT56": {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.html",
+      "verified_on": "2026-10-09",
+      "quote": "\"On Amazon Bedrock, each request can contain a maximum of 100 image inputs.\" Same sentence on model-card-openai-gpt-56-terra.html and model-card-openai-gpt-56-luna.html. NOT present on the GPT-5.4, GPT-5.5, GPT-5.6 Cyber, GPT-6 Astra, GPT-6 Sol, GPT-6 Luna cards."
+    },
+    "MANTLE_GEMMA4": {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-google-gemma-4-31b.html",
+      "verified_on": "2026-10-09",
+      "quote": "\"Request payload size — The total request body payload for Gemma 4 31B, including images and video, supports a maximum size of 3.5 MB.\" Same for model-card-google-gemma-4-26b-a4b.html and model-card-google-gemma-4-e2b.html. \"Gemma 4 models are available only on the bedrock-mantle endpoint.\""
+    },
+    "MISTRAL": {
+      "url": "https://docs.mistral.ai/studio/conversations/vision.md",
+      "verified_on": "2026-10-09",
+      "quote": "FAQ: \"The maximum number images per request via API is 8.\" \"The current file size limit is 10Mb.\" Max resolution 1540x1540 (Pixtral 1024x1024), larger images downscaled; \"An error will be sent if the resolution is higher than 10000x10000.\""
+    },
+    "AZURE_QUOTAS": {
+      "url": "https://learn.microsoft.com/en-us/azure/foundry/openai/quotas-limits",
+      "verified_on": "2026-10-09",
+      "quote": "Row: \"GPT-4o and GPT-4.1 maximum images per request (number of images in the messages array or conversation history) | 50.\" Row: \"Message character limit | 1,048,576.\" Row: \"Maximum number of /chat/completions messages | 2,048.\" (ms.date 2026-08-20)"
+    },
+    "AZURE_VISION": {
+      "url": "https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/gpt-with-vision",
+      "verified_on": "2026-10-09",
+      "quote": "\"Maximum input image size: The maximum size for input images is restricted to 20 MB.\" Also: \"When uploading images, there's a limit of 10 images per chat request.\" and \"you're limited to 10 images per chat call.\" (ms.date 2026-07-29)"
+    },
+    "AZURE_OBSERVED": {
+      "url": "(internal observation by an Unstract tester, before 2026-10-07; not on any public page)",
+      "verified_on": "2026-10-09",
+      "quote": "Observed (not documented): azure/gpt-5.6-terra rejected 51 images with \"Too many images in request: 51, maximum allowed: 50\" (Unstract tester, before 2026-10-07)."
+    },
+    "FOUNDRY_QUOTAS": {
+      "url": "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/quotas-limits",
+      "verified_on": "2026-10-09",
+      "quote": "No image-count, image-size or payload-size limit listed (ms.date 2026-10-05)."
+    },
+    "OPENAI": {
+      "url": "https://developers.openai.com/api/docs/guides/images-vision",
+      "verified_on": "2026-10-09",
+      "quote": "\"Up to 512 MB total payload per request\" \"Up to 1,500 images per request\" \"the API supports up to 30,000 patches per image after applying the resizing rules for the selected model and detail level\""
+    },
+    "GEMINI_API": {
+      "url": "https://ai.google.dev/gemini-api/docs/image-understanding",
+      "verified_on": "2026-10-09",
+      "quote": "\"Gemini models support a maximum of 3,600 image files per request.\" \"Inline image data limits your total request size (text prompts, system instructions, and inline bytes) to 20MB.\" (Last updated 2026-09-23) NOTE (verifier): the 20MB sentence is contradicted by two newer official pages (GEMINI_INPUT) that state 100 MB per request for inline data."
+    },
+    "VERTEX_25": {
+      "url": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/2-5-pro",
+      "verified_on": "2026-10-09",
+      "quote": "\"Maximum images per prompt: 3,000\" \"Maximum file size per file for inline data or direct uploads through the console: 7 MB\" \"Maximum file size per file from Google Cloud Storage: 30 MB\" \"Input size limit | 500 MB\". Same values on /2-5-flash and /2-5-flash-lite. (Last updated 2026-10-07)"
+    },
+    "VERTEX_3X": {
+      "url": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-1-pro",
+      "verified_on": "2026-10-09",
+      "quote": "\"Maximum images per prompt: 3000\" \"Maximum file size per file for inline data or direct uploads through the console: 7 MB\" \"Default resolution tokens: 1120\". Same image count and 7 MB on /3-flash, /3-1-flash-lite, /3-5-flash, /3-5-flash-lite, /3-6-flash, /3-7-flash, /3-8-flash. No \"Input size limit\" row on any 3.x page. (Last updated 2026-10-07)"
+    },
+    "MINIMAX": {
+      "url": "https://platform.minimax.io/docs/api-reference/text-openai-api",
+      "verified_on": "2026-10-09",
+      "quote": "\"OpenAI-compatible Chat Completions support text, image, and video input for MiniMax-M3.1-Flash-Preview and MiniMax-M3.\" \"URL or base64 videos can be up to 50 MB, images can be up to 10 MB, and the request body can be up to 64 MB\". Same sentence on text-anthropic-api. No image-count limit stated."
+    },
+    "OPENROUTER": {
+      "url": "https://openrouter.ai/docs/guides/overview/multimodal/image-understanding",
+      "verified_on": "2026-10-09",
+      "quote": "\"The number of images you can send in a single request varies per provider and per model.\""
+    },
+    "OLLAMA": {
+      "url": "https://docs.ollama.com/capabilities/vision",
+      "verified_on": "2026-10-09",
+      "quote": "No image-count, image-size or request-size limit stated."
+    },
+    "NIM": {
+      "url": "https://docs.nvidia.com/nim/vision-language-models/1.7.0/examples/qwen/api.html",
+      "verified_on": "2026-10-09",
+      "quote": "\"To adjust the maximum number of images allowed per request, set the environment variable NIM_MAX_IMAGES_PER_PROMPT. The default value is 5.\" (self-hosted NIM for VLMs; the hosted build.nvidia.com endpoint is not documented) NOTE (verifier): this is the NIM for VLMs 1.7.0 docs, Qwen example page. The current release is 2.1.2; its environment-variables page (https://docs.nvidia.com/nim/vision-language-models/latest/environment-variables.html) no longer lists NIM_MAX_IMAGES_PER_PROMPT. Treat 'default 5' as version-specific and possibly stale."
+    },
+    "VLLM": {
+      "url": "https://docs.vllm.ai/en/latest/configuration/engine_args.html",
+      "verified_on": "2026-10-09",
+      "quote": "\"--limit-mm-per-prompt: The maximum number of input items and options allowed per prompt for each modality. Defaults to 999 for each modality.\""
+    },
+    "LITELLM_ROUTE": {
+      "url": "litellm 1.104.0: litellm/llms/bedrock/common_utils.py BedrockModelInfo.get_bedrock_route; unstract sdk1 adapters/base1.py AWSBedrockLLMParameters.validate_model",
+      "verified_on": "2026-10-09",
+      "quote": "get_bedrock_route() returns 'converse' only when the base model is in litellm.bedrock_converse_models (or matches the OpenAI-family regex, or has an explicit converse/ or nova/ prefix); otherwise 'invoke'. Verifier run over all 219 bedrock/bedrock_converse vision ids (remote cost map): 212 converse, 7 invoke (anthropic.claude-mythos-preview, anthropic.claude-3-7-sonnet-20240620-v1:0, claude-sonnet-4-5-20250929-v1:0 and its 2 us-gov-* variants, ap-southeast-3/moonshotai.kimi-k2.5, invoke/anthropic.claude-3-5-sonnet-20240620-v1:0). Explicit claude_platform/ prefix routes to Claude Platform on AWS (direct-API limits). Unstract prefixes bedrock_mantle/ when 'bedrock_mantle/<id>' is in litellm.model_cost, or when the operator typed the prefix; an explicit bedrock/ prefix forces the classic route."
+    },
+    "POLICY": {
+      "url": "(Unstract policy, not a provider fact)",
+      "verified_on": "2026-10-09",
+      "quote": "Proposed fallback; see default.rationale."
+    },
+    "GEMINI_INPUT": {
+      "url": "https://ai.google.dev/gemini-api/docs/file-input-methods",
+      "verified_on": "2026-10-09",
+      "quote": "Input method comparison table: \"Inline data | Quick testing, small files, real-time applications. | 100 MB per request or payload (50 MB for PDFs)\". Also https://ai.google.dev/gemini-api/docs/files (updated 2026-09-23): \"Always use the Files API when the total request size (including the files, text prompt, system instructions, etc.) is larger than 100 MB.\" (file-input-methods last updated 2026-10-07)"
+    },
+    "VERIFIER_LITELLM_MAP": {
+      "url": "litellm 1.104.0 litellm.model_cost at runtime",
+      "verified_on": "2026-10-09",
+      "quote": "Without LITELLM_LOCAL_MODEL_COST_MAP=True, litellm fetches the remote cost map at import: 4506 entries vs 4375 in the bundled backup. The remote map adds bedrock_mantle/anthropic.claude-{opus,sonnet,haiku}-5-5 (+ us-gov-west-1 variants), so bare anthropic.claude-*-5-5 ids route to Mantle in production but to bedrock/ under the test suite's pinned local map (sdk1/tests/conftest.py). Nothing outside tests pins the map."
+    },
+    "ANTH_VISION_TOKENS": {
+      "url": "https://platform.claude.com/docs/en/build-with-claude/vision#resolution-and-token-cost",
+      "verified_on": "2026-10-20",
+      "quote": "\"Each patch is a 28x28-pixel block of the image, referred to as a visual token. An image, therefore, costs ceil(width / 28) x ceil(height / 28) visual tokens. ... | High-resolution | Claude 4.7 and later models | 2576 px | 4784 | Standard | All other models | 1568 px | 1568 |\""
+    }
+  },
+  "default": {
+    "applies_to": "unknown models, pass-through providers, and any null count/byte field after resolution",
+    "max_images_per_request": {
+      "value": 20,
+      "confidence": "unverified",
+      "source": "POLICY",
+      "scope": "per_request"
+    },
+    "max_request_bytes": {
+      "value": 20000000,
+      "confidence": "unverified",
+      "source": "POLICY",
+      "scope": "per_request_body",
+      "base64_counted": true
+    },
+    "rationale": "20 images = the Bedrock Converse per-message limit and the point above which Anthropic tightens per-image pixels. 20 x ~0.33 MB (250 KB page, base64) = ~6.7 MB, under every documented byte limit except Gemma 4 on Mantle (3.5 MB, own entry). 20 MB = Bedrock's Claude request limit, the strictest common documented byte limit (Gemini API inline is now documented as 100 MB). Known stricter cases have their own entries (Mistral 8, Nova 2 5, Gemma 4 3.5 MB) or are noted (NIM 1.x default 5). Verifier caveats: (1) this default also fills every null count/byte field after resolution, e.g. Vertex Gemini 3.x request bytes, Azure request bytes, MiniMax and Mantle Grok/Qwen counts, so it is a hard cap on those too; (2) for pass-through providers (vLLM default 999, unknown OpenRouter upstreams) it is advisory, not a hard reject: the policy logs it and sends the request (resolve.PASS_THROUGH_DEFAULTS_ARE_ADVISORY), and an operator override file can set real values.",
+    "tokens_per_image": {
+      "value": 1500,
+      "confidence": "unverified",
+      "source": "POLICY",
+      "scope": "per_image",
+      "note": "Estimate for a 150-DPI A4 page across providers (Claude/GPT ~1.5K; Gemini 3.x 1120; Nova 2 flat 230). Claude 4.7+ (high-resolution tier, ~2,850/page) has its own overrides. Used only for the warn-only context-window advisory."
+    }
+  },
+  "providers": {
+    "anthropic": {
+      "adapter": "anthropic",
+      "display_name": "Anthropic",
+      "litellm_model_prefix": "anthropic/",
+      "kind": "hosted",
+      "defaults": {
+        "max_images_per_request": {
+          "value": 600,
+          "confidence": "verified",
+          "source": [
+            "ANTH_VISION",
+            "ANTH_CONTEXT"
+          ],
+          "scope": "per_request",
+          "note": "models with a 1M-token context window (\"all other models\")"
+        },
+        "max_request_bytes": {
+          "value": 32000000,
+          "confidence": "verified",
+          "source": "ANTH_REQSIZE",
+          "scope": "per_request_body",
+          "base64_counted": true,
+          "note": "413 request_too_large above this"
+        },
+        "max_image_bytes": {
+          "value": 10000000,
+          "confidence": "verified",
+          "source": "ANTH_VISION",
+          "scope": "per_image",
+          "base64_counted": true,
+          "note": "base64-encoded size"
+        },
+        "max_image_px": {
+          "value": 8000,
+          "confidence": "verified",
+          "source": "ANTH_VISION",
+          "scope": "per_image_side"
+        },
+        "many_images_threshold": {
+          "value": 20,
+          "confidence": "verified",
+          "source": "ANTH_VISION",
+          "note": "rule applies when the request has MORE than this many image (and, on Bedrock/Google Cloud, document) blocks"
+        },
+        "many_images_max_px": {
+          "value": 2000,
+          "confidence": "verified",
+          "source": "ANTH_VISION",
+          "note": "Documented SAFE bound, not the stated limit: the page says the stricter limit is 'stated in the error message' and advises resizing to <=2000 px per side 'to stay under the limit on all platforms'. Using 2000 as a check is conservative. 150-DPI A4 pages (1240x1754) pass."
+        }
+      },
+      "model_overrides": [
+        {
+          "pattern": "(?i)claude-(3|instant|2)|claude-(opus|sonnet|haiku)-4[-.]5(?![0-9])|claude-opus-4[-.]1(?![0-9])|claude-(opus|sonnet)-4(?=$|[@:]|-\\d{8}|-v\\d|[-.]0(?![0-9]))",
+          "description": "200k-context Claude models (Sonnet 4.5, Haiku 4.5, Opus 4.5, Opus 4.1, Opus 4, Sonnet 4, Claude 3.x) (+ -4-0 aliases; '-' or '.' between version digits, e.g. OpenRouter's claude-sonnet-4.5)",
+          "max_images_per_request": {
+            "value": 100,
+            "confidence": "verified",
+            "source": [
+              "ANTH_VISION",
+              "ANTH_CONTEXT"
+            ],
+            "scope": "per_request",
+            "note": "litellm 1.104 lists claude-sonnet-4-5 with max_input_tokens 1,000,000; Anthropic docs say 200k. Do not derive 100 vs 600 from litellm."
+          }
+        },
+        {
+          "pattern": "(?i)claude-(opus|sonnet|haiku)-4[-.][7-9](?![0-9])|claude-(opus|sonnet|haiku|fable|mythos)-([5-9]|[1-9]\\d)(?![0-9])|claude-mythos",
+          "description": "Claude 4.7 and later (Opus 4.7/4.8, 5.x, Fable, Mythos): high-resolution image tier, ~2,850 tokens per 150-DPI page",
+          "tokens_per_image": {
+            "value": 2850,
+            "confidence": "unverified",
+            "source": "ANTH_VISION_TOKENS",
+            "scope": "per_image",
+            "note": "Derived, not stated: Claude 4.7+ is the high-resolution tier (long edge 2576 px, 4,784 visual tokens max), so a 150-DPI A4 page (1240x1754, LLMWhisperer's PDF_TO_IMAGES_DPI) is not downscaled and costs ceil(1240/28) x ceil(1754/28) = 45 x 63 = 2,835 tokens; rounded up to 2,850. The formula and tier are documented; the page size is Unstract's render. Used only for the warn-only context-window advisory."
+          }
+        }
+      ],
+      "vision_models": {
+        "litellm_supports_vision_count": 20,
+        "families": {
+          "claude-(opus|sonnet|haiku|fable|mythos)": {
+            "count": 20,
+            "examples": [
+              "claude-fable-5",
+              "claude-fable-5-1",
+              "claude-haiku-4-5",
+              "claude-haiku-4-5-20251001"
+            ]
+          }
+        }
+      }
+    },
+    "bedrock": {
+      "adapter": "bedrock",
+      "display_name": "Amazon Bedrock",
+      "litellm_model_prefix": "bedrock/",
+      "kind": "hosted",
+      "routing_note": "Most bedrock/<id> vision models go through Converse, but not all: get_bedrock_route() returns 'invoke' for any id not in litellm.bedrock_converse_models (7 of 219 registry vision ids today, incl. anthropic.claude-mythos-preview and claude-sonnet-4-5-20250929-v1:0) and for an explicit invoke/ prefix; an explicit claude_platform/ prefix goes to Claude Platform on AWS (direct-API limits). The Converse 20-image Message cap is therefore guaranteed only on the Converse route; on Invoke it is a conservative assumption. Models whose 'bedrock_mantle/<id>' key exists in litellm.model_cost are re-prefixed to bedrock_mantle/ and use the 'bedrock_mantle' entry; that membership depends on whether litellm loaded the remote cost map (VERIFIER_LITELLM_MAP). Look up by the VALIDATED model prefix, not get_provider() (which returns 'bedrock' for both).",
+      "defaults": {
+        "max_images_per_request": {
+          "value": 20,
+          "confidence": "verified",
+          "source": "BEDROCK_MESSAGE",
+          "scope": "per_message",
+          "note": "Converse API contract, all models. Unstract sends all pages in one user message, so this is effectively per request. Verified for the Converse route only; Invoke-routed ids (see routing_note) have no AWS-documented count, so 20 is a conservative assumption there. GPT-5.6 on bedrock-runtime (us./global.openai.gpt-5.6-*) also supports Converse; its card says 100 per request 'on Amazon Bedrock', which conflicts with Converse's 20; keep 20 until probed."
+        },
+        "max_request_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "Converse API documents no total payload limit; model-specific limits below"
+        },
+        "max_image_bytes": {
+          "value": 3750000,
+          "confidence": "verified",
+          "source": "BEDROCK_MESSAGE",
+          "scope": "per_image",
+          "base64_counted": false,
+          "note": "Converse takes image bytes; whether 3.75 MB is raw or base64 is not stated (treat as raw)"
+        },
+        "max_image_px": {
+          "value": 8000,
+          "confidence": "verified",
+          "source": "BEDROCK_MESSAGE",
+          "scope": "per_image_side"
+        }
+      },
+      "model_overrides": [
+        {
+          "pattern": "(?i)nova-2",
+          "description": "Amazon Nova 2 (Lite/Pro)",
+          "max_images_per_request": {
+            "value": 5,
+            "confidence": "verified",
+            "source": "NOVA2",
+            "scope": "per_request",
+            "note": "embedded images (5 objects); 1000 via S3 URI, which Unstract does not use"
+          },
+          "max_request_bytes": {
+            "value": 25000000,
+            "confidence": "verified",
+            "source": "NOVA2",
+            "scope": "per_request_body",
+            "note": "embedded size limitation 25 MB"
+          },
+          "max_image_bytes": {
+            "value": 3750000,
+            "confidence": "verified",
+            "source": "BEDROCK_MESSAGE",
+            "scope": "per_image",
+            "base64_counted": false
+          },
+          "max_image_px": {
+            "value": 8000,
+            "confidence": "verified",
+            "source": "NOVA2",
+            "scope": "per_image_side"
+          }
+        },
+        {
+          "pattern": "(?i)amazon\\.nova-(pro|lite|premier|micro)",
+          "description": "Amazon Nova v1",
+          "max_images_per_request": {
+            "value": 20,
+            "confidence": "verified",
+            "source": "BEDROCK_MESSAGE",
+            "scope": "per_message",
+            "note": "no Nova-specific count beyond Converse"
+          },
+          "max_request_bytes": {
+            "value": 25000000,
+            "confidence": "verified",
+            "source": "NOVA1",
+            "scope": "per_request_body",
+            "note": "\"total payload limit of 25 MB\""
+          },
+          "max_image_bytes": {
+            "value": 3750000,
+            "confidence": "verified",
+            "source": "BEDROCK_MESSAGE",
+            "scope": "per_image",
+            "base64_counted": false
+          },
+          "max_image_px": {
+            "value": 8000,
+            "confidence": "verified",
+            "source": "NOVA1",
+            "scope": "per_image_side"
+          }
+        },
+        {
+          "pattern": "(?i)claude-",
+          "description": "Anthropic Claude on Bedrock (Converse)",
+          "max_images_per_request": {
+            "value": 20,
+            "confidence": "verified",
+            "source": "BEDROCK_MESSAGE",
+            "scope": "per_message",
+            "note": "Converse cap (stricter than Anthropic's 100/600). Verified for Converse-routed ids only; Invoke-routed Claude ids (e.g. anthropic.claude-mythos-preview, claude-sonnet-4-5-20250929-v1:0) are not bound by the Converse Message contract, so 20 is conservative there."
+          },
+          "max_request_bytes": {
+            "value": 20000000,
+            "confidence": "verified",
+            "source": "ANTH_REQSIZE",
+            "scope": "per_request_body",
+            "note": "\"Bedrock limits requests to 20 MB\""
+          },
+          "max_image_bytes": {
+            "value": 3750000,
+            "confidence": "verified",
+            "source": [
+              "BEDROCK_MESSAGE",
+              "BEDROCK_CLAUDE_REQ",
+              "ANTH_VISION"
+            ],
+            "scope": "per_image",
+            "note": "AWS: 3.75 MB; Anthropic: 5 MB base64 on Bedrock (~3.75 MB raw). Same limit.",
+            "base64_counted": false
+          },
+          "max_image_px": {
+            "value": 8000,
+            "confidence": "verified",
+            "source": [
+              "BEDROCK_MESSAGE",
+              "BEDROCK_CLAUDE_REQ"
+            ],
+            "scope": "per_image_side"
+          }
+        }
+      ],
+      "vision_models": {
+        "litellm_supports_vision_count": 203,
+        "families": {
+          "anthropic.claude": {
+            "count": 128,
+            "examples": [
+              "anthropic.claude-3-5-sonnet-20240620-v1:0",
+              "anthropic.claude-3-5-sonnet-20241022-v2:0",
+              "anthropic.claude-3-7-sonnet-20240620-v1:0",
+              "anthropic.claude-3-7-sonnet-20250219-v1:0"
+            ]
+          },
+          "amazon.nova (v1)": {
+            "count": 11,
+            "examples": [
+              "amazon.nova-lite-v1:0",
+              "amazon.nova-pro-v1:0",
+              "apac.amazon.nova-lite-v1:0",
+              "apac.amazon.nova-pro-v1:0"
+            ]
+          },
+          "amazon.nova-2": {
+            "count": 9,
+            "examples": [
+              "amazon.nova-2-lite-v1:0",
+              "amazon.nova-2-pro-preview-20251202-v1:0",
+              "apac.amazon.nova-2-lite-v1:0",
+              "apac.amazon.nova-2-pro-preview-20251202-v1:0"
+            ]
+          },
+          "meta.llama vision": {
+            "count": 4,
+            "examples": [
+              "meta.llama3-2-11b-instruct-v1:0",
+              "meta.llama3-2-90b-instruct-v1:0",
+              "us.meta.llama3-2-11b-instruct-v1:0",
+              "us.meta.llama3-2-90b-instruct-v1:0"
+            ]
+          },
+          "mistral (pixtral/large-3/ministral/magistral)": {
+            "count": 5,
+            "examples": [
+              "mistral.magistral-small-2509",
+              "mistral.ministral-3-14b-instruct",
+              "mistral.ministral-3-3b-instruct",
+              "mistral.ministral-3-8b-instruct"
+            ]
+          },
+          "openai.gpt (Converse route)": {
+            "count": 18,
+            "examples": [
+              "global.openai.gpt-5.4",
+              "global.openai.gpt-5.5",
+              "global.openai.gpt-5.6-luna",
+              "global.openai.gpt-5.6-sol"
+            ]
+          },
+          "qwen3-vl": {
+            "count": 1,
+            "examples": [
+              "qwen.qwen3-vl-235b-a22b"
+            ]
+          },
+          "google.gemma-3": {
+            "count": 3,
+            "examples": [
+              "google.gemma-3-12b-it",
+              "google.gemma-3-27b-it",
+              "google.gemma-3-4b-it"
+            ]
+          },
+          "moonshotai.kimi": {
+            "count": 13,
+            "examples": [
+              "bedrock/ap-northeast-1/moonshotai.kimi-k2.5",
+              "bedrock/ap-south-1/moonshotai.kimi-k2.5",
+              "bedrock/ap-southeast-3/moonshotai.kimi-k2.5",
+              "bedrock/eu-north-1/moonshotai.kimi-k2.5"
+            ]
+          },
+          "other": {
+            "count": 11,
+            "examples": [
+              "bedrock/us-gov-east-1/claude-sonnet-4-5-20250929-v1:0",
+              "bedrock/us-gov-east-1/nvidia.nemotron-nano-12b-v2",
+              "bedrock/us-gov-west-1/claude-sonnet-4-5-20250929-v1:0",
+              "bedrock/us-gov-west-1/nvidia.nemotron-nano-12b-v2"
+            ]
+          }
+        },
+        "note": "counts litellm_provider in {bedrock, bedrock_converse}"
+      }
+    },
+    "bedrock_mantle": {
+      "adapter": "bedrock (Mantle route)",
+      "display_name": "Amazon Bedrock (Mantle)",
+      "litellm_model_prefix": "bedrock_mantle/",
+      "kind": "hosted",
+      "routing_note": "OpenAI-compatible (Chat Completions/Responses) and Anthropic Messages endpoint bedrock-mantle.<region>.api.aws. Not subject to the Converse 20-image Message limit. No service-wide image or payload limit is documented (quotas-mantle.html lists only token-per-minute quotas).",
+      "defaults": {
+        "max_images_per_request": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no service-level limit documented; per-model cards below"
+        },
+        "max_request_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no service-level limit documented"
+        },
+        "max_image_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "not documented"
+        },
+        "max_image_px": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "not documented"
+        }
+      },
+      "model_overrides": [
+        {
+          "pattern": "(?i)openai\\.gpt-5\\.6-(sol|terra|luna)",
+          "description": "GPT-5.6 Sol / Terra / Luna on Mantle",
+          "max_images_per_request": {
+            "value": 100,
+            "confidence": "verified",
+            "source": "MANTLE_GPT56",
+            "scope": "per_request"
+          }
+        },
+        {
+          "pattern": "(?i)openai\\.gpt",
+          "description": "Other OpenAI GPT models on Mantle (5.4, 5.5, 5.6-cyber, 6-*)",
+          "max_images_per_request": {
+            "value": 100,
+            "confidence": "unverified",
+            "source": "MANTLE_GPT56",
+            "scope": "per_request",
+            "note": "sentence appears only on the GPT-5.6 Sol/Terra/Luna cards; phrased as an Amazon Bedrock rule, so likely applies to all OpenAI models on Bedrock. Probe to confirm."
+          }
+        },
+        {
+          "pattern": "(?i)google\\.gemma-4",
+          "description": "Gemma 4 (31B, 26B-A4B, E2B), Mantle only",
+          "max_request_bytes": {
+            "value": 3500000,
+            "confidence": "verified",
+            "source": "MANTLE_GEMMA4",
+            "scope": "per_request_body",
+            "base64_counted": true,
+            "note": "\"total request body payload ... including images and video ... maximum size of 3.5 MB\" -> about 10 pages at 250 KB (base64 ~335 KB each), fewer with prompt text"
+          }
+        },
+        {
+          "pattern": "(?i)anthropic\\.(?:claude-(3|instant|2)|claude-(opus|sonnet|haiku)-4[-.]5(?![0-9])|claude-opus-4[-.]1(?![0-9])|claude-(opus|sonnet)-4(?=$|[@:]|-\\d{8}|-v\\d|[-.]0(?![0-9])))",
+          "description": "200k-context Claude models via Anthropic Messages on Mantle (Haiku 4.5, Sonnet 4.5, Opus 4.5, Opus 4.1, Opus 4, Sonnet 4, Claude 3.x), same rule as the anthropic/vertex_ai/azure_ai entries",
+          "max_images_per_request": {
+            "value": 100,
+            "confidence": "unverified",
+            "source": [
+              "ANTH_VISION",
+              "ANTH_CONTEXT"
+            ],
+            "scope": "per_request",
+            "note": "Anthropic states 100/600 for 'the API'; Bedrock not named for the count rule"
+          },
+          "max_request_bytes": {
+            "value": 20000000,
+            "confidence": "unverified",
+            "source": "ANTH_REQSIZE",
+            "scope": "per_request_body",
+            "note": "\"Bedrock limits requests to 20 MB\" (applies to Bedrock generally) Downgraded by verifier: Anthropic states this for 'Bedrock' without distinguishing the bedrock-mantle endpoint, whose per-model limits can differ (Gemma 4 on Mantle: 3.5 MB)."
+          },
+          "max_image_bytes": {
+            "value": 5000000,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "scope": "per_image",
+            "base64_counted": true,
+            "note": "5 MB base64 on Amazon Bedrock Downgraded by verifier: Anthropic states this for 'Bedrock' without distinguishing the bedrock-mantle endpoint, whose per-model limits can differ (Gemma 4 on Mantle: 3.5 MB)."
+          },
+          "max_image_px": {
+            "value": 8000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "scope": "per_image_side"
+          },
+          "many_images_threshold": {
+            "value": 20,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "note": "rule applies when the request has MORE than this many image (and, on Bedrock/Google Cloud, document) blocks"
+          },
+          "many_images_max_px": {
+            "value": 2000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "note": "Documented SAFE bound, not the stated limit: the page says the stricter limit is 'stated in the error message' and advises resizing to <=2000 px per side 'to stay under the limit on all platforms'. Using 2000 as a check is conservative. 150-DPI A4 pages (1240x1754) pass."
+          }
+        },
+        {
+          "pattern": "(?i)anthropic\\.(?:claude-(opus|sonnet|haiku)-4[-.][7-9](?![0-9])|claude-(opus|sonnet|haiku|fable|mythos)-([5-9]|[1-9]\\d)(?![0-9])|claude-mythos)",
+          "description": "Claude 4.7 and later (Opus 4.7/4.8, 5.x, Fable, Mythos): high-resolution image tier, ~2,850 tokens per 150-DPI page via Anthropic Messages on Mantle; otherwise the same limits as the other Claude models below",
+          "max_images_per_request": {
+            "value": 600,
+            "confidence": "unverified",
+            "source": [
+              "ANTH_VISION",
+              "ANTH_CONTEXT"
+            ],
+            "scope": "per_request",
+            "note": "Anthropic states 100/600 for 'the API'; Bedrock not named for the count rule"
+          },
+          "max_request_bytes": {
+            "value": 20000000,
+            "confidence": "unverified",
+            "source": "ANTH_REQSIZE",
+            "scope": "per_request_body",
+            "note": "Downgraded by verifier: Anthropic states this for 'Bedrock' without distinguishing the bedrock-mantle endpoint, whose per-model limits can differ (Gemma 4 on Mantle: 3.5 MB)."
+          },
+          "max_image_bytes": {
+            "value": 5000000,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "scope": "per_image",
+            "base64_counted": true,
+            "note": "Downgraded by verifier: Anthropic states this for 'Bedrock' without distinguishing the bedrock-mantle endpoint, whose per-model limits can differ (Gemma 4 on Mantle: 3.5 MB)."
+          },
+          "max_image_px": {
+            "value": 8000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "scope": "per_image_side"
+          },
+          "many_images_threshold": {
+            "value": 20,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "note": "rule applies when the request has MORE than this many image (and, on Bedrock/Google Cloud, document) blocks"
+          },
+          "many_images_max_px": {
+            "value": 2000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "note": "Documented SAFE bound, not the stated limit: the page says the stricter limit is 'stated in the error message' and advises resizing to <=2000 px per side 'to stay under the limit on all platforms'. Using 2000 as a check is conservative. 150-DPI A4 pages (1240x1754) pass."
+          },
+          "tokens_per_image": {
+            "value": 2850,
+            "confidence": "unverified",
+            "source": "ANTH_VISION_TOKENS",
+            "scope": "per_image",
+            "note": "Derived, not stated: Claude 4.7+ is the high-resolution tier (long edge 2576 px, 4,784 visual tokens max), so a 150-DPI A4 page (1240x1754, LLMWhisperer's PDF_TO_IMAGES_DPI) is not downscaled and costs ceil(1240/28) x ceil(1754/28) = 45 x 63 = 2,835 tokens; rounded up to 2,850. The formula and tier are documented; the page size is Unstract's render. Used only for the warn-only context-window advisory."
+          }
+        },
+        {
+          "pattern": "(?i)anthropic\\.claude",
+          "description": "Other Claude models via Anthropic Messages on Mantle (1M context) ; with the remote litellm cost map this includes anthropic.claude-{opus,sonnet,haiku}-5-5",
+          "max_images_per_request": {
+            "value": 600,
+            "confidence": "unverified",
+            "source": [
+              "ANTH_VISION",
+              "ANTH_CONTEXT"
+            ],
+            "scope": "per_request",
+            "note": "Anthropic states 100/600 for 'the API'; Bedrock not named for the count rule"
+          },
+          "max_request_bytes": {
+            "value": 20000000,
+            "confidence": "unverified",
+            "source": "ANTH_REQSIZE",
+            "scope": "per_request_body",
+            "note": "Downgraded by verifier: Anthropic states this for 'Bedrock' without distinguishing the bedrock-mantle endpoint, whose per-model limits can differ (Gemma 4 on Mantle: 3.5 MB)."
+          },
+          "max_image_bytes": {
+            "value": 5000000,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "scope": "per_image",
+            "base64_counted": true,
+            "note": "Downgraded by verifier: Anthropic states this for 'Bedrock' without distinguishing the bedrock-mantle endpoint, whose per-model limits can differ (Gemma 4 on Mantle: 3.5 MB)."
+          },
+          "max_image_px": {
+            "value": 8000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "scope": "per_image_side"
+          },
+          "many_images_threshold": {
+            "value": 20,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "note": "rule applies when the request has MORE than this many image (and, on Bedrock/Google Cloud, document) blocks"
+          },
+          "many_images_max_px": {
+            "value": 2000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "note": "Documented SAFE bound, not the stated limit: the page says the stricter limit is 'stated in the error message' and advises resizing to <=2000 px per side 'to stay under the limit on all platforms'. Using 2000 as a check is conservative. 150-DPI A4 pages (1240x1754) pass."
+          }
+        }
+      ],
+      "vision_models": {
+        "litellm_supports_vision_count": 27,
+        "families": {
+          "openai.gpt": {
+            "count": 14,
+            "examples": [
+              "bedrock_mantle/openai.gpt-5.4",
+              "bedrock_mantle/openai.gpt-5.5",
+              "bedrock_mantle/openai.gpt-5.6-cyber",
+              "bedrock_mantle/openai.gpt-5.6-luna"
+            ]
+          },
+          "google.gemma-4": {
+            "count": 6,
+            "examples": [
+              "bedrock_mantle/google.gemma-4-26b-a4b",
+              "bedrock_mantle/google.gemma-4-31b",
+              "bedrock_mantle/google.gemma-4-e2b",
+              "bedrock_mantle/us-gov-west-1/google.gemma-4-26b-a4b"
+            ]
+          },
+          "anthropic.claude": {
+            "count": 1,
+            "examples": [
+              "bedrock_mantle/anthropic.claude-haiku-4-5"
+            ]
+          },
+          "xai.grok": {
+            "count": 5,
+            "examples": [
+              "bedrock_mantle/us-gov-east-1/xai.grok-4.6",
+              "bedrock_mantle/us-gov-west-1/xai.grok-4.3",
+              "bedrock_mantle/us-gov-west-1/xai.grok-4.6",
+              "bedrock_mantle/xai.grok-4.3"
+            ]
+          },
+          "qwen3-vl": {
+            "count": 1,
+            "examples": [
+              "bedrock_mantle/qwen.qwen3-vl-235b-a22b-instruct"
+            ]
+          }
+        },
+        "note": "xai.grok-* and qwen3-vl have no documented image/payload limit -> fall back to the top-level default"
+      }
+    },
+    "azure": {
+      "adapter": "azure_openai",
+      "display_name": "Azure OpenAI",
+      "litellm_model_prefix": "azure/",
+      "kind": "hosted",
+      "routing_note": "The litellm model id is azure/<deployment_name>, which the customer chooses. Model-pattern overrides only work when the deployment is named after the model, so the service default carries the real weight.",
+      "defaults": {
+        "max_images_per_request": {
+          "value": 50,
+          "confidence": "unverified",
+          "source": [
+            "AZURE_QUOTAS",
+            "AZURE_OBSERVED"
+          ],
+          "scope": "per_request",
+          "note": "Documented only for GPT-4o and GPT-4.1 ('number of images in the messages array or conversation history'); observed on gpt-5.6-terra (51 rejected, max 50). The vision how-to page still says 10 per chat call (likely stale, GPT-4-Turbo-vision era)."
+        },
+        "max_request_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no payload limit documented. 'Message character limit 1,048,576' exists; whether base64 image data counts is undocumented (51 images were accepted up to the count check, which suggests it does not)"
+        },
+        "max_image_bytes": {
+          "value": 20000000,
+          "confidence": "verified",
+          "source": "AZURE_VISION",
+          "scope": "per_image"
+        },
+        "max_image_px": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "not documented"
+        }
+      },
+      "model_overrides": [
+        {
+          "pattern": "(?i)gpt-4o|gpt-4\\.1",
+          "description": "GPT-4o / GPT-4.1 deployments (the documented scope)",
+          "max_images_per_request": {
+            "value": 50,
+            "confidence": "verified",
+            "source": "AZURE_QUOTAS",
+            "scope": "per_request",
+            "note": "counts the whole messages array and history"
+          }
+        }
+      ],
+      "vision_models": {
+        "litellm_supports_vision_count": 138,
+        "families": {
+          "gpt-4o / gpt-4.1": {
+            "count": 26,
+            "examples": [
+              "azure/eu/gpt-4o-2024-08-06",
+              "azure/eu/gpt-4o-2024-11-20",
+              "azure/eu/gpt-4o-mini-2024-07-18",
+              "azure/global-standard/gpt-4o-2024-08-06"
+            ]
+          },
+          "gpt-5.x / gpt-6": {
+            "count": 87,
+            "examples": [
+              "azure/eu/gpt-5-2025-08-07",
+              "azure/eu/gpt-5-mini-2025-08-07",
+              "azure/eu/gpt-5-nano-2025-08-07",
+              "azure/eu/gpt-5.1"
+            ]
+          },
+          "o-series": {
+            "count": 13,
+            "examples": [
+              "azure/eu/o1-2024-12-17",
+              "azure/o1",
+              "azure/o1-2024-12-17",
+              "azure/o3"
+            ]
+          },
+          "other": {
+            "count": 12,
+            "examples": [
+              "azure/chat-latest",
+              "azure/codex-mini",
+              "azure/computer-use-preview",
+              "azure/gpt-4-turbo-2024-04-09"
+            ]
+          }
+        }
+      }
+    },
+    "azure_ai": {
+      "adapter": "azure_ai_foundry",
+      "display_name": "Azure AI Foundry",
+      "litellm_model_prefix": "azure_ai/",
+      "kind": "hosted",
+      "defaults": {
+        "max_images_per_request": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "Foundry Models quotas page lists no image or payload limits (FOUNDRY_QUOTAS)"
+        },
+        "max_request_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "not documented"
+        },
+        "max_image_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "not documented"
+        },
+        "max_image_px": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "not documented"
+        }
+      },
+      "model_overrides": [
+        {
+          "pattern": "(?i)claude-(3|instant|2)|claude-(opus|sonnet|haiku)-4[-.]5(?![0-9])|claude-opus-4[-.]1(?![0-9])|claude-(opus|sonnet)-4(?=$|[@:]|-\\d{8}|-v\\d|[-.]0(?![0-9]))",
+          "description": "200k-context Claude on Foundry (Anthropic-operated) (+ -4-0 aliases; '-' or '.' between version digits, e.g. OpenRouter's claude-sonnet-4.5)",
+          "max_images_per_request": {
+            "value": 100,
+            "confidence": "unverified",
+            "source": [
+              "ANTH_VISION",
+              "ANTH_FOUNDRY"
+            ],
+            "scope": "per_request",
+            "note": "Anthropic rule for 'the API'; Foundry is Anthropic-operated but not named"
+          },
+          "max_request_bytes": {
+            "value": 32000000,
+            "confidence": "unverified",
+            "source": [
+              "ANTH_REQSIZE",
+              "ANTH_FOUNDRY"
+            ],
+            "scope": "per_request_body",
+            "base64_counted": true,
+            "note": "partner exceptions name only Bedrock and Google Cloud; Foundry is listed as Anthropic-operated, so 32 MB is assumed"
+          },
+          "max_image_bytes": {
+            "value": 10000000,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "scope": "per_image",
+            "base64_counted": true,
+            "note": "assumed same as direct API"
+          },
+          "max_image_px": {
+            "value": 8000,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "scope": "per_image_side"
+          },
+          "many_images_threshold": {
+            "value": 20,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "note": "rule applies when the request has MORE than this many image (and, on Bedrock/Google Cloud, document) blocks"
+          },
+          "many_images_max_px": {
+            "value": 2000,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "note": "Documented SAFE bound, not the stated limit: the page says the stricter limit is 'stated in the error message' and advises resizing to <=2000 px per side 'to stay under the limit on all platforms'. Using 2000 as a check is conservative. 150-DPI A4 pages (1240x1754) pass."
+          }
+        },
+        {
+          "pattern": "(?i)claude-(opus|sonnet|haiku)-4[-.][7-9](?![0-9])|claude-(opus|sonnet|haiku|fable|mythos)-([5-9]|[1-9]\\d)(?![0-9])|claude-mythos",
+          "description": "Claude 4.7 and later (Opus 4.7/4.8, 5.x, Fable, Mythos): high-resolution image tier, ~2,850 tokens per 150-DPI page; otherwise the same limits as the other 1M-context Claude models below",
+          "max_images_per_request": {
+            "value": 600,
+            "confidence": "unverified",
+            "source": [
+              "ANTH_VISION",
+              "ANTH_FOUNDRY"
+            ],
+            "scope": "per_request"
+          },
+          "max_request_bytes": {
+            "value": 32000000,
+            "confidence": "unverified",
+            "source": [
+              "ANTH_REQSIZE",
+              "ANTH_FOUNDRY"
+            ],
+            "scope": "per_request_body",
+            "base64_counted": true
+          },
+          "max_image_bytes": {
+            "value": 10000000,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "scope": "per_image",
+            "base64_counted": true
+          },
+          "max_image_px": {
+            "value": 8000,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "scope": "per_image_side"
+          },
+          "many_images_threshold": {
+            "value": 20,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "note": "rule applies when the request has MORE than this many image (and, on Bedrock/Google Cloud, document) blocks"
+          },
+          "many_images_max_px": {
+            "value": 2000,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "note": "Documented SAFE bound, not the stated limit: the page says the stricter limit is 'stated in the error message' and advises resizing to <=2000 px per side 'to stay under the limit on all platforms'. Using 2000 as a check is conservative. 150-DPI A4 pages (1240x1754) pass."
+          },
+          "tokens_per_image": {
+            "value": 2850,
+            "confidence": "unverified",
+            "source": "ANTH_VISION_TOKENS",
+            "scope": "per_image",
+            "note": "Derived, not stated: Claude 4.7+ is the high-resolution tier (long edge 2576 px, 4,784 visual tokens max), so a 150-DPI A4 page (1240x1754, LLMWhisperer's PDF_TO_IMAGES_DPI) is not downscaled and costs ceil(1240/28) x ceil(1754/28) = 45 x 63 = 2,835 tokens; rounded up to 2,850. The formula and tier are documented; the page size is Unstract's render. Used only for the warn-only context-window advisory."
+          }
+        },
+        {
+          "pattern": "(?i)claude-",
+          "description": "Other (1M-context) Claude on Foundry",
+          "max_images_per_request": {
+            "value": 600,
+            "confidence": "unverified",
+            "source": [
+              "ANTH_VISION",
+              "ANTH_FOUNDRY"
+            ],
+            "scope": "per_request"
+          },
+          "max_request_bytes": {
+            "value": 32000000,
+            "confidence": "unverified",
+            "source": [
+              "ANTH_REQSIZE",
+              "ANTH_FOUNDRY"
+            ],
+            "scope": "per_request_body",
+            "base64_counted": true
+          },
+          "max_image_bytes": {
+            "value": 10000000,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "scope": "per_image",
+            "base64_counted": true
+          },
+          "max_image_px": {
+            "value": 8000,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "scope": "per_image_side"
+          },
+          "many_images_threshold": {
+            "value": 20,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "note": "rule applies when the request has MORE than this many image (and, on Bedrock/Google Cloud, document) blocks"
+          },
+          "many_images_max_px": {
+            "value": 2000,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "note": "Documented SAFE bound, not the stated limit: the page says the stricter limit is 'stated in the error message' and advises resizing to <=2000 px per side 'to stay under the limit on all platforms'. Using 2000 as a check is conservative. 150-DPI A4 pages (1240x1754) pass."
+          }
+        },
+        {
+          "pattern": "(?i)(^|/)(gpt-|o[134](-|$)|codex)",
+          "description": "Azure OpenAI models served through Foundry",
+          "max_images_per_request": {
+            "value": 50,
+            "confidence": "unverified",
+            "source": [
+              "AZURE_QUOTAS",
+              "AZURE_OBSERVED"
+            ],
+            "scope": "per_request",
+            "note": "assumed to share the Azure OpenAI service gate"
+          },
+          "max_image_bytes": {
+            "value": 20000000,
+            "confidence": "unverified",
+            "source": "AZURE_VISION",
+            "scope": "per_image"
+          }
+        },
+        {
+          "pattern": "(?i)mistral|pixtral|ministral",
+          "description": "Mistral models on Foundry",
+          "max_images_per_request": {
+            "value": 8,
+            "confidence": "unverified",
+            "source": "MISTRAL",
+            "scope": "per_request",
+            "note": "Mistral's own API limit; Foundry hosting not documented"
+          },
+          "max_image_bytes": {
+            "value": 10000000,
+            "confidence": "unverified",
+            "source": "MISTRAL",
+            "scope": "per_image"
+          }
+        }
+      ],
+      "vision_models": {
+        "litellm_supports_vision_count": 49,
+        "families": {
+          "claude": {
+            "count": 12,
+            "examples": [
+              "azure_ai/claude-fable-5",
+              "azure_ai/claude-fable-5-1",
+              "azure_ai/claude-haiku-4-5",
+              "azure_ai/claude-opus-4-5"
+            ]
+          },
+          "gpt-5.x / gpt-6": {
+            "count": 14,
+            "examples": [
+              "azure_ai/gpt-5.4",
+              "azure_ai/gpt-5.4-2026-03-05",
+              "azure_ai/gpt-5.4-mini",
+              "azure_ai/gpt-5.4-mini-2026-03-17"
+            ]
+          },
+          "mistral": {
+            "count": 3,
+            "examples": [
+              "azure_ai/mistral-large-3",
+              "azure_ai/mistral-medium-3-5",
+              "azure_ai/mistral-small-2503"
+            ]
+          },
+          "llama-4": {
+            "count": 2,
+            "examples": [
+              "azure_ai/Llama-4-Maverick-17B-128E-Instruct-FP8",
+              "azure_ai/Llama-4-Scout-17B-16E-Instruct"
+            ]
+          },
+          "phi": {
+            "count": 2,
+            "examples": [
+              "azure_ai/Phi-3.5-vision-instruct",
+              "azure_ai/Phi-4-multimodal-instruct"
+            ]
+          },
+          "other": {
+            "count": 16,
+            "examples": [
+              "azure_ai/FW-Kimi-K2.5",
+              "azure_ai/FW-Kimi-K2.6",
+              "azure_ai/FW-Kimi-K2.7-Code",
+              "azure_ai/FW-Kimi-K3"
+            ]
+          }
+        },
+        "note": "Llama 4, Phi, Kimi, Grok, MiniMax on Foundry have no documented limits -> top-level default"
+      }
+    },
+    "openai": {
+      "adapter": "openai",
+      "display_name": "OpenAI",
+      "litellm_model_prefix": "openai/",
+      "kind": "hosted",
+      "defaults": {
+        "max_images_per_request": {
+          "value": 1500,
+          "confidence": "verified",
+          "source": "OPENAI",
+          "scope": "per_request"
+        },
+        "max_request_bytes": {
+          "value": 512000000,
+          "confidence": "verified",
+          "source": "OPENAI",
+          "scope": "per_request_body",
+          "base64_counted": true,
+          "note": "\"total payload per request\""
+        },
+        "max_image_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no per-image byte limit stated"
+        },
+        "max_image_px": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "limit is expressed in patches, see max_image_patches"
+        },
+        "max_image_patches": {
+          "value": 30000,
+          "confidence": "verified",
+          "source": "OPENAI",
+          "scope": "per_image",
+          "note": "after resizing for the model and detail level; 150-DPI A4 is ~2.1K 32-px patches"
+        }
+      },
+      "model_overrides": [],
+      "vision_models": {
+        "litellm_supports_vision_count": 120,
+        "families": {
+          "gpt-4o / gpt-4.1": {
+            "count": 15,
+            "examples": [
+              "ft:gpt-4o-2024-08-06",
+              "gpt-4.1",
+              "gpt-4.1-2025-04-14",
+              "gpt-4.1-mini"
+            ]
+          },
+          "gpt-5.x / gpt-6": {
+            "count": 47,
+            "examples": [
+              "gpt-5",
+              "gpt-5-2025-08-07",
+              "gpt-5-chat",
+              "gpt-5-chat-latest"
+            ]
+          },
+          "o-series": {
+            "count": 12,
+            "examples": [
+              "o1",
+              "o1-2024-12-17",
+              "o1-pro",
+              "o1-pro-2025-03-19"
+            ]
+          },
+          "gpt-image": {
+            "count": 38,
+            "examples": [
+              "1024-x-1024/gpt-image-1.5",
+              "1024-x-1024/gpt-image-1.5-2025-12-16",
+              "1024-x-1536/gpt-image-1.5",
+              "1024-x-1536/gpt-image-1.5-2025-12-16"
+            ]
+          },
+          "other": {
+            "count": 8,
+            "examples": [
+              "chat-latest",
+              "computer-use-preview",
+              "daybreak-blue-latest",
+              "daybreak-red-latest"
+            ]
+          }
+        }
+      }
+    },
+    "gemini": {
+      "adapter": "gemini",
+      "display_name": "Google Gemini (AI Studio)",
+      "litellm_model_prefix": "gemini/",
+      "kind": "hosted",
+      "defaults": {
+        "max_images_per_request": {
+          "value": 3600,
+          "confidence": "verified",
+          "source": "GEMINI_API",
+          "scope": "per_request"
+        },
+        "max_request_bytes": {
+          "value": 100000000,
+          "confidence": "verified",
+          "source": [
+            "GEMINI_INPUT",
+            "GEMINI_API"
+          ],
+          "scope": "per_request_body",
+          "base64_counted": true,
+          "note": "Was 20,000,000 in the draft. image-understanding (updated 2026-09-23) still says 20MB, but file-input-methods (updated 2026-10-07) and files (2026-09-23) both say 100 MB per request for inline data. Pages conflict; 100 MB is the newer and more specific statement. Probe 25 MB once to settle it."
+        },
+        "max_image_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "not documented"
+        },
+        "max_image_px": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "not documented"
+        }
+      },
+      "model_overrides": [],
+      "vision_models": {
+        "litellm_supports_vision_count": 56,
+        "families": {
+          "gemini-2.5": {
+            "count": 7,
+            "examples": [
+              "gemini-2.5-flash-native-audio-preview-12-2025",
+              "gemini/gemini-2.5-computer-use-preview-10-2025",
+              "gemini/gemini-2.5-flash",
+              "gemini/gemini-2.5-flash-image"
+            ]
+          },
+          "gemini-3.x": {
+            "count": 21,
+            "examples": [
+              "gemini-3.1-flash-live-preview",
+              "gemini-3.8-live",
+              "gemini-3.8-live-extended-thinking",
+              "gemini/gemini-3-flash-preview"
+            ]
+          },
+          "gemma": {
+            "count": 5,
+            "examples": [
+              "gemini/gemini-gemma-2-27b-it",
+              "gemini/gemini-gemma-2-9b-it",
+              "gemini/gemma-3-27b-it",
+              "gemini/gemma-4-26b-a4b-it"
+            ]
+          },
+          "other": {
+            "count": 23,
+            "examples": [
+              "gemini-2.0-flash-exp-image-generation",
+              "gemini-exp-1206",
+              "gemini-flash-latest",
+              "gemini-flash-lite-latest"
+            ]
+          }
+        }
+      }
+    },
+    "vertex_ai": {
+      "adapter": "vertexai",
+      "display_name": "Google Vertex AI",
+      "litellm_model_prefix": "vertex_ai/",
+      "kind": "hosted",
+      "defaults": {
+        "max_images_per_request": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "depends on publisher; see overrides. The Vertex image-understanding page's 'up to 10 image files per request' applies to public HTTP URL inputs, not inline base64 (which Unstract uses)."
+        },
+        "max_request_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "not documented"
+        },
+        "max_image_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "not documented"
+        },
+        "max_image_px": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "not documented"
+        }
+      },
+      "model_overrides": [
+        {
+          "pattern": "(?i)claude-(3|instant|2)|claude-(opus|sonnet|haiku)-4[-.]5(?![0-9])|claude-opus-4[-.]1(?![0-9])|claude-(opus|sonnet)-4(?=$|[@:]|-\\d{8}|-v\\d|[-.]0(?![0-9]))",
+          "description": "200k-context Claude on Vertex (Agent Platform) (+ -4-0 aliases; '-' or '.' between version digits, e.g. OpenRouter's claude-sonnet-4.5)",
+          "max_images_per_request": {
+            "value": 100,
+            "confidence": "unverified",
+            "source": [
+              "ANTH_VISION",
+              "ANTH_GCP"
+            ],
+            "scope": "per_request",
+            "note": "Anthropic states 100/600 for 'the API'; Google Cloud not named for the count rule"
+          },
+          "max_request_bytes": {
+            "value": 30000000,
+            "confidence": "verified",
+            "source": [
+              "ANTH_GCP",
+              "ANTH_REQSIZE"
+            ],
+            "scope": "per_request_body",
+            "base64_counted": true
+          },
+          "max_image_bytes": {
+            "value": 5000000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "scope": "per_image",
+            "base64_counted": true,
+            "note": "5 MB base64 on Google Cloud"
+          },
+          "max_image_px": {
+            "value": 8000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "scope": "per_image_side"
+          },
+          "many_images_threshold": {
+            "value": 20,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "note": "rule applies when the request has MORE than this many image (and, on Bedrock/Google Cloud, document) blocks"
+          },
+          "many_images_max_px": {
+            "value": 2000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "note": "Documented SAFE bound, not the stated limit: the page says the stricter limit is 'stated in the error message' and advises resizing to <=2000 px per side 'to stay under the limit on all platforms'. Using 2000 as a check is conservative. 150-DPI A4 pages (1240x1754) pass."
+          }
+        },
+        {
+          "pattern": "(?i)claude-(opus|sonnet|haiku)-4[-.][7-9](?![0-9])|claude-(opus|sonnet|haiku|fable|mythos)-([5-9]|[1-9]\\d)(?![0-9])|claude-mythos",
+          "description": "Claude 4.7 and later (Opus 4.7/4.8, 5.x, Fable, Mythos): high-resolution image tier, ~2,850 tokens per 150-DPI page; otherwise the same limits as the other 1M-context Claude models below",
+          "max_images_per_request": {
+            "value": 600,
+            "confidence": "unverified",
+            "source": [
+              "ANTH_VISION",
+              "ANTH_GCP"
+            ],
+            "scope": "per_request"
+          },
+          "max_request_bytes": {
+            "value": 30000000,
+            "confidence": "verified",
+            "source": [
+              "ANTH_GCP",
+              "ANTH_REQSIZE"
+            ],
+            "scope": "per_request_body",
+            "base64_counted": true
+          },
+          "max_image_bytes": {
+            "value": 5000000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "scope": "per_image",
+            "base64_counted": true
+          },
+          "max_image_px": {
+            "value": 8000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "scope": "per_image_side"
+          },
+          "many_images_threshold": {
+            "value": 20,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "note": "rule applies when the request has MORE than this many image (and, on Bedrock/Google Cloud, document) blocks"
+          },
+          "many_images_max_px": {
+            "value": 2000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "note": "Documented SAFE bound, not the stated limit: the page says the stricter limit is 'stated in the error message' and advises resizing to <=2000 px per side 'to stay under the limit on all platforms'. Using 2000 as a check is conservative. 150-DPI A4 pages (1240x1754) pass."
+          },
+          "tokens_per_image": {
+            "value": 2850,
+            "confidence": "unverified",
+            "source": "ANTH_VISION_TOKENS",
+            "scope": "per_image",
+            "note": "Derived, not stated: Claude 4.7+ is the high-resolution tier (long edge 2576 px, 4,784 visual tokens max), so a 150-DPI A4 page (1240x1754, LLMWhisperer's PDF_TO_IMAGES_DPI) is not downscaled and costs ceil(1240/28) x ceil(1754/28) = 45 x 63 = 2,835 tokens; rounded up to 2,850. The formula and tier are documented; the page size is Unstract's render. Used only for the warn-only context-window advisory."
+          }
+        },
+        {
+          "pattern": "(?i)claude-",
+          "description": "Other (1M-context) Claude on Vertex",
+          "max_images_per_request": {
+            "value": 600,
+            "confidence": "unverified",
+            "source": [
+              "ANTH_VISION",
+              "ANTH_GCP"
+            ],
+            "scope": "per_request"
+          },
+          "max_request_bytes": {
+            "value": 30000000,
+            "confidence": "verified",
+            "source": [
+              "ANTH_GCP",
+              "ANTH_REQSIZE"
+            ],
+            "scope": "per_request_body",
+            "base64_counted": true
+          },
+          "max_image_bytes": {
+            "value": 5000000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "scope": "per_image",
+            "base64_counted": true
+          },
+          "max_image_px": {
+            "value": 8000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "scope": "per_image_side"
+          },
+          "many_images_threshold": {
+            "value": 20,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "note": "rule applies when the request has MORE than this many image (and, on Bedrock/Google Cloud, document) blocks"
+          },
+          "many_images_max_px": {
+            "value": 2000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "note": "Documented SAFE bound, not the stated limit: the page says the stricter limit is 'stated in the error message' and advises resizing to <=2000 px per side 'to stay under the limit on all platforms'. Using 2000 as a check is conservative. 150-DPI A4 pages (1240x1754) pass."
+          }
+        },
+        {
+          "pattern": "(?i)gemini-2\\.5",
+          "description": "Gemini 2.5 Pro / Flash / Flash-Lite",
+          "max_images_per_request": {
+            "value": 3000,
+            "confidence": "verified",
+            "source": "VERTEX_25",
+            "scope": "per_request",
+            "note": "\"per prompt\""
+          },
+          "max_request_bytes": {
+            "value": 500000000,
+            "confidence": "verified",
+            "source": "VERTEX_25",
+            "scope": "per_request_body",
+            "note": "\"Input size limit\""
+          },
+          "max_image_bytes": {
+            "value": 7000000,
+            "confidence": "verified",
+            "source": "VERTEX_25",
+            "scope": "per_image",
+            "note": "inline data; 30 MB from Cloud Storage (not used by Unstract)"
+          }
+        },
+        {
+          "pattern": "(?i)gemini-(?:[3-9]|\\d{2,})(?:\\.\\d+)?-",
+          "description": "Gemini 3.x and later (numbered 3+ families; spec pages checked)",
+          "max_images_per_request": {
+            "value": 3000,
+            "confidence": "verified",
+            "source": "VERTEX_3X",
+            "scope": "per_request",
+            "note": "\"per prompt\""
+          },
+          "max_request_bytes": {
+            "value": null,
+            "confidence": "unverified",
+            "source": null,
+            "note": "no 'Input size limit' row on the 3.x spec pages. With lookup rule 4 (README.md) this null falls back to the 20 MB default (~60 pages at 250 KB), which may be far stricter than Vertex enforces (2.5 pages say 500 MB). Probe before relying on it."
+          },
+          "max_image_bytes": {
+            "value": 7000000,
+            "confidence": "verified",
+            "source": "VERTEX_3X",
+            "scope": "per_image",
+            "note": "inline data"
+          }
+        },
+        {
+          "pattern": "(?i)gemini-",
+          "description": "Other Gemini ids not covered above (gemini-live-2.5-*, gemini-robotics-er-1.5-*, gemini-omni-*): no spec page checked",
+          "max_images_per_request": {
+            "value": 3000,
+            "confidence": "unverified",
+            "source": "VERTEX_3X",
+            "scope": "per_request",
+            "note": "\"per prompt\" Assumed by analogy with the 3.x pages; the draft's catch-all regex applied 'verified' to these ids."
+          },
+          "max_request_bytes": {
+            "value": null,
+            "confidence": "unverified",
+            "source": null,
+            "note": "no 'Input size limit' row on the 3.x spec pages"
+          },
+          "max_image_bytes": {
+            "value": 7000000,
+            "confidence": "unverified",
+            "source": "VERTEX_3X",
+            "scope": "per_image",
+            "note": "inline data Assumed by analogy with the 3.x pages; the draft's catch-all regex applied 'verified' to these ids."
+          }
+        }
+      ],
+      "vision_models": {
+        "litellm_supports_vision_count": 88,
+        "families": {
+          "gemini-2.5": {
+            "count": 9,
+            "examples": [
+              "gemini-2.5-computer-use-preview-10-2025",
+              "gemini-2.5-flash",
+              "gemini-2.5-flash-image",
+              "gemini-2.5-flash-lite"
+            ]
+          },
+          "gemini-3.x": {
+            "count": 30,
+            "examples": [
+              "gemini-3-flash-preview",
+              "gemini-3-pro-image",
+              "gemini-3-pro-image-preview",
+              "gemini-3.1-flash-image"
+            ]
+          },
+          "claude": {
+            "count": 32,
+            "examples": [
+              "vertex_ai/claude-3-5-sonnet",
+              "vertex_ai/claude-3-5-sonnet@20240620",
+              "vertex_ai/claude-3-haiku",
+              "vertex_ai/claude-3-haiku@20240307"
+            ]
+          },
+          "mistral": {
+            "count": 1,
+            "examples": [
+              "vertex_ai/mistral-small-2503"
+            ]
+          },
+          "llama": {
+            "count": 4,
+            "examples": [
+              "vertex_ai/meta/llama-3.1-405b-instruct-maas",
+              "vertex_ai/meta/llama-3.1-70b-instruct-maas",
+              "vertex_ai/meta/llama-3.1-8b-instruct-maas",
+              "vertex_ai/meta/llama-3.2-90b-vision-instruct-maas"
+            ]
+          },
+          "grok": {
+            "count": 6,
+            "examples": [
+              "vertex_ai/xai/grok-4.1-fast-non-reasoning",
+              "vertex_ai/xai/grok-4.1-fast-reasoning",
+              "vertex_ai/xai/grok-4.20-non-reasoning",
+              "vertex_ai/xai/grok-4.20-reasoning"
+            ]
+          },
+          "other": {
+            "count": 6,
+            "examples": [
+              "deep-research-pro-preview-12-2025",
+              "gemini-live-2.5-flash-native-audio",
+              "gemini-live-2.5-flash-preview-native-audio-09-2025",
+              "gemini-omni-flash-preview"
+            ]
+          }
+        },
+        "note": "counts litellm_provider in {vertex_ai, vertex_ai-language-models, vertex_ai-anthropic_models, vertex_ai-mistral_models, vertex_ai-llama_models}. Llama, Mistral and Grok on Vertex have no documented image limits -> top-level default"
+      }
+    },
+    "mistral": {
+      "adapter": "mistral",
+      "display_name": "Mistral",
+      "litellm_model_prefix": "mistral/",
+      "kind": "hosted",
+      "defaults": {
+        "max_images_per_request": {
+          "value": 8,
+          "confidence": "verified",
+          "source": "MISTRAL",
+          "scope": "per_request",
+          "note": "\"via API\""
+        },
+        "max_request_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "not documented"
+        },
+        "max_image_bytes": {
+          "value": 10000000,
+          "confidence": "verified",
+          "source": "MISTRAL",
+          "scope": "per_image",
+          "note": "doc writes \"10Mb\"; read as megabytes"
+        },
+        "max_image_px": {
+          "value": 10000,
+          "confidence": "verified",
+          "source": "MISTRAL",
+          "scope": "per_image_side",
+          "note": "error above 10000x10000; images above 1540x1540 (Pixtral 1024x1024) are downscaled, not rejected"
+        }
+      },
+      "model_overrides": [],
+      "vision_models": {
+        "litellm_supports_vision_count": 26,
+        "families": {
+          "all": {
+            "count": 26,
+            "examples": [
+              "mistral/magistral-medium-latest",
+              "mistral/magistral-small-latest",
+              "mistral/ministral-14b-2512",
+              "mistral/ministral-14b-latest"
+            ]
+          }
+        }
+      }
+    },
+    "minimax": {
+      "adapter": "minimax",
+      "display_name": "MiniMax",
+      "litellm_model_prefix": "minimax/ (or anthropic/ when api_base ends in /anthropic)",
+      "kind": "hosted",
+      "routing_note": "When the MiniMax api_base ends in /anthropic, Unstract sends the model as anthropic/<id>. A lookup keyed by the litellm model prefix would then wrongly pick Anthropic limits. Key by the adapter (get_provider() == 'minimax').",
+      "defaults": {
+        "max_images_per_request": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no image-count limit documented"
+        },
+        "max_request_bytes": {
+          "value": 64000000,
+          "confidence": "verified",
+          "source": "MINIMAX",
+          "scope": "per_request_body",
+          "base64_counted": true,
+          "note": "same on the OpenAI- and Anthropic-compatible APIs"
+        },
+        "max_image_bytes": {
+          "value": 10000000,
+          "confidence": "verified",
+          "source": "MINIMAX",
+          "scope": "per_image"
+        },
+        "max_image_px": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "not documented"
+        }
+      },
+      "model_overrides": [],
+      "vision_models": {
+        "litellm_supports_vision_count": 1,
+        "families": {
+          "MiniMax-M3": {
+            "count": 1,
+            "examples": [
+              "minimax/MiniMax-M3"
+            ]
+          }
+        },
+        "note": "image input only for MiniMax-M3 and MiniMax-M3.1-Flash-Preview (MINIMAX); M2.x are text-only"
+      }
+    },
+    "openrouter": {
+      "adapter": "openrouter",
+      "display_name": "OpenRouter",
+      "litellm_model_prefix": "openrouter/",
+      "kind": "pass_through",
+      "published_limit": "none",
+      "governed_by": "The upstream provider OpenRouter routes to. The slug names the model family but not the hosting platform (e.g. anthropic/* may be served by Anthropic, Bedrock or Vertex, whose byte limits are 32/20/30 MB).",
+      "defaults": {
+        "max_images_per_request": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        },
+        "max_request_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        },
+        "max_image_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        },
+        "max_image_px": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        }
+      },
+      "model_overrides": [
+        {
+          "pattern": "(?i)^(openrouter/)?~?anthropic/",
+          "note": "unverified; inherits Anthropic direct (100/600 images by context window, 32 MB request); an upstream on Bedrock is stricter (20 images, 20 MB request)",
+          "inherit": "anthropic"
+        },
+        {
+          "pattern": "(?i)^(openrouter/)?~?openai/",
+          "note": "unverified; upstream may be OpenAI or Azure (50 images)",
+          "inherit": "openai"
+        },
+        {
+          "pattern": "(?i)^(openrouter/)?~?google/",
+          "note": "unverified; upstream may be AI Studio (20 MB inline) or Vertex",
+          "inherit": "gemini"
+        },
+        {
+          "pattern": "(?i)^(openrouter/)?mistralai/",
+          "note": "unverified",
+          "inherit": "mistral"
+        }
+      ],
+      "source": "OPENROUTER",
+      "vision_models": {
+        "litellm_supports_vision_count": 297,
+        "families": {
+          "anthropic/": {
+            "count": 34,
+            "examples": [
+              "openrouter/anthropic/claude-3-haiku",
+              "openrouter/anthropic/claude-3.5-sonnet",
+              "openrouter/anthropic/claude-3.7-sonnet",
+              "openrouter/anthropic/claude-fable-5"
+            ]
+          },
+          "openai/": {
+            "count": 89,
+            "examples": [
+              "openrouter/openai/gpt-4-turbo",
+              "openrouter/openai/gpt-4-turbo:batch",
+              "openrouter/openai/gpt-4.1",
+              "openrouter/openai/gpt-4.1-mini"
+            ]
+          },
+          "google/": {
+            "count": 42,
+            "examples": [
+              "openrouter/google/gemini-2.5-flash",
+              "openrouter/google/gemini-2.5-flash-image",
+              "openrouter/google/gemini-2.5-flash-lite",
+              "openrouter/google/gemini-2.5-flash-lite:batch"
+            ]
+          },
+          "mistralai/": {
+            "count": 15,
+            "examples": [
+              "openrouter/mistralai/ministral-14b-2512",
+              "openrouter/mistralai/ministral-3b-2512",
+              "openrouter/mistralai/ministral-8b-2512",
+              "openrouter/mistralai/ministral-8b-2512:batch"
+            ]
+          },
+          "other": {
+            "count": 117,
+            "examples": [
+              "openrouter/amazon/nova-2-lite-v1",
+              "openrouter/amazon/nova-lite-v1",
+              "openrouter/amazon/nova-premier-v1",
+              "openrouter/amazon/nova-pro-v1"
+            ]
+          }
+        }
+      }
+    },
+    "ollama": {
+      "adapter": "ollama",
+      "display_name": "Ollama",
+      "litellm_model_prefix": "ollama_chat/",
+      "kind": "pass_through",
+      "published_limit": "none",
+      "governed_by": "Model context window (num_ctx), the vision encoder's trained image count (many local VLMs handle 1 to a few images; e.g. NVIDIA documents Llama 3.2 Vision as single-image), and server memory. Ollama documents no limit.",
+      "defaults": {
+        "max_images_per_request": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        },
+        "max_request_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        },
+        "max_image_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        },
+        "max_image_px": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        }
+      },
+      "model_overrides": [],
+      "source": "OLLAMA",
+      "vision_models": {
+        "litellm_supports_vision_count": 0,
+        "families": {}
+      }
+    },
+    "custom_openai": {
+      "adapter": "openai_compatible",
+      "display_name": "OpenAI-compatible endpoint",
+      "litellm_model_prefix": "custom_openai/",
+      "kind": "pass_through",
+      "published_limit": "none",
+      "governed_by": "Whatever server sits behind the base URL. vLLM: --limit-mm-per-prompt, default 999 per modality (VLLM); NVIDIA NIM 1.x: NIM_MAX_IMAGES_PER_PROMPT, default 5 (NIM; variable absent from NIM 2.x docs); LiteLLM proxy: its upstream.",
+      "defaults": {
+        "max_images_per_request": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        },
+        "max_request_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        },
+        "max_image_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        },
+        "max_image_px": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        }
+      },
+      "model_overrides": [],
+      "source": [
+        "VLLM",
+        "NIM"
+      ],
+      "vision_models": {
+        "litellm_supports_vision_count": 0,
+        "families": {}
+      }
+    },
+    "nvidia_build": {
+      "adapter": "nvidia_build",
+      "display_name": "NVIDIA Build",
+      "litellm_model_prefix": "custom_openai/ (api_base https://integrate.api.nvidia.com/v1)",
+      "kind": "pass_through",
+      "published_limit": "none",
+      "governed_by": "Hosted NIM endpoints on build.nvidia.com. No published limit for the hosted API. NIM for VLMs 1.7.0 docs give NIM_MAX_IMAGES_PER_PROMPT default 5, but the current NIM 2.x env-var list no longer has that variable (NIM source note). Hosted limits are unknown; probe before relying on them. The 'Llama 3.2 Vision only 1 image' claim has no source in the dataset (unverified).",
+      "defaults": {
+        "max_images_per_request": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        },
+        "max_request_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        },
+        "max_image_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        },
+        "max_image_px": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        }
+      },
+      "model_overrides": [],
+      "source": "NIM",
+      "vision_models": {
+        "litellm_supports_vision_count": 0,
+        "families": {},
+        "note": "litellm has 0 nvidia_nim vision models; the adapter routes through custom_openai anyway"
+      }
+    },
+    "anyscale": {
+      "adapter": "anyscale",
+      "display_name": "Anyscale",
+      "litellm_model_prefix": "anyscale/",
+      "kind": "pass_through",
+      "published_limit": "none",
+      "governed_by": "Not a vision target: litellm lists 0 anyscale vision models; the existing vision gate rejects it before any limit lookup.",
+      "defaults": {
+        "max_images_per_request": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        },
+        "max_request_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        },
+        "max_image_bytes": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        },
+        "max_image_px": {
+          "value": null,
+          "confidence": "unverified",
+          "source": null,
+          "note": "no published limit; real limit set by the server/upstream (see governed_by)"
+        }
+      },
+      "model_overrides": [],
+      "source": null,
+      "vision_models": {
+        "litellm_supports_vision_count": 0,
+        "families": {}
+      }
+    }
+  }
+}
