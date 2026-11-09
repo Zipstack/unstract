@@ -417,7 +417,9 @@ def _next_minor(repo, ordered):
 
 def _row(repo, name, ref, taken):
     tip = rm.rc_version(repo, ref, PREFIX, taken)
-    built = tip in rm.git(repo, "tag", "--points-at", ref).split()
+    built = (
+        tip in rm.git(repo, "tag", "--points-at", rm.rc_commit(repo, ref, PREFIX)).split()
+    )
     line = name.split("/", 1)[1]
     row = {
         "branch": name,

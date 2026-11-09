@@ -2735,6 +2735,8 @@ class PendingPicksWorkflow(Workflow):
     def test_promote_refuses_a_stable_tag_already_promoted(self):
         self.line("1.7", "v1.7.0-rc.1")
         self.reg("v1.7.0", "sha256:v1.7.0-rc.1")
+        dev_git(self.cloud, "tag", "v1.7.0", "v1.7.0-rc.1")
+        dev_git(self.cloud, "push", "-q", "origin", "v1.7.0")
         self.blocked(
             self.promote(),
             "::error::cloud/backend:v1.7.0 already exists (same digest: already promoted)",
@@ -2743,6 +2745,17 @@ class PendingPicksWorkflow(Workflow):
             "gh workflow run publish.yaml -f version=v1.7.0 -f cloud=true",
             self.read("summary"),
         )
+
+    def test_promote_resumes_a_stable_tag_whose_git_tag_was_deleted(self):
+        # The retag landed but the git tag is gone: Promote redoes the GA commit and tag.
+        self.line("1.7", "v1.7.0-rc.1")
+        self.reg("v1.7.0", "sha256:v1.7.0-rc.1")
+        r = self.promote()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(
+            "::notice::cloud/backend:v1.7.0 already has v1.7.0-rc.1's digest", r.stdout
+        )
+        self.assertIn("bump=make\n", self.read("output"))
 
     def test_promote_refuses_a_stable_tag_at_another_digest(self):
         self.line("1.7", "v1.7.0-rc.1")

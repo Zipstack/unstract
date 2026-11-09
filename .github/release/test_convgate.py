@@ -119,6 +119,35 @@ class Gate(unittest.TestCase):
         self.printed = buf.getvalue()
         return code, "\n".join(out)
 
+    def test_ga_commit_on_older_line(self):
+        """Promote's GA commit (bot, chart only) on top of 1.5's RC: the gate reads both lines as before."""
+        self.decline(self.c, "release/1.6")
+        refs = (("release/1.5", "v1.5.0-rc.1"), ("release/1.6", "v1.6.0-rc.1"))
+        before = [self.run_gate(b, promote_ref=r)[0] for b, r in refs]
+        self.g("checkout", "-q", "release/1.5")
+        os.makedirs(os.path.join(self.repo, os.path.dirname(rm.CHART)), exist_ok=True)
+        with open(os.path.join(self.repo, rm.CHART), "w") as f:
+            f.write("version: 1.5.0\n")
+        self.g("add", rm.CHART)
+        rm.git(
+            self.repo,
+            "-c",
+            "user.name=releases-bot",
+            "-c",
+            f"user.email={rm.BOT_EMAIL}",
+            "commit",
+            "-q",
+            "-m",
+            "release: chart 1.5.0",
+        )
+        self.push("cloud/backend", "v1.5.0", "release/1.5")
+        after = [self.run_gate(b, promote_ref=r)[0] for b, r in refs]
+        self.assertEqual(before, [0, 0])
+        self.assertEqual(after, before)
+        self.assertEqual(
+            self.run_gate("release/1.6")[0], 0
+        )  # 1.5 read at its promoted v1.5.0, the GA commit
+
     def test_both_directions(self):
         code, out = self.run_gate("release/1.5")
         self.assertEqual(code, 2)

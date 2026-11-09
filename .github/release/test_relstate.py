@@ -741,6 +741,174 @@ class Scenario(unittest.TestCase):
         )
         self.g("checkout", "-q", "main")
 
+    # The repo's own chart files, bumped with Take RC's and Promote's seds: GA commit fixtures from real chart files.
+    ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+    on_chart = unittest.skipUnless(
+        os.path.exists(os.path.join(ROOT, rm.CHART)), "the cloud repo's chart"
+    )
+
+    def sed_chart(self, tag):
+        chart, values = (os.path.join(self.repo, f) for f in (rm.CHART, rm.VALUES))
+        subprocess.run(
+            [
+                "sed",
+                "-i",
+                "-E",
+                f's/^version: .*/version: {tag[1:]}/; s/^appVersion: .*/appVersion: "{tag}"/',
+                chart,
+            ],
+            check=True,
+        )
+        subprocess.run(
+            ["sed", "-i", "-E", f"s/(&UNSTRACT_APPS_VERSION ).*/\\1{tag}/", values],
+            check=True,
+        )
+
+    def bot_commit(self, msg, *paths):
+        rm.git(
+            self.repo,
+            "-c",
+            "user.name=releases-bot",
+            "-c",
+            f"user.email={rm.BOT_EMAIL}",
+            "commit",
+            "-q",
+            "-m",
+            msg,
+            "--",
+            *paths,
+        )
+        return self.g("rev-parse", "HEAD")
+
+    def rc_on_chart(self, tag, branch="release/1.5"):
+        """Take RC's bump commit for tag on branch, tagged; the real chart files are added on the first one."""
+        self.g("checkout", "-q", branch)
+        for f in (rm.CHART, rm.VALUES):
+            dst = os.path.join(self.repo, f)
+            if not os.path.exists(dst):
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                with open(os.path.join(self.ROOT, f)) as src, open(dst, "w") as out:
+                    out.write(src.read())
+                self.g("add", f)
+                self.g("commit", "-q", "-m", f"add {f}")
+        self.sed_chart(tag)
+        sha = self.bot_commit(f"release: chart {tag[1:]}", rm.CHART, rm.VALUES)
+        self.g("tag", tag)
+        self.g("checkout", "-q", "main")
+        return sha
+
+    def ga_commit(self, stable, branch="release/1.5", tag=True):
+        """Promote's GA commit on the RC commit at the tip of branch."""
+        self.g("checkout", "-q", branch)
+        self.sed_chart(stable)
+        sha = self.bot_commit(f"release: chart {stable[1:]}", rm.CHART, rm.VALUES)
+        if tag:
+            self.g("tag", stable)
+        self.g("checkout", "-q", "main")
+        return sha
+
+    @on_chart
+    def test_ga_commit_on_the_line(self):
+        self.cut("1.5")
+        rc = self.rc_on_chart("v1.5.0-rc.1")
+        self.push("cloud/backend", "v1.5.0-rc.1")
+        self.assertEqual(rm.promote_version(self.repo, "v1.5.0-rc.1"), "v1.5.0")
+        # Pushed but untagged: what a rerun reuses instead of committing again.
+        ga = self.ga_commit("v1.5.0", tag=False)
+        self.assertTrue(rm.is_ga_bump(self.repo, ga, rc, "v1.5.0"))
+        self.assertEqual(
+            rm.rc_commit(self.repo, "release/1.5"), ga
+        )  # untagged: not yet a GA commit
+        self.g("tag", "v1.5.0", ga)
+        self.push("cloud/backend", "v1.5.0")
+        self.assertEqual(rm.classify_commit(self.repo, ga), "build-generated")
+        chart = self.g("show", f"v1.5.0:{rm.VALUES}").splitlines()[0]
+        self.assertEqual(chart, "UNSTRACT_APPS_VERSION: &UNSTRACT_APPS_VERSION v1.5.0")
+        # The tip's RC is still rc.1: a rebuild is refused and on-prem later promotes rc.1 onto the same v1.5.0.
+        self.assertEqual(rm.rc_commit(self.repo, "release/1.5"), rc)
+        self.assertEqual(rm.rc_version(self.repo, "release/1.5"), "v1.5.0-rc.1")
+        self.assertEqual(rm.promote_version(self.repo, "v1.5.0-rc.1"), "v1.5.0")
+        row = self.branch(self.state(), "release/1.5")
+        self.assertEqual(
+            (row["tip_rc"], row["next_rc"], row["ahead_of_ga"]), ("v1.5.0-rc.1", None, 0)
+        )
+        self.assertEqual(row["targets"]["cloud"]["ga"]["tag"], "v1.5.0")
+        # A fix after GA: the next RC and stable are the next patch, and the old RC is a downgrade.
+        self.commit("fix after GA", "release/1.5")
+        self.assertEqual(rm.rc_version(self.repo, "release/1.5"), "v1.5.1-rc.1")
+        rc2 = self.rc_on_chart("v1.5.1-rc.1")
+        self.assertEqual(rm.promote_version(self.repo, "v1.5.1-rc.1"), "v1.5.1")
+        self.assertEqual(rm.rc_commit(self.repo, rc2), rc2)
+        self.assertEqual(
+            self.branch(self.state(), "release/1.5")["ahead_of_ga"], 2
+        )  # the fix and rc.1's bump
+
+    @on_chart
+    def test_ga_commit_guard(self):
+        self.cut("1.5")
+        self.g("checkout", "-q", "release/1.5")
+        with open(os.path.join(self.repo, "notes.txt"), "w") as f:
+            f.write("")
+        self.g("add", "notes.txt")
+        self.g("commit", "-q", "-m", "notes")
+        self.g("checkout", "-q", "main")
+        rc = self.rc_on_chart("v1.5.0-rc.1")
+
+        def stray(
+            edit, msg="release: chart 1.5.0", bot=True, paths=(rm.CHART, rm.VALUES)
+        ):
+            self.g("checkout", "-q", "--detach", rc)
+            self.sed_chart("v1.5.0")
+            edit()
+            self.g("add", *paths)
+            if bot:
+                sha = self.bot_commit(msg, *paths)
+            else:
+                self.g("commit", "-q", "-m", msg, "--", *paths)
+                sha = self.g("rev-parse", "HEAD")
+            self.g("checkout", "-q", "main")
+            return rm.ga_bump_stray(self.repo, rc, sha, "v1.5.0"), rm.is_ga_bump(
+                self.repo, sha, rc, "v1.5.0"
+            )
+
+        def append(path, text):
+            def edit():
+                with open(os.path.join(self.repo, path), "a") as f:
+                    f.write(text)
+
+            return edit
+
+        self.assertEqual(stray(lambda: None), ([], True))
+
+        def chmod():
+            os.chmod(os.path.join(self.repo, rm.CHART), 0o755)
+
+        # Each case trips one check only: another file, a mode change, an unknown line, a key set twice.
+        for edit, paths in (
+            (append("notes.txt", "x\n"), (rm.CHART, rm.VALUES, "notes.txt")),
+            (chmod, (rm.CHART, rm.VALUES)),
+            (append(rm.VALUES, "extra: 1\n"), (rm.CHART, rm.VALUES)),
+            (append(rm.CHART, "version: 1.5.0\n"), (rm.CHART, rm.VALUES)),
+        ):
+            got, ok = stray(edit, paths=paths)
+            self.assertTrue(got)
+            self.assertFalse(ok)
+        # A wrong value, a human author, a wrong subject.
+        self.assertEqual(
+            stray(lambda: self.sed_chart("v1.5.9"))[0][:3],
+            [
+                f"{rm.CHART}: +version: 1.5.9",
+                f'{rm.CHART}: +appVersion: "v1.5.9"',
+                f"{rm.VALUES}: +UNSTRACT_APPS_VERSION: &UNSTRACT_APPS_VERSION v1.5.9",
+            ],
+        )
+        self.assertFalse(stray(lambda: None, bot=False)[1])
+        self.assertFalse(stray(lambda: None, msg="release: chart 1.5.0-rc.1")[1])
+        # Not on the RC commit: a commit in between.
+        self.commit("in between", "release/1.5")
+        ga = self.ga_commit("v1.5.0", tag=False)
+        self.assertFalse(rm.is_ga_bump(self.repo, ga, rc, "v1.5.0"))
+
     def test_already_bumped(self):
         self.cut("1.5")
         self.chart("1.5.0-rc.1", "release/1.5", "release: chart 1.5.0-rc.1", rm.BOT_EMAIL)
