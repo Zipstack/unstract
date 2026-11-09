@@ -30,6 +30,16 @@
 | colour | sidebar-muted-foreground | `--sidebar-muted-foreground` | `ui:text-sidebar-muted-foreground` | #737373 | #a1a1aa | #a9c3da |
 | colour | header | `--header` | `ui:bg-header` | #fcfcfc | #0a0a0a | #072b4d |
 | colour | header-foreground | `--header-foreground` | `ui:text-header-foreground` | #1a1a1a | #fafafa | #ffffff |
+| colour | code-key | `--code-key` | `ui:text-code-key` | #b41b30 | #fca5a5 | #b41b30 |
+| colour | code-string | `--code-string` | `ui:text-code-string` | #5b5bc0 | #c1c5fb | #5d5dc4 |
+| colour | code-number | `--code-number` | `ui:text-code-number` | #147739 | #4ade80 | #147839 |
+| colour | code-literal | `--code-literal` | `ui:text-code-literal` | #a74d08 | #fbbf24 | #a94e08 |
+| colour | code-keyword | `--code-keyword` | `ui:text-code-keyword` | #6352d5 | #b4aaf7 | #072b4d |
+| colour | code-comment | `--code-comment` | `ui:text-code-comment` | #676767 | #a1a1a1 | #626976 |
+| colour | diff-added | `--diff-added` | `ui:bg-diff-added` | #15803d1f | #4ade801f | #15803d1f |
+| colour | diff-added-foreground | `--diff-added-foreground` | `ui:text-diff-added-foreground` | #147739 | #4ade80 | #147839 |
+| colour | diff-removed | `--diff-removed` | `ui:bg-diff-removed` | #b41b301a | #e5484d26 | #b41b301a |
+| colour | diff-removed-foreground | `--diff-removed-foreground` | `ui:text-diff-removed-foreground` | #b91c1c | #fca5a5 | #b91c1c |
 | spacing | space-1 | `--space-1` | `ui:p-1` | 4px | 4px | 4px |
 | spacing | space-2 | `--space-2` | `ui:p-2` | 8px | 8px | 8px |
 | spacing | space-3 | `--space-3` | `ui:p-3` | 12px | 12px | 12px |

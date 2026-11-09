@@ -428,7 +428,10 @@ def next_steps(lines, order):
     return list(
         dict.fromkeys(
             [t.removesuffix(".") for x in lines for t in x["todo"]]
-            + [f"promote or retire `{o.split(' is not GA')[0]}`" for o in order]
+            + [
+                f"promote or retire `{o.split(' is not GA')[0]}` (Retire one shipped line now; Abandon a line that never shipped when it has no GA)"
+                for o in order
+            ]
         )
     )
 

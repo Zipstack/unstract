@@ -148,7 +148,15 @@ def fix_class(slug, sha, token=None):
 
 
 def pr_class(pr):
-    return rm.pr_fix_class(pr["title"], _labels(pr)), f"#{pr['number']}", pr["title"]
+    """A PR main_fix_class rejects is UNCLASSIFIABLE, keeping its #N; the error goes after its title."""
+    try:
+        return (
+            rm.main_fix_class(pr["title"], _labels(pr)),
+            f"#{pr['number']}",
+            pr["title"],
+        )
+    except ValueError as e:
+        return UNCLASSIFIABLE, f"#{pr['number']}", f"{pr['title']} ({e})"
 
 
 def _subject_pr(slug, sha, token=None):
@@ -194,15 +202,20 @@ def only_listed(targets, listed):
     return [b for b in targets if b in listed], [b for b in listed if b not in targets]
 
 
-def held_line(sha, cls, pr, branch, annotate="warning", slug=None):
-    return f"::{annotate}::{sha[:7]} ({cls}, PR {slug or ''}{pr}) held for {branch}: stabilized, needs confirm_stabilized"
+def held_line(sha, cls, pr, branch, annotate="warning", slug=None, title=""):
+    if cls == UNCLASSIFIABLE:  # a pick would fail: name the error instead
+        return (
+            f"::{annotate}::{sha[:7]} ({cls}, PR {slug or ''}{pr}, {title}) held for {branch}: "
+            "add a backport label or fix its PR title, or record a decline"
+        )
+    return f"::{annotate}::{sha[:7]} ({cls}, PR {slug or ''}{pr}) held for {branch}: stabilized, needs patch_released_lines"
 
 
 def held_warnings(awaiting):
     # Held for the RM is a known state, not a missed pick: Promote blocks on it.
     counts = collections.Counter(b for _, b, *_ in awaiting)
     return [
-        f"::warning::{b}: {n} held security/critical fix{'es' if n > 1 else ''}, Backport with confirm_stabilized"
+        f"::warning::{b}: {n} held security/critical fix{'es' if n > 1 else ''}, Backport with patch_released_lines"
         for b, n in counts.items()
     ]
 
@@ -325,7 +338,7 @@ def pending_block(conflicts, held_rows):
         ] + [""]
     if groups:
         out += [
-            "**Held for the RM** (stabilized lines; pick with `confirm_stabilized`):",
+            "**Held for the RM** (stabilized lines; pick with `patch_released_lines`):",
             "",
         ]
         out += [
@@ -342,7 +355,7 @@ def pending_block(conflicts, held_rows):
             "",
             "```",
             f"gh workflow run backport.yaml -f commits={commits} -f lines={branches} "
-            "-f confirm_stabilized=true",
+            "-f patch_released_lines=true",
             "```",
             "",
         ]
@@ -372,7 +385,9 @@ def push_summary(head, table, done, pending):
 
 HELD = {"security", "critical"}
 OWED = {"fix", "security", "critical"}
-UNCLASSIFIABLE = "UNCLASSIFIABLE"  # no PR found, or a title Lint PR should have refused: shown, never dropped
+UNCLASSIFIABLE = (
+    "UNCLASSIFIABLE"  # no PR found, or a PR main_fix_class rejects: shown, never dropped
+)
 
 
 def held_filter(commits, classes, trailers, accept=HELD):
@@ -390,11 +405,7 @@ def classes_from_listing(prs):
     for pr in prs:
         if not pr.get("mergeCommit"):
             continue
-        try:
-            cls = rm.pr_fix_class(pr["title"], _labels(pr))
-            out[pr["mergeCommit"]["oid"]] = (cls, f"#{pr['number']}", pr["title"])
-        except ValueError as e:
-            out[pr["mergeCommit"]["oid"]] = (UNCLASSIFIABLE, str(e), pr["title"])
+        out[pr["mergeCommit"]["oid"]] = pr_class(pr)
     return out
 
 
@@ -460,7 +471,7 @@ def held(slug, repo, branch, accept=HELD, cache=None, token=None):
             classes[s] = (
                 (UNCLASSIFIABLE, pr, subject()) if pr == "no PR" else (cls, pr, title)
             )
-        except ValueError as e:  # a title Lint PR should have stopped
+        except ValueError as e:  # no usable PR data
             classes[s] = (UNCLASSIFIABLE, str(e), subject())
     print(
         f"held: {len(commits)} main commit(s) since the cut of {branch}, {looked} fix_class lookup(s)"
@@ -604,7 +615,7 @@ def owed_summary(rows, branch):
         out
         + [
             "",
-            f"To pick a fix: dispatch Backport with its commit, `confirm_stabilized=true` and `lines={rm.line(branch)}`"
+            f"To pick a fix: dispatch Backport with its commit, `patch_released_lines=true` and `lines={rm.line(branch)}`"
             " plus every newer released line. Backport skips an unclassifiable row.",
         ]
     )
@@ -614,21 +625,31 @@ def warn_held(slug, repo, branch, annotate="warning", token=None):
     """For Take RC / Promote on a stabilized branch: Promote blocks on held fixes unless forced."""
     rows = held(slug, repo, branch, token=token)
     other = slug if token else None  # a token means another repo: name it
-    for s, cls, pr, _ in rows:
-        print(held_line(s, cls, pr, branch, annotate, other))
+    for s, cls, pr, title in rows:
+        print(held_line(s, cls, pr, branch, annotate, other, title))
     return held_note(rows, branch, other)
 
 
 def held_note(rows, branch, slug=None):
     if not rows:
         return None
-    commits = ",".join(_commit_arg(s, pr) for s, _, pr, _ in rows)
-    return (
-        f"⚠ Held for the RM on {f'{slug} ' if slug else ''}{rm.branch_link(branch, slug)} (stabilized; Promote blocks unless forced): "
-        + ", ".join(f"{link_src(s, pr, slug)} {cls}" for s, cls, pr, _ in rows)
-        + f". Pick with `gh workflow run backport.yaml{f' -R {slug}' if slug else ''} -f commits={commits} "
-        f"-f lines={rm.line(branch)} -f confirm_stabilized=true`"
-    )
+    # Backport refuses an unclassifiable commit, so it stays out of the suggested pick.
+    pick = [r for r in rows if r[1] != UNCLASSIFIABLE]
+    bad = [r for r in rows if r[1] == UNCLASSIFIABLE]
+    note = f"⚠ Held for the RM on {f'{slug} ' if slug else ''}{rm.branch_link(branch, slug)} (stabilized; Promote blocks unless forced): "
+    if pick:
+        commits = ",".join(_commit_arg(s, pr) for s, _, pr, _ in pick)
+        note += (
+            ", ".join(f"{link_src(s, pr, slug)} {cls}" for s, cls, pr, _ in pick)
+            + f". Pick with `gh workflow run backport.yaml{f' -R {slug}' if slug else ''} -f commits={commits} "
+            f"-f lines={rm.line(branch)} -f patch_released_lines=true`"
+        )
+    if bad:
+        note += (" " if pick else "") + (
+            f"{UNCLASSIFIABLE}, add a backport label or fix its PR title, or record a decline: "
+            + ", ".join(f"{link_src(s, pr, slug)} {title}" for s, _, pr, title in bad)
+        )
+    return note
 
 
 def patch_lines(state, slug=None):
@@ -636,7 +657,7 @@ def patch_lines(state, slug=None):
     slug = slug or os.environ["GITHUB_REPOSITORY"]
     out = [
         "**Patch a released line**: main fixes since the line's cut, neither picked nor declined. Paste into Backport "
-        "`commits` with `confirm_stabilized` and `lines` (every newer released line too).",
+        "`commits` with `patch_released_lines` and `lines` (every newer released line too).",
         "",
     ]
     branches = [r["branch"] for r in state["branches"] if r["state"] == "stabilized"]
@@ -1158,10 +1179,12 @@ def pick(slug, sha, branch, title, src):
 def push_title(slug, sha):
     # Known limit: a gh error past fix_class's retry ends the run before the summary.
     try:
-        cls, pr, _ = fix_class(slug, sha)
-    except ValueError as e:  # a title Lint PR should have stopped: the picks are done, only this line is left
+        cls, pr, title = fix_class(slug, sha)
+    except ValueError as e:  # the picks are done, only this line is left
         print(f"::warning::{sha[:7]}: fix class: {e}")
         cls, pr = UNCLASSIFIABLE, "-"
+    if cls == UNCLASSIFIABLE and pr != "-":
+        print(f"::warning::{sha[:7]}: fix class: {title}")
     return f"Backport · push {rm.commit_link(sha)} ({link_pr(pr)}, {cls or 'not a fix'})"
 
 
@@ -1294,7 +1317,7 @@ def dispatch(slug, targets, commits, confirm, listed):
 
 def _dispatch_targets(targets, sha, cls, pr, confirm, listed):
     if cls == "fix":
-        # A plain fix reaches a stabilized line only when the RM names it: confirm_stabilized and lines.
+        # A plain fix reaches a stabilized line only when the RM names it: patch_released_lines and lines.
         named = [
             t["branch"]
             for t in targets["security_critical"]
@@ -1319,15 +1342,18 @@ def _dispatch_commit(slug, targets, sha, confirm, listed, awaiting, named_pr=Non
     """Appends its held picks to awaiting. named_pr: the PR the RM named, already fetched."""
     try:
         cls, pr, title = pr_class(named_pr) if named_pr else fix_class(slug, sha)
-    except ValueError as e:  # Lint PR should have stopped this PR
+    except ValueError as e:
         print(f"::error::{sha[:7]}: fix class: {e}")
         # A named commit nothing could pick fails the dispatch.
         return [(sha, "?", "error", "-", f"failed: {e}", "-")]
+    if cls == UNCLASSIFIABLE:
+        print(f"::error::{sha[:7]}: fix class: {title}")
+        return [(sha, pr, "error", "-", f"failed: {title}", "-")]
     if pr == "no PR":
         print(f"::error::{sha[:7]}: no PR found, so it cannot be classed")
         return [(sha, pr, "error", "-", "failed: no PR found", "-")]
     if cls is None:
-        route = f"label {pr} fix/needs-backport (or the fix label it needs) and rerun"
+        route = f"swap {pr}'s main-only label for fix/needs-backport (or the fix label it needs) and rerun"
         return [(sha, pr, "none", "-", f"skipped: not a fix; {route}", "-")]
     branches, held_picks = _dispatch_targets(targets, sha, cls, pr, confirm, listed)
     awaiting += held_picks
@@ -1338,12 +1364,12 @@ def _dispatch_commit(slug, targets, sha, confirm, listed, awaiting, named_pr=Non
         t["branch"] for t in targets["security_critical"] if t["needs_rm_confirmation"]
     }
     for b in others:
-        if cls == "fix" and b in stabilized:  # named, but confirm_stabilized is off
+        if cls == "fix" and b in stabilized:  # named, but patch_released_lines is off
             print(
-                f"::error::{sha[:7]} (fix, PR {pr}): {b} is stabilized, needs confirm_stabilized"
+                f"::error::{sha[:7]} (fix, PR {pr}): {b} is stabilized, needs patch_released_lines"
             )
             rows.append(
-                (sha, pr, cls, b, "failed: stabilized; needs confirm_stabilized", "-")
+                (sha, pr, cls, b, "failed: stabilized; needs patch_released_lines", "-")
             )
             continue
         print(f"::error::{sha[:7]} ({cls}, PR {pr}): {b} is not a target, not picked")

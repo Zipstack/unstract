@@ -21,12 +21,14 @@
         "@stripe/stripe-js": "^4.2.0",
         "@tanstack/react-query": "5.104.5",
         "@tanstack/react-table": "^8.21.3",
+        "@tanstack/react-virtual": "3.14.21",
         "axios": "1.16.0",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "cronstrue": "^2.48.0",
         "date-fns": "^4.1.0",
         "dayjs": "1.11.19",
+        "diff": "9.0.0",
         "emoji-picker-react": "^4.8.0",
         "emoji-regex": "^10.3.0",
         "file-saver": "^2.0.5",
@@ -59,6 +61,7 @@
         "react-router-dom": "^6.11.2",
         "react-social-login-buttons": "^4.1.1",
         "recharts": "^3.5.1",
+        "refractor": "5.0.0",
         "remark-gfm": "^3.0.1",
         "socket.io-client": "^4.7.2",
         "sonner": "^2.0.7",
@@ -654,7 +657,11 @@
 
     "@tanstack/react-table": ["@tanstack/react-table@8.21.3", "", { "dependencies": { "@tanstack/table-core": "8.21.3" }, "peerDependencies": { "react": ">=16.8", "react-dom": ">=16.8" } }, "sha512-5nNMTSETP4ykGegmVkhjcS8tTLW6Vl4axfEGQN3v0zdHYbK4UfoqfPChclTrJ4EoK9QynqAu9oUf8VEmrpZ5Ww=="],
 
+    "@tanstack/react-virtual": ["@tanstack/react-virtual@3.14.21", "", { "dependencies": { "@tanstack/virtual-core": "3.19.6" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0", "react-dom": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-wWE/ZJDNNDp18JHWy7n5PQooqerHePVkEEu6Op0twKQ2InF9DPhYMQptQY0syDEviMd3/r8D0OUvKJibDGm9HQ=="],
+
     "@tanstack/table-core": ["@tanstack/table-core@8.21.3", "", {}, "sha512-ldZXEhOBb8Is7xLs01fR3YEc3DERiz5silj8tnGkFZytt1abEvl/GhUmCE0PMLaMPTa3Jk4HbKmRlHmu+gCftg=="],
+
+    "@tanstack/virtual-core": ["@tanstack/virtual-core@3.19.6", "", {}, "sha512-CsTW892z23gy7IyxYTTorVu1uZWB+0N349rSMgKz4rFLPpLza7F7TpcCKeI5iUAwYQCt8QUlOU67J+KXCxtpGw=="],
 
     "@testing-library/dom": ["@testing-library/dom@10.4.1", "", { "dependencies": { "@babel/code-frame": "^7.10.4", "@babel/runtime": "^7.12.5", "@types/aria-query": "^5.0.1", "aria-query": "5.3.0", "dom-accessibility-api": "^0.5.9", "lz-string": "^1.5.0", "picocolors": "1.1.1", "pretty-format": "^27.0.2" } }, "sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg=="],
 

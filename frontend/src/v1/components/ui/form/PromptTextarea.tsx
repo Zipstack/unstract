@@ -84,6 +84,29 @@ export function PromptTextarea({
     };
   }, []);
 
+  // Shown after being hidden, or narrowed so the text wraps differently: no
+  // input event, so re-fit on a width change. Height-only changes are this
+  // component's own fit, and re-fitting on them would loop.
+  useEffect(() => {
+    const element = innerRef.current;
+    if (
+      !element ||
+      supportsFieldSizing() ||
+      typeof ResizeObserver === "undefined"
+    ) {
+      return undefined;
+    }
+    let width = -1;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry && entry.contentRect.width !== width) {
+        width = entry.contentRect.width;
+        fitToContent(element);
+      }
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     onKeyDown?.(event);
     if (
