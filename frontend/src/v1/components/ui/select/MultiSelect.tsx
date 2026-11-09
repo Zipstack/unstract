@@ -7,6 +7,7 @@ import {
   type JSX,
   type KeyboardEvent,
   useId,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -26,6 +27,7 @@ export type MultiSelectProps = Readonly<{
   options?: readonly SelectOption[];
   /** Server-loaded options; when given, `options` are ignored and the query is sent to the loader. */
   loadOptions?: LoadOptions;
+  /** The selected values, in chip order; duplicates are collapsed. */
   value?: readonly string[];
   defaultValue?: readonly string[];
   onValueChange?: (values: readonly string[]) => void;
@@ -69,7 +71,8 @@ export function MultiSelect({
   className,
 }: MultiSelectProps): JSX.Element {
   const [uncontrolled, setUncontrolled] = useState(defaultValue);
-  const value = valueProp ?? uncontrolled;
+  const raw = valueProp ?? uncontrolled;
+  const value = useMemo(() => [...new Set(raw)], [raw]);
   // The last loaded options, fed back to the engine (it filters nothing then).
   const [served, setServed] = useState(NO_OPTIONS);
   const known = loadOptions ? served : options;
@@ -115,14 +118,23 @@ export function MultiSelect({
     change(value.filter((other) => other !== item));
   }
 
-  /** Adds or removes the option; the list stays open for the next one. */
+  /**
+   * Adds or removes the option; the list stays open for the next one, with
+   * the query cleared and the toggled option still active.
+   */
   function toggle(option: SelectOption) {
     change(
       value.includes(option.value)
         ? value.filter((other) => other !== option.value)
         : [...value, option.value],
     );
+    const index = listbox.visible.findIndex(
+      (other) => other.value === option.value,
+    );
     listbox.setQuery("");
+    // setQuery lands on the first option; the active row is tracked by value,
+    // so this keeps the toggled option active in the unfiltered list.
+    listbox.setActiveIndex(index);
   }
 
   /** Closes the list and drops the typed text. */
@@ -175,6 +187,8 @@ export function MultiSelect({
               key={item}
               label={labelOf(item)}
               disabled={disabled}
+              // Backspace removes chips from the input; one tab stop, not N.
+              removeFocusable={false}
               onRemove={() => {
                 remove(item);
                 inputRef.current?.focus();

@@ -21,7 +21,7 @@ const chipNames = () =>
     (chip) => chip.textContent,
   );
 
-const option = (name: string) => screen.getByRole("option", { name });
+const option = (name: string | RegExp) => screen.getByRole("option", { name });
 
 function setup(props: Partial<MultiSelectProps> = {}) {
   const onValueChange = vi.fn();
@@ -45,8 +45,9 @@ it("shows a chip per value, in order, named by label with a remove button", () =
   expect(chipNames()).toEqual(["Receipt", "Invoice", "gone"]);
   expect(screen.getByRole("button", { name: "Remove Receipt" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Remove gone" })).toBeTruthy();
-  const frame = input().closest('[data-slot="multi-select"]') as HTMLElement;
-  expect(frame.lastElementChild?.previousElementSibling).toBe(input());
+  expect(input().nextElementSibling).toBe(
+    screen.getByRole("button", { name: "Show options" }),
+  );
 });
 
 it("shows the placeholder only when nothing is selected", () => {
@@ -75,13 +76,28 @@ it("toggles the active option on Enter", async () => {
   await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
   expect(onValueChange).toHaveBeenLastCalledWith(["receipt"]);
   expect(screen.getByRole("listbox")).toBeTruthy();
-  // The cleared query lands the active row on the first enabled option.
+  // The toggled option stays active, so the arrows carry on from it.
   expect(input().getAttribute("aria-activedescendant")).toBe(
-    option("Invoice").id,
+    option(/Receipt/).id,
+  );
+  await user.keyboard("{ArrowDown}");
+  expect(input().getAttribute("aria-activedescendant")).toBe(
+    option("Contract").id,
   );
   await user.keyboard("{Enter}");
-  expect(onValueChange).toHaveBeenLastCalledWith(["receipt", "invoice"]);
-  expect(chipNames()).toEqual(["Receipt", "Invoice"]);
+  expect(onValueChange).toHaveBeenLastCalledWith(["receipt", "contract"]);
+  expect(chipNames()).toEqual(["Receipt", "Contract"]);
+});
+
+it("keeps a filtered option active after Enter clears the query", async () => {
+  const { user, onValueChange } = setup();
+  await user.type(input(), "agree{Enter}");
+  expect(onValueChange).toHaveBeenLastCalledWith(["contract"]);
+  expect(input().value).toBe("");
+  expect(screen.getAllByRole("option")).toHaveLength(TAGS.length);
+  expect(input().getAttribute("aria-activedescendant")).toBe(
+    option("Contract").id,
+  );
 });
 
 it("removes an already-selected option when chosen again, keeping the list open", async () => {
@@ -171,6 +187,53 @@ it("stays open when the input or a chip's remove button is pressed", async () =>
   expect(screen.getByRole("listbox")).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Remove Invoice" }));
   expect(screen.getByRole("listbox")).toBeTruthy();
+});
+
+it("toggles the list with the chevron, keeping focus on the input", async () => {
+  const { user } = setup();
+  const chevron = screen.getByRole("button", { name: "Show options" });
+  expect(chevron.tabIndex).toBe(-1);
+  await user.type(input(), "con");
+  // The press never takes focus from the input, even for a moment.
+  const blurs = vi.fn();
+  input().addEventListener("blur", blurs);
+  await user.click(chevron);
+  expect(blurs).not.toHaveBeenCalled();
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(chevron.getAttribute("aria-expanded")).toBe("false");
+  expect(input().value).toBe("");
+  expect(document.activeElement).toBe(input());
+  await user.click(chevron);
+  expect(screen.getByRole("listbox")).toBeTruthy();
+  expect(document.activeElement).toBe(input());
+  await user.click(chevron);
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(document.activeElement).toBe(input());
+});
+
+it("keeps the chips out of the tab order: Tab lands on the input", async () => {
+  const { user } = renderV1(
+    <>
+      <button type="button">Before</button>
+      <MultiSelect
+        options={TAGS}
+        aria-label="Tags"
+        defaultValue={["invoice", "receipt"]}
+      />
+    </>,
+  );
+  await user.click(screen.getByRole("button", { name: "Before" }));
+  await user.tab();
+  expect(document.activeElement).toBe(input());
+  expect(screen.getByRole("button", { name: "Remove Invoice" }).tabIndex).toBe(
+    -1,
+  );
+  await expectNoA11yViolations(document.body);
+});
+
+it("collapses duplicates in a controlled value", () => {
+  setup({ value: ["invoice", "invoice", "receipt"] });
+  expect(chipNames()).toEqual(["Invoice", "Receipt"]);
 });
 
 it("follows a controlled value", async () => {

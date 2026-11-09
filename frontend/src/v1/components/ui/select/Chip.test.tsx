@@ -30,3 +30,16 @@ it("has no remove button without onRemove", () => {
   expect(screen.queryByRole("button")).toBeNull();
   expect(screen.getByText("GPT-4o")).toBeTruthy();
 });
+
+it("takes the remove button out of the tab order when not removeFocusable", async () => {
+  const onRemove = vi.fn();
+  const { user, rerender } = renderV1(
+    <Chip label="GPT-4o" onRemove={onRemove} />,
+  );
+  const remove = () => screen.getByRole("button", { name: "Remove GPT-4o" });
+  expect(remove().tabIndex).toBe(0);
+  rerender(<Chip label="GPT-4o" onRemove={onRemove} removeFocusable={false} />);
+  expect(remove().tabIndex).toBe(-1);
+  await user.click(remove());
+  expect(onRemove).toHaveBeenCalledTimes(1);
+});
