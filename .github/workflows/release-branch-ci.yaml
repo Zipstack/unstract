@@ -11,8 +11,14 @@ on:
     branches: ["release/**"]
     types: [opened, synchronize, reopened, labeled, unlabeled] # the label changes the verdict
 
+# A PR's newest event's run reports: an older run of a label swap can read the labels mid-swap. Pushes are not grouped.
+concurrency:
+  group: release-branch-ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
+  issues: read # the PR's live labels
 
 jobs:
   check:
@@ -36,12 +42,24 @@ jobs:
           sparse-checkout: .github/release
           persist-credentials: false
 
+      # Live labels, not the event's: a label swap fires one run per event, and an earlier event's payload is stale.
+      - name: Labels
+        id: labels
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          rbo=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels?per_page=100" --jq 'any(.[]; .name == "release-branch-only")') ||
+            { echo "::error title=Release branch CI::could not read this PR's labels from the API; re-run the job"; exit 1; }
+          echo "rbo=$rbo" >> "$GITHUB_OUTPUT"
+
       - name: Check commit kinds
         id: classify
         env:
           EVENT: ${{ github.event_name }}
           BEFORE: ${{ github.event.before }}
-          RBO_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'release-branch-only') }}
+          RBO_LABEL: ${{ steps.labels.outputs.rbo == 'true' }}
           HEAD_REF: ${{ github.head_ref }}
         run: |
           python3 -I - <<'PY'  # isolated: a module file in the head checkout never shadows the stdlib
@@ -65,7 +83,7 @@ jobs:
       - name: Merge note
         if: always() && github.event_name == 'pull_request'
         env:
-          RBO_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'release-branch-only') }}
+          RBO_LABEL: ${{ steps.labels.outputs.rbo == 'true' }}
           INVALID: ${{ steps.classify.outputs.invalid || '0' }}
           OUTCOME: ${{ steps.classify.outcome }}
         run: |

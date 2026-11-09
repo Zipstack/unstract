@@ -893,6 +893,8 @@ case "$*" in
     cat "{d}/$(echo "$4" | tr / _).json" 2>/dev/null || echo "[]";;
   *"/pulls"*) echo "$GH_TOKEN $*" >> {d}/gh.log; [ -e {d}/pullsfail ] && exit 1
     cat {d}/pulls.json 2>/dev/null || echo "[]";;
+  *"/actions/workflows/"*) echo "$GH_TOKEN $*" >> {d}/gh.log; [ -e {d}/runsfail ] && exit 1
+    wf=${{2#*/actions/workflows/}}; cat "{d}/runs-${{wf%%/*}}" 2>/dev/null;;
 esac
 true
 """)
@@ -1101,6 +1103,46 @@ class RetireWorkflow(Workflow):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("other/packages/backend/versions/sha256:rc1 is outside r", r.stdout)
         self.assertFalse(os.path.exists(os.path.join(self.d, "ar.log")))
+
+    def test_an_unfinished_run_refuses_before_any_change(self):
+        self.line("1.7", "v1.7.0-rc.1")
+        self.write("runs-take-rc-build.yaml", "https://example.test/runs/9\n")
+        origin = self.repos["cloud"][0]
+        tags = rm.git(origin, "tag", "-l")
+        for dry in ("true", "false"):
+            r = self.run_step(
+                inline("retire.yaml", "Derive and retire"),
+                ACTION=ABANDON,
+                LINE="1.7",
+                REASON="cut by mistake",
+                DRY_RUN=dry,
+                RELSTATE_AR_TOKEN="t",
+            )
+            self.assertEqual(r.returncode, dry == "false", r.stdout + r.stderr)
+        self.assertIn(
+            "::error::wait for these runs to finish, then run Retire again: https://example.test/runs/9",
+            r.stdout,
+        )
+        self.assertIn(
+            "cloud-token api repos/Zipstack/unstract-cloud/actions/workflows/promote.yaml/runs?per_page=100 "
+            '--jq .workflow_runs[] | select(.status != "completed") | .html_url',
+            self.read("gh.log"),
+        )
+        self.assertIn("release/1.7", rm.git(origin, "branch", "-l", "release/*"))
+        self.assertEqual(rm.git(origin, "tag", "-l"), tags)
+        self.assertFalse(os.path.exists(os.path.join(self.d, "ar.log")))
+
+    def test_a_failed_run_list_refuses(self):
+        self.line("1.7")
+        self.write("runsfail", "")
+        r = self.run_step(
+            inline("retire.yaml", "Derive and retire"),
+            ACTION=PAST_EOS,
+            LINE="",
+            DRY_RUN="true",
+        )
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("::error::could not list the cut.yaml runs", r.stdout)
 
     def kept_line(self, x_y, msg, **env):
         origin = self.repos["cloud"][0]
@@ -4295,6 +4337,64 @@ class LintPrStep(unittest.TestCase):
         self.assertEqual(rc, 1, out)
         self.assertIn("::error title=Lint PR::no recognised '[TYPE]'", out)
         self.assertIn("%0Ano backport label", out)
+
+
+class ReleaseBranchCiLabels(unittest.TestCase):
+    """Release-branch-only is read from the PR's live labels."""
+
+    WF = os.path.join(HERE, "..", "workflows", "release-branch-ci.yaml")
+
+    def labels(self, answer, gh_exit=0):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "gh"), "w") as fh:  # fake gh: jq already applied
+                fh.write(
+                    f'#!/bin/sh\necho "$*" >> "{d}/calls"\necho {answer}\nexit {gh_exit}\n'
+                )
+            os.chmod(os.path.join(d, "gh"), 0o755)
+            r = subprocess.run(
+                ["bash", "-e", "-c", step("release-branch-ci.yaml", "Labels")],
+                env={
+                    **os.environ,
+                    "PATH": f"{d}:{os.environ['PATH']}",
+                    "GITHUB_REPOSITORY": "o/r",
+                    "PR": "7",
+                    "GITHUB_OUTPUT": os.path.join(d, "output"),
+                },
+                capture_output=True,
+                text=True,
+            )
+            with open(os.path.join(d, "calls")) as fh:
+                self.assertEqual(
+                    fh.read(),
+                    "api repos/o/r/issues/7/labels?per_page=100 "
+                    '--jq any(.[]; .name == "release-branch-only")\n',
+                )
+            out = os.path.join(d, "output")
+            return r.returncode, r.stdout, open(out).read() if os.path.exists(out) else ""
+
+    def test_the_live_label_reaches_both_steps(self):
+        self.assertEqual(self.labels("true"), (0, "", "rbo=true\n"))
+        self.assertEqual(self.labels("false"), (0, "", "rbo=false\n"))
+        with open(self.WF) as fh:
+            wf = fh.read()
+        self.assertEqual(
+            wf.count("RBO_LABEL: ${{ steps.labels.outputs.rbo == 'true' }}\n"), 2
+        )
+        self.assertNotIn("pull_request.labels", wf)
+
+    def test_a_failed_label_read_fails_the_step(self):
+        rc, out, written = self.labels("true", gh_exit=1)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("could not read this PR's labels", out)
+        self.assertEqual(written, "")
+
+    def test_the_newest_pr_event_run_reports(self):
+        with open(self.WF) as fh:
+            self.assertIn(
+                "\nconcurrency:\n  group: release-branch-ci-${{ github.event.pull_request.number || github.run_id }}\n"
+                "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n",
+                fh.read(),
+            )
 
 
 if __name__ == "__main__":
