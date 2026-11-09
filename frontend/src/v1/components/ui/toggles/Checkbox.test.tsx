@@ -61,6 +61,7 @@ it("does nothing when disabled", async () => {
   );
   const box = screen.getByRole("checkbox", { name: "Email me" });
   expect(box).toHaveAttribute("disabled");
+  expect(screen.getByText("Email me")).toHaveAttribute("data-disabled");
 
   await user.click(screen.getByText("Email me"));
   box.focus();
@@ -87,7 +88,10 @@ it("renders only the box when there is no label or description", () => {
   const { container } = renderV1(<Checkbox aria-label="Select row" />);
   const row = container.querySelector("[data-slot=control-row]");
   expect(row).not.toBeNull();
-  expect(screen.getByRole("checkbox", { name: "Select row" })).toBeTruthy();
+  const box = screen.getByRole("checkbox", { name: "Select row" });
+  expect(row?.children).toHaveLength(1);
+  expect(row?.firstElementChild).toBe(box);
+  expect(box).not.toHaveAttribute("aria-describedby");
   expect(row?.querySelector("[data-slot=control-label]")).toBeNull();
   expect(row?.querySelector("p")).toBeNull();
 });
