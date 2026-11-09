@@ -4,7 +4,7 @@ import { getPortalContainer } from "@v1/lib/portal";
 import { signOutAndLeave } from "@v1/services/session";
 import {
   ChevronDown,
-  CircleHelp,
+  CircleQuestionMark,
   CircleUserRound,
   ExternalLink,
   LogOut,
@@ -88,7 +88,7 @@ export function AccountMenu({ user, profileHref }: AccountMenuProps) {
           </Item>
           <Slot id="account-menu.plan-billing" props={{}} fallback={null} />
           <Item href={HELP_URL}>
-            <CircleHelp aria-hidden className={ICON} />
+            <CircleQuestionMark aria-hidden className={ICON} />
             <span className="ui:flex-1">
               Help & docs{" "}
               <span className="ui:sr-only">(opens in a new tab)</span>

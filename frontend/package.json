@@ -84,7 +84,7 @@
     "typecheck": "tsc --noEmit",
     "tokens:v1": "bun scripts/build-v1-tokens.mjs",
     "typecheck:v1": "node scripts/check-v1.mjs --files && tsc -p src/v1/tsconfig.json",
-    "lint:v1": "biome lint src/v1/ && node scripts/check-v1.mjs --code && node scripts/check-v1-styles.mjs",
+    "lint:v1": "biome lint src/v1/ && node scripts/check-v1.mjs --code && node scripts/check-v1-styles.mjs && node scripts/check-v1-icons.mjs",
     "test:v1": "vitest run --config vitest.v1.config.mts --coverage && vitest run --config vitest.v1-plugins.config.mts --coverage && node --test test-fixtures/v1-boundary/boundary.fixtures.mjs test-fixtures/v1-harness/harness.fixtures.mjs scripts/v1-plugins.fixtures.mjs"
   },
   "browserslist": {
