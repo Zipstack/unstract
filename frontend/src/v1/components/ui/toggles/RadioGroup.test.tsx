@@ -179,6 +179,33 @@ it("renders only the radio when there is no label or description", () => {
   expect(radio).not.toHaveAttribute("aria-describedby");
 });
 
+it("clicking a radio or its label selects it", async () => {
+  const onValueChange = vi.fn();
+  const { user } = renderV1(
+    <RadioGroup label="Model" defaultValue="gpt" onValueChange={onValueChange}>
+      <Radio value="gpt" label="GPT" />
+      <Radio value="claude" label="Claude" />
+      <Radio value="gemini" label="Gemini" />
+    </RadioGroup>,
+  );
+  await user.click(screen.getByRole("radio", { name: "Claude" }));
+  expect(screen.getByRole("radio", { name: "Claude" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  expect(onValueChange).toHaveBeenLastCalledWith("claude");
+  await user.click(screen.getByText("Gemini"));
+  expect(screen.getByRole("radio", { name: "Gemini" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  expect(screen.getByRole("radio", { name: "Claude" })).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
+  expect(onValueChange).toHaveBeenLastCalledWith("gemini");
+});
+
 it("treats a false label and an empty description as absent", () => {
   const { container } = renderV1(
     <RadioGroup label={false} description="" aria-label="Model">

@@ -81,3 +81,17 @@ it("renders only the switch when there is no label or description", () => {
   expect(wrapper?.firstElementChild).toBe(control);
   expect(control).not.toHaveAttribute("aria-describedby");
 });
+
+it("clicking the label toggles an enabled switch", async () => {
+  const onCheckedChange = vi.fn();
+  const { user } = renderV1(
+    <Switch label="Dark mode" onCheckedChange={onCheckedChange} />,
+  );
+  const control = screen.getByRole("switch", { name: "Dark mode" });
+  await user.click(screen.getByText("Dark mode"));
+  expect(control).toHaveAttribute("aria-checked", "true");
+  expect(onCheckedChange).toHaveBeenLastCalledWith(true);
+  await user.click(screen.getByText("Dark mode"));
+  expect(control).toHaveAttribute("aria-checked", "false");
+  expect(onCheckedChange).toHaveBeenLastCalledWith(false);
+});

@@ -111,6 +111,33 @@ export const TOGGLES_GALLERY: readonly GalleryEntry[] = [
     ),
   },
   {
+    name: "radio group disabled",
+    element: (
+      <RadioGroup
+        label="Extraction mode"
+        description="Set by the workspace administrator."
+        value="form"
+        disabled
+      >
+        <Radio value="native" label="Native text" />
+        <Radio value="form" label="Form" />
+      </RadioGroup>
+    ),
+  },
+  {
+    name: "radio with description",
+    element: (
+      <RadioGroup label="Chunking" value="none">
+        <Radio value="none" label="None" />
+        <Radio
+          value="fixed"
+          label="Fixed size"
+          description="Splits the document into chunks of equal length."
+        />
+      </RadioGroup>
+    ),
+  },
+  {
     name: "slider single with value shown",
     element: (
       <Slider
@@ -149,6 +176,20 @@ export const TOGGLES_GALLERY: readonly GalleryEntry[] = [
         value={[5]}
         showValue
         disabled
+      />
+    ),
+  },
+  {
+    name: "slider with description",
+    element: (
+      <Slider
+        label="Chunk overlap"
+        description="Characters shared by neighbouring chunks."
+        min={0}
+        max={200}
+        step={10}
+        value={[20]}
+        showValue
       />
     ),
   },
