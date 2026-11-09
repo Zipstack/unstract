@@ -670,7 +670,9 @@ class Command(BaseCommand):
                     for obj in batch
                     for f in fields
                 ]
-                cursor.execute(
+                # Only quoted names from model metadata are formatted in; values
+                # go as parameters.
+                cursor.execute(  # NOSONAR
                     f"INSERT INTO {table} ({', '.join(quote(f.column) for f in fields)})"
                     f" VALUES {', '.join([row] * len(batch))}{sql_tail}",
                     params,
