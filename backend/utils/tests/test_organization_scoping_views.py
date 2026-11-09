@@ -9,10 +9,11 @@ scoping it.
 These two viewsets are chosen because between them they cover both shapes the
 call sites take: ``get_queryset()`` (five of the six internal viewsets) and a
 ``get_object()`` that deliberately bypasses ``get_queryset()`` for single-object
-lookups (only FileExecutionInternalViewSet). For the latter, every operation is
-driven cross-organization — retrieve, update, partial update, destroy, the
-``status`` and ``update_hash`` actions, and ``create`` against another
-organization's execution — each with an own-organization control.
+lookups (only FileExecutionInternalViewSet). On that viewset every single-object
+operation — retrieve, update, partial update, destroy, and the ``status`` and
+``update_hash`` actions — is driven cross-organization, and so is ``create``,
+which scopes the parent execution rather than a file-execution pk. Each has an
+own-organization control.
 
 WebhookInternalViewSet is covered separately below because it is the one call
 site whose model has no organization column to scope on.
@@ -267,6 +268,22 @@ class InternalViewSetOrgScopingTest(TestCase):
         assert response.status_code == 200, response.data
         file_execution_a.refresh_from_db()
         assert file_execution_a.file_name == "renamed.pdf"
+
+    def test_update_of_own_row_still_works(self):
+        _, _, _, file_execution_a = self.a
+
+        response = self._send(
+            "put",
+            "update",
+            file_execution_a.id,
+            {"file_name": "replaced.pdf", "status": ExecutionStatus.ERROR.value},
+            self.a[0].organization_id,
+        )
+
+        assert response.status_code == 200, response.data
+        file_execution_a.refresh_from_db()
+        assert file_execution_a.file_name == "replaced.pdf"
+        assert file_execution_a.status == ExecutionStatus.ERROR.value
 
     def test_status_update_of_own_row_still_works(self):
         _, _, _, file_execution_a = self.a
