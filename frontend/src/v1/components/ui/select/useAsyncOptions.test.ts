@@ -166,14 +166,18 @@ it("neither refetches nor cancels when only the loader's identity changes", asyn
   expect(calls[1].query).toBe("ab");
 });
 
-it("reports a failed load and stops loading", async () => {
+it("reports a failed load, stops loading and drops the previous options", async () => {
   const { load, calls } = deferredLoader();
-  const { result } = setup({ load, query: "", enabled: true });
+  const { result, rerender } = setup({ load, query: "", enabled: true });
   advance(0);
+  await act(async () => calls[0].resolve([opt("Alpha")]));
+  rerender({ load, query: "a", enabled: true });
+  advance(250);
   const boom = new Error("boom");
-  await act(async () => calls[0].reject(boom));
+  await act(async () => calls[1].reject(boom));
   expect(result.current.error).toBe(boom);
   expect(result.current.loading).toBe(false);
+  expect(result.current.options).toEqual([]);
 });
 
 it("wraps a rejection that is not an Error", async () => {

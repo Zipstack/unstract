@@ -1,5 +1,5 @@
 import { act, screen, waitFor } from "@testing-library/react";
-import { expectNoA11yViolations, renderV1 } from "@v1/test";
+import { expectNoA11yViolations, renderV1, stubLayout } from "@v1/test";
 import { Star } from "lucide-react";
 import { expect, it, vi } from "vitest";
 import { Combobox, type ComboboxProps } from "./Combobox";
@@ -43,11 +43,12 @@ function deferredLoader() {
   const calls: {
     query: string;
     resolve: (options: readonly SelectOption[]) => void;
+    reject: (error: unknown) => void;
   }[] = [];
   const load = vi.fn<LoadOptions>(
     (query) =>
-      new Promise((resolve) => {
-        calls.push({ query, resolve });
+      new Promise((resolve, reject) => {
+        calls.push({ query, resolve, reject });
       }),
   );
   return { load, calls };
@@ -57,22 +58,6 @@ const opt = (label: string): SelectOption => ({
   value: label.toLowerCase(),
   label,
 });
-
-/** Gives every element a 320-tall box (the list cap), as a laid-out page would. */
-function stubLayout() {
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
-    new DOMRect(0, 0, 320, 320),
-  );
-  for (const [prop, size] of [
-    ["offsetHeight", 320],
-    ["offsetWidth", 320],
-    ["clientHeight", 320],
-    ["clientWidth", 320],
-    ["scrollHeight", 40_000],
-  ] as const) {
-    vi.spyOn(HTMLElement.prototype, prop, "get").mockReturnValue(size);
-  }
-}
 
 it("is a combobox named by aria-label that focus alone does not open", async () => {
   const { user } = setup();
@@ -274,6 +259,11 @@ it("submits the value through a hidden input when named", async () => {
   expect(hidden?.value).toBe("");
 });
 
+it("omits the hidden input when disabled", () => {
+  setup({ name: "model", defaultValue: "gemini", disabled: true });
+  expect(document.querySelector('input[type="hidden"]')).toBeNull();
+});
+
 it("passes id, invalid, disabled and aria-describedby to the input", () => {
   setup({
     id: "model-input",
@@ -287,6 +277,10 @@ it("passes id, invalid, disabled and aria-describedby to the input", () => {
   expect(input().getAttribute("aria-describedby")).toBe("model-help");
   expect(input().disabled).toBe(true);
   expect(frame.hasAttribute("data-invalid")).toBe(true);
+  expect(frame.className).toContain(
+    "ui:has-[[data-slot=control]:focus-visible]:focus-ring",
+  );
+  expect(frame.className).not.toContain("ui:focus-within:focus-ring");
   expect(frame.hasAttribute("data-disabled")).toBe(true);
   expect(
     (screen.getByRole("button", { name: "Show options" }) as HTMLButtonElement)
@@ -347,6 +341,69 @@ it("keeps a loaded selection's label after the query changes", async () => {
   await act(async () => calls[1].resolve([]));
   await user.keyboard("{Escape}");
   expect(input().value).toBe("Alpha");
+});
+
+it("shows a load error instead of the previous options", async () => {
+  const { load, calls } = deferredLoader();
+  const { user, onValueChange } = setup({
+    options: undefined,
+    loadOptions: load,
+  });
+  await user.type(input(), "a");
+  await waitFor(() => expect(calls).toHaveLength(1));
+  await act(async () => calls[0].resolve([opt("Server One")]));
+  expect(optionNames()).toEqual(["Server One"]);
+  await user.type(input(), "b");
+  await waitFor(() => expect(calls).toHaveLength(2));
+  await act(async () => calls[1].reject(new Error("boom")));
+  expect(screen.getByRole("status").textContent).toBe("Could not load options");
+  expect(screen.queryByRole("option", { name: "Server One" })).toBeNull();
+  await user.keyboard("{Enter}");
+  expect(onValueChange).not.toHaveBeenCalled();
+});
+
+it("keeps the label of an option from an earlier response", async () => {
+  const { load, calls } = deferredLoader();
+  const onValueChange = vi.fn();
+  const view = renderV1(
+    <Combobox
+      aria-label="Model"
+      loadOptions={load}
+      onValueChange={onValueChange}
+    />,
+  );
+  const { user } = view;
+  await user.type(input(), "b");
+  await waitFor(() => expect(calls).toHaveLength(1));
+  await act(async () => calls[0].resolve([opt("Beta")]));
+  await user.clear(input());
+  await user.type(input(), "a");
+  await waitFor(() => expect(calls).toHaveLength(2));
+  await act(async () => calls[1].resolve([opt("Alpha")]));
+  await user.keyboard("{Enter}");
+  expect(onValueChange).toHaveBeenLastCalledWith("alpha", opt("Alpha"));
+  await user.type(input(), "z");
+  await waitFor(() => expect(calls).toHaveLength(3));
+  await act(async () => calls[2].resolve([opt("Zeta")]));
+  await user.keyboard("{Escape}");
+  view.rerender(
+    <Combobox aria-label="Model" loadOptions={load} value="beta" />,
+  );
+  expect(input().value).toBe("Beta");
+});
+
+it("shows a preset selectedOption before any load", () => {
+  const { load } = deferredLoader();
+  renderV1(
+    <Combobox
+      aria-label="Model"
+      loadOptions={load}
+      value="x"
+      selectedOption={{ value: "x", label: "Saved" }}
+    />,
+  );
+  expect(input().value).toBe("Saved");
+  expect(load).not.toHaveBeenCalled();
 });
 
 it("renders a window of a 1,000-option list and filters it to one", async () => {

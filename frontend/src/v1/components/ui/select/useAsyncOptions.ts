@@ -19,7 +19,8 @@ const IDLE: AsyncState = { options: [], loading: false, error: null };
  * Options fetched by `load` for `query` while `enabled` (the list is open).
  * A query change waits `debounceMs`; the first load after `enabled` turns
  * true runs at once. Each load aborts the one before it, a response for a
- * query that is no longer current is dropped, and unmounting aborts.
+ * query that is no longer current is dropped, a failed load empties the
+ * options, and unmounting aborts.
  * `load` is read from a ref, so a new function identity (an inline arrow)
  * neither refetches nor cancels.
  */
@@ -68,15 +69,16 @@ export function useAsyncOptions(
           }
         },
         (error: unknown) => {
-          // Our own aborts fail `current()`; any other rejection is an error.
+          // Our own aborts fail `current()`; any other rejection is an error,
+          // and the previous query's options must not stay selectable.
           if (!current()) {
             return;
           }
-          setState((previous) => ({
-            ...previous,
+          setState({
+            options: [],
             loading: false,
             error: error instanceof Error ? error : new Error(String(error)),
-          }));
+          });
         },
       );
     }, delay);

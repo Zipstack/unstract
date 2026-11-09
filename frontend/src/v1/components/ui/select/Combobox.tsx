@@ -31,6 +31,8 @@ export type ComboboxProps = Readonly<{
   value?: string | null;
   defaultValue?: string | null;
   onValueChange?: (value: string | null, option: SelectOption | null) => void;
+  /** The option for `value` when it is not in `options` yet, e.g. a saved choice before the first load. */
+  selectedOption?: SelectOption | null;
   placeholder?: string;
   emptyText?: string;
   disabled?: boolean;
@@ -57,6 +59,7 @@ export function Combobox({
   value: valueProp,
   defaultValue = null,
   onValueChange,
+  selectedOption,
   placeholder,
   emptyText,
   disabled,
@@ -92,15 +95,25 @@ export function Combobox({
     setServed(loaded.options);
   }
 
-  // The selected option, remembered so its label survives a list (or a
-  // server response) that no longer holds it.
-  const listed = known.find((option) => option.value === value);
-  const [remembered, setRemembered] = useState<SelectOption | null>(null);
-  if (listed && listed !== remembered) {
-    setRemembered(listed);
+  // Every option seen, by value, so the selected label survives a list (or a
+  // server response) that no longer holds it. Filling is idempotent, so it
+  // runs while rendering, once per new list.
+  const seen = useRef(new Map<string, SelectOption>());
+  const seenList = useRef<readonly SelectOption[] | null>(null);
+  if (seenList.current !== known) {
+    seenList.current = known;
+    for (const option of known) {
+      seen.current.set(option.value, option);
+    }
+  }
+  if (selectedOption) {
+    seen.current.set(selectedOption.value, selectedOption);
   }
   const selected =
-    listed ?? (remembered?.value === value ? remembered : undefined);
+    value === null
+      ? undefined
+      : (known.find((option) => option.value === value) ??
+        seen.current.get(value));
 
   /** Closes the list and drops the typed text, so the label shows again. */
   function close() {
@@ -111,7 +124,7 @@ export function Combobox({
 
   function select(option: SelectOption) {
     setUncontrolled(option.value);
-    setRemembered(option);
+    seen.current.set(option.value, option);
     onValueChange?.(option.value, option);
     close();
   }
@@ -156,7 +169,11 @@ export function Combobox({
           data-state={listbox.open ? "open" : "closed"}
           data-invalid={invalid ? "" : undefined}
           data-disabled={disabled ? "" : undefined}
-          className={cn(TRIGGER_FRAME, "ui:focus-within:focus-ring", className)}
+          className={cn(
+            TRIGGER_FRAME,
+            "ui:has-[[data-slot=control]:focus-visible]:focus-ring",
+            className,
+          )}
         >
           {selected?.leading && !editing ? (
             <span data-slot="option-leading" className={OPTION_LEADING_CLASS}>
@@ -216,7 +233,8 @@ export function Combobox({
           >
             <ChevronIcon aria-hidden className={TRIGGER_CHEVRON} />
           </button>
-          {name ? (
+          {/* A disabled control does not submit, so neither does this. */}
+          {name && !disabled ? (
             <input type="hidden" name={name} value={value ?? ""} />
           ) : null}
         </div>
@@ -246,6 +264,7 @@ export function Combobox({
           <Listbox
             listbox={listbox}
             loading={loaded.loading}
+            error={Boolean(loaded.error)}
             emptyText={emptyText}
           />
         </PopoverPrimitive.Content>

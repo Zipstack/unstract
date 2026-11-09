@@ -1,5 +1,5 @@
 import { fireEvent, screen } from "@testing-library/react";
-import { expectNoA11yViolations, renderV1 } from "@v1/test";
+import { expectNoA11yViolations, renderV1, stubLayout } from "@v1/test";
 import type { JSX } from "react";
 import { expect, it, vi } from "vitest";
 import { Listbox, VIRTUALIZE_ABOVE } from "./Listbox";
@@ -18,28 +18,13 @@ const many = (count: number): readonly SelectOption[] =>
     label: `Option ${i}`,
   }));
 
-/** Gives every element a 320-tall box (the list cap), as a laid-out page would. */
-function stubLayout() {
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
-    new DOMRect(0, 0, 320, 320),
-  );
-  for (const [prop, size] of [
-    ["offsetHeight", 320],
-    ["offsetWidth", 320],
-    ["clientHeight", 320],
-    ["clientWidth", 320],
-    ["scrollHeight", 40_000],
-  ] as const) {
-    vi.spyOn(HTMLElement.prototype, prop, "get").mockReturnValue(size);
-  }
-}
-
 type HarnessProps = Readonly<{
   options?: readonly SelectOption[];
   selected?: readonly string[];
   onSelect?: (option: SelectOption) => void;
   loading?: boolean;
   emptyText?: string;
+  error?: boolean;
   multiselectable?: boolean;
 }>;
 
@@ -50,6 +35,7 @@ function Harness({
   onSelect = () => undefined,
   loading,
   emptyText,
+  error,
   multiselectable,
 }: HarnessProps): JSX.Element {
   const listbox = useListbox({ options, selected, onSelect, id: "fruit" });
@@ -66,6 +52,7 @@ function Harness({
         listbox={listbox}
         loading={loading}
         emptyText={emptyText}
+        error={error}
         multiselectable={multiselectable}
       />
     </div>
@@ -159,6 +146,17 @@ it("ignores Enter while an IME composition is in progress", async () => {
   expect(onSelect).not.toHaveBeenCalled();
   fireEvent.keyDown(input, { key: "Enter" });
   expect(onSelect).toHaveBeenCalledWith(FRUIT[0]);
+});
+
+it("shows an error row beside the listbox in place of the empty row", () => {
+  const { rerender } = renderV1(<Harness options={[]} error />);
+  const status = screen.getByRole("status");
+  expect(status.tagName).toBe("OUTPUT");
+  expect(status.textContent).toBe("Could not load options");
+  expect(screen.getByRole("listbox").contains(status)).toBe(false);
+  expect(screen.queryByText("No options")).toBeNull();
+  rerender(<Harness options={[]} error loading />);
+  expect(screen.getByRole("status").textContent).toBe("Loading…");
 });
 
 it("uses the caller's empty text", () => {

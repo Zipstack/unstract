@@ -22,6 +22,8 @@ export type ListboxProps = Readonly<{
   listbox: ListboxState;
   loading?: boolean;
   emptyText?: string;
+  /** The options failed to load: a "Could not load options" row replaces the empty row. */
+  error?: boolean;
   multiselectable?: boolean;
   className?: string;
 }>;
@@ -30,13 +32,14 @@ export type ListboxProps = Readonly<{
  * The option list of a Combobox or MultiSelect, for inside the caller's
  * `Popover.Content` (a flex column with `ui:overflow-hidden`): this is its one
  * scroll element. Past `VIRTUALIZE_ABOVE` options only the rows in view are
- * rendered. The loading and empty rows sit beside the listbox, since a
+ * rendered. The loading, error and empty rows sit beside the listbox, since a
  * listbox may hold only options.
  */
 export function Listbox({
   listbox,
   loading = false,
   emptyText,
+  error = false,
   multiselectable,
   className,
 }: ListboxProps): JSX.Element {
@@ -132,7 +135,14 @@ export function Listbox({
             ))
           : visible.map((_, index) => renderRow(index))}
       </div>
-      {!loading && visible.length === 0 ? (
+      {!loading && error ? (
+        <output
+          className={cn(STATUS_ROW, "ui:text-caption ui:text-muted-foreground")}
+        >
+          Could not load options
+        </output>
+      ) : null}
+      {!loading && !error && visible.length === 0 ? (
         <output
           className={cn(STATUS_ROW, "ui:text-caption ui:text-muted-foreground")}
         >
