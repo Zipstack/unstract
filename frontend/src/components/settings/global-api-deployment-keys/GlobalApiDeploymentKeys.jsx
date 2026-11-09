@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Form } from "@/components/ui/shims/antd-form";
 import { Checkbox, Select } from "@/components/ui/shims/antd-inputs";
 import { Tag } from "@/components/ui/shims/antd-leaves";
@@ -12,10 +12,35 @@ import { useSessionStore } from "../../../store/session-store";
 import { ApiKeyManager } from "../api-key-manager/ApiKeyManager.jsx";
 
 function DeploymentScopeFields({ form, deployments }) {
-  // Seeded `false` to match the Form.Item below: the checks here read
+  // Seeded `false` to match the Form.Item below: the check here reads
   // `=== false` to mean "explicitly unchecked", so an undefined first render
-  // would disable the picker and drop its required-rule for that frame.
+  // would disable the picker for that frame.
   const allowAll = Form.useWatch("allow_all_deployments", form, false);
+
+  // Ticking "Allow all" makes the picker's rule pass, but an error already
+  // shown by an earlier submit would stay under the now-disabled picker.
+  useEffect(() => {
+    if (allowAll) {
+      form.setFields([{ name: "api_deployments", errors: [] }]);
+    }
+  }, [allowAll, form]);
+
+  // One stable rule that reads the checkbox when it runs. Swapping `rules`
+  // per render does not work on the Form shim: react-hook-form keeps the
+  // rules a field registered with, so a `required` added while the box was
+  // unchecked would still block creating an "Allow all" key (UN-4630).
+  const deploymentRules = useMemo(
+    () => [
+      {
+        validator: (_rule, value) =>
+          form.getFieldValue("allow_all_deployments") || value?.length
+            ? Promise.resolve()
+            : Promise.reject(new Error("Select at least one deployment")),
+      },
+    ],
+    [form],
+  );
+
   return (
     <>
       <Form.Item
@@ -28,11 +53,7 @@ function DeploymentScopeFields({ form, deployments }) {
       <Form.Item
         name="api_deployments"
         label="Select API Deployments"
-        rules={
-          allowAll === false
-            ? [{ required: true, message: "Select at least one deployment" }]
-            : []
-        }
+        rules={deploymentRules}
       >
         <Select
           mode="multiple"
