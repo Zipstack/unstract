@@ -104,4 +104,17 @@ jobs:
         continue-on-error: true
         run: python3 .relmgr/.github/release/relstate.py | jq --arg b "$BRANCH" '.branches[] | select(.branch == $b)'
 
-      # No alert on a failed push run: this repo has no release alert channel or webhook secret.
+      # Not SLACK_WEBHOOK_URL: that one posts public release announcements.
+      - name: Alert
+        if: failure() && github.event_name == 'push'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_ALERT_SLACK_WEBHOOK_URL }}
+          INVALID: ${{ steps.classify.outputs.invalid || 'unknown' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "::warning::No alert sent: secret RELEASE_ALERT_SLACK_WEBHOOK_URL is not set"
+            exit 0
+          fi
+          text=":red_circle: Release branch CI failed on \`$BRANCH\` (OSS) after a push: $INVALID invalid commit(s). $RUN_URL"
+          jq -n --arg text "$text" '{text: $text}' | curl -fsS -X POST -H 'Content-Type: application/json' --data @- "$SLACK_WEBHOOK_URL"
