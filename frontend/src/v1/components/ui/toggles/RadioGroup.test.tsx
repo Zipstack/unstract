@@ -138,6 +138,10 @@ it("does nothing when the group is disabled", async () => {
   for (const radio of radios) {
     expect(radio).toHaveAttribute("disabled");
   }
+  expect(screen.getByText("Model")).toHaveAttribute("data-disabled");
+  for (const name of ["GPT", "Claude"]) {
+    expect(screen.getByText(name)).toHaveAttribute("data-disabled");
+  }
   await user.click(screen.getByRole("radio", { name: "Claude" }));
   await user.click(screen.getByText("Claude"));
   expect(screen.getByRole("radio", { name: "GPT" })).toHaveAttribute(

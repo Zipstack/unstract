@@ -1,11 +1,21 @@
 import { cn } from "@v1/lib/cn";
 import { RadioGroup as RadioGroupPrimitive } from "radix-ui";
-import { type ComponentProps, type JSX, type ReactNode, useId } from "react";
+import {
+  type ComponentProps,
+  createContext,
+  type JSX,
+  type ReactNode,
+  useContext,
+  useId,
+} from "react";
 import {
   CONTROL_DESCRIPTION_CLASS,
   CONTROL_LABEL_CLASS,
   ControlRow,
 } from "./ControlRow";
+
+/** The group's `disabled`, so each Radio can dim its label with the group. */
+const RadioGroupDisabledContext = createContext(false);
 
 export type RadioGroupProps = Omit<
   ComponentProps<typeof RadioGroupPrimitive.Root>,
@@ -26,6 +36,7 @@ export function RadioGroup({
   label,
   description,
   className,
+  disabled = false,
   "aria-describedby": ariaDescribedBy,
   ...props
 }: RadioGroupProps): JSX.Element {
@@ -39,7 +50,11 @@ export function RadioGroup({
       {hasLabel || hasDescription ? (
         <div className="ui:grid ui:gap-0.5">
           {hasLabel ? (
-            <p id={labelId} className={CONTROL_LABEL_CLASS}>
+            <p
+              id={labelId}
+              data-disabled={disabled ? "" : undefined}
+              className={CONTROL_LABEL_CLASS}
+            >
               {label}
             </p>
           ) : null}
@@ -50,21 +65,24 @@ export function RadioGroup({
           ) : null}
         </div>
       ) : null}
-      <RadioGroupPrimitive.Root
-        data-slot="radio-group"
-        aria-labelledby={hasLabel ? labelId : undefined}
-        aria-describedby={
-          [ariaDescribedBy, descriptionId].filter(Boolean).join(" ") ||
-          undefined
-        }
-        className={cn(
-          props.orientation === "horizontal"
-            ? "ui:flex ui:flex-wrap ui:gap-4"
-            : "ui:grid ui:gap-2",
-          className,
-        )}
-        {...props}
-      />
+      <RadioGroupDisabledContext.Provider value={disabled}>
+        <RadioGroupPrimitive.Root
+          data-slot="radio-group"
+          disabled={disabled}
+          aria-labelledby={hasLabel ? labelId : undefined}
+          aria-describedby={
+            [ariaDescribedBy, descriptionId].filter(Boolean).join(" ") ||
+            undefined
+          }
+          className={cn(
+            props.orientation === "horizontal"
+              ? "ui:flex ui:flex-wrap ui:gap-4"
+              : "ui:grid ui:gap-2",
+            className,
+          )}
+          {...props}
+        />
+      </RadioGroupDisabledContext.Provider>
     </div>
   );
 }
@@ -90,12 +108,13 @@ export function Radio({
   "aria-describedby": ariaDescribedBy,
   ...props
 }: RadioProps): JSX.Element {
+  const groupDisabled = useContext(RadioGroupDisabledContext);
   return (
     <ControlRow
       id={id}
       label={label}
       description={description}
-      disabled={disabled}
+      disabled={disabled || groupDisabled}
       className={className}
       control={({ id: controlId, describedBy }) => (
         <RadioGroupPrimitive.Item
