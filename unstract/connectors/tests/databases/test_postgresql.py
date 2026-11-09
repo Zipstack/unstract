@@ -39,7 +39,8 @@ class TestMalformedConnectionUrl(unittest.TestCase):
             "postgresql://alice:STAND%C3INPW@db.invalid/prod",
             "postgresql://alice:STAND\ud800INPW@db.invalid/prod",
         ):
-            with self.subTest(url=url):
+            # ascii() keeps the lone surrogate out of the xdist report.
+            with self.subTest(url=ascii(url)):
                 with self.assertLogs(PostgreSQL.__module__, "WARNING") as logs:
                     self._assert_hidden(url, "The connection URL is not valid.")
 
