@@ -52,6 +52,7 @@ export function Slider({
   onValueChange,
   "aria-label": ariaLabel,
   "aria-describedby": ariaDescribedBy,
+  "aria-labelledby": ariaLabelledBy,
   ...props
 }: SliderProps): JSX.Element {
   const id = useId();
@@ -69,6 +70,15 @@ export function Slider({
   const singleName = single
     ? ((hasLabel && typeof label === "string" ? label : undefined) ?? ariaLabel)
     : undefined;
+  // With no aria-label name, a single thumb points at the non-string label,
+  // else at the caller's aria-labelledby: a group's name does not name its
+  // children.
+  const singleLabelledBy =
+    single && singleName === undefined
+      ? hasLabel
+        ? labelId
+        : ariaLabelledBy
+      : undefined;
   return (
     <div data-slot="slider-field" className={cn("ui:grid ui:gap-2", className)}>
       {hasLabel || hasDescription || showValue ? (
@@ -110,7 +120,7 @@ export function Slider({
           onValueChange?.(next);
         }}
         aria-label={ariaLabel}
-        aria-labelledby={hasLabel ? labelId : undefined}
+        aria-labelledby={ariaLabelledBy ?? (hasLabel ? labelId : undefined)}
         aria-describedby={describedBy}
         className="ui:relative ui:flex ui:w-full ui:touch-none ui:select-none ui:items-center ui:data-disabled:pointer-events-none ui:data-disabled:opacity-50"
         {...props}
@@ -135,9 +145,7 @@ export function Slider({
               // Radix's own range names.
               {...(thumbName ? { "aria-label": thumbName } : {})}
               aria-labelledby={
-                thumbName === undefined && single && hasLabel
-                  ? labelId
-                  : undefined
+                thumbName === undefined ? singleLabelledBy : undefined
               }
               aria-describedby={describedBy}
               aria-disabled={disabled || undefined}

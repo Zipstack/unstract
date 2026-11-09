@@ -162,7 +162,8 @@ Other Radix `RadioGroup.Root` and `RadioGroup.Item` props (`name`,
 A single thumb is named by `thumbLabels[0]`, else a string `label`, else the
 root's `aria-label`; a single thumb with a non-string `label` (say
 `<em>Temperature</em>`) and no `aria-label` gets `aria-labelledby` pointing
-at the label. A range keeps Radix's "Minimum" / "Maximum" names unless
+at the label, and one with no `label` gets the caller's `aria-labelledby`.
+A range keeps Radix's "Minimum" / "Maximum" names unless
 `thumbLabels` is given, so name the thumbs for anything less generic.
 The root is a `group` named by the label and described by the description,
 and every thumb carries the same `aria-describedby`, since the thumbs are

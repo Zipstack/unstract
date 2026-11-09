@@ -82,6 +82,32 @@ it("keeps Radix's range names when only the slider is labelled", () => {
   );
 });
 
+it("names a single thumb from the caller's aria-labelledby", () => {
+  renderV1(
+    <>
+      <span id="ext">Temperature</span>
+      <Slider aria-labelledby="ext" defaultValue={[0.5]} max={1} step={0.1} />
+    </>,
+  );
+  const thumb = screen.getByRole("slider", { name: "Temperature" });
+  expect(thumb).toHaveAttribute("aria-labelledby", "ext");
+});
+
+it("keeps Radix's range names under a root aria-labelledby", () => {
+  renderV1(
+    <>
+      <span id="ext">Pages</span>
+      <Slider aria-labelledby="ext" defaultValue={[2, 8]} min={0} max={10} />
+    </>,
+  );
+  expect(screen.getByRole("slider", { name: "Minimum" })).not.toHaveAttribute(
+    "aria-labelledby",
+  );
+  expect(screen.getByRole("slider", { name: "Maximum" })).not.toHaveAttribute(
+    "aria-labelledby",
+  );
+});
+
 it("follows a controlled value", () => {
   const oneDecimal = (v: number) => v.toFixed(1);
   const { rerender } = renderV1(
