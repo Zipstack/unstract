@@ -444,28 +444,23 @@ class TestTheRebuildNeverLowersAStoredValue(TestCase):
         )
         return out.getvalue()
 
-    def test_the_check_locks_the_rows_it_writes(self):
-        """Insert missing rows, lock and check, then write: one transaction.
+    def test_the_check_is_part_of_the_write(self):
+        """One conditional upsert, with no read of the stored value before it.
 
-        Otherwise the aggregator can write a higher value, or insert a missing row,
-        between the check and the write, and the upsert lowers it again.
+        A separate read goes stale when the aggregator writes in between, and a lock
+        taken for it can join a cycle with the monthly rollup.
         """
         self._store(EventMetricsDaily, self.day.date(), 1, date=None)
         with CaptureQueriesContext(connection) as queries:
             self._run(skip_hourly=True)
-        sql = [q["sql"] for q in queries.captured_queries]
-
-        def first(text):
-            return next(i for i, q in enumerate(sql) if text in q)
-
-        insert, check, write = (
-            first("DO NOTHING"),
-            first("FOR UPDATE"),
-            first("DO UPDATE"),
-        )
-        assert insert < check < write
-        opened = max(i for i, q in enumerate(sql[:insert]) if q.startswith("SAVEPOINT"))
-        assert not any(q.startswith("RELEASE SAVEPOINT") for q in sql[opened:write])
+        daily = [
+            q["sql"]
+            for q in queries.captured_queries
+            if "event_metrics_daily" in q["sql"]
+        ]
+        assert len(daily) == 1
+        assert "WHERE EXCLUDED" in daily[0]
+        assert "metric_value" in daily[0].split("WHERE EXCLUDED")[1]
 
     def test_a_higher_stored_daily_value_is_kept_and_reported(self):
         self._store(EventMetricsDaily, self.day.date(), 5, date=None)

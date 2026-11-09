@@ -30,7 +30,7 @@ from typing import Any
 
 from account_v2.models import Organization
 from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
+from django.db import connection
 from django.db.models import Min, Sum
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
@@ -46,6 +46,9 @@ from dashboard_metrics.services import MetricsQueryService
 from dashboard_metrics.tasks import truncate_to_day
 
 logger = logging.getLogger(__name__)
+
+# One parameter per column per row; Postgres allows 65,535 a statement.
+UPSERT_BATCH_SIZE = 1000
 
 # Cloud-only: Subscription model for --active-only filtering
 try:
@@ -553,52 +556,6 @@ class Command(BaseCommand):
             ts = timezone.make_aware(ts, timezone.utc)
         return ts.replace(minute=0, second=0, microsecond=0)
 
-    def _without_lowerings(
-        self, model, period_field: str, parse, aggregations: dict, tier: str
-    ) -> dict:
-        """Drop the recounts that would lower a stored value.
-
-        The sources shrink after they are aggregated: HITL TTL cleanup moves approved
-        reviews to EXPIRED, and deleting a workflow cascades to its executions. A
-        recount below the stored value is history the sources lost, not an
-        over-count, so the stored row stays, as the monthly rollup already does.
-
-        The rows read are locked until _upsert's transaction commits, so the
-        scheduled aggregator cannot write a higher value between check and write.
-        """
-        if not aggregations:
-            return aggregations
-        periods = [parse(key[1]) for key in aggregations]
-        stored = {
-            (str(org), period, name, project, tag): value
-            for org, period, name, project, tag, value in model._base_manager.select_for_update()
-            .filter(
-                organization_id__in={key[0] for key in aggregations},
-                **{
-                    f"{period_field}__gte": min(periods),
-                    f"{period_field}__lte": max(periods),
-                },
-            )
-            .values_list(
-                "organization_id",
-                period_field,
-                "metric_name",
-                "project",
-                "tag",
-                "metric_value",
-            )
-        }
-        kept = {}
-        for key, agg in aggregations.items():
-            org_id, period, metric_name, project, tag = key
-            old = stored.get((str(org_id), parse(period), metric_name, project, tag))
-            if old is None or agg["value"] >= old:
-                kept[key] = agg
-        dropped = len(aggregations) - len(kept)
-        if dropped:
-            self.stdout.write(f"  {tier}: kept {dropped} stored values above the recount")
-        return kept
-
     @staticmethod
     def _monthly_from_daily(org_id: str, monthly_agg: dict) -> dict:
         """Sum the stored daily rows of each month the recount touched.
@@ -656,19 +613,18 @@ class Command(BaseCommand):
             EventMetricsMonthly, "month", _parse_date, aggregations, "Monthly"
         )
 
-    @transaction.atomic
     def _upsert(
         self, model, period_field: str, parse, aggregations: dict, tier: str
     ) -> int:
-        """Write the recounts that do not lower a stored value, via INSERT ... ON CONFLICT.
+        """Write the recounts that do not lower a stored value, in one statement each batch.
 
-        Missing rows go in first, so every row the check reads exists and is locked
-        until this transaction commits. A row the aggregator inserts concurrently
-        either lands first and is compared, or waits and lands after this write.
+        INSERT ... ON CONFLICT DO UPDATE ... WHERE excluded >= stored compares
+        against the row it has locked, so a value the aggregator commits first is
+        never lowered, and a separate read cannot go stale or join a lock cycle.
+        Rows go in the order the monthly rollup locks them.
         """
-
-        def build(aggs: dict) -> list:
-            return [
+        objects = sorted(
+            (
                 model(
                     organization_id=org_id,
                     metric_name=metric_name,
@@ -679,24 +635,48 @@ class Command(BaseCommand):
                     metric_count=agg["count"],
                     **{period_field: parse(period)},
                 )
-                for (org_id, period, metric_name, project, tag), agg in aggs.items()
-            ]
-
-        model._base_manager.bulk_create(build(aggregations), ignore_conflicts=True)
-        objects = build(
-            self._without_lowerings(model, period_field, parse, aggregations, tier)
+                for (
+                    org_id,
+                    period,
+                    metric_name,
+                    project,
+                    tag,
+                ), agg in aggregations.items()
+            ),
+            key=lambda o: (
+                getattr(o, period_field),
+                o.metric_name,
+                o.project,
+                o.tag,
+            ),
         )
-        if objects:
-            model._base_manager.bulk_create(
-                objects,
-                update_conflicts=True,
-                unique_fields=[
-                    "organization",
-                    period_field,
-                    "metric_name",
-                    "project",
-                    "tag",
-                ],
-                update_fields=["metric_type", "metric_value", "metric_count"],
-            )
-        return len(objects)
+        quote = connection.ops.quote_name
+        fields = model._meta.concrete_fields
+        table = quote(model._meta.db_table)
+        unique = ("organization", period_field, "metric_name", "project", "tag")
+        updated = ("metric_type", "metric_value", "metric_count", "modified_at")
+        row = "(" + ", ".join(["%s"] * len(fields)) + ")"
+        sql_tail = (
+            f" ON CONFLICT ({', '.join(quote(model._meta.get_field(f).column) for f in unique)})"
+            f" DO UPDATE SET {', '.join(f'{quote(c)} = EXCLUDED.{quote(c)}' for c in updated)}"
+            f" WHERE EXCLUDED.metric_value >= {table}.metric_value RETURNING 1"
+        )
+        written = 0
+        with connection.cursor() as cursor:
+            for i in range(0, len(objects), UPSERT_BATCH_SIZE):
+                batch = objects[i : i + UPSERT_BATCH_SIZE]
+                params = [
+                    f.get_db_prep_save(f.pre_save(obj, True), connection)
+                    for obj in batch
+                    for f in fields
+                ]
+                cursor.execute(
+                    f"INSERT INTO {table} ({', '.join(quote(f.column) for f in fields)})"
+                    f" VALUES {', '.join([row] * len(batch))}{sql_tail}",
+                    params,
+                )
+                written += len(cursor.fetchall())
+        kept = len(objects) - written
+        if kept:
+            self.stdout.write(f"  {tier}: kept {kept} stored values above the recount")
+        return written
