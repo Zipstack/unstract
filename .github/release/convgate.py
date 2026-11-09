@@ -541,6 +541,7 @@ def main(argv=None):
         out_file = a.out and rm.local_path(a.out)
         if not a.slug:
             raise RuntimeError("--slug (or GITHUB_REPOSITORY) is required")
+        os.environ["GITHUB_REPOSITORY"] = a.slug  # relmgr's link helpers read it
         if (name := a.slug.lower().split("/")[-1]) != rs.SLUG:
             rs.use(name)  # relstate chose its config from the env at import
         if rs.PINS and not a.oss_repo:

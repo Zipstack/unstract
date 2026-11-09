@@ -4350,6 +4350,12 @@ class ReleaseBranchCiLabels(unittest.TestCase):
 
     WF = os.path.join(HERE, "..", "workflows", "release-branch-ci.yaml")
 
+    def test_each_label_reader_grants_the_read(self):
+        # A private repo answers 403 to the issue labels API for a PR without it.
+        for wf in ("release-branch-ci.yaml", "lint-pr.yaml"):
+            with open(os.path.join(HERE, "..", "workflows", wf)) as fh:
+                self.assertRegex(fh.read().split("\njobs:", 1)[0], r"\n  pull-requests: read", wf)
+
     def labels(self, answer, gh_exit=0):
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "gh"), "w") as fh:  # fake gh: jq already applied

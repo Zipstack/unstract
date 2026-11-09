@@ -16,7 +16,7 @@ concurrency:
 
 permissions:
   contents: read
-  issues: read # the PR's live labels
+  pull-requests: read # the PR's live labels: a private repo refuses the issues API for a PR without it
 
 jobs:
   lint-pr:

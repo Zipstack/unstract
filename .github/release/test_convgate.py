@@ -724,6 +724,14 @@ class Gate(unittest.TestCase):
         _, calls, _ = self.run_main("--slug", "o/x")
         self.assertIn("repos/o/x/issues/9/comments", [a for c in calls for a in c])
 
+    def test_slug_sets_the_report_links(self):
+        with mock.patch.dict(os.environ, {"GITHUB_SERVER_URL": "https://gh.test"}):
+            self.run_main("--slug", "o/x")
+        with open(os.path.join(self.repo, "out.md")) as f:
+            report = f.read()
+        self.assertIn("https://gh.test/o/x/commit/", report)
+        self.assertNotIn("https://gh.test/" + os.environ["GITHUB_REPOSITORY"], report)
+
     def test_slug_selects_the_repo_config(self):
         code, calls, out = self.run_main("--slug", "o/nope")
         self.assertEqual(code, 1)
