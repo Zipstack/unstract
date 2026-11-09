@@ -1,6 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCallback, useEffect } from "react";
 import {
+  type Control,
   type DefaultValues,
   type FieldValues,
   get,
@@ -10,7 +11,15 @@ import {
 } from "react-hook-form";
 import type { z } from "zod";
 
-/** react-hook-form with the schema as resolver: fields validate on blur, and a failed submit focuses the first invalid field. */
+/**
+ * react-hook-form with the schema as resolver. A field validates when it first
+ * loses focus, then on every change; after a submit every field validates on
+ * change. A failed submit focuses the first invalid field.
+ *
+ * `defaultValues` are the saved values: the change count and Discard compare
+ * against them. They are read once, so call `form.reset(saved)` after a
+ * successful save, and `form.reset(record)` when a record loads after mount.
+ */
 export function useAppForm<I extends FieldValues, O>({
   schema,
   defaultValues,
@@ -21,7 +30,7 @@ export function useAppForm<I extends FieldValues, O>({
   return useForm<I, unknown, O>({
     resolver: zodResolver(schema),
     defaultValues,
-    mode: "onBlur",
+    mode: "onTouched",
     shouldFocusError: true,
   });
 }
@@ -39,29 +48,66 @@ export type ServerErrorBody = Readonly<{
 /** The form-level error key that applyServerErrors sets; FormFooter shows it. */
 export const SERVER_ERROR = "root.server";
 
+const FALLBACK = "Could not save. Try again.";
+
+/** True when a FormField (or any registered control) for `path` is on screen. */
+export function isMounted(
+  control: Control<FieldValues>,
+  path: string,
+): boolean {
+  // ponytail: reads react-hook-form's field registry; form.test.tsx pins the behaviour across upgrades.
+  return get(control._fields, path)?._f?.mount === true;
+}
+
+function isStandardBody(body: unknown): body is ServerErrorBody {
+  const b = body as ServerErrorBody | null;
+  return typeof b?.type === "string" && Array.isArray(b.errors);
+}
+
+/** Any other error body: `{detail}` from the middleware, `{error}` from the SDK handler. */
+function otherMessage(body: unknown): string | undefined {
+  const b = body as { detail?: unknown; error?: unknown } | null;
+  const text = b?.detail ?? b?.error;
+  return typeof text === "string" && text.trim() ? text : undefined;
+}
+
 /**
- * Puts each server error on the field its `attr` names (a dotted attr such as
- * `rows.0.key` is a react-hook-form path). An error with no attr, a
- * non_field_errors attr, an attr the form does not hold, or any error of a
- * non-validation response becomes one form-level message.
+ * Puts each server error under the field its `attr` names (a dotted attr such
+ * as `rows.0.key` is a react-hook-form path), when that field is on screen.
+ * Every other error (no attr, non_field_errors, an attr with no field shown, or
+ * a non-validation response) joins one form-level message. A body of any other
+ * shape, or one with nothing to show, still sets a form-level message.
  */
-// ponytail: reads the raw backend body; switch to P0-T05's normalised error when it lands.
+// ponytail: reads the raw backend body; switch to the shared HTTP client's normalised error when it exists.
 export function applyServerErrors<T extends FieldValues>(
-  form: Pick<UseFormReturn<T>, "getValues" | "setError">,
-  body: ServerErrorBody,
+  form: Pick<UseFormReturn<T, unknown, FieldValues>, "control" | "setError">,
+  body: unknown,
 ): void {
-  const values = form.getValues();
+  const byField = new Map<string, string[]>();
   const formLevel: string[] = [];
-  for (const { attr, detail } of body.errors) {
+  const standard = isStandardBody(body) ? body : undefined;
+  for (const { attr, detail } of standard?.errors ?? []) {
+    if (!detail?.trim()) {
+      continue;
+    }
     const onField =
-      body.type === "validation_error" &&
+      standard?.type === "validation_error" &&
       attr !== null &&
-      get(values, attr) !== undefined;
+      isMounted(form.control as Control<FieldValues>, attr);
     if (onField) {
-      form.setError(attr as Path<T>, { type: "server", message: detail });
+      byField.set(attr, [...(byField.get(attr) ?? []), detail]);
     } else {
       formLevel.push(detail);
     }
+  }
+  for (const [attr, details] of byField) {
+    form.setError(attr as Path<T>, {
+      type: "server",
+      message: details.join(" "),
+    });
+  }
+  if (byField.size === 0 && formLevel.length === 0) {
+    formLevel.push(otherMessage(body) ?? FALLBACK);
   }
   if (formLevel.length > 0) {
     form.setError(SERVER_ERROR as Path<T>, {
@@ -72,11 +118,12 @@ export function applyServerErrors<T extends FieldValues>(
 }
 
 /**
- * While `dirty`, the browser asks before the tab closes, and the returned
- * function asks `confirm` before a dialog closes or the caller navigates away.
- * It resolves true when leaving is fine.
+ * While `dirty`, the browser asks before the tab closes. Route changes and
+ * dialog closes are not caught: the caller awaits the returned function before
+ * leaving, and it asks `confirm` only while dirty. It resolves true when
+ * leaving is fine.
  */
-// ponytail: no router blocking; v0 mounts a BrowserRouter, which has no blocker. Add useBlocker when P0-T01 moves to a data router.
+// ponytail: no router blocking; v0 mounts a BrowserRouter, which has no blocker. Add useBlocker when the app moves to a data router.
 export function useLeaveGuard(
   dirty: boolean,
   confirm: () => Promise<boolean>,

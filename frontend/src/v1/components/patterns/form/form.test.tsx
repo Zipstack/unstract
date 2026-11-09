@@ -33,10 +33,10 @@ function Sample({
     <form
       onSubmit={form.handleSubmit(async (values) => {
         const error = await onSave(values);
-        if (error) {
-          applyServerErrors(form, error);
-        } else {
+        if (error === undefined) {
           form.reset(values);
+        } else {
+          applyServerErrors(form, error);
         }
       })}
     >
@@ -51,11 +51,68 @@ function Sample({
   );
 }
 
+const saveButton = () =>
+  screen.getByRole("button", { name: "Save changes" }) as HTMLButtonElement;
+const discardButton = () =>
+  screen.getByRole("button", { name: "Discard" }) as HTMLButtonElement;
+
+const extraSchema = z.object({
+  name: z.string().min(1),
+  note: z.string().optional(),
+  ownerId: z.string(),
+});
+type Extra = z.infer<typeof extraSchema>;
+
+/** Holds ownerId without rendering it, and renders note with no default. */
+function Extra({ onSave }: { onSave: (v: Extra) => Promise<ServerErrorBody> }) {
+  const form = useAppForm({
+    schema: extraSchema,
+    defaultValues: { name: "a", ownerId: "u1" },
+  });
+  return (
+    <form
+      onSubmit={form.handleSubmit(async (values) =>
+        applyServerErrors(form, await onSave(values)),
+      )}
+    >
+      <FormField form={form} name="name" label="Name">
+        {(field) => <Input {...field} />}
+      </FormField>
+      <FormField form={form} name="note" label="Note">
+        {(field) => <Input {...field} value={field.value ?? ""} />}
+      </FormField>
+      <FormFooter form={form} />
+    </form>
+  );
+}
+
+const refinedSchema = z
+  .object({ name: z.string(), url: z.string() })
+  .refine((v) => v.name !== v.url, "Name and URL must differ");
+
+/** A whole-form refine with no path: its error belongs to no field. */
+function Refined() {
+  const form = useAppForm({
+    schema: refinedSchema,
+    defaultValues: { name: "", url: "b" },
+  });
+  return (
+    <form onSubmit={form.handleSubmit(() => undefined)}>
+      <FormField form={form} name="name" label="Name">
+        {(field) => <Input {...field} />}
+      </FormField>
+      <FormFooter form={form} />
+    </form>
+  );
+}
+
 describe("useAppForm and FormField", () => {
   it("validates a field on blur and wires its error to the control", async () => {
     render(<Sample />);
     const name = screen.getByLabelText("Name");
     await userEvent.clear(name);
+    await act(async () => undefined);
+    expect(screen.queryByText("Enter a name")).toBeNull();
     fireEvent.blur(name);
     await screen.findByText("Enter a name");
     expect(name.getAttribute("aria-invalid")).toBe("true");
@@ -75,6 +132,18 @@ describe("useAppForm and FormField", () => {
     screen.getByText("Enter a URL");
     expect(document.activeElement).toBe(screen.getByLabelText("Name"));
     expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("clears a blur error as soon as the field is fixed", async () => {
+    render(<Sample />);
+    const name = screen.getByLabelText("Name");
+    await userEvent.clear(name);
+    fireEvent.blur(name);
+    await screen.findByText("Cannot save");
+    await userEvent.type(name, "fixed");
+    await screen.findByText("1 unsaved change");
+    expect(screen.queryByText("Enter a name")).toBeNull();
+    expect(saveButton().disabled).toBe(false);
   });
 });
 
@@ -100,7 +169,7 @@ describe("applyServerErrors", () => {
   it("maps a dotted attr onto a nested path", () => {
     const setError = vi.fn();
     const form = {
-      getValues: () => ({ rows: [{ key: "k" }] }),
+      control: { _fields: { rows: [{ key: { _f: { mount: true } } }] } },
       setError,
     } as unknown as Parameters<typeof applyServerErrors>[0];
     applyServerErrors(form, {
@@ -116,7 +185,7 @@ describe("applyServerErrors", () => {
   it("puts every error of a non-validation response at form level", () => {
     const setError = vi.fn();
     const form = {
-      getValues: () => ({ name: "" }),
+      control: { _fields: { name: { _f: { mount: true } } } },
       setError,
     } as unknown as Parameters<typeof applyServerErrors>[0];
     applyServerErrors(form, {
@@ -128,19 +197,101 @@ describe("applyServerErrors", () => {
       message: "Something broke",
     });
   });
+
+  it("shows every error the server sent for one field", async () => {
+    render(
+      <Sample
+        onSave={async () => ({
+          type: "validation_error",
+          errors: [
+            { code: "a", detail: "Too short.", attr: "name" },
+            { code: "b", detail: "Taken.", attr: "name" },
+          ],
+        })}
+      />,
+    );
+    await userEvent.type(screen.getByLabelText("Name"), "b");
+    await userEvent.click(saveButton());
+    await screen.findByText("Too short. Taken.");
+  });
+
+  it("puts a field's error under it even when its value is undefined", async () => {
+    render(
+      <Extra
+        onSave={async () => ({
+          type: "validation_error",
+          errors: [{ code: "x", detail: "Bad note", attr: "note" }],
+        })}
+      />,
+    );
+    await userEvent.type(screen.getByLabelText("Name"), "b");
+    await userEvent.click(saveButton());
+    await screen.findByText("Bad note");
+    expect(screen.getByLabelText("Note").getAttribute("aria-invalid")).toBe(
+      "true",
+    );
+  });
+
+  it("shows an error for a value no field renders at form level and keeps Save enabled", async () => {
+    render(
+      <Extra
+        onSave={async () => ({
+          type: "validation_error",
+          errors: [{ code: "x", detail: "Owner gone", attr: "ownerId" }],
+        })}
+      />,
+    );
+    await userEvent.type(screen.getByLabelText("Name"), "b");
+    await userEvent.click(saveButton());
+    await screen.findByText("Owner gone");
+    screen.getByText("1 unsaved change");
+    expect(saveButton().disabled).toBe(false);
+  });
+
+  it("shows a form-level-only error without blocking Save", async () => {
+    render(
+      <Sample
+        onSave={async () => ({
+          type: "validation_error",
+          errors: [
+            { code: "x", detail: "Quota reached", attr: "non_field_errors" },
+          ],
+        })}
+      />,
+    );
+    await userEvent.type(screen.getByLabelText("Name"), "b");
+    await userEvent.click(saveButton());
+    await screen.findByText("Quota reached");
+    screen.getByText("1 unsaved change");
+    expect(saveButton().disabled).toBe(false);
+  });
+
+  it.each([
+    [{ detail: "Request failed" }, "Request failed"],
+    [{ type: "sdk_error", error: "Adapter down" }, "Adapter down"],
+    [{ type: "validation_error", errors: [] }, "Could not save. Try again."],
+    [
+      {
+        type: "validation_error",
+        errors: [{ code: "x", detail: "", attr: null }],
+      },
+      "Could not save. Try again.",
+    ],
+    [null, "Could not save. Try again."],
+  ])("always shows something for the body %j", async (body, message) => {
+    render(<Sample onSave={async () => body as never} />);
+    await userEvent.type(screen.getByLabelText("Name"), "b");
+    await userEvent.click(saveButton());
+    await screen.findByText(message);
+  });
 });
 
 describe("FormFooter", () => {
   it("shows No changes with Save disabled on a clean form", () => {
     render(<Sample />);
     screen.getByText("No changes");
-    expect(
-      (
-        screen.getByRole("button", {
-          name: "Save changes",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
+    expect(saveButton().disabled).toBe(true);
+    expect(discardButton().disabled).toBe(true);
   });
 
   it("counts dirty fields, and Discard restores the saved values", async () => {
@@ -159,13 +310,40 @@ describe("FormFooter", () => {
     await userEvent.clear(screen.getByLabelText("Name"));
     fireEvent.blur(screen.getByLabelText("Name"));
     await screen.findByText("Cannot save");
-    expect(
-      (
-        screen.getByRole("button", {
-          name: "Save changes",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
+    expect(saveButton().disabled).toBe(true);
+  });
+
+  it("shows No changes on a clean form even with a field error", async () => {
+    render(<Sample defaults={{ name: "", url: "https://x.io" }} />);
+    fireEvent.blur(screen.getByLabelText("Name"));
+    await screen.findByText("Enter a name");
+    screen.getByText("No changes");
+  });
+
+  it("shows a schema error that no field owns, without blocking Save", async () => {
+    render(<Refined />);
+    await userEvent.type(screen.getByLabelText("Name"), "b");
+    await userEvent.click(saveButton());
+    await screen.findByText("Name and URL must differ");
+    expect(saveButton().disabled).toBe(false);
+  });
+
+  it("hides a form-level error once the change is reverted", async () => {
+    render(
+      <Sample
+        onSave={async () => ({
+          type: "client_error",
+          errors: [{ code: "x", detail: "Locked", attr: null }],
+        })}
+      />,
+    );
+    const name = screen.getByLabelText("Name");
+    await userEvent.type(name, "b");
+    await userEvent.click(saveButton());
+    await screen.findByText("Locked");
+    await userEvent.type(name, "{backspace}");
+    await screen.findByText("No changes");
+    expect(screen.queryByText("Locked")).toBeNull();
   });
 
   it("shows Saving while the save runs, then No changes", async () => {
@@ -178,6 +356,8 @@ describe("FormFooter", () => {
     await userEvent.type(screen.getByLabelText("Name"), "b");
     await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await screen.findByText("Saving");
+    expect(saveButton().disabled).toBe(true);
+    expect(discardButton().disabled).toBe(true);
     await act(async () => finish());
     await screen.findByText("No changes");
     expect(lastForm.getValues("name")).toBe("ab");
@@ -219,6 +399,18 @@ describe("useLeaveGuard", () => {
     render(<Guarded dirty confirm={async () => answer} onLeave={onLeave} />);
     await userEvent.click(screen.getByRole("button"));
     expect(onLeave).toHaveBeenCalledWith(answer);
+  });
+
+  it("asks once the form turns dirty", async () => {
+    const confirm = vi.fn(async () => false);
+    const onLeave = vi.fn();
+    const { rerender } = render(
+      <Guarded dirty={false} confirm={confirm} onLeave={onLeave} />,
+    );
+    rerender(<Guarded dirty confirm={confirm} onLeave={onLeave} />);
+    await userEvent.click(screen.getByRole("button"));
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(onLeave).toHaveBeenCalledWith(false);
   });
 
   it("asks the browser before a tab close only while dirty", () => {
