@@ -1,11 +1,15 @@
+import contextlib
 import json
 import os
+import pathlib
 import resource
 import signal
 import subprocess
+import sys
 import time
 from unittest.mock import MagicMock, patch
 
+import pytest
 from sandbox import runner
 from sandbox.runner import _MINIMAL_PATH, run_code
 
@@ -683,3 +687,109 @@ def test_stdout_is_still_captured_from_the_FRONT():
         grace=5,
     )
     assert "FIRST" in r.stdout
+
+
+# --- the parent-death backstop (PR_SET_PDEATHSIG) ---------------------------
+#
+# Why these read /proc rather than using psutil: `psutil` is not a dependency of
+# the workers package, and the two fields needed (ppid and run state) are the
+# 4th and 3rd of /proc/<pid>/stat. `comm` is the 2nd field, is attacker-adjacent
+# (it is the script's own basename) and may contain spaces or ')', so both
+# helpers split AFTER the last ')' instead of on whitespace from the left.
+
+
+def _proc_state(pid: int) -> str | None:
+    """The run state of `pid` ('R', 'S', 'Z', ...), or None if it is gone."""
+    try:
+        stat = pathlib.Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return None
+    return stat[stat.rindex(")") + 1 :].split()[0]
+
+
+def _direct_children(pid: int) -> list[int]:
+    out = []
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            stat = pathlib.Path(f"/proc/{entry}/stat").read_text()
+        except OSError:
+            continue  # exited between listdir and read
+        if stat[stat.rindex(")") + 1 :].split()[1] == str(pid):
+            out.append(int(entry))
+    return out
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="PR_SET_PDEATHSIG is a Linux facility",
+)
+def test_the_generated_script_does_not_outlive_a_SIGKILLed_worker(tmp_path):
+    """A SIGKILLed worker must not leave its generated script running.
+
+    This is the gap the module docstring's third kill mechanism exists to close,
+    and neither of the other two reaches it. The wall-clock timeout is a
+    `proc.wait(timeout=...)` in the worker, so it dies with the worker; and
+    RLIMIT_CPU is set to `timeout + grace`, so a child spinning under a 60s
+    timeout has ~65 CPU-seconds left. `run-worker.sh`'s `kill_one_worker`
+    matches the consumer's argv and then escalates to SIGKILL after one second,
+    which runs no handler at all -- so the invariant has to be enforced by the
+    kernel.
+
+    Mutation-verified: with `_PRCTL` forced to None the child was still in
+    state 'R' after the full 5s window (measured), and with the call in place it
+    was gone in 0.1s. The 5s bound is therefore ~50x the observed time and far
+    below the ~65 CPU-seconds the child would otherwise have had, so the test
+    distinguishes the two outcomes rather than racing them.
+
+    It asserts "gone OR zombie": PDEATHSIG kills the child, but reaping it is
+    the new parent's job (init, or a subreaper), and whether that has happened
+    yet is not this harness's business.
+    """
+    helper = tmp_path / "worker_stand_in.py"
+    helper.write_text(
+        "import sys\n"
+        f"sys.path.insert(0, {str(pathlib.Path(runner.__file__).parents[1])!r})\n"
+        "from sandbox.runner import run_code\n"
+        # A long timeout on purpose: short enough to bound a leaked process in
+        # CI, long enough that neither the wall-clock path nor RLIMIT_CPU can be
+        # what ends the child inside this test's window.
+        "run_code('while True:\\n    pass\\n', '{}', timeout=60, grace=5,\n"
+        "         memory_mb=256, max_pids=16, max_output_bytes=65536,\n"
+        "         max_rows=100)\n"
+    )
+    worker = subprocess.Popen([sys.executable, str(helper)])
+    child = None
+    try:
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            kids = _direct_children(worker.pid)
+            if kids:
+                child = kids[0]
+                break
+            time.sleep(0.05)
+        assert child is not None, "the stand-in worker never spawned a child"
+
+        os.kill(worker.pid, signal.SIGKILL)
+        worker.wait(timeout=10)
+
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            state = _proc_state(child)
+            if state is None or state == "Z":
+                break
+            time.sleep(0.05)
+        else:
+            pytest.fail(
+                f"the generated script (pid {child}) outlived the SIGKILLed "
+                f"worker: still in state {_proc_state(child)!r} after 5s"
+            )
+    finally:
+        # Never leave a spinning process behind, whichever way the asserts went.
+        if worker.poll() is None:
+            os.kill(worker.pid, signal.SIGKILL)
+            worker.wait(timeout=10)
+        if child is not None and _proc_state(child) not in (None, "Z"):
+            with contextlib.suppress(OSError):
+                os.kill(child, signal.SIGKILL)

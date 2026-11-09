@@ -115,11 +115,17 @@ trusting the client):
 1. Fail-closed **AST gate** (import allowlist + denylisted calls/attrs/dunders).
 2. **Scrubbed-env subprocess** — empty environment, minimal PATH, per-request tempdir,
    `-I -S -E`, `start_new_session`, rlimits (mem/NPROC/NOFILE/FSIZE, and
-   CPU = `timeout + grace`), process-group kill at wall-clock `timeout`. Note the
+   CPU = `timeout + grace`), process-group kill at wall-clock `timeout`, and
+   `prctl(PR_SET_PDEATHSIG, SIGKILL)` on the child. Note the
    order: the group kill is the primary mechanism and fires FIRST; `RLIMIT_CPU` is
    the backstop, set strictly above the wall clock so the two never race at the
    same threshold (ruling R1 -- see `workers/sandbox/runner.py`'s module
    docstring). An earlier revision of this line had the two the other way round.
+   PDEATHSIG is a third mechanism rather than a reordering of those two: both of
+   them need the worker process alive, so neither bounds a script whose parent was
+   killed -- which `run-worker.sh`'s stop path does, by SIGKILL, one second after
+   SIGTERM. It is Linux-only and best-effort, and it does not reclaim the per-job
+   tempdir (nothing can, under SIGKILL); the module docstring has both limits.
 3. **Hardened pod** — non-root, read-only rootfs + `emptyDir` /tmp, all caps dropped,
    `seccompProfile: RuntimeDefault`, no service-account token, CPU/mem/PID limits.
 4. **NetworkPolicy** — default-deny ingress+egress; egress is exactly two rules:

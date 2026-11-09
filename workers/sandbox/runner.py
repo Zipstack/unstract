@@ -5,7 +5,7 @@ child is invoked as ``python -I -S -E <script> <input_path> <output_path>``
 with an EMPTY environment (minimal PATH only), a fresh session/process group,
 and rlimits on CPU / address space / PIDs / open files / output size.
 
-Two independent kill mechanisms bound runaway children:
+Three independent kill mechanisms bound runaway children:
 
 - **Primary — wall-clock timeout.** ``proc.wait(timeout=timeout)`` is the
   deterministic path: at ``timeout`` wall-clock seconds we kill the child's
@@ -21,11 +21,35 @@ Two independent kill mechanisms bound runaway children:
   error string ("timed out" vs. an RLIMIT_CPU/SIGXCPU exit) for the exact
   same hostile input. Keeping it strictly higher keeps the wall-clock path
   the only mechanism that fires in the common case.
+- **Parent-death backstop -- ``PR_SET_PDEATHSIG``.** Both mechanisms above
+  need THIS process alive: the wall-clock path is a ``proc.wait(timeout=...)``
+  on this thread, and ``RLIMIT_CPU`` only advances while the child burns CPU,
+  so neither bounds a child whose parent is gone. Stopping the worker is the
+  reachable case, not a hypothetical one: ``run-worker.sh``'s
+  ``kill_one_worker`` matches the consumer's own argv, and the child -- a
+  session leader running ``python -I -S -E <tmp>/script.py`` -- matches
+  neither that pattern nor any other the launcher searches. ``SIGTERM`` runs
+  no handler here and ``SIGKILL`` cannot, so the kernel is asked to do it
+  instead:
+  ``prctl(PR_SET_PDEATHSIG, SIGKILL)`` between fork and exec, so the child
+  dies when its parent does. This is the only one of the three that survives
+  ``SIGKILL`` on the parent, and it is Linux-only and best-effort -- where
+  ``prctl`` cannot be resolved the other two are unchanged and a child can
+  still outlive a killed worker.
+
+  What it does NOT fix: the per-job scratch directory. ``SIGKILL`` unwinds no
+  ``TemporaryDirectory.__exit__``, and no in-process handler can be reached to
+  do it either, so the directory is left behind whether or not the child dies.
+  It is reclaimed with the container in a deployment, and by the host's tmp
+  reaper on a developer machine; the pre-spawn free-space refusal in
+  ``_run_code_unguarded`` is what keeps an accumulation from turning into a
+  failure to run.
 """
 
 from __future__ import annotations
 
 import contextlib
+import ctypes
 import json
 import logging
 import os
@@ -45,6 +69,42 @@ logger = logging.getLogger(__name__)
 _MINIMAL_PATH = "/usr/bin:/bin"
 _CAPTURE_LIMIT = 4096
 _SANDBOX_PLACEHOLDER = "<sandbox>"
+
+# `prctl(PR_SET_PDEATHSIG, ...)` -- Linux's "kill me when my parent dies".
+# Resolved HERE, in the parent at import time, and deliberately NOT inside
+# `preexec_fn`: `CDLL` opens and dlsyms a library, which is exactly the kind of
+# post-fork Python the NOTE in `_apply` says to keep out of the forked child.
+# What runs there is one call through an already-bound function pointer.
+#
+# None where it cannot be resolved (a non-Linux or stripped platform). `_apply`
+# then skips the call rather than failing the spawn -- the docstring's third
+# mechanism is best-effort, and a harness that refused every job because one
+# backstop was unavailable would be the worse failure.
+_PR_SET_PDEATHSIG = 1
+
+
+def _resolve_prctl():
+    """Bind `libc.prctl` in the parent, or None where that is not possible."""
+    if not sys.platform.startswith("linux"):
+        # Not a warning: PDEATHSIG is a Linux facility, so its absence on a
+        # developer's macOS is expected rather than a misconfiguration.
+        return None
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        prctl = libc.prctl
+    except (OSError, AttributeError):
+        logger.warning(
+            "sandbox: prctl could not be resolved; a generated script can "
+            "outlive a killed worker (third kill mechanism, see the module "
+            "docstring)"
+        )
+        return None
+    prctl.restype = ctypes.c_int
+    prctl.argtypes = (ctypes.c_int,) + (ctypes.c_ulong,) * 4
+    return prctl
+
+
+_PRCTL = _resolve_prctl()
 
 
 def _scrub(text: str, tmp: str) -> str:
@@ -73,14 +133,49 @@ class RunResult:
 
 
 def _limits(cpu_seconds: int, memory_mb: int, max_pids: int, fsize: int):
-    """Build a ``preexec_fn`` that applies rlimits. It does NOT detach the
-    child -- session creation is Popen's ``start_new_session=True``; see the
-    NOTE in ``_apply``. Each rlimit is best-effort: a platform that lacks one
-    (e.g. RLIMIT_NPROC is not honoured the same way on every POSIX system)
-    must not prevent the harness from applying the rest.
+    """Build a ``preexec_fn`` that applies rlimits and ``PR_SET_PDEATHSIG``. It
+    does NOT detach the child -- session creation is Popen's
+    ``start_new_session=True``; see the NOTE in ``_apply``. Each rlimit is
+    best-effort: a platform that lacks one (e.g. RLIMIT_NPROC is not honoured
+    the same way on every POSIX system) must not prevent the harness from
+    applying the rest. ``PR_SET_PDEATHSIG`` is best-effort for the same reason
+    and on the same terms (see the module docstring).
     """
+    # Read in the PARENT, before the fork, so the post-fork check below has
+    # something to compare against. `os.getpid()` inside `_apply` would return
+    # the CHILD's pid and the comparison would always be false.
+    parent_pid = os.getpid()
 
     def _apply():
+        # Which side of the fork are we on? `_apply` is a `preexec_fn`, so
+        # normally the forked child -- but it is ALSO called directly, in this
+        # process, by `test_rlimit_cpu_is_set_strictly_above_the_wall_clock_`
+        # `timeout`, which mocks `Popen` and has no other way to read the
+        # rlimit pairs the child would have been given. Both halves below are
+        # actively harmful there: PDEATHSIG would be set on the WORKER, and the
+        # parent check would compare the worker against the worker's own parent,
+        # not match, and `os._exit` the process. Measured, not theorised -- that
+        # test killed the pytest process outright (exit 1, no traceback, no
+        # summary) until this guard existed. `getpid()` is a syscall on every
+        # call, so this is a fact about the current process, not a cached value.
+        in_forked_child = os.getpid() != parent_pid
+        # Ask the kernel to SIGKILL this child when its parent dies, so a
+        # generated script cannot outlive the worker that spawned it. Set
+        # FIRST, before the rlimit loop, to keep the unprotected window as
+        # short as the fork allows.
+        if in_forked_child and _PRCTL is not None:
+            _PRCTL(_PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0)
+            # PDEATHSIG only fires on a death that happens AFTER it is set, so
+            # a parent that died between the fork and the line above is already
+            # missed -- the classic PDEATHSIG race, and the reason setting the
+            # flag alone is not enough. Re-reading the parent now closes it:
+            # once the parent is gone this child is reparented (to init, or to
+            # a subreaper), so `getppid()` no longer matches. Exit rather than
+            # exec: there is no longer anyone to time the script out, read its
+            # output, or remove its scratch directory, which is the whole
+            # reason this mechanism exists.
+            if os.getppid() != parent_pid:
+                os._exit(1)
         # NOTE: no `os.setsid()` here. Session creation moved to Popen's
         # `start_new_session=True`, which the runtime performs between fork and
         # exec WITHOUT running Python bytecode. `preexec_fn` does run Python in
