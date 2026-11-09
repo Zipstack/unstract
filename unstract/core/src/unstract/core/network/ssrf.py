@@ -217,6 +217,12 @@ def webhook_url_refusal(
     if not host:
         return REFUSED_EMPTY_HOST
 
+    # A control character (NUL above all) is not part of any host. Both parsers
+    # pass it through, the resolver truncates at a NUL, and ``inet_aton``
+    # raises on one, so nothing below could judge such a host reliably.
+    if any(ord(c) < 0x20 or ord(c) == 0x7F for c in host):
+        return REFUSED_UNPARSEABLE
+
     literal = _as_ip(host)
 
     # RFC 6761 reserves this subtree to loopback, so the answer is known without

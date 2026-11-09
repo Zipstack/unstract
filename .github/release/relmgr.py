@@ -15,7 +15,7 @@ _FORMAT_BODY = "--format=%B"
 PICK_RE = re.compile(r"\(cherry picked from commit ([0-9a-f]{7,40})\)")
 # At any line start; also after "* ", as a COMMIT_MESSAGES squash lists each subject that way.
 RBO_RE = re.compile(r"^(?:\* )?Release-branch-only: (\S+)", re.M)
-# Known limit: one ticket only; `A-1 B-2 [FIX] x` needs a fix/ label.
+# Known limit: one ticket only, so `A-1 B-2 [FIX] x` fails.
 PR_TITLE_RE = re.compile(
     r"^(?:(?P<ticket>[A-Z][A-Z0-9]*-\d+) )?\[(?P<type>FIX|HOT-FIX|FEAT|GATED-FEAT|DOCS|DEPS|MISC|DEV|WIP)\] \S"
 )
@@ -26,27 +26,64 @@ REVERTS_RE = re.compile(r"^This reverts commit ([0-9a-f]{7,40})", re.M)
 DECLINED_RE = re.compile(r"^Declined: (.+)$", re.M)
 # Match with fullmatch.
 BACKPORT_HEAD_RE = re.compile(r"backport/(\d+\.\d+)/([0-9a-f]{7})")
+LINE_RE = re.compile(r"[0-9]+\.[0-9]+")
 
 
-def _web():
+def line(value):
+    """A release-line input as X.Y: "0.186" and "release/0.186" both give "0.186".
+
+    No stripping: Take RC's concurrency group is keyed on the raw input, so a padded value must not pass.
+    """
+    v = value.removeprefix("release/")
+    if not LINE_RE.fullmatch(v):
+        raise ValueError(f"not a release line X.Y (e.g. 0.186): {value!r}")
+    return v
+
+
+def vtag(value):
+    """A version-tag input with its leading v: "0.186.0-rc.2" and "v0.186.0-rc.2" both give "v0.186.0-rc.2"."""
+    v = value.strip()
+    return v if v.startswith("v") else f"v{v}"
+
+
+def _web(repo=None):
     server, slug = (
         os.environ.get("GITHUB_SERVER_URL"),
-        os.environ.get("GITHUB_REPOSITORY"),
+        repo or os.environ.get("GITHUB_REPOSITORY"),
     )
     return f"{server}/{slug}" if server and slug else None
 
 
-def pr_link(n):
-    return f"[#{n}]({_web()}/pull/{n})" if _web() else f"#{n}"
+def pr_link(n, repo=None):
+    # A repo other than this run's is named in the text, so the reader sees which repo's PR it is.
+    web, text = _web(repo), f"{repo or ''}#{n}"
+    return f"[{text}]({web}/pull/{n})" if web else text
 
 
-def commit_link(sha, n=7):
-    return f"[`{sha[:n]}`]({_web()}/commit/{sha})" if _web() else f"`{sha[:n]}`"
+def commit_link(sha, n=7, repo=None):
+    web = _web(repo)
+    return f"[`{sha[:int(n)]}`]({web}/commit/{sha})" if web else f"`{sha[:int(n)]}`"
 
 
-def tag_link(tag):
+def tag_link(tag, repo=None):
     # The release page: it shows the tag message (an RC's Slack thread) and later the published notes.
-    return f"[`{tag}`]({_web()}/releases/tag/{tag})" if _web() else f"`{tag}`"
+    web = _web(repo)
+    return f"[`{tag}`]({web}/releases/tag/{tag})" if web else f"`{tag}`"
+
+
+def branch_link(branch, repo=None):
+    web = _web(repo)
+    return f"[`{branch}`]({web}/tree/{branch})" if web else f"`{branch}`"
+
+
+def ref_link(ref, repo=None):
+    """The full ref stays the text: a local head and origin's copy of a branch are different reads."""
+    web = _web(repo)
+    if web and ref.startswith("refs/tags/"):
+        return f"[`{ref}`]({web}/releases/tag/{ref.removeprefix('refs/tags/')})"
+    if web and (m := re.fullmatch(r"refs/(?:heads|remotes/origin)/(.+)", ref)):
+        return f"[`{ref}`]({web}/tree/{m[1]})"
+    return f"`{ref}`"
 
 
 def image_link(target, tag):
@@ -279,9 +316,11 @@ def ci_commits(
 
 
 FIX_LABELS = ("fix/security", "fix/critical", "fix/needs-backport")
+MAIN_ONLY = "main-only"
 
 
 def pr_fix_class(title, labels=()):
+    """The class comes from labels only; None without a fix/ label. A main merge also needs a backport label: main_fix_class."""
     # Reject near-miss class labels (fix/<x>, fix-class/<x>, typos) so a typo cannot drop the class.
     bad = [
         l
@@ -296,31 +335,39 @@ def pr_fix_class(title, labels=()):
     }
     if len(classes) > 1:
         raise ValueError(f"conflicting fix labels: {sorted('fix/' + c for c in classes)}")
-    # A revert takes the reverted PR's class. Strip: GitHub keeps a leading space.
+    fixes = sorted(set(labels) & set(FIX_LABELS))
+    # The changelogs read the title, so no label excuses it. strip: GitHub keeps a leading space.
     inner = title.strip()
     while r := REVERT_RE.match(inner):
         inner = r.group(1).strip()
-    m = PR_TITLE_RE.match(inner)
-    if not m and not set(labels) & set(FIX_LABELS):
-        raise ValueError(
-            f"no recognised '[TYPE]' or 'TICKET [TYPE]' prefix and no fix/ label: {title!r}"
-        )
+    if not PR_TITLE_RE.match(inner):
+        raise ValueError(f"no recognised '[TYPE]' or 'TICKET [TYPE]' prefix: {title!r}")
+    if MAIN_ONLY in labels and fixes:
+        raise ValueError(f"conflicting labels: {MAIN_ONLY} with {fixes}")
     if classes:
         return classes.pop()
-    # fix/needs-backport: a non-[FIX] PR (e.g. [MISC]) that stabilizing lines need; no-op on a [FIX] title.
-    return (
-        "fix"
-        if (m and m["type"] in ("FIX", "HOT-FIX")) or "fix/needs-backport" in labels
-        else None
-    )
+    return "fix" if fixes else None
+
+
+def main_fix_class(title, labels=()):
+    """pr_fix_class for a PR merged into main, which must say whether it is backported."""
+    cls = pr_fix_class(title, labels)
+    if refusal := release_only_refusal("main", labels):
+        raise ValueError(refusal)
+    return cls
 
 
 def release_only_refusal(base, labels):
+    """Label errors that depend on the base. Lint PR on every branch calls this by name, old workflow copies included."""
     if "release-branch-only" in labels and not base.startswith("release/"):
         return (
             "label `release-branch-only` is for PRs into a release/X.Y branch; remove it here "
             "(a main change reaches release branches through Backport)"
         )
+    if MAIN_ONLY in labels and base.startswith("release/"):
+        return f"label `{MAIN_ONLY}` is for PRs into main; remove it here"
+    if not base.startswith("release/") and not set(labels) & {MAIN_ONLY, *FIX_LABELS}:
+        return f"no backport label: add fix/needs-backport to copy it to release lines, or {MAIN_ONLY} to keep it on main"
     return None
 
 
@@ -621,3 +668,12 @@ def _introducers(repo, fix_sha):
             )
             introducers |= set(re.findall(r"^([0-9a-f]{40}) \d+ \d+", blame, re.M))
     return introducers
+
+
+if __name__ == "__main__":  # for workflow inputs: relmgr.py line|vtag VALUE
+    import sys
+
+    try:
+        print({"line": line, "vtag": vtag}[sys.argv[1]](sys.argv[2]))
+    except ValueError as e:
+        sys.exit(f"::error::{e}")

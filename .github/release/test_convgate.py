@@ -3,12 +3,16 @@ import datetime as dt
 import io
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
 
 os.environ["GITHUB_REPOSITORY"] = (
     "Zipstack/unstract-cloud"  # pin relstate to the cloud config
+)
+os.environ["GITHUB_SERVER_URL"] = (
+    "https://github.com"  # CI sets it, and summaries link only with it
 )
 import convgate as cg
 import relmgr as rm
@@ -121,7 +125,7 @@ class Gate(unittest.TestCase):
         self.assertIn(", 1 missing,", out)
         code, out = self.run_gate("release/1.6")
         self.assertEqual(code, 2)
-        self.assertIn("**release/1.5** (older", out)
+        self.assertIn(f"**{rm.branch_link('release/1.5')}** (older", out)
 
     def test_decline_converges(self):
         self.decline(self.c, "release/1.6")
@@ -187,7 +191,7 @@ class Gate(unittest.TestCase):
         self.pick(self.c, "release/1.6")
         code, out = self.run_gate("release/1.5")
         self.assertEqual(code, 2, out)
-        self.assertIn("into `refs/tags/v1.6.0`", out)
+        self.assertIn(f"into {rm.ref_link('refs/tags/v1.6.0')}", out)
 
     def test_declined_row(self):
         self.g("checkout", "-q", "release/1.6")
@@ -200,16 +204,24 @@ class Gate(unittest.TestCase):
         )
         d = self.tip("release/1.6")
         pick = self.g("rev-list", "-1", "release/1.5")
-        for b in ("release/1.5", "release/1.6"):
+        web = "https://github.com/Zipstack/unstract-cloud"
+        for b in ("release/1.6", "release/1.5"):
             code, out = self.run_gate(b)
             self.assertEqual(code, 0, out)
             self.assertIn(
                 "1 picks, 0 in the RC, 1 declined on release/1.6, 1 unclassifiable", out
             )
             self.assertIn(
-                f"- `{pick[:12]}` DECLINED on release/1.6 original {self.c[:12]}: not needed on 1.6 ({d[:7]})",
+                f"- [`{pick[:12]}`]({web}/commit/{pick}) DECLINED on [`release/1.6`]({web}/tree/release/1.6) "
+                f"original {self.c[:12]}: not needed on 1.6 ([`{d[:7]}`]({web}/commit/{d}))",
                 out,
             )
+        self.assertIn(
+            f"### Convergence gate: [`release/1.5`]({web}/tree/release/1.5) for cloud at "
+            f"[`refs/heads/release/1.5`]({web}/tree/release/1.5)",
+            out,
+        )
+        self.assertIn(f"**[`release/1.6`]({web}/tree/release/1.6)** (newer", out)
 
     def test_declined_on_older(self):
         self.g("checkout", "-q", "release/1.5")
@@ -380,7 +392,8 @@ class Gate(unittest.TestCase):
         code, out = self.run_gate("release/1.5", "on-prem")
         self.assertEqual(code, 2, out)
         self.assertIn(
-            "**release/1.6** (newer, stabilizing for on-prem; `refs/heads/release/1.5` into `refs/tags/v1.6.0`)",
+            f"**{rm.branch_link('release/1.6')}** (newer, stabilizing for on-prem; "
+            f"{rm.ref_link('refs/heads/release/1.5')} into {rm.ref_link('refs/tags/v1.6.0')})",
             out,
         )
         self.assertIn(
@@ -406,7 +419,8 @@ class Gate(unittest.TestCase):
         code, out = self.run_gate("release/1.5", "on-prem")
         self.assertEqual(code, 0, out)
         self.assertIn(
-            "(newer, stabilized for on-prem; `refs/heads/release/1.5` into `refs/tags/v1.6.1`)",
+            f"(newer, stabilized for on-prem; {rm.ref_link('refs/heads/release/1.5')} into "
+            f"{rm.ref_link('refs/tags/v1.6.1')})",
             out,
         )
 
@@ -441,8 +455,8 @@ class Gate(unittest.TestCase):
         table = self.checks(
             out,
             [
-                "release/1.5 is not GA for cloud yet: promote and publish it first, retire it, "
-                "or force with a reason"
+                "release/1.5 is not GA for cloud yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); "
+                "a release manager may override this with force and a reason"
             ],
         )
         self.assertEqual(
@@ -453,7 +467,7 @@ class Gate(unittest.TestCase):
         self.assertEqual(
             table[4],
             "| ⛔ promote order | release/1.5 is not GA for cloud yet | "
-            "promote or retire `release/1.5` |",
+            "promote or retire `release/1.5` (Retire one shipped line now; Abandon a line that never shipped when it has no GA) |",
         )
         _, out = self.run_gate(
             "release/1.5", prs={f"backport/1.6/{self.c[:7]}": (12, "u")}
@@ -487,7 +501,7 @@ class Gate(unittest.TestCase):
         rbo = self.rbo("pin the base image")  # its trailer twice: one ticket
         _, out = self.run_gate("release/1.5")
         what = f"UN-1 pin the base image ({rm.commit_link(rbo)})"
-        self.assertIn(f"- `{rbo[:12]}` RBO-ABSENT {what}", out)
+        self.assertIn(f"- {rm.commit_link(rbo, 12)} RBO-ABSENT {what}", out)
         self.assertNotIn("RBO-ABSENT original", out)
         self.assertEqual(
             self.checks(out)[5],
@@ -497,7 +511,7 @@ class Gate(unittest.TestCase):
         rbo = self.rbo("UN-1 [MISC] pin the base image")
         _, out = self.run_gate("release/1.5")
         self.assertIn(
-            f"- `{rbo[:12]}` RBO-ABSENT UN-1 [MISC] pin the base image ({rm.commit_link(rbo)})\n",
+            f"- {rm.commit_link(rbo, 12)} RBO-ABSENT UN-1 [MISC] pin the base image ({rm.commit_link(rbo)})\n",
             out,
         )
 
@@ -535,7 +549,7 @@ class Gate(unittest.TestCase):
             self.checks(out)[3],
             "| ✅ fixes match older lines | 1 older line converged (1 picks) | - |",
         )
-        self.assertIn("**release/1.5** (older", out)
+        self.assertIn(f"**{rm.branch_link('release/1.5')}** (older", out)
         self.rbo("pin the base image")
         _, out = self.run_gate("release/1.6")
         self.assertIn(
@@ -546,7 +560,8 @@ class Gate(unittest.TestCase):
         self.pick(self.c, "release/1.6")
         _, out = self.run_gate("release/1.5")
         self.assertIn(
-            "**release/1.6** (newer, stabilizing for cloud; `refs/heads/release/1.5` into `refs/heads/release/1.6`): "
+            f"**{rm.branch_link('release/1.6')}** (newer, stabilizing for cloud; "
+            f"{rm.ref_link('refs/heads/release/1.5')} into {rm.ref_link('refs/heads/release/1.6')}): "
             "1 picks, 1 in the RC, 1 unclassifiable\n",
             out,
         )
@@ -554,7 +569,7 @@ class Gate(unittest.TestCase):
             "release/1.6", promote_ref="v1.6.0-rc.1"
         )  # the RC being promoted: still "the RC"
         self.assertIn(
-            "into `refs/tags/v1.6.0-rc.1`): 1 picks, 0 in the RC, 1 missing, 1 unclassifiable\n",
+            f"into {rm.ref_link('refs/tags/v1.6.0-rc.1')}): 1 picks, 0 in the RC, 1 missing, 1 unclassifiable\n",
             out,
         )
         self.reg["cloud/backend"]["v1.6.0"] = self.reg["cloud/backend"]["v1.6.0-rc.1"]
@@ -564,7 +579,8 @@ class Gate(unittest.TestCase):
         self.rbo("pin the base image")
         _, out = self.run_gate("release/1.5")
         self.assertIn(
-            "**release/1.6** (newer, stabilized for cloud; `refs/heads/release/1.5` into `refs/tags/v1.6.0`): "
+            f"**{rm.branch_link('release/1.6')}** (newer, stabilized for cloud; "
+            f"{rm.ref_link('refs/heads/release/1.5')} into {rm.ref_link('refs/tags/v1.6.0')}): "
             "1 picks, 1 in v1.6.0, 1 unclassifiable · 1 release-branch-only to check\n",
             out,
         )
@@ -577,7 +593,7 @@ class Gate(unittest.TestCase):
         )  # a patch RC of a GA line: "the RC" again
         _, out = self.run_gate("release/1.6", promote_ref="v1.6.1-rc.1")
         self.assertIn(
-            "into `refs/tags/v1.6.1-rc.1`): 1 picks, 1 in the RC, 1 unclassifiable · 1 release-branch-only "
+            f"into {rm.ref_link('refs/tags/v1.6.1-rc.1')}): 1 picks, 1 in the RC, 1 unclassifiable · 1 release-branch-only "
             "to check\n",
             out,
         )
@@ -591,12 +607,16 @@ class Gate(unittest.TestCase):
             dict(self.lines[0], todo=["take a new RC build first."])
         )  # a message's full stop goes
         order = [
-            "release/1.5 is not GA for cloud yet: promote and publish it first, retire it, or force with a reason"
+            "release/1.5 is not GA for cloud yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); a release manager may override this with force and a reason"
         ]
         todo = f"merge or close conflict PR {rm.pr_link(12)}, then Take RC again"
         self.assertEqual(
             cg.next_steps(self.lines, order),
-            [todo, "take a new RC build first", "promote or retire `release/1.5`"],
+            [
+                todo,
+                "take a new RC build first",
+                "promote or retire `release/1.5` (Retire one shipped line now; Abandon a line that never shipped when it has no GA)",
+            ],
         )
         self.assertEqual(
             cg.next_steps(self.lines, []), [todo, "take a new RC build first"]
@@ -606,13 +626,22 @@ class Gate(unittest.TestCase):
             table[3].endswith(f"| {todo}<br>take a new RC build first |"), table[3]
         )
         self.assertTrue(
-            table[4].endswith("| promote or retire `release/1.5` |"), table[4]
+            table[4].endswith(
+                "| promote or retire `release/1.5` (Retire one shipped line now; Abandon a line that never shipped when it has no GA) |"
+            ),
+            table[4],
         )
 
-    def test_main_blocks_on_promote_order(self):
+    def test_main_lists_promote_order_without_blocking(self):
+        self.assertEqual(self.main_code(), 2)  # MISSING: c is not on 1.6
         self.decline(
             self.c, "release/1.6"
         )  # no MISSING row: only 1.5, not GA yet, holds 1.6 back
+        self.assertEqual(
+            self.main_code(), 0
+        )  # Promote enforces the order; Take RC builds past it
+
+    def main_code(self):
         path, md = (
             os.path.join(self.repo, "state.json"),
             os.path.join(self.repo, "out.md"),
@@ -622,6 +651,9 @@ class Gate(unittest.TestCase):
         with (
             contextlib.redirect_stdout(io.StringIO()),
             mock.patch.object(rs, "PINS", None),
+            mock.patch.object(  # no network: no conflict PR, no failure comment
+                cg.bm, "run_gh", lambda *a, **k: subprocess.CompletedProcess(a, 0, "", "")
+            ),
         ):
             code = cg.main(
                 [
@@ -637,11 +669,15 @@ class Gate(unittest.TestCase):
                     md,
                 ]
             )
-        self.assertEqual(code, 2)
         with open(md) as f:
             self.assertIn(
                 "| ⛔ promote order | release/1.5 is not GA for cloud yet |", f.read()
             )
+        return code
+
+    def test_bad_usage_is_an_error_not_missing_picks(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(cg.main(["--target", "cloud"]), 1)
 
     def test_scope_is_the_target(self):
         self.push("on-prem/backend", "v1.5.0-rc.2", "release/1.5")
@@ -658,7 +694,7 @@ class Gate(unittest.TestCase):
         self.pick(self.c, "release/1.6")
         code, out = self.run_gate("release/1.5")
         self.assertEqual(code, 2, out)
-        self.assertIn("into `refs/tags/v1.6.0`", out)
+        self.assertIn(f"into {rm.ref_link('refs/tags/v1.6.0')}", out)
         self.decline(self.c, "release/1.6")  # newer_branch carries the decline
         code, out = self.run_gate("release/1.5")
         self.assertEqual(code, 0, out)
@@ -669,7 +705,8 @@ class Gate(unittest.TestCase):
         code, out = self.run_gate("release/1.5")
         self.assertEqual(code, 2, out)
         self.assertIn(
-            f"- `{self.tip('release/1.5')[:12]}` MISSING original {self.c[:12]}", out
+            f"- {rm.commit_link(self.tip('release/1.5'), 12)} MISSING original {self.c[:12]}",
+            out,
         )
 
     def test_shipped_prs(self):
@@ -786,12 +823,8 @@ class Gate(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("::error::convgate: Refused", out.getvalue())
         for opt in ("--branch=-x", "--promote-ref=-x"):
-            with (
-                self.subTest(opt=opt),
-                contextlib.redirect_stderr(io.StringIO()),
-                self.assertRaises(SystemExit),
-            ):
-                cg.main(args + ["--branch", "release/1.6", opt])
+            with self.subTest(opt=opt), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(cg.main(args + ["--branch", "release/1.6", opt]), 1)
 
 
 class OssPins(unittest.TestCase):
@@ -911,6 +944,20 @@ class OssPins(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn(": take a new RC of release/1.6 to pin OSS release/1.6's tip.", out)
 
+    def test_oss_pins_link_to_the_oss_repo(self):
+        with mock.patch.dict(os.environ, {"GITHUB_SERVER_URL": "https://github.com"}):
+            _, out, _ = self.run_gate("release/1.6")
+        cloud, oss = (
+            "https://github.com/Zipstack/unstract-cloud",
+            "https://github.com/Zipstack/unstract",
+        )
+        self.assertIn(
+            f"### OSS pins: [`release/1.6`]({cloud}/tree/release/1.6) pins "
+            f"[`ee-v1.6.0`]({oss}/releases/tag/ee-v1.6.0)",
+            out,
+        )
+        self.assertIn(f"MISSING original [`{self.f[:12]}`]({oss}/commit/{self.f})", out)
+
     def test_repinned_newer_line_converges(self):
         self.g(self.oss, "checkout", "-q", "release/1.6")
         self.g(self.oss, "cherry-pick", "-x", self.f)
@@ -962,6 +1009,26 @@ class OssPins(unittest.TestCase):
         self.g(self.oss, "tag", "-d", "ee-v1.6.0")
         with self.assertRaisesRegex(RuntimeError, "no OSS tag ee-v1.6.0"):
             self.run_gate("release/1.6")
+
+
+class GhReads(unittest.TestCase):
+    def test_lookups_retry_a_transient_failure(self):
+        from test_backport_merge import S502, FakeGh, queue
+
+        calls = (
+            (lambda: cg.conflict_pr("backport/1.0/abc1234"), "[]"),
+            (lambda: cg.push_failure(7, "release/1.0"), ""),
+        )
+        for call, ok in calls:
+            fake = FakeGh(queue((1, "", S502), (0, ok, "")))
+            with (
+                mock.patch.object(cg.bm.subprocess, "run", fake),
+                mock.patch.object(cg.bm.time, "sleep"),
+                mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "o/r"}),
+                mock.patch("sys.stdout", io.StringIO()),
+            ):
+                self.assertFalse(call())
+            self.assertEqual(len(fake.calls), 2)
 
 
 if __name__ == "__main__":

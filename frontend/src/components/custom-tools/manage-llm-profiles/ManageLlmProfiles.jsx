@@ -7,6 +7,7 @@ import { Table } from "@/components/ui/shims/antd-structure";
 import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useCopyToClipboard } from "../../../hooks/useCopyToClipboard";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -71,6 +72,7 @@ function ManageLlmProfiles() {
     isPublicSource,
   } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
+  const copyToClipboard = useCopyToClipboard();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
   const MAX_PROFILE_COUNT = 4;
@@ -131,7 +133,7 @@ function ManageLlmProfiles() {
                 data-testid={rowTestId("copy-id")}
                 size="small"
                 icon={<Copy />}
-                onClick={() => copyProfileId(item?.profile_id)}
+                onClick={() => copyToClipboard(item?.profile_id, "Profile ID")}
               />
             </Tooltip>
             <Button
@@ -192,14 +194,6 @@ function ManageLlmProfiles() {
   const handleEdit = (profileId) => {
     setEditLlmProfileId(profileId);
     setIsAddLlm(true);
-  };
-
-  const copyProfileId = (profileId) => {
-    navigator.clipboard.writeText(profileId);
-    setAlertDetails({
-      type: "success",
-      content: "Profile ID copied to clipboard",
-    });
   };
 
   const handleDelete = (profileId) => {
