@@ -5,6 +5,31 @@ import type { SelectOption } from "./options";
 
 const CheckIcon = ACTION_ICONS.confirm;
 
+/*
+ * The row's classes, shared with the Radix `Select.Item`, which renders its
+ * own element. The row is `ui:h-8`, or `ui:h-12` with a description.
+ */
+
+/** The row frame; the active or highlighted row takes the accent. */
+export const OPTION_ROW_CLASS =
+  "ui:flex ui:w-full ui:cursor-pointer ui:items-center ui:gap-2.5 ui:rounded-md ui:px-2 ui:text-left ui:outline-none ui:select-none ui:data-active:bg-accent ui:data-highlighted:bg-accent";
+
+/** The option's label. */
+export const OPTION_LABEL_CLASS =
+  "ui:truncate ui:text-body-small ui:font-medium ui:text-foreground";
+
+/** The line under the label. */
+export const OPTION_DESCRIPTION_CLASS =
+  "ui:truncate ui:text-caption ui:text-muted-foreground";
+
+/** The 16px slot for a lucide icon or a provider logo before the label. */
+export const OPTION_LEADING_CLASS =
+  "ui:flex ui:size-4 ui:shrink-0 ui:items-center ui:justify-center ui:text-muted-foreground ui:[&>svg]:size-4";
+
+/** The check on the selected option. */
+export const OPTION_CHECK_CLASS =
+  "ui:ml-auto ui:size-4 ui:shrink-0 ui:text-primary";
+
 export type OptionRowProps = Readonly<{
   option: SelectOption;
   selected: boolean;
@@ -44,35 +69,25 @@ export function OptionRow({
       onClick={option.disabled ? undefined : onSelect}
       onMouseMove={option.disabled ? undefined : onActivate}
       className={cn(
-        "ui:flex ui:w-full ui:cursor-pointer ui:items-center ui:gap-2.5 ui:rounded-md ui:px-2 ui:text-left ui:outline-none ui:select-none ui:data-active:bg-accent ui:data-highlighted:bg-accent",
+        OPTION_ROW_CLASS,
         option.description ? "ui:h-12" : "ui:h-8",
         option.disabled && "ui:pointer-events-none ui:opacity-50",
         className,
       )}
     >
       {option.leading ? (
-        <span
-          data-slot="option-leading"
-          className="ui:flex ui:size-4 ui:shrink-0 ui:items-center ui:justify-center ui:text-muted-foreground ui:[&>svg]:size-4"
-        >
+        <span data-slot="option-leading" className={OPTION_LEADING_CLASS}>
           {option.leading}
         </span>
       ) : null}
       <span className="ui:flex ui:min-w-0 ui:flex-col">
-        <span className="ui:truncate ui:text-body-small ui:font-medium ui:text-foreground">
-          {option.label}
-        </span>
+        <span className={OPTION_LABEL_CLASS}>{option.label}</span>
         {option.description ? (
-          <span className="ui:truncate ui:text-caption ui:text-muted-foreground">
-            {option.description}
-          </span>
+          <span className={OPTION_DESCRIPTION_CLASS}>{option.description}</span>
         ) : null}
       </span>
       {selected ? (
-        <CheckIcon
-          aria-hidden
-          className="ui:ml-auto ui:size-4 ui:shrink-0 ui:text-primary"
-        />
+        <CheckIcon aria-hidden className={OPTION_CHECK_CLASS} />
       ) : null}
     </div>
   );
