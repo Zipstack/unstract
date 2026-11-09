@@ -108,6 +108,23 @@ is convention.
 - `CodeEditor` uses Monaco from its default CDN, as v0 does. Never call
   `loader.config()` in v1: the loader is shared with v0.
 
+## Selection inputs
+
+- Dropdowns, searchable pickers, chip inputs and segmented switches come
+  from `@v1/components/ui/select` (`Select`, `Combobox`, `MultiSelect`,
+  `SegmentedControl`, `Chip`); its README lists every prop and the keyboard.
+  Do not build another dropdown, picker or chip input.
+- Pick by list size: `Select` for a short, known list (under about 50
+  options; it renders every one), `Combobox` for a long or server-loaded
+  list (`loadOptions`), `MultiSelect` for several values, and
+  `SegmentedControl` for 2 to 5 always-visible options.
+- Every component takes `SelectOption` (`value`, `label`, `description`,
+  `leading`, `disabled`, `keywords`). A provider or connector logo goes in
+  `leading` as `<ProviderLogo decorative … />` from
+  `@v1/components/ui/BrandMark`.
+- Until P1-T06's `Field` lands, name them with `aria-label` or
+  `aria-labelledby`; do not put them inside `Field`.
+
 ## Folders and what each may import
 
 Every folder may import from itself. Test files (`*.test.ts(x)`,
