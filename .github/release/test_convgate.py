@@ -675,6 +675,60 @@ class Gate(unittest.TestCase):
             )
         return code
 
+    def run_main(self, *extra):
+        """cg.main on release/1.5 with no GITHUB_REPOSITORY; returns (code, the gh calls, stdout)."""
+        calls, state = [], os.path.join(self.repo, "state.json")
+        with open(state, "w") as f:
+            json.dump(rs.derive(self.repo, NOW, lambda a: self.reg.get(a, {})), f)
+
+        def gh(args, *a, **k):
+            calls.append(args)
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with (
+            contextlib.redirect_stdout(io.StringIO()) as buf,
+            contextlib.redirect_stderr(io.StringIO()),
+            mock.patch.dict(os.environ),
+            mock.patch.object(rs, "PINS", None),
+            mock.patch.object(cg.bm, "run_gh", gh),
+        ):
+            os.environ.pop("GITHUB_REPOSITORY")
+            code = cg.main(
+                [
+                    "--repo",
+                    self.repo,
+                    "--branch",
+                    "release/1.5",
+                    "--target",
+                    "cloud",
+                    "--state",
+                    state,
+                    "--out",
+                    os.path.join(self.repo, "out.md"),
+                    *extra,
+                ]
+            )
+        return code, calls, buf.getvalue()
+
+    def test_slug_flag_runs_outside_actions(self):
+        code, calls, out = self.run_main("--slug", "o/x")
+        self.assertEqual(code, 2, out)  # the MISSING pick, not an error
+        self.assertTrue(calls)
+        self.assertTrue(all("o/x" in " ".join(c) for c in calls), calls)
+
+    def test_slug_reaches_the_push_failure_lookup(self):
+        d = self.change("D: another fix (#9)", "main")
+        self.decline(self.c, "release/1.6")
+        self.pick(d, "release/1.5")
+        _, calls, _ = self.run_main("--slug", "o/x")
+        self.assertIn("repos/o/x/issues/9/comments", [a for c in calls for a in c])
+
+    def test_no_slug_is_an_error(self):
+        code, calls, out = self.run_main()
+        self.assertEqual(code, 1)
+        self.assertEqual(calls, [])
+        self.assertIn("--slug (or GITHUB_REPOSITORY) is required", out)
+
     def test_bad_usage_is_an_error_not_missing_picks(self):
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(cg.main(["--target", "cloud"]), 1)

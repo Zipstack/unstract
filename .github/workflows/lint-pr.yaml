@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  issues: read # the PR's live labels
 
 jobs:
   lint-pr:
@@ -28,13 +29,17 @@ jobs:
         id: class
         env:
           TITLE: ${{ github.event.pull_request.title }}
-          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
           BASE: ${{ github.base_ref }}
         run: |
           if [ ! -f .github/release/relmgr.py ]; then
             echo "::notice title=Lint PR::skipped: main has no .github/release/relmgr.py yet"
             exit 0
           fi
+          # Live labels, not the event's: a label swap fires one run per event, and an earlier event's payload is stale.
+          LABELS=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels?per_page=100" --jq '[.[].name]')
+          export LABELS
           python3 -I - <<'PY'  # isolated: no working-directory module shadows the stdlib
           import json, os, sys
           sys.path.insert(0, ".github/release")
@@ -52,13 +57,14 @@ jobs:
           if refusal := relmgr.release_only_refusal(os.environ["BASE"], labels):
               errors.append(refusal)
           if errors:
-              msg = ("\n".join(errors) + "\n"
+              menu = "" if os.environ["BASE"].startswith("release/") else (
                      "A PR into main needs one backport label; the title type does not choose it:\n"
                      "- `fix/needs-backport`: copy it to the release lines still awaiting GA.\n"
                      "- `main-only`: keep it on main. Never with a fix/ label, and not on a PR into a release branch.\n"
                      "- `fix/security` or `fix/critical` (at most one): also copy it to released lines, once the release "
                      "manager confirms. Either one is enough on its own.\n"
-                     "A revert takes the backport label of the PR it reverts.\n"
+                     "A revert takes the backport label of the PR it reverts.\n")
+              msg = ("\n".join(errors) + "\n" + menu +
                      "Title: `[TYPE] text` or `TICKET [TYPE] text` (e.g. `ABC-123 [FIX] ...`).")
               print("::error title=Lint PR::" + msg.replace("\n", "%0A"))  # workflow commands end at a raw newline
               summary.write(f"### Lint PR: failed\n\n{msg}\n")

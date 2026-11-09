@@ -1809,6 +1809,15 @@ class PushTitle(unittest.TestCase):
             out.getvalue(),
         )
 
+    def test_push_with_no_pr_is_unclassifiable(self):
+        with (
+            mock.patch.object(bp, "fix_class", return_value=(None, "no PR", None)),
+            mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+        ):
+            title = bp.push_title("o/r", "c" * 40)
+        self.assertTrue(title.endswith(f" (no PR, {bp.UNCLASSIFIABLE})"), title)
+        self.assertIn("::warning::ccccccc: fix class: no PR found", out.getvalue())
+
 
 class DispatchCommit(unittest.TestCase):
     def test_unclassifiable_named_commit_fails(self):
@@ -1821,8 +1830,18 @@ class DispatchCommit(unittest.TestCase):
 
     def test_unlabelled_named_commit_fails_with_its_pr(self):
         pr = {"number": 8, "title": "UN-8 [FIX] x", "labels": []}
+        # Real targets, confirm on: without the guard this PR would be picked onto every line.
+        targets = {
+            "fix": ["release/0.190"],
+            "security_critical": [
+                {"branch": "release/0.190", "needs_rm_confirmation": False},
+                {"branch": "release/0.187", "needs_rm_confirmation": True},
+            ],
+        }
         with mock.patch("sys.stdout", io.StringIO()):
-            rows = bp._dispatch_commit("o/r", {}, "c" * 40, False, [], [], named_pr=pr)
+            rows = bp._dispatch_commit(
+                "o/r", targets, "c" * 40, True, [], [], named_pr=pr
+            )
         self.assertEqual(rows[0][1:4], ("#8", "error", "-"))
         self.assertRegex(rows[0][4], r"^failed: UN-8 \[FIX\] x \(no backport label: ")
 

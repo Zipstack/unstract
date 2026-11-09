@@ -84,11 +84,11 @@ jobs:
           GH_TOKEN: ${{ steps.bot.outputs.token }}
           RELEASE_BOT_APP_SLUG: ${{ steps.bot.outputs.app-slug }} # a leftover pick PR is squashed only if this App opened it
           COMMITS: ${{ inputs.commits }}
-          CONFIRM: ${{ inputs.patch_released_lines }}
+          PATCH_RELEASED_LINES: ${{ inputs.patch_released_lines }}
           LINES: ${{ inputs.lines }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = push ]; then args=(--rescan); else args=(--commits="$COMMITS"); fi
-          if [ "$CONFIRM" = true ]; then args+=(--confirm-stabilized); fi
+          if [ "$PATCH_RELEASED_LINES" = true ]; then args+=(--patch-released-lines); fi
           python3 "$RUNNER_TEMP/backport.py" --state "$RUNNER_TEMP/state.json" "${args[@]}" --lines="$LINES"
 
   record:

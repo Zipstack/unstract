@@ -3501,7 +3501,9 @@ class InputSteps(unittest.TestCase):
         self.assertEqual(list(form), ["commits", "patch_released_lines", "lines"])
         self.assertIn("required: true", form["commits"])
         with open(os.path.join(HERE, "..", "workflows", "backport.yaml")) as fh:
-            self.assertNotIn("confirm_stabilized", fh.read())
+            text = fh.read()
+        for old in ("confirm_stabilized", "confirm-stabilized", "CONFIRM:"):
+            self.assertNotIn(old, text)
 
     def test_backport_run_name(self):
         dispatch = {"github.event_name": "workflow_dispatch", "inputs.commits": "#12 #13"}
@@ -4204,15 +4206,26 @@ elif a[:2] in (["release", "edit"], ["release", "create"]):
 class LintPrStep(unittest.TestCase):
     """The Classify PR step judges each PR against its own base."""
 
-    def classify(self, title, labels, base):
+    def classify(self, title, labels, base, gh_exit=0):
+        """labels: what the API returns now; the event payload's labels are a stale decoy."""
         with tempfile.TemporaryDirectory() as d:
+            with open(
+                os.path.join(d, "gh"), "w"
+            ) as fh:  # fake gh: the issue labels API, jq already applied
+                fh.write(
+                    f'#!/bin/sh\necho "$*" >> "{d}/calls"\necho \'{json.dumps(labels)}\'\nexit {gh_exit}\n'
+                )
+            os.chmod(os.path.join(d, "gh"), 0o755)
             r = subprocess.run(
                 ["bash", "-e", "-c", step("lint-pr.yaml", "Classify PR")],
                 cwd=os.path.join(HERE, "..", ".."),
                 env={
                     **os.environ,
+                    "PATH": f"{d}:{os.environ['PATH']}",
                     "TITLE": title,
-                    "LABELS": json.dumps(labels),
+                    "LABELS": json.dumps(["main-only", "fix/needs-backport"]),
+                    "GITHUB_REPOSITORY": "o/r",
+                    "PR": "7",
                     "BASE": base,
                     "GITHUB_STEP_SUMMARY": os.path.join(d, "summary"),
                     "GITHUB_OUTPUT": os.path.join(d, "output"),
@@ -4220,7 +4233,21 @@ class LintPrStep(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
+            with open(os.path.join(d, "calls")) as fh:
+                self.assertIn("repos/o/r/issues/7/labels", fh.read())
             return r.returncode, r.stdout
+
+    def test_a_failed_label_read_fails_the_step(self):
+        rc, out = self.classify("UN-1 [FIX] x", ["main-only"], "main", gh_exit=1)
+        self.assertNotEqual(rc, 0)
+        self.assertNotIn("class=", out)
+
+    def test_a_release_failure_omits_the_main_label_menu(self):
+        rc, out = self.classify("fix: x", [], "release/0.186")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("no recognised '[TYPE]'", out)
+        self.assertNotIn("A PR into main needs one backport label", out)
+        self.assertIn("Title: `[TYPE] text`", out)
 
     def test_a_main_pr_needs_a_backport_label(self):
         rc, out = self.classify("UN-1 [FIX] x", [], "main")
