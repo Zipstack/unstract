@@ -2027,6 +2027,20 @@ class PickStep(unittest.TestCase):
             {u for u in used if not re.search(rf"^\s+{u}:", inputs, re.M)}, set()
         )
 
+    def test_every_variable_it_reads_is_set(self):
+        env = self.run_.split("run: |", 1)[0]
+        used = set(re.findall(r"\$\{?([A-Z_]+)", self.run_.split("run: |", 1)[1]))
+        self.assertIn("PATCH_RELEASED_LINES", used)
+        self.assertEqual(
+            {
+                u
+                for u in used
+                if not u.startswith(("GITHUB_", "RUNNER_"))
+                and not re.search(rf"^\s+{u}:", env, re.M)
+            },
+            set(),
+        )
+
 
 TARGETS = {
     "fix": ["release/0.191"],

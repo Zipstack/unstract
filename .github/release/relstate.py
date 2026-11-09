@@ -55,7 +55,7 @@ def use(slug):
     global TARGETS, LATEST_ONLY, KEPT, PINS, PREFIX, VER_RE
     if slug not in REPOS:
         raise RuntimeError(
-            f"relstate has no config for repo {slug!r} (GITHUB_REPOSITORY); known: {', '.join(REPOS)}"
+            f"relstate has no config for repo {slug!r}; known: {', '.join(REPOS)}"
         )
     TARGETS, LATEST_ONLY, KEPT, PINS, PREFIX = REPOS[slug]
     VER_RE = ver_re(PREFIX)
