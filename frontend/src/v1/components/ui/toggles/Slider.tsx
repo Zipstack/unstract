@@ -42,6 +42,7 @@ export function Slider({
   defaultValue,
   min = 0,
   onValueChange,
+  "aria-label": ariaLabel,
   "aria-describedby": ariaDescribedBy,
   ...props
 }: SliderProps): JSX.Element {
@@ -52,7 +53,12 @@ export function Slider({
   const hasDescription = description !== undefined && description !== null;
   const labelId = `${id}-label`;
   const descriptionId = hasDescription ? `${id}-description` : undefined;
-  const stringLabel = typeof label === "string" ? label : undefined;
+  // A single thumb is named by the slider's own name; a range's thumbs keep
+  // Radix's "Minimum"/"Maximum" unless `thumbLabels` names them.
+  const single = values.length === 1;
+  const singleName = single
+    ? ((typeof label === "string" ? label : undefined) ?? ariaLabel)
+    : undefined;
   return (
     <div data-slot="slider-field" className="ui:grid ui:gap-2">
       {hasLabel || hasDescription || showValue ? (
@@ -70,7 +76,7 @@ export function Slider({
               ) : null}
               {showValue ? (
                 <span className="ui:text-caption ui:text-muted-foreground ui:tabular-nums">
-                  {values.map(formatValue).join(" – ")}
+                  {values.map((v) => formatValue(v)).join(" – ")}
                 </span>
               ) : null}
             </div>
@@ -92,6 +98,7 @@ export function Slider({
           setInternal(next);
           onValueChange?.(next);
         }}
+        aria-label={ariaLabel}
         aria-labelledby={hasLabel ? labelId : undefined}
         aria-describedby={
           [ariaDescribedBy, descriptionId].filter(Boolean).join(" ") ||
@@ -113,15 +120,19 @@ export function Slider({
           />
         </SliderPrimitive.Track>
         {values.map((thumbValue, i) => {
-          const thumbLabel = thumbLabels?.[i] ?? stringLabel;
+          const thumbName = thumbLabels?.[i] ?? singleName;
           return (
             <SliderPrimitive.Thumb
               // biome-ignore lint/suspicious/noArrayIndexKey: thumbs have no identity beyond their position
               key={i}
               data-slot="slider-thumb"
-              aria-label={thumbLabel}
+              // Spread only when defined: an explicit undefined would wipe
+              // Radix's own range names.
+              {...(thumbName ? { "aria-label": thumbName } : {})}
               aria-labelledby={
-                thumbLabel === undefined && hasLabel ? labelId : undefined
+                thumbName === undefined && single && hasLabel
+                  ? labelId
+                  : undefined
               }
               aria-valuetext={formatValue(thumbValue)}
               className="ui:block ui:size-4 ui:cursor-pointer ui:rounded-full ui:border ui:border-primary ui:bg-background ui:shadow-sm ui:focus-visible:focus-ring"

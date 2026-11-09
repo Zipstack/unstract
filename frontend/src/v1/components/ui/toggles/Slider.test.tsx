@@ -70,6 +70,50 @@ it("names each thumb of a range", () => {
   );
 });
 
+it("keeps Radix's range names when only the slider is labelled", () => {
+  renderV1(<Slider label="Pages" defaultValue={[2, 8]} min={0} max={10} />);
+  expect(screen.getByRole("slider", { name: "Minimum" })).toHaveAttribute(
+    "aria-valuenow",
+    "2",
+  );
+  expect(screen.getByRole("slider", { name: "Maximum" })).toHaveAttribute(
+    "aria-valuenow",
+    "8",
+  );
+});
+
+it("follows a controlled value", () => {
+  const oneDecimal = (v: number) => v.toFixed(1);
+  const { rerender } = renderV1(
+    <Slider label="Top P" value={[30]} formatValue={oneDecimal} showValue />,
+  );
+  const thumb = screen.getByRole("slider", { name: "Top P" });
+  expect(thumb).toHaveAttribute("aria-valuenow", "30");
+  expect(thumb).toHaveAttribute("aria-valuetext", "30.0");
+  expect(screen.getByText("30.0")).toBeVisible();
+  rerender(
+    <Slider label="Top P" value={[40]} formatValue={oneDecimal} showValue />,
+  );
+  expect(thumb).toHaveAttribute("aria-valuenow", "40");
+  expect(thumb).toHaveAttribute("aria-valuetext", "40.0");
+  expect(screen.getByText("40.0")).toBeVisible();
+  expect(screen.queryByText("30.0")).toBeNull();
+});
+
+it("passes only the value to the formatter", () => {
+  renderV1(
+    <Slider
+      label="Temperature"
+      defaultValue={[0.5]}
+      max={1}
+      step={0.1}
+      formatValue={(v: number, digits = 2) => v.toFixed(digits)}
+      showValue
+    />,
+  );
+  expect(screen.getByText("0.50")).toBeVisible();
+});
+
 it("names the thumb from a non-string label through aria-labelledby", () => {
   renderV1(<Slider label={<em>Temperature</em>} defaultValue={[50]} />);
   const thumb = screen.getByRole("slider", { name: "Temperature" });
@@ -144,6 +188,7 @@ it("renders only the slider when there is no label, description or value", () =>
   const { container } = renderV1(
     <Slider aria-label="Volume" defaultValue={[50]} />,
   );
+  expect(screen.getByRole("slider", { name: "Volume" })).toBeInTheDocument();
   const field = container.querySelector("[data-slot=slider-field]");
   expect(field?.children).toHaveLength(1);
   expect(field?.firstElementChild).toHaveAttribute("data-slot", "slider");
@@ -173,6 +218,7 @@ it("has the board's track and thumb sizes by class", () => {
   const { container } = renderV1(
     <Slider aria-label="Volume" defaultValue={[50]} />,
   );
+  expect(screen.getByRole("slider", { name: "Volume" })).toBeInTheDocument();
   expect(container.querySelector("[data-slot=slider-track]")).toHaveClass(
     "ui:h-1.5",
     "ui:bg-muted",
