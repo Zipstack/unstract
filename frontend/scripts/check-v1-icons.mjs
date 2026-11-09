@@ -252,7 +252,8 @@ function checkFile(file, aliases, report) {
 const CSS_IMPORT_RULES = new Set(["import", "reference", "plugin", "config"]);
 
 /* The target of an import at-rule: its first string, word or url(). A
- * leading `~` (the Sass/Less package prefix) is dropped. */
+ * CSS escape is undone and a leading `~` (the Sass/Less package prefix)
+ * dropped. */
 function cssImportTarget(params) {
   const first = valueParser(params).nodes.find((n) => n.type !== "space");
   const target =
@@ -261,7 +262,8 @@ function cssImportTarget(params) {
       : first?.type === "string" || first?.type === "word"
         ? first.value
         : undefined;
-  return target?.replace(/^~/, "");
+  // Vite drops a backslash before any non-word character (`\@scope`).
+  return target?.replace(/\\(\W)/g, "$1").replace(/^~/, "");
 }
 
 /* Unparseable CSS and unreadable targets are check-v1's to report. */
