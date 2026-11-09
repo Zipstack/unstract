@@ -12,6 +12,7 @@ import {
   CONTROL_DESCRIPTION_CLASS,
   CONTROL_LABEL_CLASS,
   ControlRow,
+  isPresent,
 } from "./ControlRow";
 
 /** The group's `disabled`, so each Radio can dim its label with the group. */
@@ -25,6 +26,8 @@ export type RadioGroupProps = Omit<
     /** Visible group name; rendered above the items and used as aria-labelledby. Without it pass aria-label. */
     label?: ReactNode;
     description?: ReactNode;
+    /** Class for the field (heading, description and items), not the item list. */
+    className?: string;
   }>;
 
 /**
@@ -41,12 +44,15 @@ export function RadioGroup({
   ...props
 }: RadioGroupProps): JSX.Element {
   const id = useId();
-  const hasLabel = label !== undefined && label !== null;
-  const hasDescription = description !== undefined && description !== null;
+  const hasLabel = isPresent(label);
+  const hasDescription = isPresent(description);
   const labelId = `${id}-label`;
   const descriptionId = hasDescription ? `${id}-description` : undefined;
   return (
-    <div data-slot="radio-group-field" className="ui:grid ui:gap-2">
+    <div
+      data-slot="radio-group-field"
+      className={cn("ui:grid ui:gap-2", className)}
+    >
       {hasLabel || hasDescription ? (
         <div className="ui:grid ui:gap-0.5">
           {hasLabel ? (
@@ -74,12 +80,11 @@ export function RadioGroup({
             [ariaDescribedBy, descriptionId].filter(Boolean).join(" ") ||
             undefined
           }
-          className={cn(
+          className={
             props.orientation === "horizontal"
               ? "ui:flex ui:flex-wrap ui:gap-4"
-              : "ui:grid ui:gap-2",
-            className,
-          )}
+              : "ui:grid ui:gap-2"
+          }
           {...props}
         />
       </RadioGroupDisabledContext.Provider>

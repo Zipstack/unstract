@@ -1,6 +1,7 @@
 /*
  * The public API of the toggles: import from here. `ControlRow` is an
- * internal and stays private; P1-T06 replaces it with `Field`.
+ * internal and stays private. The gallery (`./toggles.gallery`) is not
+ * exported either: the component gallery imports it directly.
  */
 export { Checkbox, type CheckboxProps } from "./Checkbox";
 export {
@@ -11,4 +12,3 @@ export {
 } from "./RadioGroup";
 export { Slider, type SliderProps } from "./Slider";
 export { Switch, type SwitchProps } from "./Switch";
-export { type GalleryEntry, TOGGLES_GALLERY } from "./toggles.gallery";

@@ -172,6 +172,36 @@ it("renders only the radio when there is no label or description", () => {
   expect(row).not.toBeNull();
   const radio = screen.getByRole("radio", { name: "GPT" });
   expect(row?.children).toHaveLength(1);
-  expect(row?.firstElementChild).toBe(radio);
+  const wrapper = row?.firstElementChild;
+  expect(wrapper?.tagName).toBe("SPAN");
+  expect(wrapper?.children).toHaveLength(1);
+  expect(wrapper?.firstElementChild).toBe(radio);
   expect(radio).not.toHaveAttribute("aria-describedby");
+});
+
+it("treats a false label and an empty description as absent", () => {
+  const { container } = renderV1(
+    <RadioGroup label={false} description="" aria-label="Model">
+      <Radio value="gpt" label="GPT" />
+    </RadioGroup>,
+  );
+  const group = screen.getByRole("radiogroup", { name: "Model" });
+  expect(group).not.toHaveAttribute("aria-labelledby");
+  expect(group).not.toHaveAttribute("aria-describedby");
+  const field = container.querySelector("[data-slot=radio-group-field]");
+  expect(field?.children).toHaveLength(1);
+});
+
+it("puts className on the field and keeps the layout classes on the list", () => {
+  const { container } = renderV1(
+    <RadioGroup aria-label="Model" className="ui:max-w-xs">
+      <Radio value="gpt" label="GPT" />
+    </RadioGroup>,
+  );
+  expect(container.querySelector("[data-slot=radio-group-field]")).toHaveClass(
+    "ui:max-w-xs",
+  );
+  const group = screen.getByRole("radiogroup", { name: "Model" });
+  expect(group).not.toHaveClass("ui:max-w-xs");
+  expect(group).toHaveClass("ui:grid", "ui:gap-2");
 });

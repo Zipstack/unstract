@@ -4,7 +4,12 @@ import { type JSX, type ReactNode, useId } from "react";
 
 /** Text style of a control's label; shared by every toggle and the slider. */
 export const CONTROL_LABEL_CLASS =
-  "ui:text-body-small ui:font-medium ui:text-foreground ui:select-none ui:leading-4 ui:data-disabled:opacity-50";
+  "ui:text-body-small ui:font-medium ui:text-foreground ui:select-none ui:leading-5 ui:data-disabled:opacity-50";
+
+/** Whether a label or description renders: `false` and `""` count as absent. */
+export function isPresent(node: ReactNode): boolean {
+  return node !== null && node !== undefined && node !== false && node !== "";
+}
 
 /** Text style of a control's description. */
 export const CONTROL_DESCRIPTION_CLASS =
@@ -24,7 +29,8 @@ export type ControlRowProps = Readonly<{
 /**
  * A control with its label and description beside it. The label is tied to
  * the control by `htmlFor`, the description by `aria-describedby`. With
- * neither, only the control renders.
+ * neither, only the control renders. The control sits in a 20px box, the
+ * label's line height, so every control centres on the label's first line.
  */
 export function ControlRow({
   control,
@@ -36,15 +42,17 @@ export function ControlRow({
 }: ControlRowProps): JSX.Element {
   const generatedId = useId();
   const id = idProp ?? generatedId;
-  const hasDescription = description !== undefined && description !== null;
-  const hasLabel = label !== undefined && label !== null;
+  const hasDescription = isPresent(description);
+  const hasLabel = isPresent(label);
   const descriptionId = hasDescription ? `${id}-description` : undefined;
   return (
     <div
       data-slot="control-row"
       className={cn("ui:flex ui:items-start ui:gap-2", className)}
     >
-      {control({ id, describedBy: descriptionId })}
+      <span className="ui:flex ui:h-5 ui:shrink-0 ui:items-center">
+        {control({ id, describedBy: descriptionId })}
+      </span>
       {hasLabel || hasDescription ? (
         <div className="ui:grid ui:gap-0.5">
           {hasLabel ? (

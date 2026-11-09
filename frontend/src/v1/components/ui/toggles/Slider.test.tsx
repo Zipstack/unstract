@@ -164,24 +164,39 @@ it("shows a range joined by an en dash and follows uncontrolled changes", async 
   expect(screen.getByText("3 – 8")).toBeVisible();
 });
 
-it("is described by its description, keeping the caller's", () => {
+it("is described by its description on the thumb, keeping the caller's", () => {
   const { container } = renderV1(
+    <>
+      <span id="extra">Extra note</span>
+      <Slider
+        label="Temperature"
+        description="Higher is more random"
+        aria-describedby="extra"
+        defaultValue={[50]}
+      />
+    </>,
+  );
+  const thumb = screen.getByRole("slider", { name: "Temperature" });
+  expect(thumb).toHaveAccessibleDescription("Extra note Higher is more random");
+  const group = screen.getByRole("group", { name: "Temperature" });
+  expect(group).toBe(container.querySelector("[data-slot=slider]"));
+  expect(group).toHaveAccessibleDescription("Extra note Higher is more random");
+});
+
+it("describes every thumb of a range", () => {
+  renderV1(
     <Slider
-      label="Temperature"
-      description="Higher is more random"
-      aria-describedby="extra"
-      defaultValue={[50]}
+      label="Pages"
+      description="Inclusive"
+      thumbLabels={["Minimum", "Maximum"]}
+      defaultValue={[2, 8]}
     />,
   );
-  const root = container.querySelector("[data-slot=slider]");
-  const description = screen.getByText("Higher is more random");
-  expect(description.id).not.toBe("");
-  const ids = root?.getAttribute("aria-describedby")?.split(" ") ?? [];
-  expect(ids).toContain("extra");
-  expect(ids).toContain(description.id);
-  expect(root?.getAttribute("aria-labelledby")).toBe(
-    screen.getByText("Temperature").id,
-  );
+  for (const name of ["Minimum", "Maximum"]) {
+    expect(screen.getByRole("slider", { name })).toHaveAccessibleDescription(
+      "Inclusive",
+    );
+  }
 });
 
 it("renders only the slider when there is no label, description or value", () => {
@@ -208,6 +223,7 @@ it("is inert when disabled", async () => {
   expect(root).toHaveAttribute("data-disabled");
   expect(screen.getByText("Temperature")).toHaveAttribute("data-disabled");
   const thumb = screen.getByRole("slider", { name: "Temperature" });
+  expect(thumb).toHaveAttribute("aria-disabled", "true");
   thumb.focus();
   await user.keyboard("{ArrowRight}");
   expect(thumb).toHaveAttribute("aria-valuenow", "50");
@@ -232,3 +248,47 @@ it("has the board's track and thumb sizes by class", () => {
     "ui:focus-visible:focus-ring",
   );
 });
+
+it("leaves an enabled thumb without aria-disabled", () => {
+  renderV1(<Slider aria-label="Volume" defaultValue={[50]} />);
+  expect(screen.getByRole("slider", { name: "Volume" })).not.toHaveAttribute(
+    "aria-disabled",
+  );
+});
+
+it("treats a false label as absent", () => {
+  const { container } = renderV1(
+    <Slider label={false} aria-label="Volume" defaultValue={[50]} />,
+  );
+  const field = container.querySelector("[data-slot=slider-field]");
+  expect(field?.children).toHaveLength(1);
+  expect(screen.getByRole("slider", { name: "Volume" })).not.toHaveAttribute(
+    "aria-labelledby",
+  );
+});
+
+it("names the thumb from aria-label when the label is empty", () => {
+  renderV1(<Slider label="" aria-label="Volume" defaultValue={[50]} />);
+  expect(screen.getByRole("slider", { name: "Volume" })).toHaveAttribute(
+    "aria-label",
+    "Volume",
+  );
+});
+
+it("puts className on the field, so the label line and track narrow together", () => {
+  const { container } = renderV1(
+    <Slider label="Volume" className="ui:max-w-xs" defaultValue={[50]} />,
+  );
+  expect(container.querySelector("[data-slot=slider-field]")).toHaveClass(
+    "ui:max-w-xs",
+  );
+  expect(container.querySelector("[data-slot=slider]")).not.toHaveClass(
+    "ui:max-w-xs",
+  );
+});
+
+// Type-level guard, never rendered: the track is horizontal only.
+export function _sliderHasNoOrientation() {
+  // @ts-expect-error orientation is not supported
+  return <Slider aria-label="Volume" orientation="vertical" />;
+}

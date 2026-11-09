@@ -75,6 +75,9 @@ it("renders only the switch when there is no label or description", () => {
   expect(row).not.toBeNull();
   const control = screen.getByRole("switch", { name: "Dark mode" });
   expect(row?.children).toHaveLength(1);
-  expect(row?.firstElementChild).toBe(control);
+  const wrapper = row?.firstElementChild;
+  expect(wrapper?.tagName).toBe("SPAN");
+  expect(wrapper?.children).toHaveLength(1);
+  expect(wrapper?.firstElementChild).toBe(control);
   expect(control).not.toHaveAttribute("aria-describedby");
 });

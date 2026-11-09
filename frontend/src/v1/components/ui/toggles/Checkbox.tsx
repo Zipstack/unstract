@@ -5,9 +5,11 @@ import { ControlRow } from "./ControlRow";
 
 export type CheckboxProps = Omit<
   ComponentProps<typeof CheckboxPrimitive.Root>,
-  "asChild" | "children"
+  "asChild" | "children" | "defaultChecked"
 > &
   Readonly<{
+    /** Uncontrolled start state. Mixed is controlled only (`checked="indeterminate"`), because the icon follows `checked`. */
+    defaultChecked?: boolean;
     label?: ReactNode;
     description?: ReactNode;
     /** Class for the row, not the box. */

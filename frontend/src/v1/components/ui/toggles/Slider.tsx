@@ -7,11 +7,15 @@ import {
   useId,
   useState,
 } from "react";
-import { CONTROL_DESCRIPTION_CLASS, CONTROL_LABEL_CLASS } from "./ControlRow";
+import {
+  CONTROL_DESCRIPTION_CLASS,
+  CONTROL_LABEL_CLASS,
+  isPresent,
+} from "./ControlRow";
 
 export type SliderProps = Omit<
   ComponentProps<typeof SliderPrimitive.Root>,
-  "asChild" | "children"
+  "asChild" | "children" | "orientation"
 > &
   Readonly<{
     label?: ReactNode;
@@ -22,13 +26,17 @@ export type SliderProps = Omit<
     formatValue?: (value: number) => string;
     /** Shows the formatted value(s) at the end of the label line. */
     showValue?: boolean;
+    /** Class for the field (label line, description and track), not the track alone. */
+    className?: string;
   }>;
 
 /**
  * A slider with one thumb per value, an optional label and description above
  * the track, and the value shown at the end of the label line with
  * `showValue`. Arrows move by `step`, PageUp/PageDown by ten steps, Home and
- * End jump to `min` and `max`.
+ * End jump to `min` and `max`. Horizontal only. The root is a labelled,
+ * described `group`; each thumb carries the description and the disabled
+ * state too, since the thumbs are what assistive tech focuses.
  */
 export function Slider({
   label,
@@ -49,18 +57,20 @@ export function Slider({
   const id = useId();
   const [internal, setInternal] = useState(defaultValue ?? [min]);
   const values = value ?? internal;
-  const hasLabel = label !== undefined && label !== null;
-  const hasDescription = description !== undefined && description !== null;
+  const hasLabel = isPresent(label);
+  const hasDescription = isPresent(description);
   const labelId = `${id}-label`;
   const descriptionId = hasDescription ? `${id}-description` : undefined;
+  const describedBy =
+    [ariaDescribedBy, descriptionId].filter(Boolean).join(" ") || undefined;
   // A single thumb is named by the slider's own name; a range's thumbs keep
   // Radix's "Minimum"/"Maximum" unless `thumbLabels` names them.
   const single = values.length === 1;
   const singleName = single
-    ? ((typeof label === "string" ? label : undefined) ?? ariaLabel)
+    ? ((hasLabel && typeof label === "string" ? label : undefined) ?? ariaLabel)
     : undefined;
   return (
-    <div data-slot="slider-field" className="ui:grid ui:gap-2">
+    <div data-slot="slider-field" className={cn("ui:grid ui:gap-2", className)}>
       {hasLabel || hasDescription || showValue ? (
         <div className="ui:grid ui:gap-0.5">
           {hasLabel || showValue ? (
@@ -90,6 +100,7 @@ export function Slider({
       ) : null}
       <SliderPrimitive.Root
         data-slot="slider"
+        role="group"
         disabled={disabled}
         value={value}
         defaultValue={defaultValue}
@@ -100,14 +111,8 @@ export function Slider({
         }}
         aria-label={ariaLabel}
         aria-labelledby={hasLabel ? labelId : undefined}
-        aria-describedby={
-          [ariaDescribedBy, descriptionId].filter(Boolean).join(" ") ||
-          undefined
-        }
-        className={cn(
-          "ui:relative ui:flex ui:w-full ui:touch-none ui:select-none ui:items-center ui:data-disabled:pointer-events-none ui:data-disabled:opacity-50",
-          className,
-        )}
+        aria-describedby={describedBy}
+        className="ui:relative ui:flex ui:w-full ui:touch-none ui:select-none ui:items-center ui:data-disabled:pointer-events-none ui:data-disabled:opacity-50"
         {...props}
       >
         <SliderPrimitive.Track
@@ -134,6 +139,8 @@ export function Slider({
                   ? labelId
                   : undefined
               }
+              aria-describedby={describedBy}
+              aria-disabled={disabled || undefined}
               aria-valuetext={formatValue(thumbValue)}
               className="ui:block ui:size-4 ui:cursor-pointer ui:rounded-full ui:border ui:border-primary ui:bg-background ui:shadow-sm ui:focus-visible:focus-ring"
             />

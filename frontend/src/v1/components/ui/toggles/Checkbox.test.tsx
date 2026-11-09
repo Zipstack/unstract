@@ -84,14 +84,48 @@ it("keeps the caller's aria-describedby alongside the description", () => {
   expect(ids).toContain(screen.getByText("Weekly digest").id);
 });
 
-it("renders only the box when there is no label or description", () => {
-  const { container } = renderV1(<Checkbox aria-label="Select row" />);
+const expectOnlyTheBox = (container: HTMLElement, name: string) => {
   const row = container.querySelector("[data-slot=control-row]");
   expect(row).not.toBeNull();
-  const box = screen.getByRole("checkbox", { name: "Select row" });
+  const box = screen.getByRole("checkbox", { name });
   expect(row?.children).toHaveLength(1);
-  expect(row?.firstElementChild).toBe(box);
+  const wrapper = row?.firstElementChild;
+  expect(wrapper?.tagName).toBe("SPAN");
+  expect(wrapper?.children).toHaveLength(1);
+  expect(wrapper?.firstElementChild).toBe(box);
   expect(box).not.toHaveAttribute("aria-describedby");
   expect(row?.querySelector("[data-slot=control-label]")).toBeNull();
   expect(row?.querySelector("p")).toBeNull();
+};
+
+it("renders only the box when there is no label or description", () => {
+  const { container } = renderV1(<Checkbox aria-label="Select row" />);
+  expectOnlyTheBox(container, "Select row");
 });
+
+it("treats a false or empty label and description as absent", () => {
+  const { container } = renderV1(
+    <Checkbox label={false} description="" aria-label="x" />,
+  );
+  expectOnlyTheBox(container, "x");
+});
+
+it("centres the box on a 20px first line", () => {
+  const { container } = renderV1(<Checkbox label="Email me" />);
+  const wrapper = container.querySelector(
+    "[data-slot=control-row]",
+  )?.firstElementChild;
+  expect(wrapper).toHaveClass("ui:flex", "ui:h-5", "ui:items-center");
+  expect(screen.getByText("Email me")).toHaveClass("ui:leading-5");
+});
+
+// Type-level guard, never rendered: mixed is a controlled state only.
+export function _checkboxDefaultCheckedIsBoolean() {
+  return (
+    <>
+      <Checkbox aria-label="x" defaultChecked />
+      {/* @ts-expect-error defaultChecked takes a boolean, not "indeterminate" */}
+      <Checkbox aria-label="x" defaultChecked="indeterminate" />
+    </>
+  );
+}
