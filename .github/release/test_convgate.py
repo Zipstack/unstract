@@ -730,6 +730,12 @@ class Gate(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertIn("relstate has no config for repo 'nope'", out)
 
+    def test_slug_replaces_a_config_chosen_earlier(self):
+        self.addCleanup(rs.use, rs.SLUG)
+        rs.use("unstract")
+        self.run_main("--slug", "o/unstract-cloud")
+        self.assertEqual((rs.PREFIX, sorted(rs.TARGETS)), ("", ["cloud", "on-prem"]))
+
     def test_no_slug_is_an_error(self):
         code, calls, out = self.run_main()
         self.assertEqual(code, 1)

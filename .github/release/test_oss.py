@@ -8,6 +8,7 @@ import itertools
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1119,6 +1120,11 @@ class RetireWorkflow(Workflow):
                 RELSTATE_AR_TOKEN="t",
             )
             self.assertEqual(r.returncode, dry == "false", r.stdout + r.stderr)
+            if dry == "true":
+                self.assertIn(
+                    "::warning::a real run would refuse while this run is unfinished: https://example.test/runs/9",
+                    r.stdout,
+                )
         self.assertIn(
             "::error::wait for these runs to finish, then run Retire again: https://example.test/runs/9",
             r.stdout,
@@ -4395,6 +4401,84 @@ class ReleaseBranchCiLabels(unittest.TestCase):
                 "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n",
                 fh.read(),
             )
+
+
+@unittest.skipUnless(
+    os.path.exists(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")),
+    "take-rc-build.yaml and promote.yaml are cloud-only",
+)
+@unittest.skipUnless(shutil.which("jq"), "needs jq")
+class NoRetireRunning(unittest.TestCase):
+    """Take RC build and Promote refuse while a real Retire run is unfinished."""
+
+    def run_check(self, wf, runs, gh_exit=0):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "runs.json"), "w") as fh:
+                json.dump({"workflow_runs": runs}, fh)
+            with open(
+                os.path.join(d, "gh"), "w"
+            ) as fh:  # fake gh: applies --jq to runs.json
+                fh.write(
+                    f'#!/bin/sh\n[ {gh_exit} = 0 ] || exit {gh_exit}\necho "$1 $2" >> "{d}/calls"\n'
+                    f'jq -r "$4" "{d}/runs.json"\n'
+                )
+            os.chmod(os.path.join(d, "gh"), 0o755)
+            r = subprocess.run(
+                ["bash", "-e", "-c", step(wf, "No Retire running")],
+                env={
+                    **os.environ,
+                    "PATH": f"{d}:{os.environ['PATH']}",
+                    "GITHUB_REPOSITORY": "o/r",
+                },
+                capture_output=True,
+                text=True,
+            )
+            calls = open(os.path.join(d, "calls")).read() if gh_exit == 0 else ""
+            return r.returncode, r.stdout, calls
+
+    # display_title is retire.yaml's run-name.
+    DRY = {
+        "status": "in_progress",
+        "display_title": "Abandon 1.7 (dry run)",
+        "html_url": "https://x/1",
+    }
+    DONE = {
+        "status": "completed",
+        "display_title": "Retire 1.6",
+        "html_url": "https://x/2",
+    }
+    REAL = {
+        "status": "queued",
+        "display_title": "Retire 1.7 (forced)",
+        "html_url": "https://x/3",
+    }
+
+    def test_a_real_retire_refuses_and_a_dry_one_does_not(self):
+        for wf in ("take-rc-build.yaml", "promote.yaml"):
+            rc, out, calls = self.run_check(wf, [self.DRY, self.DONE])
+            self.assertEqual(rc, 0, (wf, out))
+            self.assertEqual(
+                calls, "api repos/o/r/actions/workflows/retire.yaml/runs?per_page=100\n"
+            )
+            rc, out, _ = self.run_check(wf, [self.DRY, self.DONE, self.REAL])
+            self.assertEqual(rc, 1, (wf, out))
+            self.assertIn("a Retire run is unfinished", out)
+            self.assertIn("https://x/3", out)
+            self.assertNotIn("https://x/1", out)
+
+    def test_a_failed_run_list_refuses(self):
+        for wf in ("take-rc-build.yaml", "promote.yaml"):
+            rc, out, _ = self.run_check(wf, [], gh_exit=1)
+            self.assertEqual(rc, 1, (wf, out))
+            self.assertIn("could not list the Retire runs", out)
+
+    def test_each_caller_grants_the_read(self):
+        for wf in ("take-rc-build.yaml", "promote.yaml"):
+            with open(os.path.join(HERE, "..", "workflows", wf)) as fh:
+                self.assertRegex(fh.read().split("\njobs:", 1)[0], r"\n  actions: read")
+        with open(os.path.join(HERE, "..", "workflows", "cut.yaml")) as fh:
+            rc_job = fh.read().split("\n  rc:\n", 1)[1]
+        self.assertRegex(rc_job.split("uses:", 1)[0], r"\n      actions: read")
 
 
 if __name__ == "__main__":
