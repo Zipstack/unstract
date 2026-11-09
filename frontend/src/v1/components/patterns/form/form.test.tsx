@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Input } from "@v1/components/ui/form";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
@@ -161,6 +162,7 @@ describe("applyServerErrors", () => {
     await userEvent.type(screen.getByLabelText("Name"), "b");
     await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await screen.findByText("Name is taken");
+    expect(screen.queryByText("Could not save. Try again.")).toBeNull();
     expect(
       screen.getByText("Quota reached Bad owner").getAttribute("role"),
     ).toBe("alert");
@@ -213,6 +215,7 @@ describe("applyServerErrors", () => {
     await userEvent.type(screen.getByLabelText("Name"), "b");
     await userEvent.click(saveButton());
     await screen.findByText("Too short. Taken.");
+    expect(screen.queryByText("Could not save. Try again.")).toBeNull();
   });
 
   it("puts a field's error under it even when its value is undefined", async () => {
@@ -277,12 +280,112 @@ describe("applyServerErrors", () => {
       },
       "Could not save. Try again.",
     ],
+    [{ detail: "  ", error: "SDK failed" }, "SDK failed"],
+    [{ message: "Gateway timeout" }, "Gateway timeout"],
+    [
+      {
+        type: "validation_error",
+        errors: [{ code: "x", detail: "  ", attr: null }],
+      },
+      "Could not save. Try again.",
+    ],
+    [
+      {
+        type: "validation_error",
+        errors: [null, { code: "x", detail: 42, attr: null }],
+      },
+      "Could not save. Try again.",
+    ],
+    [
+      { type: "validation_error", errors: { name: "bad" } },
+      "Could not save. Try again.",
+    ],
     [null, "Could not save. Try again."],
   ])("always shows something for the body %j", async (body, message) => {
     render(<Sample onSave={async () => body as never} />);
     await userEvent.type(screen.getByLabelText("Name"), "b");
     await userEvent.click(saveButton());
     await screen.findByText(message);
+  });
+});
+
+describe("hidden and nested fields", () => {
+  const nested = z.object({
+    name: z.string().min(1),
+    rows: z.array(z.object({ key: z.string().min(1, "Enter a key") })),
+  });
+  type Nested = z.infer<typeof nested>;
+
+  /** URL can be hidden; rows.0.key is a nested field. */
+  function Toggle({
+    onSave,
+  }: {
+    onSave?: (v: Nested) => Promise<ServerErrorBody>;
+  }) {
+    const [shown, setShown] = useState(true);
+    const form = useAppForm({
+      schema: nested,
+      defaultValues: { name: "a", rows: [{ key: "k" }] },
+    });
+    return (
+      <form
+        onSubmit={form.handleSubmit(async (values) => {
+          if (onSave) {
+            applyServerErrors(form, await onSave(values));
+          }
+        })}
+      >
+        <FormField form={form} name="name" label="Name">
+          {(field) => <Input {...field} />}
+        </FormField>
+        {shown ? (
+          <FormField form={form} name="rows.0.key" label="Key">
+            {(field) => <Input {...field} />}
+          </FormField>
+        ) : null}
+        <button type="button" onClick={() => setShown(false)}>
+          Hide
+        </button>
+        <FormFooter form={form} />
+      </form>
+    );
+  }
+
+  it("blocks Save on a nested field's error and shows it under the field", async () => {
+    render(<Toggle />);
+    const key = screen.getByLabelText("Key");
+    await userEvent.clear(key);
+    fireEvent.blur(key);
+    await screen.findByText("Cannot save");
+    expect(screen.getAllByText("Enter a key")).toHaveLength(1);
+    expect(saveButton().disabled).toBe(true);
+  });
+
+  it("frees Save when a field holding an error is hidden", async () => {
+    render(<Toggle />);
+    const key = screen.getByLabelText("Key");
+    await userEvent.clear(key);
+    fireEvent.blur(key);
+    await screen.findByText("Cannot save");
+    await userEvent.click(screen.getByRole("button", { name: "Hide" }));
+    await screen.findByText("1 unsaved change");
+    expect(saveButton().disabled).toBe(false);
+  });
+
+  it("sends a server error for a hidden field to the footer", async () => {
+    render(
+      <Toggle
+        onSave={async () => ({
+          type: "validation_error",
+          errors: [{ code: "x", detail: "Key taken", attr: "rows.0.key" }],
+        })}
+      />,
+    );
+    await userEvent.type(screen.getByLabelText("Name"), "b");
+    await userEvent.click(screen.getByRole("button", { name: "Hide" }));
+    await userEvent.click(saveButton());
+    await screen.findByText("Key taken");
+    expect(saveButton().disabled).toBe(false);
   });
 });
 

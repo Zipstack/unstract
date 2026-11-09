@@ -66,9 +66,10 @@ function isStandardBody(body: unknown): body is ServerErrorBody {
 
 /** Any other error body: `{detail}` from the middleware, `{error}` from the SDK handler. */
 function otherMessage(body: unknown): string | undefined {
-  const b = body as { detail?: unknown; error?: unknown } | null;
-  const text = b?.detail ?? b?.error;
-  return typeof text === "string" && text.trim() ? text : undefined;
+  const b = body as Record<string, unknown> | null;
+  return [b?.detail, b?.error, b?.message].find(
+    (text): text is string => typeof text === "string" && text.trim() !== "",
+  );
 }
 
 /**
@@ -86,13 +87,14 @@ export function applyServerErrors<T extends FieldValues>(
   const byField = new Map<string, string[]>();
   const formLevel: string[] = [];
   const standard = isStandardBody(body) ? body : undefined;
-  for (const { attr, detail } of standard?.errors ?? []) {
-    if (!detail?.trim()) {
+  for (const entry of standard?.errors ?? []) {
+    const { attr, detail } = entry ?? {};
+    if (typeof detail !== "string" || !detail.trim()) {
       continue;
     }
     const onField =
       standard?.type === "validation_error" &&
-      attr !== null &&
+      typeof attr === "string" &&
       isMounted(form.control as Control<FieldValues>, attr);
     if (onField) {
       byField.set(attr, [...(byField.get(attr) ?? []), detail]);

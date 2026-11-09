@@ -59,7 +59,7 @@ const button =
  * The save bar: what changed, Save changes (submits the form) and Discard
  * (back to the form's default values). Errors with no field on screen, and the
  * server's form-level error, show here while the form has changes; they do not
- * disable Save, since only a submit can clear them.
+ * disable Save, since only a submit or Discard clears them.
  */
 // ponytail: plain buttons; swap to the v1 Button when it exists.
 export function FormFooter<T extends FieldValues>({

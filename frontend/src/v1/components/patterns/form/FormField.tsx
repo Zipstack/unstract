@@ -1,5 +1,5 @@
 import { Field, type FieldProps } from "@v1/components/ui/form";
-import type { JSX, ReactNode } from "react";
+import { type JSX, type ReactNode, useEffect } from "react";
 import {
   type ControllerRenderProps,
   type FieldPath,
@@ -27,6 +27,10 @@ export function FormField<T extends FieldValues, N extends FieldPath<T>>({
   ...fieldProps
 }: FormFieldProps<T, N>): JSX.Element {
   const { field, fieldState } = useController({ control: form.control, name });
+  // A hidden field cannot show its error, so drop it; a submit validates again
+  // and an error that still stands shows in the footer.
+  const { clearErrors } = form;
+  useEffect(() => () => clearErrors(name), [clearErrors, name]);
   return (
     <Field {...fieldProps} error={fieldState.error?.message}>
       {children(field)}
