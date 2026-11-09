@@ -31,6 +31,7 @@ const MODELS: readonly SelectOption[] = [
   { value: "grok", label: "Grok", disabled: true },
   { value: "claude", label: "Claude" },
   { value: "gemma", label: "Gemma" },
+  { value: "undefined", label: "Undefined" },
 ];
 
 it("finds the first label after `from` starting with the buffer", () => {
@@ -60,4 +61,6 @@ it("returns -1 when nothing matches", () => {
   expect(typeAheadIndex(MODELS, "z", 0)).toBe(-1);
   expect(typeAheadIndex([], "g", -1)).toBe(-1);
   expect(typeAheadIndex(MODELS, "", 0)).toBe(-1);
+  expect(typeAheadIndex(MODELS, "", -1)).toBe(-1);
+  expect(typeAheadIndex(MODELS, "u", -1)).toBe(5);
 });

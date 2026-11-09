@@ -41,8 +41,8 @@ export function OptionRow({
       data-active={active ? "" : undefined}
       data-slot="option"
       onMouseDown={(event) => event.preventDefault()}
-      onClick={onSelect}
-      onMouseMove={onActivate}
+      onClick={option.disabled ? undefined : onSelect}
+      onMouseMove={option.disabled ? undefined : onActivate}
       className={cn(
         "ui:flex ui:w-full ui:cursor-pointer ui:items-center ui:gap-2.5 ui:rounded-md ui:px-2 ui:text-left ui:outline-none ui:select-none ui:data-active:bg-accent ui:data-highlighted:bg-accent",
         option.description ? "ui:h-12" : "ui:h-8",

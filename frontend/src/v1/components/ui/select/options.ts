@@ -8,7 +8,7 @@ export type SelectOption = Readonly<{
   /** A lucide icon or a `<ProviderLogo decorative />`; sized by the row. */
   leading?: ReactNode;
   disabled?: boolean;
-  /** Extra words the filter and type-ahead match, e.g. a model id. */
+  /** Extra words the Combobox and MultiSelect filter matches (type-ahead matches labels only), e.g. a model id. */
   keywords?: readonly string[];
 }>;
 

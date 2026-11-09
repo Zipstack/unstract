@@ -75,7 +75,10 @@ it("sets aria-disabled only on a disabled option", () => {
   const { rerender } = renderV1(
     <OptionRow id="o1" option={GPT} selected={false} active={false} />,
   );
-  expect(screen.getByRole("option").hasAttribute("aria-disabled")).toBe(false);
+  const row = screen.getByRole("option");
+  expect(row.hasAttribute("aria-disabled")).toBe(false);
+  expect(row.className).not.toContain("ui:pointer-events-none");
+  expect(row.className).not.toContain("ui:opacity-50");
   rerender(
     <OptionRow
       id="o1"
@@ -84,7 +87,44 @@ it("sets aria-disabled only on a disabled option", () => {
       active={false}
     />,
   );
-  expect(screen.getByRole("option").getAttribute("aria-disabled")).toBe("true");
+  expect(row.getAttribute("aria-disabled")).toBe("true");
+  expect(row.className).toContain("ui:pointer-events-none");
+  expect(row.className).toContain("ui:opacity-50");
+});
+
+it("ignores synthetic clicks and mouse moves on a disabled option", () => {
+  const onSelect = vi.fn();
+  const onActivate = vi.fn();
+  renderV1(
+    <OptionRow
+      id="o1"
+      option={{ ...GPT, disabled: true }}
+      selected={false}
+      active={false}
+      onSelect={onSelect}
+      onActivate={onActivate}
+    />,
+  );
+  const row = screen.getByRole("option");
+  fireEvent.click(row);
+  fireEvent.mouseMove(row);
+  expect(onSelect).not.toHaveBeenCalled();
+  expect(onActivate).not.toHaveBeenCalled();
+});
+
+it("selects an enabled option on a synthetic click", () => {
+  const onSelect = vi.fn();
+  renderV1(
+    <OptionRow
+      id="o1"
+      option={GPT}
+      selected={false}
+      active={false}
+      onSelect={onSelect}
+    />,
+  );
+  fireEvent.click(screen.getByRole("option"));
+  expect(onSelect).toHaveBeenCalledTimes(1);
 });
 
 it("calls onSelect on click and onActivate on mouse move", async () => {
