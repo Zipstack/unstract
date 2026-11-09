@@ -380,6 +380,27 @@ def _rule_match_class_attribute(node, parents) -> str | None:
             return (
                 f"safety gate: disallowed attribute access '{attr}' " "in a class pattern"
             )
+        if attr == "sys":
+            # The FOURTH predicate, missing from this rule's first version --
+            # which is why
+            # `test_a_class_pattern_refuses_whatever_the_attribute_form_refuses`
+            # now exists: four attribute-name predicates live in four separate
+            # rules, and re-listing three of them here was the mistake.
+            #
+            # `import statistics` then `match statistics: case object(sys=s)`
+            # bound the REAL `sys` module, and `s.modules['posix'].getuid()`
+            # then ran -- verified by execution, it printed the uid.
+            # `_rule_sys_reexport` refuses the ordinary `statistics.sys`
+            # spelling and cannot see a pattern's keyword strings.
+            #
+            # Flat refusal with no `sys.argv` carve-out: `_rule_sys_name`
+            # permits attributes OF the name `sys`, whereas a pattern keyword
+            # named `sys` always reads `.sys` OFF another object, which is the
+            # re-export `_rule_sys_reexport` exists to stop.
+            return (
+                "safety gate: 'sys' reached as an attribute of another module "
+                "in a class pattern"
+            )
     return None
 
 

@@ -803,6 +803,59 @@ class TestFrameAndMatchRoutesToBuiltins:
         assert "in a class pattern" in reason, reason
 
     @pytest.mark.parametrize(
+        "attr",
+        [
+            "sys",
+            "eval",
+            "exec",
+            "__builtins__",
+            "__globals__",
+            "__import__",
+            "gi_frame",
+            "f_builtins",
+            "cr_frame",
+            "ag_frame",
+            "tb_frame",
+            "_sys",
+            "_os",
+            "_getframe",
+            # Names that must stay ALLOWED in both forms, so the test is an
+            # equivalence check and not a one-sided "refuse everything".
+            "compile",
+            "items",
+            "fromisoformat",
+            "format",
+        ],
+    )
+    def test_a_class_pattern_refuses_whatever_the_attribute_form_refuses(self, attr):
+        """The drift guard, and the reason it exists is a real miss.
+
+        Four separate rules key on an attribute NAME -- `_DENYLISTED_ATTR_CALLS`,
+        the underscore prefix, the introspection prefixes, and `== "sys"`. The
+        first version of `_rule_match_class_attribute` re-listed three of them
+        and omitted `sys`, so `import statistics` plus
+        `match statistics: case object(sys=s)` bound the real `sys` module and
+        `s.modules['posix'].getuid()` ran. Reported by a reviewer on the commit
+        that added the rule.
+
+        Re-listing is the hazard, so this asserts the IMPLICATION rather than a
+        list of reasons: whatever the ordinary `obj.<attr>` form refuses, the
+        pattern form must refuse too. A fifth predicate added to the attribute
+        rules and forgotten here fails this test without anyone remembering to
+        update it. The converse is deliberately not asserted -- the pattern form
+        may be stricter.
+        """
+        attribute_ok, _ = check_code_safe(f"def f(obj):\n    return obj.{attr}\n")
+        pattern_ok, _ = check_code_safe(
+            f"match 1:\n    case object({attr}=v):\n        pass\n"
+        )
+        if not attribute_ok:
+            assert not pattern_ok, (
+                f"`obj.{attr}` is refused but `case object({attr}=v)` is not: "
+                "the class-pattern rule has drifted from the attribute rules"
+            )
+
+    @pytest.mark.parametrize(
         "label,code",
         [
             (
