@@ -513,6 +513,23 @@ def _unconditional_module_bindings(module) -> dict[str, tuple[int, ast.stmt]]:
     statement is not decoration: `_shadows_builtin` has to know whether a Load
     sits INSIDE the binding statement, where the binding has not happened yet.
     """
+    # MEMOISED, and that is a correctness-adjacent fact rather than a tidy-up.
+    # `_shadows_builtin` calls this once per Load, and the loop below walks the
+    # whole module body, so the pair was O(loads x statements): a legal
+    # module-scope script reading a shadowed name 4000 times (50.9 KB, well
+    # under `SANDBOX_MAX_CODE_BYTES`) took 27.5s to CHECK, on the worker thread,
+    # before the child is spawned and so bounded by neither the wall-clock
+    # timeout nor `RLIMIT_CPU`. Measured 0.42 / 1.72 / 6.74 / 27.50s at n =
+    # 500 / 1000 / 2000 / 4000 -- each doubling quadrupling, which is the shape.
+    # Reported as a High on #2309.
+    #
+    # The cache lives ON the module node, not in a module-level dict or an
+    # `lru_cache`: it is then reachable only while this tree is, so it cannot
+    # retain one request's parsed tenant code after the check returns. The tree
+    # is not mutated between calls within a single `check_code_safe`.
+    cached = getattr(module, "_gate_unconditional_bindings", None)
+    if cached is not None:
+        return cached
     out: dict[str, tuple[int, ast.stmt]] = {}
     for stmt in getattr(module, "body", []):
         if not isinstance(stmt, _UNCONDITIONAL_STMTS):
@@ -520,6 +537,7 @@ def _unconditional_module_bindings(module) -> dict[str, tuple[int, ast.stmt]]:
         for name, lineno in _names_bound_by(stmt):
             if name not in out or lineno < out[name][0]:
                 out[name] = (lineno, stmt)
+    module._gate_unconditional_bindings = out
     return out
 
 

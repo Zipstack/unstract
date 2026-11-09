@@ -684,6 +684,42 @@ def test_checking_a_large_script_stays_roughly_linear():
     )
 
 
+def test_checking_a_large_module_scope_script_stays_roughly_linear():
+    """The MODULE-scope path, which the sibling above does not cover.
+
+    That one wraps its reads in a `for` body, so the exemption resolves through
+    `_binds_as_own_target`. A shadowed read at module scope instead goes to
+    `_unconditional_module_bindings`, which walked the entire module body once
+    per Load -- O(loads x statements). Measured before the fix, on this shape:
+    0.42 / 1.72 / 6.74 / 27.50s at 500 / 1000 / 2000 / 4000 reads, each
+    doubling quadrupling the time. After memoising: 0.01 / 0.03 / 0.07 / 0.22s.
+
+    Why it matters beyond speed: this cost is paid on the WORKER thread inside
+    `check_code_safe`, before any child exists, so neither the wall-clock
+    timeout nor `RLIMIT_CPU` bounds it -- and 50.9 KB is under
+    `SANDBOX_MAX_CODE_BYTES` (65536), so the size cap does not either.
+
+    The bound is ~20x the measured 0.22s and ~100x below the pre-fix 27.5s, so
+    it fails on a return to quadratic without failing on a slow machine.
+    """
+    import time
+
+    n = 4000
+    body = "\n".join(f"a{i} = vars" for i in range(n))
+    code = "vars = {}\n" + body + "\n"
+    assert len(code.encode()) < 65536, "fixture must stay a submittable size"
+
+    start = time.perf_counter()
+    ok, reason = check_code_safe(code)
+    elapsed = time.perf_counter() - start
+
+    assert ok is True, reason
+    assert elapsed < 5.0, (
+        f"gate check took {elapsed:.2f}s for a {len(code.encode())}-byte "
+        "module-scope script; the module-binding lookup has gone quadratic again"
+    )
+
+
 class TestFrameAndMatchRoutesToBuiltins:
     """The four routes that gate-passed before `_rule_introspection_attribute`
     and `_rule_match_class_attribute` existed.
