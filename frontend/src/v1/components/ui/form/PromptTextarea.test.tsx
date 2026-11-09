@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { installResizeObserver } from "@v1/test";
 import { type JSX, useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { Field } from "./Field";
@@ -135,6 +136,43 @@ it("keeps the height automatic while there is no layout to measure", () => {
   Object.defineProperty(textarea, "scrollHeight", { value: 0 });
   fireEvent.input(textarea, { target: { value: "hidden" } });
   expect(textarea.style.getPropertyValue("--prompt-height")).toBe("");
+});
+
+it("re-fits when a hidden textarea is shown or its width changes", () => {
+  vi.stubGlobal("CSS", { supports: () => false });
+  const size = installResizeObserver();
+  const { textarea } = setup();
+  let laidOut = false;
+  Object.defineProperty(textarea, "scrollHeight", {
+    configurable: true,
+    get: () => (laidOut ? 104 + textarea.value.length : 0),
+  });
+  fireEvent.input(textarea, { target: { value: "hidden text" } });
+  expect(textarea.style.getPropertyValue("--prompt-height")).toBe("");
+  laidOut = true;
+  size.resize(textarea, { width: 300, height: 104 });
+  expect(textarea.style.getPropertyValue("--prompt-height")).toBe("115px");
+  textarea.value = "hidden text, wrapped";
+  size.resize(textarea, { width: 200, height: 115 });
+  expect(textarea.style.getPropertyValue("--prompt-height")).toBe("124px");
+});
+
+it("ignores height-only resizes, which its own fit causes", () => {
+  vi.stubGlobal("CSS", { supports: () => false });
+  const size = installResizeObserver();
+  const { textarea } = setup();
+  measureByLength(textarea);
+  size.resize(textarea, { width: 300, height: 104 });
+  textarea.style.setProperty("--prompt-height", "999px");
+  size.resize(textarea, { width: 300, height: 999 });
+  expect(textarea.style.getPropertyValue("--prompt-height")).toBe("999px");
+});
+
+it("does not observe where field-sizing does the work", () => {
+  vi.stubGlobal("CSS", { supports: () => true });
+  const size = installResizeObserver();
+  setup();
+  expect(size.observed()).toEqual([]);
 });
 
 it.each([
