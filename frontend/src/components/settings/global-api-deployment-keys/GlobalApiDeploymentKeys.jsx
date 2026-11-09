@@ -12,9 +12,9 @@ import { useSessionStore } from "../../../store/session-store";
 import { ApiKeyManager } from "../api-key-manager/ApiKeyManager.jsx";
 
 function DeploymentScopeFields({ form, deployments }) {
-  // Seeded `false` to match the Form.Item below: the check here reads
-  // `=== false` to mean "explicitly unchecked", so an undefined first render
-  // would disable the picker for that frame.
+  // Seeded `false` to match the Form.Item below: the picker's `disabled` reads
+  // `!== false`, so only an explicit `false` enables it, and an undefined
+  // first render would disable the picker for that frame.
   const allowAll = Form.useWatch("allow_all_deployments", form, false);
 
   // Ticking "Allow all" makes the picker's rule pass, but an error already
@@ -25,10 +25,11 @@ function DeploymentScopeFields({ form, deployments }) {
     }
   }, [allowAll, form]);
 
-  // One stable rule that reads the checkbox when it runs. Swapping `rules`
-  // per render does not work on the Form shim: react-hook-form keeps the
-  // rules a field registered with, so a `required` added while the box was
-  // unchecked would still block creating an "Allow all" key (UN-4630).
+  // The same rule on every render, reading the checkbox when it runs. Do not
+  // switch to a `required` rule toggled by `allowAll`: on the Form shim,
+  // react-hook-form merges each render's rules into the field and never drops
+  // a key, so a `required` added while the box was unchecked would survive
+  // ticking it and block saving an "Allow all" key (UN-4630).
   const deploymentRules = useMemo(
     () => [
       {

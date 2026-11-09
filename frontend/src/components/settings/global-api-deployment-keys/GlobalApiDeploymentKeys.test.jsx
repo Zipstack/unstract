@@ -1,16 +1,56 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * The deployment scope on the create form (UN-4630).
+ * The deployment scope on the create and edit forms (UN-4630).
  *
  * The picker is required only while "Allow all API deployments" is unchecked.
  * Toggling a `required` rule on and off per render does not work on the Form
- * shim: react-hook-form keeps the rules a field first registered with, so the
- * picker stayed required and an "Allow all" key could not be created.
+ * shim: react-hook-form merges each render's rules into the field's
+ * registration and never drops a key, so a `required` added while the box was
+ * unchecked survived ticking it and blocked every "Allow all" save.
  */
-const axiosPrivate = vi.fn(() => Promise.resolve({ data: [] }));
+const KEYS_URL = "/api/v1/unstract/org_test/global-api-deployment/keys/";
+const DEPLOYMENTS_URL =
+  "/api/v1/unstract/org_test/global-api-deployment/deployments/";
+const SCOPE_ERROR = "Select at least one deployment";
+
+const KEYS = [
+  {
+    id: "k_all",
+    name: "AllKey",
+    description: "all",
+    key: "****-0001",
+    is_active: true,
+    allow_all_deployments: true,
+    api_deployments: [],
+  },
+  {
+    id: "k_scoped",
+    name: "ScopedKey",
+    description: "scoped",
+    key: "****-0002",
+    is_active: true,
+    allow_all_deployments: false,
+    api_deployments: [{ id: "d1", display_name: "Dep One" }],
+  },
+];
+
+const axiosPrivate = vi.fn((args) => {
+  if (args?.method === "GET" && args?.url === DEPLOYMENTS_URL) {
+    return Promise.resolve({
+      data: [
+        { id: "d1", display_name: "Dep One", is_active: true },
+        { id: "d2", display_name: "Dep Two", is_active: true },
+      ],
+    });
+  }
+  if (args?.method === "GET" && args?.url === KEYS_URL) {
+    return Promise.resolve({ data: KEYS });
+  }
+  return Promise.resolve({ data: {} });
+});
 
 vi.mock("../../../hooks/useAxiosPrivate", () => ({
   useAxiosPrivate: () => axiosPrivate,
@@ -38,18 +78,30 @@ const { GlobalApiDeploymentKeys } = await import(
   "./GlobalApiDeploymentKeys.jsx"
 );
 
-const KEYS_URL = "/api/v1/unstract/org_test/global-api-deployment/keys/";
-
-const createCalls = () =>
+const writes = (method) =>
   axiosPrivate.mock.calls
     .map(([args]) => args)
-    .filter((args) => args?.method === "POST" && args?.url === KEYS_URL);
+    .filter((args) => args?.method === method);
+
+const allowAllBox = () =>
+  screen.getByRole("checkbox", { name: /allow all api deployments/i });
 
 async function openCreateForm(user) {
   render(<GlobalApiDeploymentKeys />);
   await user.click(await screen.findByRole("button", { name: /new key/i }));
   await user.type(screen.getByPlaceholderText("Enter key name"), "Doe's key");
   await user.type(screen.getByPlaceholderText("Enter description"), "desc");
+}
+
+async function openEditForm(user, keyName) {
+  render(<GlobalApiDeploymentKeys />);
+  const row = (await screen.findByText(keyName)).closest("tr");
+  // The row's icon-only actions have no accessible name; the pencil marks Edit.
+  const edit = within(row)
+    .getAllByRole("button")
+    .find((button) => button.querySelector(".lucide-pencil"));
+  await user.click(edit);
+  await screen.findByRole("button", { name: "Save" });
 }
 
 describe("GlobalApiDeploymentKeys create form", () => {
@@ -61,19 +113,14 @@ describe("GlobalApiDeploymentKeys create form", () => {
     const user = userEvent.setup();
     await openCreateForm(user);
 
-    await user.click(
-      screen.getByRole("checkbox", { name: /allow all api deployments/i }),
-    );
+    await user.click(allowAllBox());
     await user.click(screen.getByRole("button", { name: "Create" }));
 
-    await waitFor(() => expect(createCalls()).toHaveLength(1));
-    expect(createCalls()[0].data).toMatchObject({
-      allow_all_deployments: true,
-      api_deployments: [],
+    await waitFor(() => expect(writes("POST")).toHaveLength(1));
+    expect(writes("POST")[0]).toMatchObject({
+      url: KEYS_URL,
+      data: { allow_all_deployments: true, api_deployments: [] },
     });
-    expect(
-      screen.queryByText("Select at least one deployment"),
-    ).not.toBeInTheDocument();
   });
 
   it("clears the picker's error once 'Allow all' is ticked", async () => {
@@ -81,21 +128,31 @@ describe("GlobalApiDeploymentKeys create form", () => {
     await openCreateForm(user);
 
     await user.click(screen.getByRole("button", { name: "Create" }));
-    expect(
-      await screen.findByText("Select at least one deployment"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(SCOPE_ERROR)).toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole("checkbox", { name: /allow all api deployments/i }),
-    );
+    await user.click(allowAllBox());
     await waitFor(() =>
-      expect(
-        screen.queryByText("Select at least one deployment"),
-      ).not.toBeInTheDocument(),
+      expect(screen.queryByText(SCOPE_ERROR)).not.toBeInTheDocument(),
     );
 
     await user.click(screen.getByRole("button", { name: "Create" }));
-    await waitFor(() => expect(createCalls()).toHaveLength(1));
+    await waitFor(() => expect(writes("POST")).toHaveLength(1));
+  });
+
+  it("creates a scoped key with the picked deployment", async () => {
+    const user = userEvent.setup();
+    await openCreateForm(user);
+
+    await user.click(screen.getByRole("combobox"));
+    await user.click(await screen.findByRole("option", { name: "Dep One" }));
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => expect(writes("POST")).toHaveLength(1));
+    expect(writes("POST")[0].data).toMatchObject({
+      allow_all_deployments: false,
+      api_deployments: ["d1"],
+    });
   });
 
   it("still requires a deployment when 'Allow all' is unchecked", async () => {
@@ -104,9 +161,40 @@ describe("GlobalApiDeploymentKeys create form", () => {
 
     await user.click(screen.getByRole("button", { name: "Create" }));
 
-    expect(
-      await screen.findByText("Select at least one deployment"),
-    ).toBeInTheDocument();
-    expect(createCalls()).toHaveLength(0);
+    expect(await screen.findByText(SCOPE_ERROR)).toBeInTheDocument();
+    expect(writes("POST")).toHaveLength(0);
+  });
+});
+
+describe("GlobalApiDeploymentKeys edit form", () => {
+  beforeEach(() => {
+    axiosPrivate.mockClear();
+  });
+
+  it("opens a scoped key to all deployments", async () => {
+    const user = userEvent.setup();
+    await openEditForm(user, "ScopedKey");
+
+    await user.click(screen.getByRole("button", { name: /remove dep one/i }));
+    await user.click(allowAllBox());
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(writes("PATCH")).toHaveLength(1));
+    expect(writes("PATCH")[0].data).toMatchObject({
+      allow_all_deployments: true,
+      api_deployments: [],
+    });
+  });
+
+  it("requires a deployment when 'Allow all' is unticked", async () => {
+    const user = userEvent.setup();
+    await openEditForm(user, "AllKey");
+
+    expect(allowAllBox()).toBeChecked();
+    await user.click(allowAllBox());
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText(SCOPE_ERROR)).toBeInTheDocument();
+    expect(writes("PATCH")).toHaveLength(0);
   });
 });
