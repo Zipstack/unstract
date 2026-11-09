@@ -255,8 +255,14 @@ def link_result(res):
 
 
 def latest_tag(repo, branch):
-    """A stable tag ranks above the RC it was promoted from (same commit, same patch)."""
-    tags = rs.line_tags(repo, branch.split("/", 1)[1], "--merged", f"origin/{branch}")
+    """A stable tag ranks above the RC it was promoted from (same patch). A stable tag sits on Promote's GA commit,
+    off the line, so a tag counts when its RC commit is on the line.
+    """
+    tags = [
+        t
+        for t in rs.line_tags(repo, branch.split("/", 1)[1])
+        if rm.is_ancestor(repo, rm.rc_commit(repo, t, rs.PREFIX), f"origin/{branch}")
+    ]
     if not tags:
         return None, None
     m = lambda t: rs.VER_RE.fullmatch(t)

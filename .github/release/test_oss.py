@@ -2755,7 +2755,82 @@ class PendingPicksWorkflow(Workflow):
         self.assertIn(
             "::notice::cloud/backend:v1.7.0 already has v1.7.0-rc.1's digest", r.stdout
         )
-        self.assertIn("bump=make\n", self.read("output"))
+        self.assertIn("new_tag=true\n", self.read("output"))
+
+    def test_promote_after_the_line_moved(self):
+        # A backport merged during QA: the RC is still promoted (its GA commit stays off the line).
+        self.line("1.7", "v1.7.0-rc.1")
+        dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "fix during QA")
+        dev_git(self.cloud, "push", "-q", "origin", "HEAD:refs/heads/release/1.7")
+        r = self.promote()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("new_tag=true\n", self.read("output"))
+
+    @unittest.skipUnless(
+        os.path.exists(os.path.join(HERE, "..", "..", rm.CHART)), "the cloud repo's chart"
+    )
+    def test_promote_ga_commit_and_tag(self):
+        root = os.path.join(HERE, "..", "..")
+        for f in (rm.CHART, rm.VALUES):
+            os.makedirs(os.path.join(self.cloud, os.path.dirname(f)), exist_ok=True)
+            with (
+                open(os.path.join(root, f)) as src,
+                open(os.path.join(self.cloud, f), "w") as out,
+            ):
+                out.write(src.read())
+            dev_git(self.cloud, "add", f)
+        dev_git(self.cloud, "commit", "-q", "-m", "chart")
+        dev_git(self.cloud, "push", "-q", "origin", "main")
+        self.line("1.7", "v1.7.0-rc.1")
+        origin = self.repos["cloud"][0]
+        rc = rm.git(origin, "rev-parse", "v1.7.0-rc.1^{commit}")
+        tip = rm.git(origin, "rev-parse", "release/1.7")
+
+        def ga_step(**env):
+            return subprocess.run(
+                ["bash", "-e", "-c", step("promote.yaml", "GA commit and tag")],
+                cwd=self.cloud,
+                env={
+                    **os.environ,
+                    "GITHUB_OUTPUT": os.path.join(self.d, "ga"),
+                    "SHA": rc,
+                    "STABLE": "v1.7.0",
+                    "RC": "v1.7.0-rc.1",
+                    "TARGET": "cloud",
+                    **env,
+                },
+                capture_output=True,
+                text=True,
+            )
+
+        r = ga_step(OSS_TAG="ee-v1.7.0")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        ga = rm.git(origin, "rev-parse", "v1.7.0^{commit}")
+        self.assertEqual(self.read("ga"), f"ga={ga}\n")
+        self.assertTrue(rm.is_ga_bump(origin, ga, rc, "v1.7.0"))
+        self.assertEqual(
+            rm.git(origin, "rev-parse", "release/1.7"), tip
+        )  # never pushed to the line
+        self.assertIn(
+            "oss: ee-v1.7.0",
+            rm.git(origin, "tag", "-l", "--format=%(contents)", "v1.7.0"),
+        )
+        # A rerun finds the tag on the GA commit and does not tag again.
+        r = self.promote()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("new_tag=false\n", self.read("output"))
+        self.assertIn(f"ga={ga}\n", self.read("output"))
+        # The guard: a second anchor line the sed also rewrites is refused, and nothing is tagged.
+        dev_git(self.cloud, "checkout", "-q", "--detach", rc)
+        with open(os.path.join(self.cloud, rm.VALUES), "a") as fh:
+            fh.write("other: &UNSTRACT_APPS_VERSION v0\n")
+        dev_git(self.cloud, "commit", "-q", "-am", "second anchor")
+        r = ga_step(SHA=dev_git(self.cloud, "rev-parse", "HEAD"), STABLE="v1.7.9")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn(
+            "::error::HEAD is not the GA commit for v1.7.9", r.stderr + r.stdout
+        )
+        self.assertEqual(rm.git(origin, "tag", "-l", "v1.7.9"), "")
 
     def test_promote_refuses_a_stable_tag_at_another_digest(self):
         self.line("1.7", "v1.7.0-rc.1")

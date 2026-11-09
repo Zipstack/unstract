@@ -417,9 +417,7 @@ def _next_minor(repo, ordered):
 
 def _row(repo, name, ref, taken):
     tip = rm.rc_version(repo, ref, PREFIX, taken)
-    built = (
-        tip in rm.git(repo, "tag", "--points-at", rm.rc_commit(repo, ref, PREFIX)).split()
-    )
+    built = tip in rm.git(repo, "tag", "--points-at", ref).split()
     line = name.split("/", 1)[1]
     row = {
         "branch": name,
@@ -441,7 +439,7 @@ def _anomaly_reason(repo, name, refs, sha):
         return "no branch"
     if not sha:
         return "no git tag"
-    if not rm.is_ancestor(repo, sha, refs[name]):
+    if not rm.is_ancestor(repo, rm.rc_commit(repo, sha, PREFIX), refs[name]):
         return "commit not on branch"
     return None
 
@@ -494,7 +492,9 @@ def _fill_ga(repo, t, builds, anchor, reg, refs, rows):
                     for g in reg[artifact]
                     if stable.fullmatch(g)
                     and (c := _tag_commit(repo, g))
-                    and rm.is_ancestor(repo, c, refs[row["branch"]])
+                    and rm.is_ancestor(
+                        repo, rm.rc_commit(repo, c, PREFIX), refs[row["branch"]]
+                    )
                 ),
                 key=_vkey,
             ):

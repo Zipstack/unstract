@@ -797,9 +797,9 @@ class Scenario(unittest.TestCase):
         self.g("checkout", "-q", "main")
         return sha
 
-    def ga_commit(self, stable, branch="release/1.5", tag=True):
-        """Promote's GA commit on the RC commit at the tip of branch."""
-        self.g("checkout", "-q", branch)
+    def ga_commit(self, stable, on, tag=True):
+        """Promote's GA commit on the RC commit on, off the line."""
+        self.g("checkout", "-q", "--detach", on)
         self.sed_chart(stable)
         sha = self.bot_commit(f"release: chart {stable[1:]}", rm.CHART, rm.VALUES)
         if tag:
@@ -808,40 +808,46 @@ class Scenario(unittest.TestCase):
         return sha
 
     @on_chart
-    def test_ga_commit_on_the_line(self):
+    def test_ga_commit_off_the_line(self):
         self.cut("1.5")
         rc = self.rc_on_chart("v1.5.0-rc.1")
         self.push("cloud/backend", "v1.5.0-rc.1")
         self.assertEqual(rm.promote_version(self.repo, "v1.5.0-rc.1"), "v1.5.0")
-        # Pushed but untagged: what a rerun reuses instead of committing again.
-        ga = self.ga_commit("v1.5.0", tag=False)
-        self.assertTrue(rm.is_ga_bump(self.repo, ga, rc, "v1.5.0"))
-        self.assertEqual(
-            rm.rc_commit(self.repo, "release/1.5"), ga
-        )  # untagged: not yet a GA commit
-        self.g("tag", "v1.5.0", ga)
+        # A backport lands during QA; the GA commit still goes on the RC commit.
+        self.commit("fix during QA", "release/1.5")
+        ga = self.ga_commit("v1.5.0", rc)
         self.push("cloud/backend", "v1.5.0")
-        self.assertEqual(rm.classify_commit(self.repo, ga), "build-generated")
+        self.assertFalse(rm.is_ancestor(self.repo, ga, "release/1.5"))
+        self.assertTrue(rm.is_ga_bump(self.repo, ga, rc, "v1.5.0"))
+        self.assertEqual(rm.rc_commit(self.repo, "v1.5.0"), rc)
+        self.assertEqual(rm.rc_commit(self.repo, rc), rc)
         chart = self.g("show", f"v1.5.0:{rm.VALUES}").splitlines()[0]
         self.assertEqual(chart, "UNSTRACT_APPS_VERSION: &UNSTRACT_APPS_VERSION v1.5.0")
-        # The tip's RC is still rc.1: a rebuild is refused and on-prem later promotes rc.1 onto the same v1.5.0.
-        self.assertEqual(rm.rc_commit(self.repo, "release/1.5"), rc)
-        self.assertEqual(rm.rc_version(self.repo, "release/1.5"), "v1.5.0-rc.1")
+        # On-prem later promotes rc.1 onto the same v1.5.0.
         self.assertEqual(rm.promote_version(self.repo, "v1.5.0-rc.1"), "v1.5.0")
-        row = self.branch(self.state(), "release/1.5")
-        self.assertEqual(
-            (row["tip_rc"], row["next_rc"], row["ahead_of_ga"]), ("v1.5.0-rc.1", None, 0)
-        )
+        state = self.state()
+        self.assertEqual(state["anomalies"], [])
+        row = self.branch(state, "release/1.5")
         self.assertEqual(row["targets"]["cloud"]["ga"]["tag"], "v1.5.0")
-        # A fix after GA: the next RC and stable are the next patch, and the old RC is a downgrade.
-        self.commit("fix after GA", "release/1.5")
+        self.assertEqual(row["ahead_of_ga"], 1)  # the fix, not the GA commit
         self.assertEqual(rm.rc_version(self.repo, "release/1.5"), "v1.5.1-rc.1")
+        self.g("update-ref", "refs/remotes/origin/release/1.5", "release/1.5")
+        import backport as bp
+
+        self.assertEqual(bp.latest_tag(self.repo, "release/1.5"), ("v1.5.0", 1))
+        # The next patch: its RC and stable follow v1.5.0, and the old RC is a downgrade.
         rc2 = self.rc_on_chart("v1.5.1-rc.1")
         self.assertEqual(rm.promote_version(self.repo, "v1.5.1-rc.1"), "v1.5.1")
         self.assertEqual(rm.rc_commit(self.repo, rc2), rc2)
+        # A stable tag on a GA commit whose RC commit is off the line is an anomaly.
+        self.g("checkout", "-q", "--detach", rc)
+        self.g("commit", "-q", "--allow-empty", "-m", "off the line")
+        off = self.g("rev-parse", "HEAD")
+        self.g("tag", "-d", "v1.5.0")
+        self.g("tag", "v1.5.0", self.ga_commit("v1.5.0", off, tag=False))
         self.assertEqual(
-            self.branch(self.state(), "release/1.5")["ahead_of_ga"], 2
-        )  # the fix and rc.1's bump
+            [a["reason"] for a in self.state()["anomalies"]], ["commit not on branch"]
+        )
 
     @on_chart
     def test_ga_commit_guard(self):
@@ -884,15 +890,35 @@ class Scenario(unittest.TestCase):
             os.chmod(os.path.join(self.repo, rm.CHART), 0o755)
 
         # Each case trips one check only: another file, a mode change, an unknown line, a key set twice.
-        for edit, paths in (
-            (append("notes.txt", "x\n"), (rm.CHART, rm.VALUES, "notes.txt")),
-            (chmod, (rm.CHART, rm.VALUES)),
-            (append(rm.VALUES, "extra: 1\n"), (rm.CHART, rm.VALUES)),
-            (append(rm.CHART, "version: 1.5.0\n"), (rm.CHART, rm.VALUES)),
+        for edit, paths, want in (
+            (
+                append("notes.txt", "x\n"),
+                (rm.CHART, rm.VALUES, "notes.txt"),
+                ["M: notes.txt"],
+            ),
+            (chmod, (rm.CHART, rm.VALUES), ["mode, create or delete"]),
+            (
+                append(rm.VALUES, "extra: 1\n"),
+                (rm.CHART, rm.VALUES),
+                [f"{rm.VALUES}: +extra: 1"],
+            ),
+            (
+                append(rm.CHART, "version: 1.5.0\n"),
+                (rm.CHART, rm.VALUES),
+                [f"{rm.CHART}: version: changed 2 times"],
+            ),
         ):
-            got, ok = stray(edit, paths=paths)
-            self.assertTrue(got)
-            self.assertFalse(ok)
+            self.assertEqual(stray(edit, paths=paths), (want, False))
+        # A key left unchanged.
+        self.assertEqual(
+            stray(lambda: self.g("checkout", "-q", rc, "--", rm.VALUES)),
+            (
+                [
+                    f"{rm.VALUES}: UNSTRACT_APPS_VERSION: &UNSTRACT_APPS_VERSION changed 0 times"
+                ],
+                False,
+            ),
+        )
         # A wrong value, a human author, a wrong subject.
         self.assertEqual(
             stray(lambda: self.sed_chart("v1.5.9"))[0][:3],
@@ -906,7 +932,7 @@ class Scenario(unittest.TestCase):
         self.assertFalse(stray(lambda: None, msg="release: chart 1.5.0-rc.1")[1])
         # Not on the RC commit: a commit in between.
         self.commit("in between", "release/1.5")
-        ga = self.ga_commit("v1.5.0", tag=False)
+        ga = self.ga_commit("v1.5.0", "release/1.5", tag=False)
         self.assertFalse(rm.is_ga_bump(self.repo, ga, rc, "v1.5.0"))
 
     def test_already_bumped(self):

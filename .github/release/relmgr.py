@@ -412,7 +412,7 @@ def rc_version(repo, branch, prefix="", taken=()):
     is already the bot's bump for that tag (resumed). Needs all tags fetched.
     """
     x, y = _line(branch)
-    for t in git(repo, "tag", "--points-at", rc_commit(repo, branch, prefix)).split():
+    for t in git(repo, "tag", "--points-at", branch).split():
         if re.fullmatch(rf"{re.escape(prefix)}v{x}\.{y}\.\d+-rc\.\d+", t):
             return t
     ver = next_patch(repo, branch, prefix)
@@ -455,7 +455,7 @@ GA_KEYS = {
 
 
 def ga_bump_stray(repo, base, sha, stable):
-    """What base..sha changes beyond the GA bump (each GA_KEYS line set once, to stable); empty when nothing."""
+    """What base..sha changes beyond the GA bump (each GA_KEYS line changed exactly once, to stable); empty when none."""
     want = {
         "version: ": stable.removeprefix("v"),
         "appVersion: ": f'"{stable}"',
@@ -471,8 +471,8 @@ def ga_bump_stray(repo, base, sha, stable):
         )
         if s != "M" or p not in GA_KEYS
     ]
-    if git(repo, "diff", "--summary", base, sha):  # a mode change on a chart file
-        stray.append("mode change")
+    if git(repo, "diff", "--summary", base, sha):  # a mode change, create or delete
+        stray.append("mode, create or delete")
     path, hunk, count = None, False, {}
     diff = git(
         repo, "diff", "--no-ext-diff", "--no-color", "--no-renames", "-U0", base, sha
@@ -488,7 +488,7 @@ def ga_bump_stray(repo, base, sha, stable):
                 stray.append(f"{path}: {ln}")
             else:
                 count[path, key, ln[0]] = count.get((path, key, ln[0]), 0) + 1
-    for path, key in {(p, k) for p, k, _ in count}:
+    for path, key in ((p, k) for p, keys in GA_KEYS.items() for k in keys):
         if not count.get((path, key, "+")) == count.get((path, key, "-")) == 1:
             stray.append(
                 f"{path}: {key.strip()} changed {count.get((path, key, '+'), 0)} times"
@@ -497,7 +497,7 @@ def ga_bump_stray(repo, base, sha, stable):
 
 
 def is_ga_bump(repo, sha, base, stable):
-    """Is sha Promote's GA commit for stable on base: the bot's one commit on it, changing only the chart version?"""
+    """Is sha Promote's GA commit for stable on base: the bot's one commit on it, changing only the GA_KEYS lines?"""
     parents = git(repo, "rev-list", "--parents", "-n1", sha).split()[1:]
     return (
         parents == [resolve(repo, base)]
