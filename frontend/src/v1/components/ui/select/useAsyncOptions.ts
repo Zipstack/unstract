@@ -7,41 +7,39 @@ export type AsyncState = Readonly<{
   error: Error | null;
 }>;
 
-type Load = (
+/** Fetches the options for `query`; aborted through `signal` when superseded. */
+export type LoadOptions = (
   query: string,
   signal: AbortSignal,
 ) => Promise<readonly SelectOption[]>;
 
 const IDLE: AsyncState = { options: [], loading: false, error: null };
 
-const isAbort = (error: unknown): boolean =>
-  typeof error === "object" &&
-  error !== null &&
-  (error as { name?: unknown }).name === "AbortError";
-
 /**
  * Options fetched by `load` for `query` while `enabled` (the list is open).
  * A query change waits `debounceMs`; the first load after `enabled` turns
  * true runs at once. Each load aborts the one before it, a response for a
  * query that is no longer current is dropped, and unmounting aborts.
+ * `load` is read from a ref, so a new function identity (an inline arrow)
+ * neither refetches nor cancels.
  */
 export function useAsyncOptions(
-  load: Load | undefined,
+  load: LoadOptions | undefined,
   query: string,
   enabled: boolean,
   debounceMs = 250,
 ): AsyncState {
   const [state, setState] = useState<AsyncState>(IDLE);
   const latestQuery = useRef(query);
+  latestQuery.current = query;
+  const latestLoad = useRef(load);
+  latestLoad.current = load;
+  const hasLoad = load !== undefined;
   const controller = useRef<AbortController | null>(null);
   const first = useRef(true);
 
   useEffect(() => {
-    latestQuery.current = query;
-  }, [query]);
-
-  useEffect(() => {
-    if (!load || !enabled) {
+    if (!hasLoad || !enabled) {
       first.current = true;
       if (controller.current) {
         controller.current.abort();
@@ -53,20 +51,25 @@ export function useAsyncOptions(
     const delay = first.current ? 0 : debounceMs;
     first.current = false;
     const timer = setTimeout(() => {
+      const fetchOptions = latestLoad.current;
+      if (!fetchOptions) {
+        return;
+      }
       controller.current?.abort();
       const own = new AbortController();
       controller.current = own;
       setState((current) => ({ ...current, loading: true, error: null }));
       const current = () =>
         !own.signal.aborted && query === latestQuery.current;
-      load(query, own.signal).then(
+      fetchOptions(query, own.signal).then(
         (options) => {
           if (current()) {
             setState({ options, loading: false, error: null });
           }
         },
         (error: unknown) => {
-          if (isAbort(error) || !current()) {
+          // Our own aborts fail `current()`; any other rejection is an error.
+          if (!current()) {
             return;
           }
           setState((previous) => ({
@@ -78,7 +81,7 @@ export function useAsyncOptions(
       );
     }, delay);
     return () => clearTimeout(timer);
-  }, [load, query, enabled, debounceMs]);
+  }, [hasLoad, query, enabled, debounceMs]);
 
   useEffect(() => () => controller.current?.abort(), []);
 

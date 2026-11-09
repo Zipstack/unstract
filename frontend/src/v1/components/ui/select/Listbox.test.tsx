@@ -149,16 +149,28 @@ it("says No options for an empty list and No matches for an empty filter", async
   expect(screen.getByRole("status").textContent).toBe("No matches");
 });
 
+it("ignores Enter while an IME composition is in progress", async () => {
+  const onSelect = vi.fn();
+  const { user } = renderV1(<Harness onSelect={onSelect} />);
+  const input = screen.getByRole("combobox");
+  await user.click(input);
+  await user.keyboard("{ArrowDown}");
+  fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+  expect(onSelect).not.toHaveBeenCalled();
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(onSelect).toHaveBeenCalledWith(FRUIT[0]);
+});
+
 it("uses the caller's empty text", () => {
   renderV1(<Harness options={[]} emptyText="No models yet" />);
   expect(screen.getByRole("status").textContent).toBe("No models yet");
 });
 
-it("scrolls the active row into view", async () => {
+it("scrolls the active row into view only while open", async () => {
   const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView");
   const { user } = renderV1(<Harness />);
   await user.click(screen.getByRole("combobox"));
-  scrollIntoView.mockClear();
+  expect(scrollIntoView).not.toHaveBeenCalled();
   await user.keyboard("{ArrowDown}{End}");
   const target = scrollIntoView.mock.contexts.at(-1) as Element;
   expect(target.id).toBe("fruit-option-2");

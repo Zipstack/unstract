@@ -2,12 +2,7 @@ import { act } from "@testing-library/react";
 import { renderHookV1 } from "@v1/test";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SelectOption } from "./options";
-import { useAsyncOptions } from "./useAsyncOptions";
-
-type Load = (
-  query: string,
-  signal: AbortSignal,
-) => Promise<readonly SelectOption[]>;
+import { type LoadOptions as Load, useAsyncOptions } from "./useAsyncOptions";
 
 type Call = Readonly<{
   query: string;
@@ -141,6 +136,34 @@ it("ignores the AbortError of a cancelled request", async () => {
   );
   expect(result.current.error).toBeNull();
   expect(result.current.loading).toBe(true);
+});
+
+it("treats an AbortError of a current request as a failure", async () => {
+  const { load, calls } = deferredLoader();
+  const { result } = setup({ load, query: "", enabled: true });
+  advance(0);
+  await act(async () => calls[0].reject(new DOMException("x", "AbortError")));
+  expect(result.current.loading).toBe(false);
+  expect(result.current.error).not.toBeNull();
+});
+
+it("neither refetches nor cancels when only the loader's identity changes", async () => {
+  const { load, calls } = deferredLoader();
+  const { result, rerender } = setup({ load, query: "a", enabled: true });
+  advance(0);
+  const fresh = vi.fn<Load>((query, signal) => load(query, signal));
+  rerender({ load: fresh, query: "a", enabled: true });
+  advance(1000);
+  expect(fresh).not.toHaveBeenCalled();
+  expect(load).toHaveBeenCalledTimes(1);
+  expect(calls[0].signal.aborted).toBe(false);
+  await act(async () => calls[0].resolve([opt("Alpha")]));
+  expect(result.current.options).toEqual([opt("Alpha")]);
+  // The next query uses the latest loader.
+  rerender({ load: fresh, query: "ab", enabled: true });
+  advance(250);
+  expect(fresh).toHaveBeenCalledTimes(1);
+  expect(calls[1].query).toBe("ab");
 });
 
 it("reports a failed load and stops loading", async () => {

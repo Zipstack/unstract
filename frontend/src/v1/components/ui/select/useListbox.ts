@@ -84,7 +84,7 @@ export function useListbox({
   filter = true,
   id,
 }: UseListboxOptions): Listbox {
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(false);
   const [query, setQueryState] = useState("");
   const [activeValue, setActiveValue] = useState<string | null>(null);
 
@@ -104,7 +104,7 @@ export function useListbox({
   const setQuery = (next: string) => {
     setQueryState(next);
     if (next !== "") {
-      setOpen(true);
+      setOpenState(true);
     }
     const list = filterBy(next);
     setActiveValue(list[firstEnabled(list)]?.value ?? null);
@@ -122,8 +122,11 @@ export function useListbox({
       (option) => !option.disabled && selected.includes(option.value),
     );
     setActiveIndex(chosen === -1 ? firstEnabled(visible) : chosen);
-    setOpen(true);
+    setOpenState(true);
   };
+
+  /** Opening lands where the arrows do: the selection, else the first enabled option. */
+  const setOpen = (next: boolean) => (next ? openList() : setOpenState(false));
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     switch (event.key) {
@@ -152,6 +155,10 @@ export function useListbox({
         }
         return;
       case "Enter": {
+        // Enter that commits an IME composition is not a selection.
+        if (event.nativeEvent.isComposing) {
+          return;
+        }
         const option = visible[activeIndex];
         if (open && option && !option.disabled) {
           event.preventDefault();
@@ -162,11 +169,11 @@ export function useListbox({
       case "Escape":
         if (open) {
           event.preventDefault();
-          setOpen(false);
+          setOpenState(false);
         }
         return;
       case "Tab":
-        setOpen(false);
+        setOpenState(false);
         return;
       default:
     }

@@ -34,6 +34,7 @@ function setup(props: Props = {}) {
       hook.result.current.onKeyDown({
         key,
         preventDefault,
+        nativeEvent: { isComposing: false },
       } as unknown as KeyboardEvent<HTMLElement>),
     );
     return preventDefault;
@@ -217,11 +218,31 @@ it("has nothing active when no option is enabled", () => {
   expect(onSelect).not.toHaveBeenCalled();
 });
 
-it("opens and closes through setOpen", () => {
-  const { result } = setup();
+it("opens through setOpen at the first selected option", () => {
+  const { result } = setup({ selected: ["delta"] });
   act(() => result.current.setOpen(true));
   expect(result.current.open).toBe(true);
-  expect(result.current.activeId).toBe("fruit-option-0");
+  expect(result.current.activeIndex).toBe(3);
+  expect(result.current.activeId).toBe("fruit-option-3");
   act(() => result.current.setOpen(false));
   expect(result.current.open).toBe(false);
+  expect(result.current.activeId).toBeUndefined();
+});
+
+it("opens through setOpen at the first enabled option with no selection", () => {
+  const { result, press } = setup();
+  press("ArrowDown");
+  press("End");
+  act(() => result.current.setOpen(false));
+  act(() => result.current.setOpen(true));
+  expect(result.current.activeIndex).toBe(0);
+});
+
+it("does not open on a disabled selected option", () => {
+  const down = setup({ selected: ["beta"] });
+  down.press("ArrowDown");
+  expect(down.result.current.activeIndex).toBe(0);
+  const click = setup({ selected: ["beta"] });
+  act(() => click.result.current.setOpen(true));
+  expect(click.result.current.activeIndex).toBe(0);
 });

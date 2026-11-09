@@ -62,8 +62,9 @@ export function Listbox({
     virtualizer.measure();
   }, [visible, virtualizer]);
 
+  const { open } = listbox;
   useEffect(() => {
-    if (activeIndex < 0) {
+    if (!open || activeIndex < 0) {
       return;
     }
     if (virtual) {
@@ -73,7 +74,7 @@ export function Listbox({
         .getElementById(optionId(activeIndex))
         ?.scrollIntoView({ block: "nearest" });
     }
-  }, [activeIndex, virtual, virtualizer, optionId]);
+  }, [open, activeIndex, virtual, virtualizer, optionId]);
 
   const renderRow = (index: number) => {
     const option = visible[index];
