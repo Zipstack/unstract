@@ -105,10 +105,15 @@ export function Select({
           sideOffset={4}
           className={cn(
             LIST_SURFACE,
-            "ui:w-(--radix-select-trigger-width) ui:max-h-(--radix-select-content-available-height)",
+            "ui:flex ui:flex-col ui:overflow-hidden ui:w-(--radix-select-trigger-width)",
           )}
         >
-          <SelectPrimitive.Viewport className="ui:flex ui:flex-col ui:gap-0.5">
+          <SelectPrimitive.Viewport className="ui:flex ui:min-h-0 ui:flex-col ui:gap-0.5 ui:max-h-(--radix-select-content-available-height)">
+            {options.length === 0 ? (
+              <output className="ui:flex ui:h-8 ui:items-center ui:px-2 ui:text-caption ui:text-muted-foreground">
+                No options
+              </output>
+            ) : null}
             {options.map((option) => (
               <SelectItem key={option.value} option={option} />
             ))}

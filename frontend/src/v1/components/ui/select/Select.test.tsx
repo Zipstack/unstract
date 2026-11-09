@@ -182,3 +182,36 @@ it("draws the check only on the selected option", async () => {
       .querySelector("svg.lucide-check"),
   ).not.toBeNull();
 });
+
+it("keeps both height caps: max-h-80 on the list, the available height on the viewport", async () => {
+  const { user } = setup();
+  await user.click(trigger());
+  const listbox = screen.getByRole("listbox");
+  const viewport = document.querySelector("[data-radix-select-viewport]");
+  expect(listbox.className).toContain("ui:max-h-80");
+  expect(viewport?.className).toContain(
+    "ui:max-h-(--radix-select-content-available-height)",
+  );
+});
+
+it("shows a status row when there are no options", async () => {
+  const { user } = setup({ options: [] });
+  await user.click(trigger());
+  expect(screen.getByRole("status").textContent).toBe("No options");
+});
+
+it("passes name and required to the native select a form submits", async () => {
+  const { user } = renderV1(
+    <form>
+      <Select options={MODELS} aria-label="Model" name="model" required />
+    </form>,
+  );
+  const native = document.querySelector<HTMLSelectElement>(
+    'select[name="model"]',
+  );
+  expect(native).not.toBeNull();
+  expect(native?.required).toBe(true);
+  await user.click(trigger());
+  await user.click(screen.getByRole("option", { name: "Gemma" }));
+  expect(native?.value).toBe("gemma");
+});
