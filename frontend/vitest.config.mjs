@@ -113,12 +113,16 @@ export default defineConfig({
      * known-good and known-bad trees (some with `*.test.ts` files) that
      * test-fixtures/v1-boundary/boundary.fixtures.mjs lints and type-checks;
      * they are inputs, not tests.
+     *
+     * `src/v1/` has its own config (vitest.v1.config.mts) and rig groups
+     * (`frontend-v1-*`), so a v1 result never changes this suite's.
      */
     exclude: [
       "**/node_modules/**",
       "**/dist/**",
       "**/build/**",
       "test-fixtures/**",
+      "src/v1/**",
     ],
   },
 });
