@@ -87,16 +87,22 @@ jobs:
         run: python3 .relmgr/.github/release/relstate.py | jq --arg b "$BRANCH" '.branches[] | select(.branch == $b)'
 
       # Not SLACK_WEBHOOK_URL: that one posts public release announcements.
+      # A job cancelled by its timeout skips this step: failure() is false then.
       - name: Alert
         if: failure() && github.event_name == 'push'
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_ALERT_SLACK_WEBHOOK_URL }}
-          INVALID: ${{ steps.classify.outputs.invalid || 'unknown' }}
+          INVALID: ${{ steps.classify.outputs.invalid }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -z "$SLACK_WEBHOOK_URL" ]; then
             echo "::warning::No alert sent: secret RELEASE_ALERT_SLACK_WEBHOOK_URL is not set"
             exit 0
           fi
-          text=":red_circle: Release branch CI failed on \`$BRANCH\` (OSS) after a push: $INVALID invalid commit(s). $RUN_URL"
-          jq -n --arg text "$text" '{text: $text}' | curl -fsS -X POST -H 'Content-Type: application/json' --data @- "$SLACK_WEBHOOK_URL"
+          if [ "${INVALID:-0}" != 0 ]; then
+            cause="$INVALID invalid commit(s)"
+          else
+            cause="the commit check failed or did not run"
+          fi
+          text=":red_circle: Release branch CI failed on \`$BRANCH\` (OSS) after a push: $cause. $RUN_URL"
+          jq -n --arg text "$text" '{text: $text}' | curl -sS --fail-with-body --max-time 30 -X POST -H 'Content-Type: application/json' --data @- "$SLACK_WEBHOOK_URL"
