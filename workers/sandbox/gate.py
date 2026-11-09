@@ -1,4 +1,4 @@
-"""Normative AST safety gate for LLM-generated post-processing code.
+r"""Normative AST safety gate for LLM-generated post-processing code.
 
 LAYER-1 CONTROL ONLY — BEST-EFFORT, NOT A COMPLETE SANDBOX. This is a
 fail-closed static AST check that rejects the well-known Python
@@ -64,10 +64,39 @@ walk over every permitted attribute edge found only `compile`, `open`,
 `json.load(s)` and `itemgetter` — so this is not a bypass. Do not cite the test
 as exhaustive.
 
+**What a gate bypass costs, stated plainly.** `runner.py` writes the submitted
+code verbatim to `script.py` and runs it as `python -I -S -E script.py`, with
+builtins UNRESTRICTED. So a bypass is not a narrow leak, it is arbitrary Python
+in the child — `open()` and `eval()` included, and from there
+`/proc/<ppid>/environ` is the parent worker's environment. An earlier
+description of this PR called the residual "a world-readable file", which
+understated it; a reviewer said so on #2309 and was right.
+
+**Four routes were open until 2026-11-09**, each found by a reviewer who re-ran
+it, and each re-verified here by EXECUTION before being closed — the frame
+snippet returned `eval('1+1') == 2` and a working `open` under the child's own
+invocation:
+
+  * `g().gi_frame.f_builtins['eval']` on a generator, and the same via
+    `cr_frame`/`ag_frame`/`tb_frame` — no underscore, no dunder, no `sys`, so
+    every rule passed it. Now `_rule_introspection_attribute`, keyed on the
+    `f_`/`gi_`/`cr_`/`ag_`/`tb_` prefixes rather than a list of today's names.
+  * `case object(__builtins__=b)` — a class pattern's keyword attributes live
+    in `MatchClass.kwd_attrs` as plain strings, so no `ast.Attribute` node
+    exists to match. Now `_rule_match_class_attribute`.
+  * `eval = (\n    eval\n)` — the shadowing exemption compared line numbers
+    only, so a RHS on a later line than its own target read as already bound.
+  * `[(eval := eval)('...') for _ in [0]]` — a walrus in a comprehension binds
+    in the ENCLOSING scope (PEP 572), so it was not a comprehension-local.
+
+Two further sub-claims in that report did NOT reproduce, and are recorded here
+so nobody re-opens them: `f = eval` was already refused by
+`_rule_denylisted_name`, and `del eval` contains no `ast.Load` at all (at module
+level it raises `NameError` before anything could use it).
+
 **What is NOT fixed, and must not be read as fixed.** The dunder-subscript check
 still matches only *constant* strings, so `d['__imp' + 'ort__']` is still
-GATE-PASS on its own (verified 2026-10-23) — what changed is that the `_sys`
-spelling above no longer gets you a frame to subscript. More importantly the
+GATE-PASS on its own (verified 2026-10-23). More importantly the
 structural point stands unchanged: this is a denylist of names over a dynamic
 language, the closure above is a closure of the paths that exist in *today's*
 stdlib, and the worst case in the threat model needs no import at all (see
@@ -290,6 +319,70 @@ def _rule_private_attribute(node, parents) -> str | None:
     return None
 
 
+#: CPython's introspection attribute prefixes: frame (`f_`), generator
+#: (`gi_`), coroutine (`cr_`), async-generator (`ag_`) and traceback (`tb_`)
+#: internals. None is underscore-prefixed, so `_rule_private_attribute` never
+#: sees them, and none appears in the public API of any module in
+#: `_ALLOWED_IMPORTS`.
+_INTROSPECTION_ATTR_PREFIXES = ("f_", "gi_", "cr_", "ag_", "tb_")
+
+
+def _rule_introspection_attribute(node, parents) -> str | None:
+    """Frames and friends: the route to the real builtins with no underscore.
+
+    `def g(): yield 1` then `g().gi_frame.f_builtins['eval']` names no dunder,
+    no `sys` and no denylisted attribute, so every other rule passed it. This
+    was not a reading -- run as the child actually runs
+    (`python -I -S -E script.py`) the snippet yielded the REAL `eval`
+    (`eval('1+1') == 2`) and the real `open`. `runner.py` writes the submitted
+    code verbatim with unrestricted builtins, so that is arbitrary execution,
+    and from any frame `f_globals`/`f_builtins` is the whole interpreter.
+
+    The same hole exists on `cr_frame` (coroutine), `ag_frame` (async
+    generator) and `tb_frame` (traceback), each reachable without importing
+    anything.
+
+    A PREFIX rule, not a list of today's attribute names: `f_back` walks to the
+    caller's frame and `gi_code`/`cr_code` hand out a code object, so an
+    enumeration would leave the next one open.
+    """
+    if isinstance(node, ast.Attribute) and node.attr.startswith(
+        _INTROSPECTION_ATTR_PREFIXES
+    ):
+        return f"safety gate: introspection attribute access '{node.attr}'"
+    return None
+
+
+def _rule_match_class_attribute(node, parents) -> str | None:
+    """`case object(__builtins__=b)` -- an attribute read with no `ast.Attribute`.
+
+    A class pattern's keyword names live in `MatchClass.kwd_attrs` as plain
+    STRINGS, and matching one performs a real `getattr`. Every attribute rule
+    above is keyed on an `ast.Attribute` node, so none of them can see this:
+    `case object(__builtins__=b)` and `case object(__globals__=g)` both
+    gate-passed at the head this rule was added to.
+
+    Checked against the same prefixes and denylist the attribute rules use, so
+    the three cannot drift apart.
+    """
+    if not isinstance(node, ast.MatchClass):
+        return None
+    for attr in node.kwd_attrs or ():
+        if attr.startswith("_"):
+            kind = "dunder" if attr.startswith("__") else "private"
+            return f"safety gate: {kind} attribute access '{attr}' in a class pattern"
+        if attr.startswith(_INTROSPECTION_ATTR_PREFIXES):
+            return (
+                f"safety gate: introspection attribute access '{attr}' "
+                "in a class pattern"
+            )
+        if attr in _DENYLISTED_ATTR_CALLS:
+            return (
+                f"safety gate: disallowed attribute access '{attr}' " "in a class pattern"
+            )
+    return None
+
+
 def _rule_sys_reexport(node, parents) -> str | None:
     """`anything.sys` -- the re-export that walks around the `sys.argv` rule.
 
@@ -355,6 +448,15 @@ def _rule_sys_name(node, parents) -> str | None:
 #: Scopes in which a bound name is local for the WHOLE scope, so a Load of it
 #: can never fall through to builtins -- Python raises UnboundLocalError
 #: instead. Order of binding vs. use is therefore irrelevant inside these.
+#: The subset of `_FUNCTION_SCOPES` that a walrus does NOT bind into: a
+#: `NamedExpr` in a comprehension binds in the ENCLOSING scope (PEP 572).
+_COMPREHENSION_SCOPES = (
+    ast.ListComp,
+    ast.SetComp,
+    ast.DictComp,
+    ast.GeneratorExp,
+)
+
 _FUNCTION_SCOPES = (
     ast.FunctionDef,
     ast.AsyncFunctionDef,
@@ -404,16 +506,31 @@ def _names_bound_by(stmt) -> list[tuple[str, int]]:
     return out
 
 
-def _unconditional_module_bindings(module) -> dict[str, int]:
-    """Names bound by an unconditional direct statement of the module body."""
-    out: dict[str, int] = {}
+def _unconditional_module_bindings(module) -> dict[str, tuple[int, ast.stmt]]:
+    """Names bound by an unconditional direct statement of the module body.
+
+    Returns the binding's line AND the statement that performs it. The
+    statement is not decoration: `_shadows_builtin` has to know whether a Load
+    sits INSIDE the binding statement, where the binding has not happened yet.
+    """
+    out: dict[str, tuple[int, ast.stmt]] = {}
     for stmt in getattr(module, "body", []):
         if not isinstance(stmt, _UNCONDITIONAL_STMTS):
             continue
         for name, lineno in _names_bound_by(stmt):
-            if name not in out or lineno < out[name]:
-                out[name] = lineno
+            if name not in out or lineno < out[name][0]:
+                out[name] = (lineno, stmt)
     return out
+
+
+def _is_descendant(node, ancestor, parents) -> bool:
+    """Is `node` somewhere inside `ancestor`? Walks the `parents` map upward."""
+    cur = parents.get(node)
+    while cur is not None:
+        if cur is ancestor:
+            return True
+        cur = parents.get(cur)
+    return False
 
 
 def _function_scope_binds(scope, name: str) -> bool:
@@ -445,12 +562,26 @@ def _function_scope_binds(scope, name: str) -> bool:
     if declares_global(scope, top=True):
         return False
 
+    # A walrus inside a COMPREHENSION binds in the enclosing scope, not in the
+    # comprehension -- so `[(eval := eval)('...') for _ in [0]]` is not a
+    # comprehension-local `eval`, and the RHS Load is the real builtin. The
+    # walk below sees the NamedExpr's Store and used to answer True, which
+    # gate-passed that snippet. Collect those targets and skip them here; the
+    # Load then falls through to the enclosing scope's rule, which refuses it.
+    walrus_targets: set[int] = set()
+    if isinstance(scope, _COMPREHENSION_SCOPES):
+        for n in ast.walk(scope):
+            if isinstance(n, ast.NamedExpr):
+                for t in ast.walk(n.target):
+                    if isinstance(t, ast.Name):
+                        walrus_targets.add(id(t))
+
     def walk(n, top=False):
         if not top and isinstance(n, nested):
             # A nested scope: only its NAME is bound out here.
             return getattr(n, "name", None) == name
         if isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
-            if n.id == name:
+            if n.id == name and id(n) not in walrus_targets:
                 return True
         elif isinstance(n, ast.arg) and n.arg == name:
             return True
@@ -632,9 +763,18 @@ def _shadows_builtin(node, parents) -> bool:
             if _function_scope_binds(cur, node.id):
                 return True
         elif isinstance(cur, ast.Module):
-            pos = _unconditional_module_bindings(cur).get(node.id)
-            if pos is not None and pos < node.lineno:
-                return True
+            bound = _unconditional_module_bindings(cur).get(node.id)
+            if bound is not None:
+                pos, stmt = bound
+                # `pos < node.lineno` ALONE was unsound. In
+                # `eval = (\n    eval\n)` the RHS sits on a later line than
+                # the target, so the comparison called it shadowed -- but the
+                # binding does not exist until the RHS has been evaluated, so
+                # that Load is the real builtin. Measured: gate-passed, and the
+                # name bound was `eval` itself. A binding therefore never
+                # exempts a Load inside the binding statement.
+                if pos < node.lineno and not _is_descendant(node, stmt, parents):
+                    return True
         prev, cur = cur, parents.get(cur)
     return False
 
@@ -683,6 +823,8 @@ _RULES = (
     _rule_denylisted_call,
     _rule_dangerous_attribute,
     _rule_private_attribute,
+    _rule_introspection_attribute,
+    _rule_match_class_attribute,
     _rule_sys_reexport,
     _rule_builtins_subscript,
     _rule_sys_name,

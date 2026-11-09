@@ -524,6 +524,8 @@ class TestEveryRuleIsRegistered:
             "_rule_denylisted_call",
             "_rule_dangerous_attribute",
             "_rule_private_attribute",
+            "_rule_introspection_attribute",
+            "_rule_match_class_attribute",
             "_rule_sys_reexport",
             "_rule_builtins_subscript",
             "_rule_sys_name",
@@ -680,3 +682,132 @@ def test_checking_a_large_script_stays_roughly_linear():
         f"gate check took {elapsed:.2f}s for a {len(code.encode())}-byte "
         "script; the shadowing exemption has gone quadratic again"
     )
+
+
+class TestFrameAndMatchRoutesToBuiltins:
+    """The four routes that gate-passed before `_rule_introspection_attribute`
+    and `_rule_match_class_attribute` existed.
+
+    Each was verified by EXECUTION, not by reading: run the way the child runs
+    it (`python -I -S -E script.py`), the frame snippet below produced the real
+    `eval` -- `eval('1+1')` returned 2 -- and the real `open`. `runner.py`
+    writes submitted code verbatim and does not restrict builtins, so a gate
+    bypass is arbitrary execution in the child, which is why these are not
+    stylistic cases.
+
+    Reported on PR #2309 by a reviewer who re-ran each one. Two further
+    sub-claims in that report did NOT reproduce and deliberately have no test
+    here: `f = eval` is already refused by `_rule_denylisted_name`, and
+    `del eval` contains no `ast.Load` at all (it raises `NameError` at module
+    level before anything can use it).
+    """
+
+    @pytest.mark.parametrize(
+        "label,code",
+        [
+            (
+                "generator frame -> f_builtins",
+                "def g():\n    yield 1\nb = g().gi_frame.f_builtins['eval']\n",
+            ),
+            (
+                "generator frame -> f_globals",
+                "def g():\n    yield 1\nb = g().gi_frame.f_globals\n",
+            ),
+            (
+                "f_back walks to the caller's frame",
+                "def g():\n    yield 1\nb = g().gi_frame.f_back\n",
+            ),
+            (
+                "gi_code hands out a code object",
+                "def g():\n    yield 1\nc = g().gi_code\n",
+            ),
+            (
+                "coroutine frame",
+                "async def c():\n    pass\nf = c().cr_frame\n",
+            ),
+            (
+                "async generator frame",
+                "async def a():\n    yield 1\nf = a().ag_frame\n",
+            ),
+            (
+                "traceback frame",
+                "import sys\ntb = sys.exc_info()[2]\nf = tb.tb_frame\n",
+            ),
+        ],
+    )
+    def test_introspection_attributes_are_refused(self, label, code):
+        ok, reason = check_code_safe(code)
+        assert ok is False, f"{label}: gate accepted a route to the real builtins"
+        assert "introspection attribute" in reason, reason
+
+    @pytest.mark.parametrize(
+        "label,code",
+        [
+            (
+                "__builtins__ via a class pattern",
+                "match 1:\n    case object(__builtins__=b):\n        pass\n",
+            ),
+            (
+                "__globals__ via a class pattern",
+                "def f():\n    pass\nmatch f:\n    case object(__globals__=g):\n        pass\n",
+            ),
+            (
+                "a frame attribute via a class pattern",
+                "match 1:\n    case object(gi_frame=f):\n        pass\n",
+            ),
+        ],
+    )
+    def test_class_pattern_keywords_are_refused(self, label, code):
+        """`MatchClass.kwd_attrs` holds plain strings, so no `ast.Attribute`
+        node exists for the attribute rules to match -- which is exactly how
+        these passed.
+        """
+        ok, reason = check_code_safe(code)
+        assert ok is False, f"{label}: gate accepted an attribute read in a pattern"
+        assert "in a class pattern" in reason, reason
+
+    @pytest.mark.parametrize(
+        "label,code",
+        [
+            (
+                "the binding's own RHS on a later line",
+                "eval = (\n    eval\n)\n",
+            ),
+            (
+                "walrus in a comprehension binds OUTSIDE it",
+                "[(eval := eval)('1') for _ in [0]]\n",
+            ),
+        ],
+    )
+    def test_a_binding_does_not_exempt_its_own_right_hand_side(self, label, code):
+        """The shadowing exemption asks whether a Load is the submitted code's
+        OWN local. Inside the binding construct it is not: the binding has not
+        happened yet, so the Load still resolves to the builtin.
+        """
+        ok, reason = check_code_safe(code)
+        assert ok is False, f"{label}: gate accepted a read of the real builtin"
+        assert reason == "safety gate: disallowed name 'eval'", reason
+
+    @pytest.mark.parametrize(
+        "label,code",
+        [
+            ("a genuine rebinding, then a read", "eval = 1\nx = eval\n"),
+            ("a local named input", "def f(input):\n    return input\n"),
+            ("ordinary attribute work", "import json\nx = json.dumps({'a': 1})\n"),
+            (
+                "an attribute that merely starts with f",
+                "x = 'a,b'.format()\n",
+            ),
+            (
+                "a date helper, not a frame attribute",
+                "import datetime\nd = datetime.date.fromisoformat('2026-01-01')\n",
+            ),
+        ],
+    )
+    def test_the_new_rules_do_not_over_refuse(self, label, code):
+        """The two new rules are prefix- and pattern-keyed, so the risk they
+        carry is false refusal of ordinary generated code. These are the shapes
+        that would show it.
+        """
+        ok, reason = check_code_safe(code)
+        assert ok is True, f"{label}: gate refused legitimate code -- {reason}"
