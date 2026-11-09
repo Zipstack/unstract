@@ -97,6 +97,17 @@ is convention.
 - `CodeEditor` uses Monaco from its default CDN, as v0 does. Never call
   `loader.config()` in v1: the loader is shared with v0.
 
+## Toggles
+
+- Checkboxes, switches, radio groups and sliders come from
+  `components/ui/toggles/` (`Checkbox`, `Switch`, `RadioGroup` + `Radio`,
+  `Slider`), imported from `@v1/components/ui/toggles`; its README lists
+  every prop. Do not build another checkbox, radio, switch or slider.
+- The mixed checkbox is controlled only: pass `checked="indeterminate"`.
+- Every group and control has a name: a `RadioGroup` takes `label` or
+  `aria-label`, a control without a visible label takes `aria-label`, and a
+  range slider names its thumbs with `thumbLabels`.
+
 ## Folders and what each may import
 
 Every folder may import from itself. Test files (`*.test.ts(x)`,
