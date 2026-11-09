@@ -9,6 +9,11 @@ on:
     branches: [main, 'release/**']
     types: [opened, edited, reopened, synchronize, labeled, unlabeled]
 
+# The newest event's run reports: an older run of a label swap can read the labels mid-swap.
+concurrency:
+  group: lint-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   issues: read # the PR's live labels
@@ -38,7 +43,8 @@ jobs:
             exit 0
           fi
           # Live labels, not the event's: a label swap fires one run per event, and an earlier event's payload is stale.
-          LABELS=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels?per_page=100" --jq '[.[].name]')
+          LABELS=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels?per_page=100" --jq '[.[].name]') ||
+            { echo "::error title=Lint PR::could not read this PR's labels from the API; re-run the job"; exit 1; }
           export LABELS
           python3 -I - <<'PY'  # isolated: no working-directory module shadows the stdlib
           import json, os, sys

@@ -541,6 +541,8 @@ def main(argv=None):
         out_file = a.out and rm.local_path(a.out)
         if not a.slug:
             raise RuntimeError("--slug (or GITHUB_REPOSITORY) is required")
+        if (name := a.slug.lower().split("/")[-1]) != rs.SLUG:
+            rs.use(name)  # relstate chose its config from the env at import
         if rs.PINS and not a.oss_repo:
             raise RuntimeError(
                 f"--oss-repo (or OSS_REPO) is required: this repo pins {rs.PINS}"

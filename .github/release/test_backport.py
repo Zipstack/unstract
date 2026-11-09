@@ -1830,7 +1830,6 @@ class DispatchCommit(unittest.TestCase):
 
     def test_unlabelled_named_commit_fails_with_its_pr(self):
         pr = {"number": 8, "title": "UN-8 [FIX] x", "labels": []}
-        # Real targets, confirm on: without the guard this PR would be picked onto every line.
         targets = {
             "fix": ["release/0.190"],
             "security_critical": [

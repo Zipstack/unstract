@@ -4234,12 +4234,25 @@ class LintPrStep(unittest.TestCase):
                 text=True,
             )
             with open(os.path.join(d, "calls")) as fh:
-                self.assertIn("repos/o/r/issues/7/labels", fh.read())
+                self.assertEqual(
+                    fh.read(),
+                    "api repos/o/r/issues/7/labels?per_page=100 --jq [.[].name]\n",
+                )
             return r.returncode, r.stdout
 
+    def test_the_newest_event_run_reports(self):
+        with open(os.path.join(HERE, "..", "workflows", "lint-pr.yaml")) as fh:
+            self.assertIn(
+                "\nconcurrency:\n  group: lint-pr-${{ github.event.pull_request.number }}\n"
+                "  cancel-in-progress: true\n",
+                fh.read(),
+            )
+
     def test_a_failed_label_read_fails_the_step(self):
-        rc, out = self.classify("UN-1 [FIX] x", ["main-only"], "main", gh_exit=1)
-        self.assertNotEqual(rc, 0)
+        # A release base: there an empty label list would pass, so only the failed read can fail the step.
+        rc, out = self.classify("UN-1 [FIX] x", [], "release/0.186", gh_exit=1)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("could not read this PR's labels", out)
         self.assertNotIn("class=", out)
 
     def test_a_release_failure_omits_the_main_label_menu(self):

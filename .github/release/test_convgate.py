@@ -689,9 +689,10 @@ class Gate(unittest.TestCase):
             contextlib.redirect_stdout(io.StringIO()) as buf,
             contextlib.redirect_stderr(io.StringIO()),
             mock.patch.dict(os.environ),
-            mock.patch.object(rs, "PINS", None),
+            mock.patch.dict(rs.REPOS, {"x": rs.REPOS["unstract-cloud"][:3] + (None, "")}),
             mock.patch.object(cg.bm, "run_gh", gh),
         ):
+            self.addCleanup(rs.use, rs.SLUG)
             os.environ.pop("GITHUB_REPOSITORY")
             code = cg.main(
                 [
@@ -722,6 +723,12 @@ class Gate(unittest.TestCase):
         self.pick(d, "release/1.5")
         _, calls, _ = self.run_main("--slug", "o/x")
         self.assertIn("repos/o/x/issues/9/comments", [a for c in calls for a in c])
+
+    def test_slug_selects_the_repo_config(self):
+        code, calls, out = self.run_main("--slug", "o/nope")
+        self.assertEqual(code, 1)
+        self.assertEqual(calls, [])
+        self.assertIn("relstate has no config for repo 'nope'", out)
 
     def test_no_slug_is_an_error(self):
         code, calls, out = self.run_main()
