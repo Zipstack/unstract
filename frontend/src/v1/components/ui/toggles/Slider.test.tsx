@@ -1,0 +1,188 @@
+import { screen } from "@testing-library/react";
+import { renderV1 } from "@v1/test";
+import { expect, it, vi } from "vitest";
+import { Slider } from "./Slider";
+
+const twoPlaces = (v: number) => v.toFixed(2);
+
+it("names a single thumb from the label and speaks its value", () => {
+  renderV1(
+    <Slider
+      label="Temperature"
+      defaultValue={[0.7]}
+      min={0}
+      max={1}
+      step={0.1}
+      formatValue={twoPlaces}
+    />,
+  );
+  const thumb = screen.getByRole("slider", { name: "Temperature" });
+  expect(thumb).toHaveAttribute("aria-label", "Temperature");
+  expect(thumb).toHaveAttribute("aria-valuenow", "0.7");
+  expect(thumb).toHaveAttribute("aria-valuetext", "0.70");
+});
+
+it("arrows, Home and End move and clamp", async () => {
+  const onValueChange = vi.fn();
+  const { user } = renderV1(
+    <Slider
+      label="Top K"
+      defaultValue={[5]}
+      min={0}
+      max={10}
+      step={1}
+      onValueChange={onValueChange}
+    />,
+  );
+  const thumb = screen.getByRole("slider", { name: "Top K" });
+  thumb.focus();
+  await user.keyboard("{ArrowRight}");
+  expect(thumb).toHaveAttribute("aria-valuenow", "6");
+  expect(thumb).toHaveAttribute("aria-valuetext", "6");
+  expect(onValueChange).toHaveBeenLastCalledWith([6]);
+  await user.keyboard("{End}");
+  expect(thumb).toHaveAttribute("aria-valuenow", "10");
+  expect(onValueChange).toHaveBeenLastCalledWith([10]);
+  await user.keyboard("{ArrowRight}");
+  expect(thumb).toHaveAttribute("aria-valuenow", "10");
+  await user.keyboard("{Home}");
+  expect(thumb).toHaveAttribute("aria-valuenow", "0");
+  expect(onValueChange).toHaveBeenLastCalledWith([0]);
+});
+
+it("names each thumb of a range", () => {
+  renderV1(
+    <Slider
+      label="Pages"
+      thumbLabels={["Minimum", "Maximum"]}
+      defaultValue={[2, 8]}
+      min={0}
+      max={10}
+    />,
+  );
+  expect(screen.getByRole("slider", { name: "Minimum" })).toHaveAttribute(
+    "aria-valuenow",
+    "2",
+  );
+  expect(screen.getByRole("slider", { name: "Maximum" })).toHaveAttribute(
+    "aria-valuenow",
+    "8",
+  );
+});
+
+it("names the thumb from a non-string label through aria-labelledby", () => {
+  renderV1(<Slider label={<em>Temperature</em>} defaultValue={[50]} />);
+  const thumb = screen.getByRole("slider", { name: "Temperature" });
+  expect(thumb).not.toHaveAttribute("aria-label");
+});
+
+it("shows the formatted value when asked", () => {
+  const { unmount } = renderV1(
+    <Slider
+      label="Temperature"
+      defaultValue={[0.7]}
+      min={0}
+      max={1}
+      step={0.1}
+      formatValue={twoPlaces}
+      showValue
+    />,
+  );
+  expect(screen.getByText("0.70")).toBeVisible();
+  unmount();
+  renderV1(
+    <Slider
+      label="Temperature"
+      defaultValue={[0.7]}
+      min={0}
+      max={1}
+      step={0.1}
+      formatValue={twoPlaces}
+    />,
+  );
+  expect(screen.queryByText("0.70")).toBeNull();
+});
+
+it("shows a range joined by an en dash and follows uncontrolled changes", async () => {
+  const { user } = renderV1(
+    <Slider
+      label="Pages"
+      thumbLabels={["Minimum", "Maximum"]}
+      defaultValue={[2, 8]}
+      min={0}
+      max={10}
+      showValue
+    />,
+  );
+  expect(screen.getByText("2 – 8")).toBeVisible();
+  screen.getByRole("slider", { name: "Minimum" }).focus();
+  await user.keyboard("{ArrowRight}");
+  expect(screen.getByText("3 – 8")).toBeVisible();
+});
+
+it("is described by its description, keeping the caller's", () => {
+  const { container } = renderV1(
+    <Slider
+      label="Temperature"
+      description="Higher is more random"
+      aria-describedby="extra"
+      defaultValue={[50]}
+    />,
+  );
+  const root = container.querySelector("[data-slot=slider]");
+  const description = screen.getByText("Higher is more random");
+  expect(description.id).not.toBe("");
+  const ids = root?.getAttribute("aria-describedby")?.split(" ") ?? [];
+  expect(ids).toContain("extra");
+  expect(ids).toContain(description.id);
+  expect(root?.getAttribute("aria-labelledby")).toBe(
+    screen.getByText("Temperature").id,
+  );
+});
+
+it("renders only the slider when there is no label, description or value", () => {
+  const { container } = renderV1(
+    <Slider aria-label="Volume" defaultValue={[50]} />,
+  );
+  const field = container.querySelector("[data-slot=slider-field]");
+  expect(field?.children).toHaveLength(1);
+  expect(field?.firstElementChild).toHaveAttribute("data-slot", "slider");
+});
+
+it("is inert when disabled", async () => {
+  const onValueChange = vi.fn();
+  const { user, container } = renderV1(
+    <Slider
+      label="Temperature"
+      disabled
+      defaultValue={[50]}
+      onValueChange={onValueChange}
+    />,
+  );
+  const root = container.querySelector("[data-slot=slider]");
+  expect(root).toHaveAttribute("data-disabled");
+  expect(screen.getByText("Temperature")).toHaveAttribute("data-disabled");
+  const thumb = screen.getByRole("slider", { name: "Temperature" });
+  thumb.focus();
+  await user.keyboard("{ArrowRight}");
+  expect(thumb).toHaveAttribute("aria-valuenow", "50");
+  expect(onValueChange).not.toHaveBeenCalled();
+});
+
+it("has the board's track and thumb sizes by class", () => {
+  const { container } = renderV1(
+    <Slider aria-label="Volume" defaultValue={[50]} />,
+  );
+  expect(container.querySelector("[data-slot=slider-track]")).toHaveClass(
+    "ui:h-1.5",
+    "ui:bg-muted",
+  );
+  expect(container.querySelector("[data-slot=slider-range]")).toHaveClass(
+    "ui:bg-primary",
+  );
+  expect(container.querySelector("[data-slot=slider-thumb]")).toHaveClass(
+    "ui:size-4",
+    "ui:border-primary",
+    "ui:focus-visible:focus-ring",
+  );
+});
