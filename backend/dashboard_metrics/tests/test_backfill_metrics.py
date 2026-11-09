@@ -445,18 +445,26 @@ class TestTheRebuildNeverLowersAStoredValue(TestCase):
         return out.getvalue()
 
     def test_the_check_locks_the_rows_it_writes(self):
-        """The check and the write share one transaction holding row locks.
+        """Insert missing rows, lock and check, then write: one transaction.
 
-        Otherwise the aggregator can write a higher value between the two, and the
-        upsert lowers it again.
+        Otherwise the aggregator can write a higher value, or insert a missing row,
+        between the check and the write, and the upsert lowers it again.
         """
         self._store(EventMetricsDaily, self.day.date(), 1, date=None)
         with CaptureQueriesContext(connection) as queries:
             self._run(skip_hourly=True)
         sql = [q["sql"] for q in queries.captured_queries]
-        check = next(i for i, q in enumerate(sql) if "FOR UPDATE" in q)
-        write = next(i for i, q in enumerate(sql) if "ON CONFLICT" in q)
-        opened = max(i for i, q in enumerate(sql[:check]) if q.startswith("SAVEPOINT"))
+
+        def first(text):
+            return next(i for i, q in enumerate(sql) if text in q)
+
+        insert, check, write = (
+            first("DO NOTHING"),
+            first("FOR UPDATE"),
+            first("DO UPDATE"),
+        )
+        assert insert < check < write
+        opened = max(i for i, q in enumerate(sql[:insert]) if q.startswith("SAVEPOINT"))
         assert not any(q.startswith("RELEASE SAVEPOINT") for q in sql[opened:write])
 
     def test_a_higher_stored_daily_value_is_kept_and_reported(self):
@@ -464,6 +472,12 @@ class TestTheRebuildNeverLowersAStoredValue(TestCase):
         out = self._run(skip_hourly=True)
         assert self._value(EventMetricsDaily, date=self.day.date()) == 5
         assert "kept 1" in out
+
+    def test_an_equal_recount_is_written(self):
+        """Only a lower recount is kept back; an equal one still writes."""
+        self._store(EventMetricsDaily, self.day.date(), 2, date=None)
+        out = self._run(skip_hourly=True)
+        assert "kept" not in out
 
     def test_a_lower_stored_daily_value_is_raised(self):
         """The control: the repair still fills a hole."""
@@ -498,3 +512,53 @@ class TestTheRebuildNeverLowersAStoredValue(TestCase):
             stdout=StringIO(),
         )
         assert self._value(EventMetricsMonthly, month=month) == 1000
+
+
+class TestMonthlyIsSummedFromTheGuardedDays(TestCase):
+    """A month whose days were partly kept and partly filled sums to its days.
+
+    Summing the raw recount instead puts the month below its own daily rows, and a
+    month older than the previous one is never rederived to fix it.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            organization_id="mixed-org", name="mixed", display_name="Mixed"
+        )
+        workflow = Workflow.objects.create(
+            workflow_name="mixed-wf", organization=self.org
+        )
+        for day, files in ((1, 7), (2, 5)):
+            stamp = timezone.make_aware(timezone.datetime(2026, 3, day, 12))
+            execution = WorkflowExecution.objects.create(
+                workflow=workflow, status=ExecutionStatus.COMPLETED
+            )
+            WorkflowExecution.objects.filter(pk=execution.pk).update(created_at=stamp)
+            for n in range(files):
+                fe = WorkflowFileExecution.objects.create(
+                    workflow_execution=execution,
+                    file_name=f"{day}-{n}.pdf",
+                    status=ExecutionStatus.COMPLETED.value,
+                )
+                WorkflowFileExecution.objects.filter(pk=fe.pk).update(created_at=stamp)
+        stored = {"organization": self.org, "metric_name": "documents_processed"}
+        EventMetricsDaily._base_manager.create(
+            date=date(2026, 3, 1), metric_value=10, metric_count=1, **stored
+        )
+        EventMetricsMonthly._base_manager.create(
+            month=date(2026, 3, 1), metric_value=10, metric_count=1, **stored
+        )
+
+    def test_monthly_equals_the_sum_of_its_daily_rows(self):
+        call_command(
+            "backfill_metrics",
+            start_date="2026-03-01",
+            end_date="2026-03-31",
+            skip_hourly=True,
+            stdout=StringIO(),
+        )
+        rows = {"organization": self.org, "metric_name": "documents_processed"}
+        days = EventMetricsDaily._base_manager.filter(**rows).order_by("date")
+        assert [d.metric_value for d in days] == [10, 5]
+        month = EventMetricsMonthly._base_manager.get(month=date(2026, 3, 1), **rows)
+        assert month.metric_value == 15

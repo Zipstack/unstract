@@ -10,8 +10,10 @@ on purpose: the rollup will not lower a stored monthly total it would reduce, so
 month is not under-counted, but it is frozen at the stored figure until daily is
 repaired, and the daily tier the dashboards read stays wrong meanwhile. Repair daily.
 
-It never lowers a stored value: the sources shrink after aggregation (HITL TTL
-cleanup, workflow deletes), so a lower recount keeps the stored row.
+It never lowers a stored metric_value: the sources shrink after aggregation (HITL TTL
+cleanup, workflow deletes), so a lower recount keeps the stored row. The scheduled
+aggregator still rewrites rows inside its own window. Monthly is summed from the
+daily rows after their check, so a month never sits below its own days.
 
 Usage:
     python manage.py backfill_metrics --days=30
@@ -29,6 +31,8 @@ from typing import Any
 from account_v2.models import Organization
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.models import Min, Sum
+from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
 from dashboard_metrics.models import (
@@ -172,9 +176,9 @@ class Command(BaseCommand):
             and not self._covers_whole_months(start_date, end_date, options["end_date"])
         ):
             raise CommandError(
-                "The range covers part of a month, and its monthly total would be "
-                "replaced with only these days. Pass --skip-monthly, or give whole "
-                "months."
+                "The range covers part of a month, so its monthly total would be "
+                "summed from days this run did not rebuild. Pass --skip-monthly, or "
+                "give whole months."
             )
 
         self.stdout.write(f"Backfill period: {start_date.date()} to {end_date.date()}")
@@ -258,6 +262,10 @@ class Command(BaseCommand):
                         self.stdout.write(f"  Daily: {d_count} upserted")
 
                     if not skip_monthly:
+                        if not skip_daily:
+                            monthly_data = self._monthly_from_daily(
+                                current_org_id, monthly_data
+                            )
                         m_count = self._bulk_upsert_monthly(monthly_data)
                         total_stats["monthly"]["upserted"] += m_count
                         self.stdout.write(f"  Monthly: {m_count} upserted")
@@ -555,8 +563,8 @@ class Command(BaseCommand):
         recount below the stored value is history the sources lost, not an
         over-count, so the stored row stays, as the monthly rollup already does.
 
-        The rows read are locked until the caller's upsert commits, so the scheduled
-        aggregator cannot write a higher value between this check and that write.
+        The rows read are locked until _upsert's transaction commits, so the
+        scheduled aggregator cannot write a higher value between check and write.
         """
         if not aggregations:
             return aggregations
@@ -589,122 +597,106 @@ class Command(BaseCommand):
         dropped = len(aggregations) - len(kept)
         if dropped:
             self.stdout.write(f"  {tier}: kept {dropped} stored values above the recount")
-        # ponytail: a row absent here is not locked, so one the aggregator inserts
-        # before our write can still be overwritten. It only creates rows for recent
-        # days and the current and previous month, which already exist by then.
         return kept
 
-    @transaction.atomic
+    @staticmethod
+    def _monthly_from_daily(org_id: str, monthly_agg: dict) -> dict:
+        """Sum the stored daily rows of each month the recount touched.
+
+        Runs after the daily upsert, so a day whose higher stored value was kept
+        counts at that value. Summing the raw recount instead would leave a month
+        below its own days. Grouped as the aggregator's monthly rollup groups.
+        """
+        months = {_parse_date(key[1]) for key in monthly_agg}
+        if not months:
+            return {}
+        last = max(months)
+        after_last = (last.replace(day=28) + timedelta(days=4)).replace(day=1)
+        rows = (
+            EventMetricsDaily._base_manager.filter(
+                organization_id=org_id, date__gte=min(months), date__lt=after_last
+            )
+            .annotate(month=TruncMonth("date"))
+            .values("month", "metric_name", "project", "tag")
+            .annotate(
+                value=Sum("metric_value"),
+                count=Sum("metric_count"),
+                mtype=Min("metric_type"),
+            )
+        )
+        return {
+            (
+                org_id,
+                row["month"].isoformat(),
+                row["metric_name"],
+                row["project"],
+                row["tag"],
+            ): {
+                "metric_type": row["mtype"],
+                "value": row["value"],
+                "count": row["count"],
+            }
+            for row in rows
+        }
+
     def _bulk_upsert_hourly(self, aggregations: dict) -> int:
-        """Bulk upsert hourly aggregations using INSERT ... ON CONFLICT."""
-        aggregations = self._without_lowerings(
+        return self._upsert(
             EventMetricsHourly,
             "timestamp",
             datetime.fromisoformat,
             aggregations,
             "Hourly",
         )
-        objects = []
-        for key, agg in aggregations.items():
-            org_id, ts_str, metric_name, project, tag = key
-            objects.append(
-                EventMetricsHourly(
-                    organization_id=org_id,
-                    timestamp=datetime.fromisoformat(ts_str),
-                    metric_name=metric_name,
-                    project=project,
-                    tag=tag,
-                    metric_type=agg["metric_type"],
-                    metric_value=agg["value"],
-                    metric_count=agg["count"],
-                )
-            )
-        if not objects:
-            return 0
-        EventMetricsHourly._base_manager.bulk_create(
-            objects,
-            update_conflicts=True,
-            unique_fields=[
-                "organization",
-                "timestamp",
-                "metric_name",
-                "project",
-                "tag",
-            ],
-            update_fields=["metric_type", "metric_value", "metric_count"],
-        )
-        return len(objects)
 
-    @transaction.atomic
     def _bulk_upsert_daily(self, aggregations: dict) -> int:
-        """Bulk upsert daily aggregations using INSERT ... ON CONFLICT."""
-        aggregations = self._without_lowerings(
-            EventMetricsDaily, "date", _parse_date, aggregations, "Daily"
-        )
-        objects = []
-        for key, agg in aggregations.items():
-            org_id, date_str, metric_name, project, tag = key
-            objects.append(
-                EventMetricsDaily(
-                    organization_id=org_id,
-                    date=datetime.fromisoformat(date_str).date(),
-                    metric_name=metric_name,
-                    project=project,
-                    tag=tag,
-                    metric_type=agg["metric_type"],
-                    metric_value=agg["value"],
-                    metric_count=agg["count"],
-                )
-            )
-        if not objects:
-            return 0
-        EventMetricsDaily._base_manager.bulk_create(
-            objects,
-            update_conflicts=True,
-            unique_fields=[
-                "organization",
-                "date",
-                "metric_name",
-                "project",
-                "tag",
-            ],
-            update_fields=["metric_type", "metric_value", "metric_count"],
-        )
-        return len(objects)
+        return self._upsert(EventMetricsDaily, "date", _parse_date, aggregations, "Daily")
 
-    @transaction.atomic
     def _bulk_upsert_monthly(self, aggregations: dict) -> int:
-        """Bulk upsert monthly aggregations using INSERT ... ON CONFLICT."""
-        aggregations = self._without_lowerings(
+        return self._upsert(
             EventMetricsMonthly, "month", _parse_date, aggregations, "Monthly"
         )
-        objects = []
-        for key, agg in aggregations.items():
-            org_id, month_str, metric_name, project, tag = key
-            objects.append(
-                EventMetricsMonthly(
+
+    @transaction.atomic
+    def _upsert(
+        self, model, period_field: str, parse, aggregations: dict, tier: str
+    ) -> int:
+        """Write the recounts that do not lower a stored value, via INSERT ... ON CONFLICT.
+
+        Missing rows go in first, so every row the check reads exists and is locked
+        until this transaction commits. A row the aggregator inserts concurrently
+        either lands first and is compared, or waits and lands after this write.
+        """
+
+        def build(aggs: dict) -> list:
+            return [
+                model(
                     organization_id=org_id,
-                    month=datetime.fromisoformat(month_str).date(),
                     metric_name=metric_name,
                     project=project,
                     tag=tag,
                     metric_type=agg["metric_type"],
                     metric_value=agg["value"],
                     metric_count=agg["count"],
+                    **{period_field: parse(period)},
                 )
-            )
-        if not objects:
-            return 0
-        EventMetricsMonthly._base_manager.bulk_create(
-            objects,
-            update_conflicts=True,
-            unique_fields=[
-                "organization",
-                "month",
-                "metric_name",
-                "project",
-                "tag",
-            ],
-            update_fields=["metric_type", "metric_value", "metric_count"],
+                for (org_id, period, metric_name, project, tag), agg in aggs.items()
+            ]
+
+        model._base_manager.bulk_create(build(aggregations), ignore_conflicts=True)
+        objects = build(
+            self._without_lowerings(model, period_field, parse, aggregations, tier)
         )
+        if objects:
+            model._base_manager.bulk_create(
+                objects,
+                update_conflicts=True,
+                unique_fields=[
+                    "organization",
+                    period_field,
+                    "metric_name",
+                    "project",
+                    "tag",
+                ],
+                update_fields=["metric_type", "metric_value", "metric_count"],
+            )
         return len(objects)
