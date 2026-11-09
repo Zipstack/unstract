@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+
+from tests.llmw_image_fixtures import InMemoryFileStorage, minimal_png
 from unstract.sdk1.adapters.x2text.page_image_loader import (
     DEFAULT_MAX_TOTAL_BYTES,
     DEFAULT_PAGE_CAP,
@@ -30,8 +32,6 @@ from unstract.sdk1.adapters.x2text.page_image_loader import (
     load_page_images,
 )
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
-
-from tests.llmw_image_fixtures import InMemoryFileStorage, minimal_png
 
 
 @pytest.fixture(autouse=True)

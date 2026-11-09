@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any
 
 from queue_backend import BarrierHandle, FairnessKey
 from queue_backend.pg_barrier import PgBarrier
-
 from unstract.core.data_models import ExecutionStatus
 
 from ...enums import FileDestinationType, PipelineType

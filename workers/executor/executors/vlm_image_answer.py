@@ -28,7 +28,6 @@ from executor.executors.constants import PromptServiceConstants as PSKeys
 from executor.executors.exceptions import VlmImageAnswerError
 from executor.executors.file_utils import FileUtils
 from executor.executors.plugins.loader import ExecutorPluginLoader
-
 from unstract.sdk1.adapters.x2text.constants import (
     ImageOutputConstants,
     build_page_store_dir,

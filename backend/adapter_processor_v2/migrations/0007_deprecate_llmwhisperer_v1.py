@@ -12,8 +12,7 @@ ADAPTER_ID = "llmwhisperer|0a1647f0-f65f-410d-843b-3d979c78350e"
 # behaviour reads the registry, so wording drifting from it changes nothing.
 DEPRECATION_METADATA = {
     "reason": (
-        "LLMWhisperer V1 is retired. Please switch to the LLMWhisperer V2 "
-        "text extractor."
+        "LLMWhisperer V1 is retired. Please switch to the LLMWhisperer V2 text extractor."
     ),
     "deprecated_date": "2026-08-31",
     "replacement_adapter": "LLMWhisperer V2",

@@ -8,7 +8,6 @@ from django.core.cache import cache
 from django_redis import get_redis_connection
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
-
 from unstract.core.cache.redis_client import create_redis_client
 
 redis_cache = get_redis_connection("default")

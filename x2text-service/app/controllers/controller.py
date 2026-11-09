@@ -6,6 +6,7 @@ from typing import Any
 
 import requests
 from flask import Blueprint, request, send_file
+from unstract.core.network.ssrf import safe_host
 
 from app.authentication_middleware import (
     AuthenticationMiddleware,
@@ -15,7 +16,6 @@ from app.models import X2TextAudit
 from app.unstructured_url import RedirectRefused, refusal_message
 from app.unstructured_url import post as post_to_unstructured
 from app.util import X2TextUtil
-from unstract.core.network.ssrf import safe_host
 
 basic = Blueprint("basic", __name__)
 # Configure the logging format and level

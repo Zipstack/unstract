@@ -44,9 +44,6 @@ from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import requests
-from urllib3.exceptions import LocationParseError
-from urllib3.util import parse_url
-
 from unstract.core.network.ssrf import (
     REFUSED_INTERNAL_LITERAL,
     REFUSED_NON_PUBLIC,
@@ -55,6 +52,8 @@ from unstract.core.network.ssrf import (
     safe_host,
     webhook_url_refusal,
 )
+from urllib3.exceptions import LocationParseError
+from urllib3.util import parse_url
 
 logger = logging.getLogger(__name__)
 

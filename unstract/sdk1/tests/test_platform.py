@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
 from requests.exceptions import ConnectionError, HTTPError
+
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.platform import PlatformHelper
 

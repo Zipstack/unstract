@@ -1,10 +1,10 @@
 import uuid
 
+from backend.constants import FieldLengthConstants as FieldLength
 from django.contrib.auth.models import AbstractUser, Group, Permission
 from django.db import models
 
 from account_v2.enums import Product
-from backend.constants import FieldLengthConstants as FieldLength
 
 NAME_SIZE = 64
 KEY_SIZE = 64
