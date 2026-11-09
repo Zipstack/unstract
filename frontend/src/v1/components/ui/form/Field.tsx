@@ -13,7 +13,7 @@ export type FieldProps = Readonly<{
   invalid?: boolean;
   disabled?: boolean;
   readOnly?: boolean;
-  /** The control's id; generated when omitted. */
+  /** The control's id, which replaces any id on the control itself; generated when omitted. */
   id?: string;
   className?: string;
   children: ReactNode;

@@ -38,12 +38,16 @@ function joinIds(...ids: (string | undefined)[]): string | undefined {
   return joined === "" ? undefined : joined;
 }
 
-/** Resolves a control's id, description, and state: its own props win, then the enclosing Field's. */
+/**
+ * Resolves a control's id, description, and state. The enclosing Field's id
+ * wins, since its label points at it (set `id` on the Field); otherwise the
+ * control's own props win, then the Field's.
+ */
 export function useFieldControl(props: FieldControlInput): FieldControlState {
   const field = useFieldContext();
   const invalid = props.invalid ?? field?.invalid ?? false;
   return {
-    id: props.id ?? field?.controlId,
+    id: field?.controlId ?? props.id,
     "aria-describedby": joinIds(field?.describedBy, props["aria-describedby"]),
     "aria-invalid": invalid ? true : undefined,
     invalid,

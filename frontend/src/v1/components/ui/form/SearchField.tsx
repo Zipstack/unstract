@@ -5,6 +5,7 @@ import {
   type ChangeEvent,
   type JSX,
   type KeyboardEvent,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -32,9 +33,36 @@ export type SearchFieldProps = Omit<
  * on the document in the capture phase, before this handler, so a dialog that
  * holds a SearchField skips dismissal for a target carrying
  * data-escape-clears by calling preventDefault in onEscapeKeyDown. The clear
- * therefore ignores a preventDefault made before it; only the caller's own
- * onKeyDown can cancel it.
+ * therefore ignores a preventDefault made before it; only a preventDefault
+ * called from the caller's own onKeyDown cancels it.
  */
+/**
+ * Runs the caller's onKeyDown and reports whether it called preventDefault
+ * itself. A Radix layer may have prevented the event already, so the event's
+ * prevented flag alone cannot say who cancelled it.
+ */
+function callerPreventsDefault(
+  event: KeyboardEvent<HTMLInputElement>,
+  onKeyDown: SearchFieldProps["onKeyDown"],
+): boolean {
+  if (!onKeyDown) {
+    return false;
+  }
+  const preventDefault = event.preventDefault;
+  let called = false;
+  // ponytail: wraps the method for the call only, then puts the original back.
+  event.preventDefault = () => {
+    called = true;
+    preventDefault.call(event);
+  };
+  try {
+    onKeyDown(event);
+  } finally {
+    event.preventDefault = preventDefault;
+  }
+  return called;
+}
+
 export function SearchField({
   value,
   defaultValue = "",
@@ -58,6 +86,17 @@ export function SearchField({
   const clearable =
     canClear && current !== "" && !state.disabled && !state.readOnly;
 
+  // A form reset restores the DOM value, not this state, so restore it here.
+  useEffect(() => {
+    const form = inputRef.current?.form;
+    if (!form || value !== undefined) {
+      return undefined;
+    }
+    const onReset = () => setUncontrolled(defaultValue);
+    form.addEventListener("reset", onReset);
+    return () => form.removeEventListener("reset", onReset);
+  }, [value, defaultValue]);
+
   const update = (next: string) => {
     if (value === undefined) {
       setUncontrolled(next);
@@ -66,9 +105,7 @@ export function SearchField({
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    const preventedBefore = event.isDefaultPrevented();
-    onKeyDown?.(event);
-    const callerCancelled = !preventedBefore && event.isDefaultPrevented();
+    const callerCancelled = callerPreventsDefault(event, onKeyDown);
     if (
       callerCancelled ||
       event.key !== "Escape" ||
