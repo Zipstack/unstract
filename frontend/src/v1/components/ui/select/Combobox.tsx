@@ -13,6 +13,7 @@ import {
 import { Listbox } from "./Listbox";
 import { OPTION_LEADING_CLASS } from "./OptionRow";
 import type { SelectOption } from "./options";
+import { ICON_BUTTON, isInside, listContentProps } from "./shared";
 import { LIST_SURFACE, TRIGGER_CHEVRON, TRIGGER_FRAME } from "./trigger";
 import { type LoadOptions, useAsyncOptions } from "./useAsyncOptions";
 import { useListbox } from "./useListbox";
@@ -20,9 +21,6 @@ import { useListbox } from "./useListbox";
 const ChevronIcon = ACTION_ICONS.expand;
 const ClearIcon = ACTION_ICONS.close;
 const NO_OPTIONS: readonly SelectOption[] = [];
-
-const ICON_BUTTON =
-  "ui:flex ui:shrink-0 ui:cursor-pointer ui:items-center ui:justify-center ui:rounded-md ui:border-0 ui:bg-transparent ui:p-0 ui:text-muted-foreground ui:hover:text-foreground ui:focus-visible:focus-ring ui:disabled:pointer-events-none";
 
 export type ComboboxProps = Readonly<{
   options?: readonly SelectOption[];
@@ -146,14 +144,9 @@ export function Combobox({
 
   /** Focus leaving the field and its list closes the list. */
   function onBlur(event: FocusEvent<HTMLElement>) {
-    const next = event.relatedTarget;
-    if (
-      next instanceof Node &&
-      (frameRef.current?.contains(next) || contentRef.current?.contains(next))
-    ) {
-      return;
+    if (!isInside(frameRef.current, contentRef.current, event.relatedTarget)) {
+      close();
     }
-    close();
   }
 
   return (
@@ -242,20 +235,9 @@ export function Combobox({
       <PopoverPrimitive.Portal container={getPortalContainer()}>
         <PopoverPrimitive.Content
           ref={contentRef}
-          // Radix's default role is dialog; the listbox inside is the popup.
-          role="presentation"
+          {...listContentProps(frameRef)}
           sideOffset={4}
           align="start"
-          onOpenAutoFocus={(event) => event.preventDefault()}
-          onCloseAutoFocus={(event) => event.preventDefault()}
-          onInteractOutside={(event) => {
-            const target = event.target;
-            if (target instanceof Node && frameRef.current?.contains(target)) {
-              event.preventDefault();
-            }
-          }}
-          // A press on the list's padding keeps focus in the input.
-          onMouseDown={(event) => event.preventDefault()}
           className={cn(
             LIST_SURFACE,
             "ui:flex ui:flex-col ui:overflow-hidden ui:w-(--radix-popover-trigger-width)",
