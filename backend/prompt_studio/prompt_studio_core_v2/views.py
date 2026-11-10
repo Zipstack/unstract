@@ -6,7 +6,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import magic
 from account_v2.custom_exceptions import DuplicateData
 from celery import signature
 from django.db import IntegrityError, transaction
@@ -31,6 +30,7 @@ from rest_framework.versioning import URLPathVersioning
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.hubspot_notify import notify_hubspot_event
 from utils.pagination import OptionalPagination
+from utils.upload_mime_type import detect_upload_mime_type
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 from utils.uuid_validation import validated_uuid
@@ -1025,8 +1025,7 @@ class PromptStudioCoreView(
         # Detect MIME from file content (not browser-supplied header)
         file_types = []
         for uploaded_file in uploaded_files:
-            file_types.append(magic.from_buffer(uploaded_file.read(2048), mime=True))
-            uploaded_file.seek(0)
+            file_types.append(detect_upload_mime_type(uploaded_file))
 
         # Image mode can't answer a PDF over the page cap: reject it here,
         # rather than at indexing. Every file is checked before any is stored,
