@@ -61,7 +61,9 @@ it("does not load while disabled", () => {
 it("loads at once when enabled, then shows the options", async () => {
   const { load, calls } = deferredLoader();
   const { result } = setup({ load, query: "", enabled: true });
-  expect(result.current.loading).toBe(false);
+  // Loading from the first render: the first load's 0 ms timer has not run.
+  expect(load).not.toHaveBeenCalled();
+  expect(result.current.loading).toBe(true);
   advance(0);
   expect(load).toHaveBeenCalledTimes(1);
   expect(calls[0].query).toBe("");
@@ -205,6 +207,30 @@ it("aborts the request in flight on unmount", () => {
   advance(0);
   unmount();
   expect(calls[0].signal.aborted).toBe(true);
+});
+
+it("reports loading the moment it is enabled, before the first load starts", () => {
+  const { load } = deferredLoader();
+  const { result, rerender } = setup({ load, query: "", enabled: false });
+  expect(result.current.loading).toBe(false);
+  rerender({ load, query: "", enabled: true });
+  expect(load).not.toHaveBeenCalled();
+  expect(result.current).toEqual({ options: [], loading: true, error: null });
+});
+
+it("drops the options and the error when disabled", async () => {
+  const { load, calls } = deferredLoader();
+  const { result, rerender } = setup({ load, query: "", enabled: true });
+  advance(0);
+  await act(async () => calls[0].resolve([opt("Alpha")]));
+  expect(result.current.options).toEqual([opt("Alpha")]);
+  rerender({ load, query: "", enabled: false });
+  expect(result.current).toEqual({ options: [], loading: false, error: null });
+  rerender({ load, query: "", enabled: true });
+  advance(0);
+  await act(async () => calls[1].reject(new Error("boom")));
+  rerender({ load, query: "", enabled: false });
+  expect(result.current.error).toBeNull();
 });
 
 it("aborts and stops loading when disabled, and loads at once when enabled again", async () => {

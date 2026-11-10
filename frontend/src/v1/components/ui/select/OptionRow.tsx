@@ -38,6 +38,9 @@ export type OptionRowProps = Readonly<{
   id: string;
   onSelect?: () => void;
   onActivate?: () => void;
+  /** A virtual list's size and this row's 1-based place in it. */
+  "aria-setsize"?: number;
+  "aria-posinset"?: number;
   className?: string;
 }>;
 
@@ -53,6 +56,8 @@ export function OptionRow({
   id,
   onSelect,
   onActivate,
+  "aria-setsize": setSize,
+  "aria-posinset": posInSet,
   className,
 }: OptionRowProps): JSX.Element {
   return (
@@ -63,6 +68,8 @@ export function OptionRow({
       id={id}
       aria-selected={selected}
       aria-disabled={option.disabled || undefined}
+      aria-setsize={setSize}
+      aria-posinset={posInSet}
       data-active={active ? "" : undefined}
       data-slot="option"
       onMouseDown={(event) => event.preventDefault()}

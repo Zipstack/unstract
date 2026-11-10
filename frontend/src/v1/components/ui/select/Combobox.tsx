@@ -48,8 +48,10 @@ export type ComboboxProps = Readonly<{
  * A single choice from a long or server-loaded list: typing filters (or, with
  * `loadOptions`, queries the server) and opens the list; focus stays on the
  * input, which points at the active option with `aria-activedescendant`.
- * While the list is closed the input shows the selected label; Escape and
- * leaving the field drop the typed text and show it again.
+ * A click on the input opens the list; focus alone does not. While the list
+ * is closed the input shows the selected label, selected on focus and on
+ * click so typing replaces it; Escape and leaving the field drop the typed
+ * text and show it again.
  */
 export function Combobox({
   options = NO_OPTIONS,
@@ -149,11 +151,17 @@ export function Combobox({
     }
   }
 
+  /** The shown label is selected, so the first keystroke replaces it. */
+  function selectLabel(event: { currentTarget: HTMLInputElement }) {
+    if (!editing) {
+      event.currentTarget.select();
+    }
+  }
+
   return (
     <PopoverPrimitive.Root
       open={listbox.open}
-      // Escape and leaving the field restore the text themselves.
-      onOpenChange={(next) => listbox.setOpen(next)}
+      onOpenChange={(next) => (next ? listbox.setOpen(true) : close())}
     >
       <PopoverPrimitive.Anchor asChild>
         <div
@@ -192,6 +200,13 @@ export function Combobox({
               listbox.setQuery(event.target.value);
             }}
             onKeyDown={onKeyDown}
+            onFocus={selectLabel}
+            onClick={(event) => {
+              selectLabel(event);
+              if (!listbox.open) {
+                listbox.setOpen(true);
+              }
+            }}
             onBlur={onBlur}
             className="ui:min-w-0 ui:flex-1 ui:border-0 ui:bg-transparent ui:p-0 ui:text-body ui:text-foreground ui:outline-none ui:placeholder:text-muted-foreground"
           />
@@ -211,6 +226,7 @@ export function Combobox({
             tabIndex={-1}
             aria-label="Show options"
             aria-expanded={listbox.open}
+            aria-controls={listbox.listId}
             disabled={disabled}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => {
@@ -248,6 +264,8 @@ export function Combobox({
             loading={loaded.loading}
             error={Boolean(loaded.error)}
             emptyText={emptyText}
+            aria-label={ariaLabel}
+            aria-labelledby={ariaLabelledBy}
           />
         </PopoverPrimitive.Content>
       </PopoverPrimitive.Portal>

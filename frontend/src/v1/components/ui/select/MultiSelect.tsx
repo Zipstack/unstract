@@ -6,6 +6,7 @@ import {
   type FocusEvent,
   type JSX,
   type KeyboardEvent,
+  type MouseEvent,
   useId,
   useMemo,
   useRef,
@@ -48,7 +49,8 @@ export type MultiSelectProps = Readonly<{
 
 /**
  * Several choices from a long or server-loaded list, shown as chips before
- * the input. Typing filters (or, with `loadOptions`, queries the server);
+ * the input. A click on the input or the frame opens the list; focus alone
+ * does not. Typing filters (or, with `loadOptions`, queries the server);
  * Enter or a click toggles an option and keeps the list open with the query
  * cleared; Backspace in an empty input removes the last chip.
  */
@@ -163,18 +165,41 @@ export function MultiSelect({
     }
   }
 
+  /**
+   * A press on the frame's padding or a chip's label focuses the input and
+   * opens the list, as a press on the input does; buttons keep their own.
+   */
+  function onFrameMouseDown(event: MouseEvent<HTMLDivElement>) {
+    const target = event.target;
+    if (
+      disabled ||
+      target === inputRef.current ||
+      (target instanceof Element && target.closest("button"))
+    ) {
+      return;
+    }
+    event.preventDefault();
+    inputRef.current?.focus();
+    if (!listbox.open) {
+      listbox.setOpen(true);
+    }
+  }
+
   return (
     <PopoverPrimitive.Root
       open={listbox.open}
-      onOpenChange={(next) => listbox.setOpen(next)}
+      onOpenChange={(next) => (next ? listbox.setOpen(true) : close())}
     >
       <PopoverPrimitive.Anchor asChild>
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: the mousedown only forwards a press on the padding to the input, which the keyboard reaches directly. */}
+        {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: as above; the frame is not a control of its own. */}
         <div
           ref={frameRef}
           data-slot="multi-select"
           data-state={listbox.open ? "open" : "closed"}
           data-invalid={invalid ? "" : undefined}
           data-disabled={disabled ? "" : undefined}
+          onMouseDown={onFrameMouseDown}
           className={cn(
             TRIGGER_FRAME,
             "ui:h-auto ui:min-h-8 ui:flex-wrap ui:gap-1 ui:py-1",
@@ -211,6 +236,11 @@ export function MultiSelect({
             value={listbox.query}
             onChange={(event) => listbox.setQuery(event.target.value)}
             onKeyDown={onKeyDown}
+            onClick={() => {
+              if (!listbox.open) {
+                listbox.setOpen(true);
+              }
+            }}
             onBlur={onBlur}
             className="ui:min-w-16 ui:flex-1 ui:border-0 ui:bg-transparent ui:p-0 ui:text-body ui:text-foreground ui:outline-none ui:placeholder:text-muted-foreground"
           />
@@ -219,6 +249,7 @@ export function MultiSelect({
             tabIndex={-1}
             aria-label="Show options"
             aria-expanded={listbox.open}
+            aria-controls={listbox.listId}
             disabled={disabled}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => {
@@ -258,6 +289,8 @@ export function MultiSelect({
             loading={loaded.loading}
             error={Boolean(loaded.error)}
             emptyText={emptyText}
+            aria-label={ariaLabel}
+            aria-labelledby={ariaLabelledBy}
             multiselectable
           />
         </PopoverPrimitive.Content>

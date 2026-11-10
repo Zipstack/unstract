@@ -1,4 +1,10 @@
-import { type KeyboardEvent, useCallback, useMemo, useState } from "react";
+import {
+  type KeyboardEvent,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { matchesQuery, type SelectOption } from "./options";
 
 export type UseListboxOptions = Readonly<{
@@ -21,12 +27,18 @@ export type Listbox = Readonly<{
   setActiveIndex: (i: number) => void;
   activeId: string | undefined;
   listId: string;
+  /** The stable id of the option with `value`, the same at every index. */
+  optionIdFor: (value: string) => string;
+  /** The id of `visible[index]`. */
   optionId: (index: number) => string;
   /** The caller's `selected`, passed through for the rows' `aria-selected`. */
   selected: readonly string[];
   /** The caller's `onSelect`, passed through for a row click. */
   onSelect: (option: SelectOption) => void;
-  /** Attach to the input: ArrowDown/Up (opens when closed), Home, End, Enter, Escape, Tab. */
+  /**
+   * Attach to the input: ArrowDown/Up (opens when closed), Home, End, Enter
+   * (default-prevented whenever open), Escape, Tab.
+   */
   onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
   /** Attach to the input's aria-* props. */
   comboboxProps: {
@@ -75,7 +87,10 @@ function nextEnabled(
  *
  * The active option is tracked by value, so when `visible` changes it follows
  * its option to the new index, and moves to the first enabled option when its
- * option is gone.
+ * option is gone. Each option's id is tied to its value (an ordinal given the
+ * first time the value is seen, never reused while mounted), so when the
+ * first match changes `aria-activedescendant` changes too and a screen reader
+ * announces the new option.
  */
 export function useListbox({
   options,
@@ -110,10 +125,34 @@ export function useListbox({
     setActiveValue(list[firstEnabled(list)]?.value ?? null);
   };
 
+  // Ordinals by value, numbered in list order; filling is idempotent, so it
+  // runs while rendering, once per new list.
+  const ordinals = useRef(new Map<string, number>());
+  const ordinalsList = useRef<readonly SelectOption[] | null>(null);
+  if (ordinalsList.current !== options) {
+    ordinalsList.current = options;
+    for (const option of options) {
+      if (!ordinals.current.has(option.value)) {
+        ordinals.current.set(option.value, ordinals.current.size);
+      }
+    }
+  }
+
   const listId = `${id}-listbox`;
-  const optionId = useCallback(
-    (index: number) => `${id}-option-${index}`,
+  const optionIdFor = useCallback(
+    (value: string) => {
+      let ordinal = ordinals.current.get(value);
+      if (ordinal === undefined) {
+        ordinal = ordinals.current.size;
+        ordinals.current.set(value, ordinal);
+      }
+      return `${id}-option-${ordinal}`;
+    },
     [id],
+  );
+  const optionId = useCallback(
+    (index: number) => optionIdFor(visible[index].value),
+    [optionIdFor, visible],
   );
   const activeId = open && activeIndex >= 0 ? optionId(activeIndex) : undefined;
 
@@ -159,9 +198,13 @@ export function useListbox({
         if (event.nativeEvent.isComposing) {
           return;
         }
+        if (!open) {
+          return;
+        }
+        // While open, Enter never submits the form, even with nothing active.
+        event.preventDefault();
         const option = visible[activeIndex];
-        if (open && option && !option.disabled) {
-          event.preventDefault();
+        if (option && !option.disabled) {
           onSelect(option);
         }
         return;
@@ -189,6 +232,7 @@ export function useListbox({
     setActiveIndex,
     activeId,
     listId,
+    optionIdFor,
     optionId,
     selected,
     onSelect,

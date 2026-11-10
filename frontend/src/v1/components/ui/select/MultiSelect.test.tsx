@@ -70,9 +70,36 @@ it("adds a chosen option as a chip and keeps the list open", async () => {
   expect(document.activeElement).toBe(input());
 });
 
+it("opens on a click on the input", async () => {
+  const { user } = setup();
+  await user.click(input());
+  expect(screen.getByRole("listbox")).toBeTruthy();
+  expect(input().getAttribute("aria-expanded")).toBe("true");
+});
+
+it("focuses the input and opens on a press on the frame's padding", async () => {
+  const { user } = setup({ defaultValue: ["invoice"] });
+  const frame = input().closest('[data-slot="multi-select"]') as HTMLElement;
+  await user.click(frame);
+  expect(document.activeElement).toBe(input());
+  expect(screen.getByRole("listbox")).toBeTruthy();
+  // A chip's label is not a button either.
+  await user.keyboard("{Escape}");
+  await user.click(screen.getByText("Invoice"));
+  expect(document.activeElement).toBe(input());
+  expect(screen.getByRole("listbox")).toBeTruthy();
+});
+
+it("leaves a press on a chip's remove button to the button", async () => {
+  const { user } = setup({ defaultValue: ["invoice", "receipt"] });
+  await user.click(screen.getByRole("button", { name: "Remove Invoice" }));
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(chipNames()).toEqual(["Receipt"]);
+});
+
 it("toggles the active option on Enter", async () => {
   const { user, onValueChange } = setup();
-  await user.click(input());
+  await user.tab();
   await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
   expect(onValueChange).toHaveBeenLastCalledWith(["receipt"]);
   expect(screen.getByRole("listbox")).toBeTruthy();
@@ -115,9 +142,11 @@ it("removes an already-selected option when chosen again, keeping the list open"
 it("is a multiselectable listbox that marks every chosen option", async () => {
   const { user } = setup({ defaultValue: ["invoice", "contract"] });
   await user.click(screen.getByRole("button", { name: "Show options" }));
-  expect(screen.getByRole("listbox").getAttribute("aria-multiselectable")).toBe(
-    "true",
-  );
+  expect(
+    screen
+      .getByRole("listbox", { name: "Tags" })
+      .getAttribute("aria-multiselectable"),
+  ).toBe("true");
   const selected = screen
     .getAllByRole("option")
     .filter((row) => row.getAttribute("aria-selected") === "true")
@@ -193,6 +222,9 @@ it("toggles the list with the chevron, keeping focus on the input", async () => 
   const { user } = setup();
   const chevron = screen.getByRole("button", { name: "Show options" });
   expect(chevron.tabIndex).toBe(-1);
+  expect(chevron.getAttribute("aria-controls")).toBe(
+    input().getAttribute("aria-controls"),
+  );
   await user.type(input(), "con");
   // The press never takes focus from the input, even for a moment.
   const blurs = vi.fn();
@@ -316,7 +348,8 @@ it("keeps a loaded chip's label after the query changes", async () => {
   const { user } = renderV1(
     <MultiSelect aria-label="Tags" loadOptions={load} />,
   );
-  await user.type(input(), "a");
+  await user.tab();
+  await user.keyboard("a");
   await waitFor(() => expect(calls).toHaveLength(1));
   await act(async () => calls[0].resolve([{ value: "a", label: "Alpha" }]));
   await user.keyboard("{Enter}");

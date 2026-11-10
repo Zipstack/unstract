@@ -26,6 +26,8 @@ type HarnessProps = Readonly<{
   emptyText?: string;
   error?: boolean;
   multiselectable?: boolean;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
 }>;
 
 /** An input wired to useListbox, with the list always shown. */
@@ -37,6 +39,8 @@ function Harness({
   emptyText,
   error,
   multiselectable,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
 }: HarnessProps): JSX.Element {
   const listbox = useListbox({ options, selected, onSelect, id: "fruit" });
   return (
@@ -54,6 +58,8 @@ function Harness({
         emptyText={emptyText}
         error={error}
         multiselectable={multiselectable}
+        aria-label={ariaLabel}
+        aria-labelledby={ariaLabelledBy}
       />
     </div>
   );
@@ -88,6 +94,20 @@ it("sits in one scroll element that holds the listbox", () => {
   expect(scroll?.className).toContain("ui:flex-1");
   expect(scroll?.className).toContain("ui:min-h-0");
   expect(scroll?.firstElementChild).toBe(screen.getByRole("listbox"));
+});
+
+it("names the listbox, preferring aria-labelledby to aria-label", () => {
+  const { unmount } = renderV1(<Harness aria-label="Fruit" />);
+  expect(screen.getByRole("listbox", { name: "Fruit" })).toBeTruthy();
+  unmount();
+  renderV1(
+    <>
+      <span id="fruit-label">Fruit picker</span>
+      <Harness aria-label="Fruit" aria-labelledby="fruit-label" />
+    </>,
+  );
+  const list = screen.getByRole("listbox", { name: "Fruit picker" });
+  expect(list.hasAttribute("aria-label")).toBe(false);
 });
 
 it("marks the listbox multiselectable when asked", () => {
@@ -178,6 +198,9 @@ it("scrolls the active row into view only while open", async () => {
 it("renders every row of a list at the threshold", () => {
   renderV1(<Harness options={many(VIRTUALIZE_ABOVE)} />);
   expect(screen.getAllByRole("option")).toHaveLength(VIRTUALIZE_ABOVE);
+  expect(screen.getAllByRole("option")[0].hasAttribute("aria-setsize")).toBe(
+    false,
+  );
   expect(screen.getByRole("listbox").className).not.toContain("ui:relative");
 });
 
@@ -199,6 +222,9 @@ it("renders only the rows in view of a 1,000-option list", () => {
   const wrapper = rows[1].parentElement as HTMLElement;
   expect(wrapper.className).toContain("ui:translate-y-(--row-y)");
   expect(wrapper.style.getPropertyValue("--row-y")).toBe("34px");
+  // Only a window is in the DOM, so each row states its place in the list.
+  expect(rows[1].getAttribute("aria-setsize")).toBe("1000");
+  expect(rows[1].getAttribute("aria-posinset")).toBe("2");
   expect(document.querySelector('[data-slot="listbox-scroll"]')).not.toBeNull();
 });
 

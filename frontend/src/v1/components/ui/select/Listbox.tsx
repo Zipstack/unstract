@@ -25,6 +25,9 @@ export type ListboxProps = Readonly<{
   /** The options failed to load: a "Could not load options" row replaces the empty row. */
   error?: boolean;
   multiselectable?: boolean;
+  /** The field's name for the listbox; `aria-labelledby` wins when both are given. */
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
   className?: string;
 }>;
 
@@ -33,7 +36,9 @@ export type ListboxProps = Readonly<{
  * `Popover.Content` (a flex column with `ui:overflow-hidden`): this is its one
  * scroll element. Past `VIRTUALIZE_ABOVE` options only the rows in view are
  * rendered. The loading, error and empty rows sit beside the listbox, since a
- * listbox may hold only options.
+ * listbox may hold only options. The listbox takes the field's name. A
+ * virtual list states each rendered row's place (`aria-setsize`,
+ * `aria-posinset`), since only a window of rows is in the DOM.
  */
 export function Listbox({
   listbox,
@@ -41,6 +46,8 @@ export function Listbox({
   emptyText,
   error = false,
   multiselectable,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
   className,
 }: ListboxProps): JSX.Element {
   const { visible, activeIndex, optionId, setActiveIndex } = listbox;
@@ -90,6 +97,8 @@ export function Listbox({
         active={index === activeIndex}
         onSelect={() => listbox.onSelect(option)}
         onActivate={() => setActiveIndex(index)}
+        aria-setsize={virtual ? visible.length : undefined}
+        aria-posinset={virtual ? index + 1 : undefined}
       />
     );
   };
@@ -109,6 +118,8 @@ export function Listbox({
       <div
         role="listbox"
         id={listbox.listId}
+        aria-labelledby={ariaLabelledBy}
+        aria-label={ariaLabelledBy ? undefined : ariaLabel}
         aria-multiselectable={multiselectable || undefined}
         aria-busy={loading || undefined}
         style={{

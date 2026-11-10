@@ -14,13 +14,16 @@ export type LoadOptions = (
 ) => Promise<readonly SelectOption[]>;
 
 const IDLE: AsyncState = { options: [], loading: false, error: null };
+const STARTING: AsyncState = { options: [], loading: true, error: null };
 
 /**
  * Options fetched by `load` for `query` while `enabled` (the list is open).
  * A query change waits `debounceMs`; the first load after `enabled` turns
- * true runs at once. Each load aborts the one before it, a response for a
- * query that is no longer current is dropped, a failed load empties the
- * options, and unmounting aborts.
+ * true runs at once, and `loading` is true from that render on, so an empty
+ * list never shows before it. Turning `enabled` false aborts and drops the
+ * options and the error, so a reopened list shows nothing stale. Each load
+ * aborts the one before it, a response for a query that is no longer current
+ * is dropped, a failed load empties the options, and unmounting aborts.
  * `load` is read from a ref, so a new function identity (an inline arrow)
  * neither refetches nor cancels.
  */
@@ -30,23 +33,27 @@ export function useAsyncOptions(
   enabled: boolean,
   debounceMs = 250,
 ): AsyncState {
-  const [state, setState] = useState<AsyncState>(IDLE);
+  const hasLoad = load !== undefined;
+  const active = hasLoad && enabled;
+  const [state, setState] = useState<AsyncState>(active ? STARTING : IDLE);
+  // Adjusting state while rendering, React's pattern for "on prop change".
+  const [wasActive, setWasActive] = useState(active);
+  if (active !== wasActive) {
+    setWasActive(active);
+    setState(active ? STARTING : IDLE);
+  }
   const latestQuery = useRef(query);
   latestQuery.current = query;
   const latestLoad = useRef(load);
   latestLoad.current = load;
-  const hasLoad = load !== undefined;
   const controller = useRef<AbortController | null>(null);
   const first = useRef(true);
 
   useEffect(() => {
     if (!hasLoad || !enabled) {
       first.current = true;
-      if (controller.current) {
-        controller.current.abort();
-        controller.current = null;
-        setState((current) => ({ ...current, loading: false }));
-      }
+      controller.current?.abort();
+      controller.current = null;
       return;
     }
     const delay = first.current ? 0 : debounceMs;

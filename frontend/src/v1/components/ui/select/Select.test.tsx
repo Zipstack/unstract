@@ -171,6 +171,36 @@ it("shows the selected option's leading icon beside its label in the trigger", (
   expect(trigger().textContent).toBe("Claude");
 });
 
+it("lays the value out in a truncating flex row that leaves room for the chevron", () => {
+  setup({ value: "claude" });
+  const wrapper = trigger().querySelector('[data-slot="select-value"]');
+  expect(wrapper?.parentElement).toBe(trigger());
+  for (const name of [
+    "ui:flex",
+    "ui:min-w-0",
+    "ui:flex-1",
+    "ui:items-center",
+    "ui:*:flex",
+    "ui:*:min-w-0",
+    "ui:*:flex-1",
+    "ui:*:items-center",
+    "ui:*:gap-1.5",
+    "ui:*:truncate",
+  ]) {
+    expect(wrapper?.classList.contains(name), name).toBe(true);
+  }
+  // Radix drops SelectValue's className, so the wrapper's child variants
+  // style the value element Radix renders.
+  const value = wrapper?.firstElementChild as HTMLElement;
+  expect(wrapper?.childElementCount).toBe(1);
+  expect(value.getAttribute("data-slot")).toBe("select-value-text");
+  expect(value.style.pointerEvents).toBe("none");
+  const label = value.lastElementChild as HTMLElement;
+  expect(label.textContent).toBe("Claude");
+  expect(label.classList.contains("ui:truncate")).toBe(true);
+  expect(label.classList.contains("ui:min-w-0")).toBe(true);
+});
+
 it("draws the check only on the selected option", async () => {
   const { user } = setup({ defaultValue: "gemma" });
   await user.click(trigger());

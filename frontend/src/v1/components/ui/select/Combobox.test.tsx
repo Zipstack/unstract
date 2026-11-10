@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { expectNoA11yViolations, renderV1, stubLayout } from "@v1/test";
 import { Star } from "lucide-react";
 import { expect, it, vi } from "vitest";
@@ -63,10 +63,35 @@ it("is a combobox named by aria-label that focus alone does not open", async () 
   const { user } = setup();
   expect(input().getAttribute("aria-autocomplete")).toBe("list");
   expect(input().placeholder).toBe("Pick a model");
-  await user.click(input());
+  await user.tab();
   expect(document.activeElement).toBe(input());
   expect(input().getAttribute("aria-expanded")).toBe("false");
   expect(screen.queryByRole("listbox")).toBeNull();
+});
+
+it("opens on a click on the input, at the selected option", async () => {
+  const { user } = setup({ defaultValue: "gemma" });
+  await user.click(input());
+  expect(input().getAttribute("aria-expanded")).toBe("true");
+  expect(input().getAttribute("aria-activedescendant")).toBe(
+    screen.getByRole("option", { name: "Gemma" }).id,
+  );
+});
+
+it("selects the shown label on click and on focus, so typing replaces it", async () => {
+  const { user } = setup({ defaultValue: "gemma" });
+  await user.click(input());
+  await user.keyboard("c");
+  expect(input().value).toBe("c");
+  expect(optionNames()).toEqual(["Claude"]);
+  await user.keyboard("{Escape}");
+  expect(input().value).toBe("Gemma");
+  await user.click(screen.getByRole("button", { name: "Elsewhere" }));
+  await user.tab({ shift: true });
+  await user.tab({ shift: true });
+  expect(document.activeElement).toBe(input());
+  await user.keyboard("l");
+  expect(input().value).toBe("l");
 });
 
 it("opens and filters on typing, matching labels and keywords", async () => {
@@ -74,7 +99,7 @@ it("opens and filters on typing, matching labels and keywords", async () => {
   await user.type(input(), "gem");
   expect(input().getAttribute("aria-expanded")).toBe("true");
   expect(input().getAttribute("aria-controls")).toBe(
-    screen.getByRole("listbox").id,
+    screen.getByRole("listbox", { name: "Model" }).id,
   );
   expect(optionNames()).toEqual(["GeminiGoogle", "Gemma"]);
   await user.clear(input());
@@ -84,7 +109,7 @@ it("opens and filters on typing, matching labels and keywords", async () => {
 
 it("opens on ArrowDown and selects the active option on Enter", async () => {
   const { user, onValueChange } = setup();
-  await user.click(input());
+  await user.tab();
   await user.keyboard("{ArrowDown}");
   expect(screen.getByRole("listbox")).toBeTruthy();
   await user.keyboard("{ArrowDown}");
@@ -116,8 +141,8 @@ it("shows the selected option's leading before the input", () => {
 
 it("restores the selected label on Escape without changing the value", async () => {
   const { user, onValueChange } = setup({ defaultValue: "llama" });
-  await user.type(input(), "{Backspace}{Backspace}x");
-  expect(input().value).toBe("Llax");
+  await user.type(input(), "lx");
+  expect(input().value).toBe("lx");
   expect(screen.getByRole("listbox")).toBeTruthy();
   await user.keyboard("{Escape}");
   expect(screen.queryByRole("listbox")).toBeNull();
@@ -137,8 +162,8 @@ it("empties the input on Escape when nothing is selected", async () => {
 
 it("closes and restores the label when focus leaves", async () => {
   const { user } = setup({ defaultValue: "gemma" });
-  await user.clear(input());
   await user.type(input(), "cl");
+  expect(input().value).toBe("cl");
   expect(screen.getByRole("listbox")).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Elsewhere" }));
   expect(screen.queryByRole("listbox")).toBeNull();
@@ -166,8 +191,8 @@ it("stays open when the input is pressed again", async () => {
 
 it("restores the label when Tab moves to the clear button", async () => {
   const { user } = setup({ defaultValue: "gemma" });
-  await user.clear(input());
   await user.type(input(), "cl");
+  expect(input().value).toBe("cl");
   await user.tab();
   expect(document.activeElement).toBe(
     screen.getByRole("button", { name: "Clear" }),
@@ -176,9 +201,20 @@ it("restores the label when Tab moves to the clear button", async () => {
   expect(input().value).toBe("Gemma");
 });
 
+it("points aria-activedescendant at a new id when the first match changes", async () => {
+  const { user } = setup({ options: [opt("Cat"), opt("Crab")] });
+  await user.type(input(), "a");
+  const cat = screen.getByRole("option", { name: "Cat" });
+  expect(input().getAttribute("aria-activedescendant")).toBe(cat.id);
+  await user.type(input(), "b");
+  const crab = screen.getByRole("option", { name: "Crab" });
+  expect(input().getAttribute("aria-activedescendant")).toBe(crab.id);
+  expect(crab.id).not.toBe(cat.id);
+});
+
 it("jumps to the first and last enabled option on Home and End", async () => {
   const { user } = setup();
-  await user.click(input());
+  await user.tab();
   await user.keyboard("{ArrowDown}{End}");
   expect(input().getAttribute("aria-activedescendant")).toBe(
     screen.getByRole("option", { name: "Llama" }).id,
@@ -191,7 +227,7 @@ it("jumps to the first and last enabled option on Home and End", async () => {
 
 it("never activates a disabled option, and Enter on one does nothing", async () => {
   const { user, onValueChange } = setup();
-  await user.click(input());
+  await user.tab();
   await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
   expect(input().getAttribute("aria-activedescendant")).toBe(
     screen.getByRole("option", { name: "Gemma" }).id,
@@ -204,6 +240,24 @@ it("never activates a disabled option, and Enter on one does nothing", async () 
   await user.click(screen.getByRole("option", { name: "Grok" }));
   expect(onValueChange).not.toHaveBeenCalled();
   expect(screen.getByRole("listbox")).toBeTruthy();
+});
+
+it("keeps Enter from submitting the form while the list is open", async () => {
+  const onSubmit = vi.fn((event: { preventDefault: () => void }) =>
+    event.preventDefault(),
+  );
+  const { user } = renderV1(
+    <form onSubmit={onSubmit}>
+      <Combobox options={MODELS} aria-label="Model" />
+      <button type="submit">Save</button>
+    </form>,
+  );
+  await user.type(input(), "zzz");
+  expect(screen.getByRole("status").textContent).toBe("No matches");
+  await user.keyboard("{Enter}");
+  expect(onSubmit).not.toHaveBeenCalled();
+  await user.keyboard("{Escape}{Enter}");
+  expect(onSubmit).toHaveBeenCalledTimes(1);
 });
 
 it("clears the value with the clear button", async () => {
@@ -227,6 +281,9 @@ it("toggles the list with the chevron, keeping focus on the input", async () => 
   const { user } = setup({ defaultValue: "gemma" });
   const chevron = screen.getByRole("button", { name: "Show options" });
   expect(chevron.tabIndex).toBe(-1);
+  expect(chevron.getAttribute("aria-controls")).toBe(
+    input().getAttribute("aria-controls"),
+  );
   await user.click(chevron);
   expect(document.activeElement).toBe(input());
   expect(chevron.getAttribute("aria-expanded")).toBe("true");
@@ -241,7 +298,7 @@ it("toggles the list with the chevron, keeping focus on the input", async () => 
 
 it("follows a controlled value", async () => {
   const { user, onValueChange, rerender } = setup({ value: "claude" });
-  await user.click(input());
+  await user.tab();
   await user.keyboard("{ArrowDown}{End}{Enter}");
   expect(onValueChange).toHaveBeenCalledWith("llama", MODELS[4]);
   expect(input().value).toBe("Claude");
@@ -292,7 +349,7 @@ it("loads options when the list first opens and shows a loading row", async () =
   const { load, calls } = deferredLoader();
   const { user } = setup({ options: undefined, loadOptions: load });
   expect(load).not.toHaveBeenCalled();
-  await user.click(input());
+  await user.tab();
   await user.keyboard("{ArrowDown}");
   await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
   expect(calls[0].query).toBe("");
@@ -305,12 +362,44 @@ it("loads options when the list first opens and shows a loading row", async () =
   expect(input().value).toBe("Beta");
 });
 
+it("shows the loading row the moment the list opens, never No options first", async () => {
+  const { load, calls } = deferredLoader();
+  setup({ options: undefined, loadOptions: load });
+  act(() => input().focus());
+  // Synchronously, before the first load's 0 ms timer can run.
+  act(() => {
+    fireEvent.keyDown(input(), { key: "ArrowDown" });
+  });
+  expect(load).not.toHaveBeenCalled();
+  expect(screen.getByRole("status").textContent).toBe("Loading…");
+  await waitFor(() => expect(calls).toHaveLength(1));
+});
+
+it("shows no stale options when the list reopens", async () => {
+  const { load, calls } = deferredLoader();
+  const { user } = setup({ options: undefined, loadOptions: load });
+  await user.tab();
+  await user.keyboard("a");
+  await waitFor(() => expect(calls).toHaveLength(1));
+  await act(async () => calls[0].resolve([opt("Alpha")]));
+  expect(optionNames()).toEqual(["Alpha"]);
+  await user.keyboard("{Escape}");
+  act(() => {
+    fireEvent.keyDown(input(), { key: "ArrowDown" });
+  });
+  expect(screen.getByRole("listbox")).toBeTruthy();
+  expect(optionNames()).toEqual([]);
+  expect(screen.getByRole("status").textContent).toBe("Loading…");
+  await waitFor(() => expect(calls).toHaveLength(2));
+});
+
 it("shows the latest query's options when responses arrive out of order", async () => {
   const { load, calls } = deferredLoader();
   const { user } = setup({ options: undefined, loadOptions: load });
-  await user.type(input(), "a");
+  await user.tab();
+  await user.keyboard("a");
   await waitFor(() => expect(calls).toHaveLength(1));
-  await user.type(input(), "b");
+  await user.keyboard("b");
   await waitFor(() => expect(calls).toHaveLength(2));
   expect(calls.map((call) => call.query)).toEqual(["a", "ab"]);
   // The server's answer for "ab" need not contain "ab": it is not refiltered.
@@ -322,7 +411,8 @@ it("shows the latest query's options when responses arrive out of order", async 
 it("says No matches when the loader returns nothing", async () => {
   const { load, calls } = deferredLoader();
   const { user } = setup({ options: undefined, loadOptions: load });
-  await user.type(input(), "z");
+  await user.tab();
+  await user.keyboard("z");
   await waitFor(() => expect(calls).toHaveLength(1));
   await act(async () => calls[0].resolve([]));
   expect(screen.getByRole("status").textContent).toBe("No matches");
@@ -331,12 +421,13 @@ it("says No matches when the loader returns nothing", async () => {
 it("keeps a loaded selection's label after the query changes", async () => {
   const { load, calls } = deferredLoader();
   const { user } = setup({ options: undefined, loadOptions: load });
-  await user.type(input(), "a");
+  await user.tab();
+  await user.keyboard("a");
   await waitFor(() => expect(calls).toHaveLength(1));
   await act(async () => calls[0].resolve([opt("Alpha")]));
   await user.keyboard("{Enter}");
   expect(input().value).toBe("Alpha");
-  await user.type(input(), "z");
+  await user.keyboard("z");
   await waitFor(() => expect(calls).toHaveLength(2));
   await act(async () => calls[1].resolve([]));
   await user.keyboard("{Escape}");
@@ -349,11 +440,12 @@ it("shows a load error instead of the previous options", async () => {
     options: undefined,
     loadOptions: load,
   });
-  await user.type(input(), "a");
+  await user.tab();
+  await user.keyboard("a");
   await waitFor(() => expect(calls).toHaveLength(1));
   await act(async () => calls[0].resolve([opt("Server One")]));
   expect(optionNames()).toEqual(["Server One"]);
-  await user.type(input(), "b");
+  await user.keyboard("b");
   await waitFor(() => expect(calls).toHaveLength(2));
   await act(async () => calls[1].reject(new Error("boom")));
   expect(screen.getByRole("status").textContent).toBe("Could not load options");
@@ -373,7 +465,8 @@ it("keeps the label of an option from an earlier response", async () => {
     />,
   );
   const { user } = view;
-  await user.type(input(), "b");
+  await user.tab();
+  await user.keyboard("b");
   await waitFor(() => expect(calls).toHaveLength(1));
   await act(async () => calls[0].resolve([opt("Beta")]));
   await user.clear(input());
@@ -382,7 +475,7 @@ it("keeps the label of an option from an earlier response", async () => {
   await act(async () => calls[1].resolve([opt("Alpha")]));
   await user.keyboard("{Enter}");
   expect(onValueChange).toHaveBeenLastCalledWith("alpha", opt("Alpha"));
-  await user.type(input(), "z");
+  await user.keyboard("z");
   await waitFor(() => expect(calls).toHaveLength(3));
   await act(async () => calls[2].resolve([opt("Zeta")]));
   await user.keyboard("{Escape}");

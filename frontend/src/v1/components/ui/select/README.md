@@ -73,6 +73,11 @@ import {
   combobox-with-listbox pattern: focus stays on the input (`role="combobox"`,
   `aria-expanded`, `aria-controls`, `aria-autocomplete="list"`), which points
   at the active `role="option"` with `aria-activedescendant`; no live region.
+  Each option's id is tied to its value, not its index, so when typing
+  changes the first match the active id changes and a screen reader
+  announces it. The listbox takes the field's `aria-labelledby` (or
+  `aria-label`), and the chevron's `aria-controls` points at it. A virtual
+  list gives each rendered row `aria-setsize` and `aria-posinset`.
   `MultiSelect`'s listbox is `aria-multiselectable`.
 
 ### Keyboard
@@ -83,15 +88,17 @@ import {
 | ArrowDown / ArrowUp | open, then move | open, then move (no wrap) | open, then move (no wrap) | — |
 | ArrowLeft / ArrowRight | — | caret | caret | move focus, looping |
 | Home / End | first / last option | first / last while open; caret while closed | as Combobox | first / last item |
-| Enter | select and close | select and close | toggle; list stays open | select the focused item |
+| Enter | select and close | select and close; never submits the form while open | toggle; list stays open; never submits while open | select the focused item |
 | Space | select | types a space | types a space | select the focused item |
 | Escape | close, no change | close, restore the selected label | close, clear the query | — |
 | Tab | — (Radix keeps focus in the open list) | close, restore the label | close, clear the query | leaves the group |
 | Backspace | — | edits the text | edits the text; in an empty input removes the last chip | — |
 
-Focus alone never opens a Combobox or MultiSelect. Home and End jump in the
-open list but edit the caret while it is closed: the spec's "Home and End
-jump while a list is open" over the APG's caret-only reading.
+Focus alone never opens a Combobox or MultiSelect; a click on the input
+does (and in a MultiSelect a press on the frame's padding or a chip's label
+focuses the input and opens it too). Home and End jump in the open list but
+edit the caret while it is closed: the spec's "Home and End jump while a
+list is open" over the APG's caret-only reading.
 
 ### Hand-off to P1-T06
 
@@ -162,9 +169,10 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
 | `id`, `aria-label`, `aria-labelledby`, `aria-describedby` | `string` | — | on the input |
 | `className` | `string` | — | the frame |
 
-- While closed the input shows the selected label (and its `leading`);
-  typing replaces it with the query. Enter or a click selects and closes;
-  Escape, Tab and leaving the field close and restore the selected label.
+- While closed the input shows the selected label (and its `leading`),
+  selected when the input takes focus or is clicked, so typing replaces it
+  with the query. Enter or a click selects and closes; Escape, Tab and
+  leaving the field close and restore the selected label.
 - The chevron button ("Show options") toggles the list and keeps focus in
   the input; it is out of the tab order. The Clear button (shown with a
   value, while enabled) sets `null`.
@@ -172,9 +180,11 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
   wait 250 ms. Each load aborts the one before through `signal`, a response
   for a query that is no longer current is dropped, and a "Loading…" row
   (with `aria-busy` on the listbox) or a "Could not load options" row shows
-  the state. In async mode the client filters nothing: the loader's result is
-  the list. Pass a stable or inline function, either works (it is read from a
-  ref).
+  the state. "Loading…" shows from the moment the list opens, and closing
+  drops the loaded options, so a reopened list never flashes stale options
+  or "No options". In async mode the client filters nothing: the loader's
+  result is the list. Pass a stable or inline function, either works (it is
+  read from a ref).
 - Every option seen is remembered by value, so the selected label survives
   a filter or a server response that no longer holds it.
 

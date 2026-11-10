@@ -129,11 +129,11 @@ it("selects the active option with Enter while open", () => {
   expect(result.current.open).toBe(true);
 });
 
-it("does not select a disabled active option", () => {
+it("does not select a disabled active option, but still keeps Enter", () => {
   const { result, press, onSelect } = setup();
   press("ArrowDown");
   act(() => result.current.setActiveIndex(1));
-  expect(press("Enter")).not.toHaveBeenCalled();
+  expect(press("Enter")).toHaveBeenCalled();
   expect(onSelect).not.toHaveBeenCalled();
 });
 
@@ -206,6 +206,19 @@ it("follows the active option to its new index when the list changes", () => {
   expect(result.current.activeIndex).toBe(0);
 });
 
+it("ties each option's id to its value, never reusing one", () => {
+  const { result, rerender } = setup();
+  expect(result.current.optionIdFor("gamma")).toBe("fruit-option-2");
+  act(() => result.current.setQuery("third"));
+  expect(result.current.visible.map((o) => o.value)).toEqual(["gamma"]);
+  expect(result.current.optionId(0)).toBe("fruit-option-2");
+  expect(result.current.activeId).toBe("fruit-option-2");
+  rerender({ options: [{ value: "zeta", label: "Zeta" }, OPTIONS[0]] });
+  act(() => result.current.setQuery(""));
+  expect(result.current.optionId(0)).toBe("fruit-option-5");
+  expect(result.current.optionId(1)).toBe("fruit-option-0");
+});
+
 it("has nothing active when no option is enabled", () => {
   const { result, press, onSelect } = setup({
     options: [OPTIONS[1], OPTIONS[4]],
@@ -214,7 +227,8 @@ it("has nothing active when no option is enabled", () => {
   expect(result.current.open).toBe(true);
   expect(result.current.activeIndex).toBe(-1);
   expect(result.current.activeId).toBeUndefined();
-  press("Enter");
+  // Open with nothing active: Enter is still kept from the form.
+  expect(press("Enter")).toHaveBeenCalled();
   expect(onSelect).not.toHaveBeenCalled();
 });
 

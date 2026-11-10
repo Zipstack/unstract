@@ -88,13 +88,23 @@ export function Select({
         data-slot="select-trigger"
         className={cn(TRIGGER_FRAME, "ui:cursor-pointer", className)}
       >
-        {/* The selected option's leading and label render here (its ItemText). */}
-        <SelectPrimitive.Value
-          placeholder={
-            <span className={TRIGGER_PLACEHOLDER}>{placeholder}</span>
-          }
-          className="ui:flex ui:min-w-0 ui:flex-1 ui:items-center ui:gap-1.5"
-        />
+        {/*
+         * The selected option's leading and label render here (its ItemText).
+         * Radix drops SelectValue's className, so this wrapper lays out the
+         * value element with child variants: one row that truncates and
+         * leaves the chevron in the trigger.
+         */}
+        <span
+          data-slot="select-value"
+          className="ui:flex ui:min-w-0 ui:flex-1 ui:items-center ui:*:flex ui:*:min-w-0 ui:*:flex-1 ui:*:items-center ui:*:gap-1.5 ui:*:truncate"
+        >
+          <SelectPrimitive.Value
+            data-slot="select-value-text"
+            placeholder={
+              <span className={TRIGGER_PLACEHOLDER}>{placeholder}</span>
+            }
+          />
+        </span>
         <SelectPrimitive.Icon asChild>
           <ChevronIcon aria-hidden className={TRIGGER_CHEVRON} />
         </SelectPrimitive.Icon>
@@ -158,7 +168,7 @@ function SelectItem({
                 {option.leading}
               </span>
             ) : null}
-            <span className="ui:truncate">{option.label}</span>
+            <span className="ui:min-w-0 ui:truncate">{option.label}</span>
           </SelectPrimitive.ItemText>
         </span>
         {option.description ? (
