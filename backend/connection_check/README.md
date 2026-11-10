@@ -89,7 +89,7 @@ filters:
 | Parameter | Values | Meaning |
 |---|---|---|
 | `failing` | `true` (any case) | Only profiles whose latest test failed |
-| `last_test_status` | `connected`, `failed`, `never_tested` | Only profiles with this status |
+| `last_test_status` | `connected`, `failed`, `never_tested` (any case) | Only profiles with this status |
 
 Any other value of either parameter is ignored, and the list is returned as if
 it were absent.
