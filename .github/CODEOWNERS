@@ -1,3 +1,9 @@
 # A code owner must approve changes to the workflows that run the required checks.
 /.github/ @Zipstack/unstract-reviewers-l2
+# Release tooling: no code owner.
+/.github/release/
+/.github/workflows/backport.yaml
+/.github/workflows/release-branch-ci.yaml
+/.github/workflows/release-branch-only.yaml
+/.github/workflows/state.yaml
 /unstract/sdk1/src/unstract/sdk1/utils/image_limits/limits.json @Zipstack/unstract-maintainers @praveen-formido
