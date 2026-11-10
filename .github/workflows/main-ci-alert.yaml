@@ -1,0 +1,41 @@
+name: Main CI failure alert
+
+# Posts to Slack when a watched workflow fails on a push to main, naming the
+# GitHub user of every commit since that workflow's last green run on main. A
+# failure can span several merges because main does not require branches to be
+# up to date, so the culprit is not necessarily the head commit.
+
+on:
+  workflow_run:
+    workflows:
+      - "Run tests (unit + integration + e2e)"
+    types: [completed]
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  alert:
+    if: github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      # workflow_run checks out the default branch, never the failing run's code.
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Alert Slack
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          REPO: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+          WORKFLOW_ID: ${{ github.event.workflow_run.workflow_id }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_CREATED: ${{ github.event.workflow_run.created_at }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: .github/scripts/main-ci-alert.sh
