@@ -6,6 +6,7 @@ import {
   numberAt,
   numberFormats,
   tableRows,
+  unparsedWarnings,
 } from "./describe";
 import {
   chartRows,
@@ -336,4 +337,19 @@ it("finds values only in the series' own keys, and reads null, missing, non-fini
   expect(hasValues([{ pages: "12.5" }], pages)).toBe(false);
   expect(hasValues([{ pages: 3 }], [])).toBe(false);
   expect(hasValues([], pages)).toBe(false);
+});
+
+it("warns once per series that holds a value that is not a number, and never for gaps", () => {
+  const series = [{ key: "pages" }, { key: "cost" }, { key: "failed" }];
+  expect(
+    unparsedWarnings(
+      [
+        { pages: "1", cost: 2, failed: null },
+        { pages: "3", cost: undefined, failed: Number.NaN },
+      ],
+      series,
+    ),
+  ).toEqual([
+    'Chart series "pages" has values that are not numbers; the chart reads them as gaps. Parse numeric strings before passing them.',
+  ]);
 });

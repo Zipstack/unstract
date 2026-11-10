@@ -64,6 +64,31 @@ export function hasValues(
   return data.some((row) => series.some((s) => numberAt(row, s.key) !== null));
 }
 
+/**
+ * A console warning for each series holding something that is present but
+ * not a number (an unparsed DRF Decimal string): the chart reads it as a
+ * gap, so a payload the page forgot to parse would otherwise read as "no
+ * data" with nothing to say why.
+ */
+export function unparsedWarnings(
+  data: readonly ChartDatum[],
+  series: readonly Readonly<{ key: string }>[],
+): string[] {
+  return series
+    .filter((s) =>
+      data.some((row) => {
+        const value: unknown = (row as Record<string, unknown>)[s.key];
+        return (
+          value !== null && value !== undefined && typeof value !== "number"
+        );
+      }),
+    )
+    .map(
+      (s) =>
+        `Chart series "${s.key}" has values that are not numbers; the chart reads them as gaps. Parse numeric strings before passing them.`,
+    );
+}
+
 export type Formatters = Readonly<{
   value: (value: number) => string;
   x: (value: string | number) => string;

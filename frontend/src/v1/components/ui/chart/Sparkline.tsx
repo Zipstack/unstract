@@ -1,4 +1,4 @@
-import { type JSX, useId, useState } from "react";
+import { type JSX, useEffect, useId, useState } from "react";
 import {
   Line,
   LineChart as RechartsLineChart,
@@ -19,6 +19,7 @@ import {
   formatValue,
   hasValues,
   tableRows,
+  unparsedWarnings,
 } from "./describe";
 import { isolatedDot } from "./marks";
 import { seriesColors } from "./palette";
@@ -63,6 +64,14 @@ export function Sparkline<Row extends ChartDatum>({
   const colors = seriesColors(series);
   const resolved =
     state === "ready" && !hasValues(data, series) ? "empty" : state;
+  // An unparsed value reads as a gap, so a payload the page forgot to parse
+  // shows the empty state; say why in development (see CartesianChart).
+  const warnings = JSON.stringify(unparsedWarnings(data, series));
+  useEffect(() => {
+    for (const warning of JSON.parse(warnings) as string[]) {
+      console.warn(warning);
+    }
+  }, [warnings]);
   const text =
     summary ??
     describeChart({ kind: "sparkline", title, data, xKey, series, fmt });

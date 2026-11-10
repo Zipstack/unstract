@@ -200,9 +200,10 @@ type BarMarkerProps = Readonly<{
  * clones it rather than mounting a new component type each render. Its
  * `dataKey` is the series' `markerLabelKey`, so `value` is the label carried
  * in that bar's own row (unmarked rows have none). Centred on the bar it
- * names, at its own segment's tip in a stack (the top, or the bottom below
- * zero), since Recharts gives the bar's own geometry; near the plot's edges (Recharts' own plot area, so no
- * layout is restated here) the label reads inward as on a line.
+ * names, at its tip (the top, or the bottom below zero; its own segment's
+ * in a stack), since Recharts gives the bar's own geometry. Near the plot's
+ * left and right edges (Recharts' own plot area, so no layout is restated
+ * here) the label reads inward; at the bottom edge see the placement below.
  */
 export function BarMarker({
   color,

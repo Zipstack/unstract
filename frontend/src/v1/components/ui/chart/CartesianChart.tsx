@@ -26,6 +26,7 @@ import {
   formatValue,
   hasValues,
   tableRows,
+  unparsedWarnings,
 } from "./describe";
 import {
   chartRows,
@@ -105,10 +106,12 @@ export function CartesianChart<Row extends ChartDatum>({
   );
   // Logged whenever the set of problems changes (and, as with every effect,
   // twice on mount under StrictMode in development). A reserved series key
-  // is a mistake in any state; a dropped marker only while showing data,
-  // since a marker computed for rows that are still loading is not one.
+  // or an unparsed value is a mistake in any state (the latter is why a
+  // chart with data may show its empty state); a dropped marker only while
+  // showing data, since a marker computed for rows still loading is not one.
   const warnings = JSON.stringify([
     ...reservedKeyWarnings(series),
+    ...unparsedWarnings(data, series),
     ...(resolved === "ready" ? droppedWarnings(dropped) : []),
   ]);
   useEffect(() => {

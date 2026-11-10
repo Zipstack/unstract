@@ -1088,8 +1088,9 @@ describe("edge cases", () => {
     // baseline) clear of the dot (radius 4 and a 2px ring).
     expect(dip.y - 9).toBeGreaterThanOrEqual(dip.cy + 6);
     expect(dip.y).toBeLessThanOrEqual(plotBottom);
-    // The lowest bar's tip is on the plot's bottom edge, with no room under
-    // it: the label reads beside the dot, not over it.
+    // The lowest bar's tip is within 16px of the plot's bottom (the domain
+    // bottoms out at -45), with no room under it: the label reads beside
+    // the dot, not over it.
     expect(low.cy).toBeGreaterThan(plotBottom - 16);
     expect(low.y).toBeLessThanOrEqual(plotBottom);
     // Beside, not above: the dot sits at the label's middle (baseline 4
@@ -1152,6 +1153,7 @@ describe("edge cases", () => {
     );
     expect(first.anchor).toBe("start");
     expect(first.x - first.cx).toBeGreaterThanOrEqual(8);
+    expect(first.y).toBeGreaterThan(first.cy);
     // Third of four bars: more room on its left, so less of it leaves the
     // plot there.
     const middle = bottomEdge(
@@ -1176,7 +1178,20 @@ describe("edge cases", () => {
     );
     expect(onEdge.cy).toBeCloseTo(onEdge.plotBottom, 0);
     expect(onEdge.y).toBeLessThanOrEqual(onEdge.plotBottom);
-    for (const placed of [first, middle, onEdge]) {
+    // ...and so it is when the label reads rightward.
+    const onEdgeRight = bottomEdge(
+      [
+        { day: "a", v: -20 },
+        { day: "b", v: 20 },
+        { day: "c", v: 20 },
+        { day: "d", v: 20 },
+      ],
+      0,
+    );
+    expect(onEdgeRight.anchor).toBe("start");
+    expect(onEdgeRight.cy).toBeCloseTo(onEdgeRight.plotBottom, 0);
+    expect(onEdgeRight.y).toBeLessThanOrEqual(onEdgeRight.plotBottom);
+    for (const placed of [first, middle, onEdge, onEdgeRight]) {
       expect(placed.y).toBeGreaterThanOrEqual(placed.cy);
     }
   });
@@ -1202,6 +1217,43 @@ describe("edge cases", () => {
     const x = Number(mark?.querySelector("text")?.getAttribute("x"));
     expect(x - cx).toBeGreaterThanOrEqual(8);
     expect(mark?.querySelector("text")).toHaveAttribute("text-anchor", "start");
+  });
+
+  it("says why when unparsed values leave a chart empty", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const rows = [{ day: "a", pages: "12.5" }] as unknown as {
+      day: string;
+      pages: number;
+    }[];
+    const series = [{ key: "pages", label: "Pages" }] as const;
+    const expected =
+      'Chart series "pages" has values that are not numbers; the chart reads them as gaps. Parse numeric strings before passing them.';
+    const line = renderV1(
+      <LineChart
+        title="T"
+        data={rows}
+        xKey="day"
+        width={WIDTH}
+        height={HEIGHT}
+        series={series}
+      />,
+    );
+    expect(
+      line.container.querySelector("[data-slot=line-chart]"),
+    ).toHaveAttribute("data-state", "empty");
+    expect(warn).toHaveBeenCalledWith(expected);
+    line.unmount();
+    warn.mockClear();
+    renderV1(
+      <Sparkline
+        title="T"
+        data={rows}
+        xKey="day"
+        width={120}
+        series={series}
+      />,
+    );
+    expect(warn).toHaveBeenCalledWith(expected);
   });
 
   it("shows the empty state when every series value is a gap", () => {
