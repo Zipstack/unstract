@@ -15,6 +15,10 @@ const CANDIDATES = [
   "ui:text-body",
   "ui:text-overline",
   "ui:font-mono",
+  "ui:text-code-key",
+  "ui:bg-diff-added",
+  "ui:min-h-lh",
+  "ui:w-(--code-gutter)",
   "ui:focus-ring",
   "ui:dark:bg-card",
   "ui:unstract:bg-card",
@@ -99,6 +103,17 @@ it("emits only prefixed utilities bound to runtime variables", () => {
   );
   expect(css).not.toMatch(/(^|[^\\:])\.bg-background\b/);
   expect(css).not.toMatch(/(^|[^\\:])\.flex\b/);
+});
+
+it("the code and diff colours (P1-T16) read their tokens", () => {
+  expect(css).toMatch(
+    /\.ui\\:text-code-key\s*\{[^}]*color:\s*var\(--code-key\)/,
+  );
+  expect(css).toMatch(
+    /\.ui\\:bg-diff-added\s*\{[^}]*background-color:\s*var\(--diff-added\)/,
+  );
+  expect(css).toMatch(/\.ui\\:min-h-lh\s*\{/);
+  expect(css).toMatch(/width:\s*var\(--code-gutter\)/);
 });
 
 it("spacing utilities read the spacing tokens: named steps directly, bare steps through --space-1", () => {
