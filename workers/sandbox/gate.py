@@ -576,6 +576,35 @@ def _unconditional_module_bindings(module) -> dict[str, tuple[int, ast.stmt]]:
     return out
 
 
+def _in_function_scope(node, parents) -> bool:
+    """Is ``node`` lexically inside a function, lambda or comprehension?
+
+    What makes a module-level `del` irrelevant. A name bound in a function --
+    a parameter, an assignment, a `for`/`with`/`except` target -- is local for
+    that whole scope, so a read of it never consults module globals and a
+    module-level `del` cannot expose the builtin. Reading it after a `del` in
+    the same function raises ``UnboundLocalError`` instead.
+    """
+    cur = parents.get(node)
+    while cur is not None:
+        if isinstance(cur, _FUNCTION_SCOPES):
+            return True
+        if isinstance(cur, ast.Module):
+            return False
+        cur = parents.get(cur)
+    return False
+
+
+def _module_scope_deleted_names_for(node, parents) -> set[str]:
+    """``_module_scope_deleted_names`` for the module ``node`` belongs to."""
+    cur = node
+    while cur is not None:
+        if isinstance(cur, ast.Module):
+            return _module_scope_deleted_names(cur)
+        cur = parents.get(cur)
+    return set()
+
+
 def _delete_unbinds(target) -> list[str]:
     """Names a single ``del`` TARGET actually unbinds.
 
@@ -905,23 +934,6 @@ def _shadows_builtin(node, parents) -> bool:
     # `prev` trails `cur` by one, so it is always the direct child of `cur` on
     # the path down to the Load. That is what makes the guarded-region test
     # below an identity check against `cur.body` instead of a walk of it.
-    # BEFORE the walk, not inside the Module arm. A `for`/`with`/`except`
-    # target grants its own exemption through `_binds_as_own_target`, which
-    # returns before the Module arm is ever reached -- so
-    # `for eval in [1]: del eval; f = eval`, with the read INSIDE the body,
-    # gate-passed and executed, and the `with` and `except` target forms with
-    # it. The deletion is a fact about the whole module scope, so it is checked
-    # once, here, where no exemption path can precede it.
-    module = None
-    probe = parents.get(node)
-    while probe is not None:
-        if isinstance(probe, ast.Module):
-            module = probe
-            break
-        probe = parents.get(probe)
-    if module is not None and node.id in _module_scope_deleted_names(module):
-        return False
-
     prev = node
     cur = parents.get(node)
     while cur is not None:
@@ -939,11 +951,30 @@ def _shadows_builtin(node, parents) -> bool:
         # module level, where the `for` itself is not an unconditional binding
         # (an empty `rows` binds nothing, so a Load AFTER the loop is refused).
         if _binds_as_own_target(cur, node.id, prev):
+            # A module-scope `for`/`with`/`except` target can be unbound by a
+            # `del` in its own body -- `for eval in [1]: del eval; f = eval`
+            # with the read INSIDE the body gate-passed and executed, because
+            # this branch returns before the Module arm below is reached.
+            #
+            # Scoped to module-scope binders, NOT applied blanket. A first
+            # version of this check sat above the whole walk and refused
+            # `vars = {}; del vars` followed by `def t(vars): return vars["n"]`
+            # -- the parameter is a function LOCAL that no module-level delete
+            # can touch, so refusing it broke valid calculations.
+            if _in_function_scope(cur, parents):
+                return True
+            if node.id in _module_scope_deleted_names_for(cur, parents):
+                return False
             return True
         if isinstance(cur, _FUNCTION_SCOPES):
             if _function_scope_binds(cur, node.id):
                 return True
         elif isinstance(cur, ast.Module):
+            # A module-scope `del` withdraws the exemption: the binding the
+            # collector found may not exist at the read, and the Load then
+            # reaches the builtin.
+            if node.id in _module_scope_deleted_names(cur):
+                return False
             bound = _unconditional_module_bindings(cur).get(node.id)
             if bound is not None:
                 pos, stmt = bound

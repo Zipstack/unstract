@@ -860,6 +860,58 @@ class TestDeleteWithdrawsTheShadowingExemption:
         assert ok is True, f"{label}: gate refused valid code -- {reason}"
 
     @pytest.mark.parametrize(
+        "label,code,refused",
+        [
+            (
+                "a function PARAMETER of the deleted name is a local",
+                "vars = {}\ndel vars\ndef transform(vars):\n    return vars['n'] * 2\n",
+                False,
+            ),
+            (
+                "a function-scope for target is a local too",
+                "def f():\n    for eval in [1]:\n        del eval\n        g = eval\n    return 1\n",
+                False,
+            ),
+            (
+                # The case `_in_function_scope` actually exists for, and the
+                # one the sibling above does NOT reach: here the `del` is at
+                # MODULE scope, so the deleted-names set does contain `vars`,
+                # while the Load resolves through a FUNCTION-scope `for`
+                # target. Without that guard the module delete would refuse a
+                # loop variable it cannot touch. Found by a surviving mutant --
+                # removing the guard broke no test until this case existed.
+                "a module del must not reach a function's own for target",
+                "vars = {}\ndel vars\ndef f(rows):\n    for vars in rows:\n        return vars\n",
+                False,
+            ),
+            (
+                "but a function that does NOT bind it still reads the builtin",
+                "eval = 1\ndel eval\ndef f():\n    return eval\n",
+                True,
+            ),
+        ],
+    )
+    def test_a_module_del_does_not_reach_function_locals(self, label, code, refused):
+        """Scope, not blanket -- and the first version of this got it wrong.
+
+        The deletion check was hoisted above the whole walk so it could precede
+        `_binds_as_own_target`. That also put it ahead of the FUNCTION-scope
+        exemptions, and refused `vars = {}; del vars` followed by
+        `def transform(vars): ...` -- the parameter is a local that no
+        module-level delete can touch, so valid calculations failed without
+        running. Reported by greptile on the commit that hoisted it.
+
+        The third case is why the fix is scoping rather than removal: a
+        function that does NOT bind the name resolves it through module
+        globals at CALL time, so after a module-level `del` it reaches the
+        builtin and must still be refused.
+        """
+        ok, reason = check_code_safe(code)
+        assert ok is (not refused), f"{label}: got {'PASS' if ok else reason}"
+        if refused:
+            assert reason == "safety gate: disallowed name 'eval'", reason
+
+    @pytest.mark.parametrize(
         "label,code",
         [
             (
