@@ -89,10 +89,24 @@ invocation:
   * `[(eval := eval)('...') for _ in [0]]` — a walrus in a comprehension binds
     in the ENCLOSING scope (PEP 572), so it was not a comprehension-local.
 
-Two further sub-claims in that report did NOT reproduce, and are recorded here
-so nobody re-opens them: `f = eval` was already refused by
-`_rule_denylisted_name`, and `del eval` contains no `ast.Load` at all (at module
-level it raises `NameError` before anything could use it).
+One further sub-claim in that report did not reproduce, and is recorded here so
+nobody re-opens it: `f = eval` was already refused by `_rule_denylisted_name`.
+
+**The `del eval` sub-claim was dismissed too fast, and that was wrong.** This
+header previously said it "contains no `ast.Load` at all (at module level it
+raises `NameError` before anything could use it)". True of `del eval` ALONE --
+and false the moment a binding precedes it, which the reviewer pointed out after
+the five routes above were closed:
+
+    eval = 1      # creates the module global the exemption keys on
+    del eval      # removes it at runtime
+    f = eval      # falls through globals to the REAL builtin
+
+That gate-passed and executed (`f('1+1') == 2`). Closed by
+`_module_scope_deleted_names`. The lesson worth keeping is about the shape of
+the mistake rather than the route: testing `del eval` on its own answered a
+narrower question than the one being asked, and the write-up then recorded the
+narrow answer as a general one.
 
 **What is NOT fixed, and must not be read as fixed.** The dunder-subscript check
 still matches only *constant* strings, so `d['__imp' + 'ort__']` is still
@@ -562,6 +576,60 @@ def _unconditional_module_bindings(module) -> dict[str, tuple[int, ast.stmt]]:
     return out
 
 
+def _module_scope_deleted_names(module) -> set[str]:
+    """Names a module-scope ``del`` removes, at any depth below the body.
+
+    The shadowing exemption asks whether a Load reads the submitted code's OWN
+    local. A ``del`` makes that false again, and the collector above could not
+    see it: ``ast.Delete`` is not in ``_UNCONDITIONAL_STMTS``, so only BINDS
+    were ever recorded. That left this GATE-PASS and executing --
+
+        eval = 1
+        del eval
+        f = eval
+
+    -- because the Assign creates the module global ``_shadows_builtin`` keys
+    on, the ``del`` removes it at runtime, and the Load then falls through
+    globals to the real builtin. Verified by execution: ``f`` IS
+    ``builtins.eval`` and ``f('1+1')`` returns 2. Reported by a reviewer on
+    #2309 after the first five routes were closed.
+
+    CONSERVATIVE on purpose, in two ways:
+
+    * a ``del`` withdraws the exemption for that name across the WHOLE module,
+      not just for Loads after its line. Ordering is not the hard part here;
+      reachability is.
+    * a ``del`` in a branch counts. ``eval = 1`` then ``if x: del eval`` then
+      ``f = eval`` is bound at the read only when the branch did NOT run, and
+      the gate cannot know which -- so it refuses. Over-refusal is the safe
+      direction, and generated transformation code has no reason to ``del`` a
+      builtin's name at all.
+
+    Nested function and class scopes are skipped: a ``del`` in there removes a
+    LOCAL of that scope and says nothing about the module global.
+    """
+    cached = getattr(module, "_gate_deleted_names", None)
+    if cached is not None:
+        return cached
+    nested = _FUNCTION_SCOPES + (ast.ClassDef,)
+    found: set[str] = set()
+
+    def walk(n, top=False):
+        if not top and isinstance(n, nested):
+            return
+        if isinstance(n, ast.Delete):
+            for target in n.targets:
+                for sub in ast.walk(target):
+                    if isinstance(sub, ast.Name):
+                        found.add(sub.id)
+        for child in ast.iter_child_nodes(n):
+            walk(child)
+
+    walk(module, top=True)
+    module._gate_deleted_names = found
+    return found
+
+
 def _is_descendant(node, ancestor, parents) -> bool:
     """Is `node` somewhere inside `ancestor`? Walks the `parents` map upward."""
     cur = parents.get(node)
@@ -802,6 +870,12 @@ def _shadows_builtin(node, parents) -> bool:
             if _function_scope_binds(cur, node.id):
                 return True
         elif isinstance(cur, ast.Module):
+            # A module-scope `del` of this name withdraws the exemption: the
+            # binding the collector found may no longer exist at the read, and
+            # then the Load reaches the builtin. See
+            # `_module_scope_deleted_names` for the route this closes.
+            if node.id in _module_scope_deleted_names(cur):
+                return False
             bound = _unconditional_module_bindings(cur).get(node.id)
             if bound is not None:
                 pos, stmt = bound

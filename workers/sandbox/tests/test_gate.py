@@ -744,6 +744,82 @@ def test_checking_a_large_module_scope_script_stays_roughly_linear():
     )
 
 
+class TestDeleteWithdrawsTheShadowingExemption:
+    """`del` makes a shadowed name reach the builtin again.
+
+    Reported on #2309 AFTER the five routes in the class below were closed, and
+    it is the route I had already dismissed: I tested `del eval` on its own,
+    found no `ast.Load`, and recorded "at module level it raises NameError" as
+    though that settled the general case. It settles only the narrow one. With a
+    binding in front of it the `del` succeeds, and the later Load falls through
+    globals to the real builtin -- verified by execution, `f('1+1')` returned 2.
+    """
+
+    @pytest.mark.parametrize(
+        "label,code",
+        [
+            (
+                "bind, del, then read",
+                "eval = 1\ndel eval\nf = eval\n",
+            ),
+            (
+                "and call what the read produced",
+                "eval = 1\ndel eval\nf = eval\nf('1+1')\n",
+            ),
+            (
+                "del in a branch that may not run",
+                "eval = 1\nif 1:\n    del eval\nf = eval\n",
+            ),
+            (
+                "del inside a loop body",
+                "eval = 1\nfor _ in [0]:\n    del eval\nf = eval\n",
+            ),
+            (
+                "del via a tuple target",
+                "eval = 1\nvars = 2\ndel eval, vars\nf = eval\n",
+            ),
+            (
+                "read BEFORE the del is refused too (reachability, not order)",
+                "eval = 1\nf = eval\ndel eval\n",
+            ),
+        ],
+    )
+    def test_a_module_scope_del_refuses_the_read(self, label, code):
+        ok, reason = check_code_safe(code)
+        assert ok is False, f"{label}: gate accepted a read of the real builtin"
+        assert reason == "safety gate: disallowed name 'eval'", reason
+
+    @pytest.mark.parametrize(
+        "label,code",
+        [
+            (
+                "a genuine rebinding with no del still shadows",
+                "eval = 1\nx = eval\n",
+            ),
+            (
+                "deleting an ordinary name is none of this rule's business",
+                "d = {'a': 1}\ndel d\n",
+            ),
+            (
+                "a del in a FUNCTION scope removes a local, not the global",
+                "eval = 1\ndef f():\n    eval = 2\n    del eval\nx = eval\n",
+            ),
+            (
+                "del eval alone: no Load at all, and NameError at runtime",
+                "del eval\n",
+            ),
+        ],
+    )
+    def test_it_does_not_over_refuse(self, label, code):
+        """The rule is deliberately conservative, so these are the shapes that
+        would show it going too far. The function-scope case is the one that
+        matters: a `del` in there is about that scope's local, and treating it
+        as a module-scope delete would refuse ordinary code.
+        """
+        ok, reason = check_code_safe(code)
+        assert ok is True, f"{label}: gate refused legitimate code -- {reason}"
+
+
 class TestFrameAndMatchRoutesToBuiltins:
     """The four routes that gate-passed before `_rule_introspection_attribute`
     and `_rule_match_class_attribute` existed.
