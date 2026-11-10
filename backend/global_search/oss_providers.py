@@ -2,8 +2,8 @@
 
 Each provider starts from the same ``Model.objects.for_user(user)`` its list
 view uses, so search never returns a row the caller could not open from the
-list. Search may narrow further (pipeline type, No Op and frictionless
-adapters), never widen.
+list. Search may narrow further (pipeline type; adapter kind, which leaves
+OCR adapters out; No Op and frictionless adapters), never widen.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
+from adapter_processor_v2.constants import AdapterKeys
 from adapter_processor_v2.models import AdapterInstance
 from api_v2.models import APIDeployment
 from connector_v2.models import ConnectorInstance
@@ -147,23 +148,38 @@ class TaskPipelineProvider(_PipelineProvider):
 
 
 class AdapterProvider(ModelSearchProvider):
-    type_key = OSSSearchType.ADAPTER
-    label = "Adapters"
-    order = 80
+    """Adapters of one kind (``adapter_type``), one search type per rail
+    destination. Not registered itself; the kinds below are.
+
+    All kinds share the ``adapter.detail`` / ``adapter.info`` route keys
+    (the notifications inbox sends ``adapter.info`` with the same params);
+    ``adapter_type`` in the route params tells the client which adapter page
+    to open.
+    """
+
+    adapter_type: str
     name_fields = ("adapter_name",)
     description_field = "description"
+
+    @property
+    def route_key(self) -> str:
+        return "adapter.detail"
+
+    @property
+    def info_route_key(self) -> str:
+        return "adapter.info"
 
     def visible_queryset(self, user: Any) -> QuerySet[Any]:
         # Frictionless adapters stay in the adapter list, where any member
         # may delete them, but nobody can open their detail view: retrieve
         # refuses them for everyone, admins included (IsFrictionLessAdapter).
-        return AdapterInstance.objects.for_user(user).exclude(
-            Q(adapter_id__startswith=NO_OP_ADAPTER_PREFIX) | Q(is_friction_less=True)
+        return (
+            AdapterInstance.objects.for_user(user)
+            .filter(adapter_type=self.adapter_type)
+            .exclude(
+                Q(adapter_id__startswith=NO_OP_ADAPTER_PREFIX) | Q(is_friction_less=True)
+            )
         )
-
-    @property
-    def info_route_key(self) -> str:
-        return f"{self.type_key}.info"
 
     def annotate(self, queryset: QuerySet[Any], user: Any) -> QuerySet[Any]:
         # Same rule as IsFrictionLessAdapter, which gates retrieve: service
@@ -197,6 +213,34 @@ class AdapterProvider(ModelSearchProvider):
         return {"id": str(obj.pk), "adapter_type": obj.adapter_type}
 
 
+class LLMAdapterProvider(AdapterProvider):
+    type_key = OSSSearchType.LLM
+    label = "LLMs"
+    order = 80
+    adapter_type = AdapterKeys.LLM
+
+
+class VectorDBAdapterProvider(AdapterProvider):
+    type_key = OSSSearchType.VECTOR_DB
+    label = "Vector DBs"
+    order = 81
+    adapter_type = AdapterKeys.VECTOR_DB
+
+
+class EmbeddingAdapterProvider(AdapterProvider):
+    type_key = OSSSearchType.EMBEDDING
+    label = "Embedding"
+    order = 82
+    adapter_type = AdapterKeys.EMBEDDING
+
+
+class TextExtractorAdapterProvider(AdapterProvider):
+    type_key = OSSSearchType.TEXT_EXTRACTOR
+    label = "Text Extractor"
+    order = 83
+    adapter_type = AdapterKeys.X2TEXT
+
+
 class ConnectorProvider(ModelSearchProvider):
     type_key = OSSSearchType.CONNECTOR
     label = "Connectors"
@@ -216,6 +260,9 @@ OSS_PROVIDERS = (
     APIDeploymentProvider,
     ETLPipelineProvider,
     TaskPipelineProvider,
-    AdapterProvider,
+    LLMAdapterProvider,
+    VectorDBAdapterProvider,
+    EmbeddingAdapterProvider,
+    TextExtractorAdapterProvider,
     ConnectorProvider,
 )
