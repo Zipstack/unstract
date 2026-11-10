@@ -64,6 +64,26 @@ const CASES = parseTable(`
   v1-antd-import                 | lint:v1         | antd is not used under src/v1
   v1-antd-subpath                | lint:v1         | antd is not used under src/v1
   v1-antd-icons                  | lint:v1         | antd is not used under src/v1
+  # Lucide is the only icon library (an allowlist), with canonical names only.
+  v1-icon-library                | lint:v1         | Lucide is the only icon library under src/v1
+  v1-icon-library-subpath        | lint:v1         | Lucide is the only icon library under src/v1
+  v1-icon-library-unlisted       | lint:v1         | '@iconify/react' is not allowed
+  v1-icon-library-lucide-static  | lint:v1         | 'lucide-static/icons/loader-circle.svg' is not allowed
+  v1-icon-library-feather        | lint:v1         | 'react-feather' is not allowed
+  v1-icon-library-mdi            | lint:v1         | '@mdi/js' is not allowed
+  v1-icon-library-flags          | lint:v1         | Lucide is the only icon library under src/v1
+  v1-feature-flag-sdk            | lint:v1         | -
+  v1-icon-library-css            | lint:v1         | 'flag-icons/css/flag-icons.min.css' is not allowed
+  v1-icon-library-scss-tilde     | lint:v1         | '@fortawesome/fontawesome-free/scss/fontawesome' is not allowed
+  v1-icon-library-css-escaped   | lint:v1         | '@fortawesome/fontawesome-free/css/all.min.css' is not allowed
+  v1-lucide-subpath              | lint:v1         | not 'lucide-react/dynamic'
+  v1-lucide-alias                | lint:v1         | Deprecated lucide-react alias 'Loader2'
+  v1-lucide-alias-uncommon       | lint:v1         | import the canonical name 'CircleQuestionMark'
+  v1-lucide-alias-suffixed       | lint:v1         | Deprecated lucide-react alias 'LucideLoader2'
+  v1-lucide-namespace            | lint:v1         | not as a namespace or default import
+  v1-lucide-dynamic-template     | lint:v1         | a dynamic import or
+  v1-lucide-icons-map            | lint:v1         | it is keyed by name, deprecated aliases included
+  v1-lucide-canonical            | lint:v1         | -
   v1-styles-import-outside       | lint:v1         | v1 styles import nothing outside it
   v1-styles-ant-class            | lint:v1         | No antd 'ant-' class names
   v1-styles-import-antd          | lint:v1         | antd is not used under src/v1
@@ -78,6 +98,20 @@ const CASES = parseTable(`
   v1-unknown-file-type           | typecheck:v1    | Unknown file type under v1
   v1-ant-class-prefix            | lint:v1         | No antd 'ant-' class names
   v1-ant-built-class             | lint:v1         | No antd 'ant-' class names
+  # One notification entry point: toast libraries only in components/ui/feedback/.
+  v1-notify-sonner               | lint:v1         | One notification entry point in v1
+  v1-notify-radix-toast          | lint:v1         | One notification entry point in v1
+  v1-notify-radix-namespace      | lint:v1         | One notification entry point in v1
+  v1-notify-dynamic              | lint:v1         | One notification entry point in v1
+  v1-notify-radix-dynamic        | lint:v1         | One notification entry point in v1
+  v1-notify-radix-bracket        | lint:v1         | One notification entry point in v1
+  v1-notify-radix-jsx            | lint:v1         | One notification entry point in v1
+  v1-notify-radix-require        | lint:v1         | One notification entry point in v1
+  v1-notify-radix-reexport       | lint:v1         | One notification entry point in v1
+  v1-notify-radix-then           | lint:v1         | One notification entry point in v1
+  # Outside the feedback folder, a static named radix-ui import without Toast is fine.
+  v1-notify-radix-named-ok       | lint:v1         | -
+  v1-notify-feedback-ok          | lint:v1         | -
   v1-explicit-any                | lint:v1         | noExplicitAny
   # The v1 override must add to the shared rules, not replace them.
   v1-base-rules-still-apply      | lint:v1         | noDoubleEquals

@@ -210,6 +210,8 @@ cp sample.env .env
 
 Then edit `workers/.env` — change all Docker hostnames to `localhost`:
 
+> The runner's port 5002 and the x2text service's port 3004 are not published on the host by default. Uncomment the loopback `ports` entries for `runner` and `x2text-service` in `docker/docker-compose.yaml` then recreate them from `docker/` with the same tag you started the stack with (`VERSION=<tag> docker compose up -d runner x2text-service`), or workers on the host cannot reach them.
+
 ```ini
 # === CRITICAL CHANGES FOR LOCAL DEV ===
 DJANGO_APP_BACKEND_URL=http://localhost:8000
@@ -373,8 +375,8 @@ cd workers && ./run-worker.sh all
 | Backend API | 8000 | http://localhost:8000/api/v1/ |
 | Frontend | 3000 | http://frontend.unstract.localhost |
 | Platform Service | 3001 | http://localhost:3001 |
-| X2Text Service | 3004 | http://localhost:3004 |
-| Runner | 5002 | http://localhost:5002 |
+| X2Text Service | 3004 | http://localhost:3004 (not published by default; uncomment the loopback `ports` entry for `x2text-service` in `docker/docker-compose.yaml`) |
+| Runner | 5002 | http://localhost:5002 (not published by default; uncomment the loopback `ports` entry for `runner` in `docker/docker-compose.yaml`) |
 | Celery Flower (optional) | 5555 | http://localhost:5555 |
 
 ### V2 Worker Health Ports

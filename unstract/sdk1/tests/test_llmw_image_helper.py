@@ -908,10 +908,19 @@ class TestExtractionTimeByteBudget:
             H.verify_page_bytes([(1, b"x" * 700_000), (2, b"x" * 700_000)])
         msg = str(excinfo.value)
         assert msg.startswith("This document is too large for image output mode.")
-        assert "Its 2 page images total 1.3 MB, over the 1 MB limit" in msg
+        assert "Its 2 page images total 1.3 MiB, over the 1.0 MiB limit" in msg
         # Honest about cost: sizes are only known after the charged conversion.
         assert "already been charged" in msg
         assert "however many pages" not in msg
+
+    def test_env_above_the_fixed_budget_does_not_raise_it(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        # The env var is a ceiling: 50 MiB leaves the fixed 14 MiB in force.
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", "50")
+        with pytest.raises(ExtractorError) as excinfo:
+            H.verify_page_bytes([(1, b"x" * 8_000_000), (2, b"x" * 8_000_000)])
+        assert "over the 14.0 MiB limit" in str(excinfo.value)
 
     def test_extraction_fails_before_persisting(self, monkeypatch: MonkeyPatch) -> None:
         monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", "1")
@@ -1020,6 +1029,22 @@ class TestModelAwarePreSubmit:
         assert "This document has 25 pages" in msg
         assert "Amazon Bedrock" in msg and "20 page images" in msg
         assert "No pages were converted or charged" in msg
+        stubs["submit"].assert_not_called()
+
+    def test_page_cap_env_cannot_raise_the_fixed_cap_without_a_policy(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        # No policy: the fixed 90 pages. A ceiling above it leaves 90 in force.
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "500")
+        monkeypatch.setattr(H, "_safe_pdf_page_count", staticmethod(lambda _b: 91))
+        stubs = _stub_flow(monkeypatch, [])
+        fs = MagicMock(name="FileStorage")
+        fs.read.return_value = b"%PDF-1.7 fake"
+
+        with pytest.raises(ExtractorError) as excinfo:
+            H.get_page_images({}, "/in/doc.pdf", "/out/doc.txt", fs=fs)
+
+        assert "90" in str(excinfo.value)
         stubs["submit"].assert_not_called()
 
     def test_generous_model_passes_above_the_old_fixed_cap(
@@ -1184,7 +1209,15 @@ class TestMaxTotalImageBytes:
         self, monkeypatch: MonkeyPatch
     ) -> None:
         kwargs = self._submit_kwargs(monkeypatch, 3)
-        assert kwargs["max_total_image_bytes"] == helper_mod.configured_max_total_bytes()
+        assert kwargs["max_total_image_bytes"] == helper_mod.get_fixed_max_total_bytes()
+
+    def test_fixed_budget_sent_is_never_raised_by_the_env(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", "50")
+        assert H.submit_byte_limit(None, 3) == 14 * 1024 * 1024
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", "6")
+        assert H.submit_byte_limit(None, 3) == 6 * 1024 * 1024
 
     def test_policy_budget_for_the_selected_count_is_sent(
         self, monkeypatch: MonkeyPatch
@@ -1232,11 +1265,11 @@ class TestMaxTotalImageBytes:
             H.poll_pdf_to_images_status(_NET_CONFIG, "wh")
         assert excinfo.value.status_code == 400
         msg = str(excinfo.value)
-        budget_mb = helper_mod.configured_max_total_bytes() // (1024 * 1024)
+        budget_mib = helper_mod.get_fixed_max_total_bytes() / (1024 * 1024)
         assert msg.startswith(
             "This document is too large for image output mode. Its 5 page "
-            "images total at least 21.0 MB, over the "
-            f"{budget_mb} MB limit for one LLM request. Split the document"
+            "images total at least 21.0 MiB, over the "
+            f"{budget_mib:.1f} MiB limit for one LLM request. Split the document"
         )
         assert msg.endswith("nothing was charged.")
         assert "already been charged" not in msg
@@ -1281,7 +1314,7 @@ class TestMaxTotalImageBytes:
         msg = str(excinfo.value)
         assert excinfo.value.status_code == 400
         assert " 0 page images" not in msg
-        assert "Its page images total at least 21.0 MB" in msg
+        assert "Its page images total at least 21.0 MiB" in msg
         assert msg.endswith("nothing was charged.")
 
     def test_rejection_without_a_page_count_uses_the_local_count(

@@ -231,9 +231,25 @@ def taken_tags(reg=None, registry=registry_tags):
     return {t for a in _artifacts() for t in (reg[a] if a in reg else registry(a))}
 
 
+RC_CHART = "on-prem/unstract-platform"
+
+
+def rc_chart_tags(registry=registry_tags):
+    """The on-prem RC chart's versions, as vX.Y.Z-rc.N. Abandon can keep the chart's last version, so an RC number
+    it holds is never allocated again: the chart push would otherwise find that old chart and keep it.
+    """
+    if "on-prem" not in TARGETS:
+        return set()
+    return {
+        "v" + t for t in registry(RC_CHART) if re.fullmatch(r"\d+\.\d+\.\d+-rc\.\d+", t)
+    }
+
+
 def used_tags(repo, line, registry=registry_tags):
-    """Cut refuses a line with these: its tags would read as the new line's builds or GA."""
-    ver = re.compile(rf"{re.escape(PREFIX)}v{re.escape(line)}\.\d+(?:-rc\.\d+)?")
+    """Cut refuses a line with these: its tags would read as the new line's builds or GA.
+    Registry RCs do not count: an abandon keeps a package's last one, and a re-cut skips it.
+    """
+    ver = re.compile(rf"{re.escape(PREFIX)}v{re.escape(line)}\.\d+")
     tags = set(line_tags(repo, line)) | {
         t for a in _artifacts() for t in _read(a, registry) if ver.fullmatch(t)
     }
@@ -345,11 +361,12 @@ def target_state(t, name, rows, now):
     On-prem: stabilized for WINDOW after the line's first stable chart push (a patch does not extend it), and only while
     among the newest WINDOW_LINES lines with an on-prem GA. A LATEST_ONLY target (cloud): only the latest GA branch
     for it stays stabilized; older GA branches are past-eos for it. A KEPT target (OSS): stabilizing until every
-    enabled target of its paired cloud line is GA (the STABILIZED tag, which `oss.py promote --stabilized` writes),
-    then stabilized while the branch exists; the cloud lines pinning it decide its retirement, and cloud Retire names it.
+    enabled target of its paired cloud line is GA (the STABILIZED tag, which `oss.py promote --stabilized` writes;
+    nothing removes it, so a target added later does not reopen it), then stabilized while the branch exists; the cloud lines pinning it decide its retirement, and cloud Retire names it.
     """
     ga = rows[name]["targets"][t]["ga"]
-    # Known limit: a target never GA stays stabilizing; retire it with Retire retire_line.
+    # Known limit: a target never GA stays stabilizing. Its line goes by Retire one shipped line now (force when the
+    # target is late; not while its cloud is production), or by Abandon when no target has a GA.
     if not ga:
         return "stabilizing"
     if t in KEPT:
@@ -492,13 +509,42 @@ def _line_state(states):
     return "past-eos"
 
 
+def _ga_time(repo, ga):
+    """When ga was promoted. The registry time alone is the RC's push when the RC and stable repositories are one, so
+    the later of it and Promote's annotated tag (a lightweight tag has no tagger date) counts.
+    """
+    tagged = rm.git(
+        repo,
+        "for-each-ref",
+        "--format=%(taggerdate:iso-strict)",
+        f"refs/tags/{ga['tag']}",
+    )
+    return max([_ts(ga["pushed_at"]), *([_ts(tagged)] if tagged else [])])
+
+
+def _late(repo, row, t, reg):
+    """Whether t's first RC on the line came after another target's GA there (on-prem enabled after cloud GA)."""
+    rcs = row["targets"][t]["rcs"]
+    # t's own GA follows its RCs, so every GA on the line counts.
+    gas = [_ga_time(repo, u["ga"]) for u in row["targets"].values() if u["ga"]]
+    # Push times, not git tags: a late target may build the tip's RC tag, made before that GA.
+    return bool(rcs and gas) and _ts(reg[TARGETS[t][0]][rcs[0]]["pushed_at"]) > min(gas)
+
+
 def _set_states(rows, now):
     for name, row in rows.items():
         for t, tt in row["targets"].items():
             tt["state"] = target_state(t, name, rows, now)
         row["enabled"] = sorted(row["targets"])
         # No enabled target (cut, nothing built yet) is stabilizing: every line builds cloud by default.
-        row["state"] = _line_state({tt["state"] for tt in row["targets"].values()})
+        # A late target with no GA counts as stabilized: it adds no auto-picks, and the line stays supported (Retire one
+        # shipped line now needs force) until it has a GA; a line where no target has a GA goes by Abandon.
+        row["state"] = _line_state(
+            {
+                "stabilized" if tt["late"] and not tt["ga"] else tt["state"]
+                for tt in row["targets"].values()
+            }
+        )
 
 
 def _sets(ordered):
@@ -542,7 +588,7 @@ def derive(repo, now, registry=registry_tags, rc=None):
     )
     refs = _branches(repo)
     anomalies = []
-    taken = taken_tags(reg)
+    taken = taken_tags(reg) | rc_chart_tags(registry)
     rows = {name: _row(repo, name, ref, taken) for name, ref in refs.items()}
     # A branchless line with a stable tag was retired after GA: its registry tags are history, not anomalies.
     shipped = {}
@@ -551,6 +597,9 @@ def derive(repo, now, registry=registry_tags, rc=None):
     for t, (builds, anchor) in TARGETS.items():
         _enable(repo, t, builds, reg, refs, rows, shipped, anomalies)
         _fill_ga(repo, t, builds, anchor, reg, refs, rows)
+    for row in rows.values():
+        for t, tt in row["targets"].items():
+            tt["late"] = _late(repo, row, t, reg)
 
     _set_states(rows, now)
 
@@ -568,19 +617,29 @@ def derive(repo, now, registry=registry_tags, rc=None):
 
 
 def retire_line_refusal(state, branch, force=False):
-    """Why Retire `retire_line` refuses branch, or None. A stabilizing target (RCs, no GA: an on-prem line never
-    promoted, say) may go. A stabilized on-prem target (chart in its window) goes only with force. Stabilized cloud
-    is production and never goes: relstate would make the next older cloud GA production again.
+    """Why Retire one shipped line now refuses branch, or None. A stabilizing target (RCs, no GA: an on-prem line never
+    promoted, say) may go. A stabilized on-prem target (chart in its window), or a late target with no GA, goes only
+    with force. Stabilized cloud is production and never goes: relstate would make the next older cloud GA production
+    again.
     """
     row = _branch_row(state, branch)
     if not row:
         return "no such branch"
-    held = [t for t, tt in sorted(row["targets"].items()) if tt["state"] == "stabilized"]
-    if "cloud" in held:
+    held = retire_line_held(state, branch)
+    if row["targets"].get("cloud", {}).get("state") == "stabilized":
         return "cloud is production (newest cloud GA); it retires once a newer line is promoted"
     if held and not force:
-        return f"{', '.join(held)} still supported (stabilized); force to retire it inside the window"
+        return f"{', '.join(held)} still supported (stabilized, or late with no GA yet); a release manager may retire it inside the window with force"
     return None
+
+
+def retire_line_held(state, branch):
+    """Targets that keep branch supported: stabilized, or late with no GA."""
+    return [
+        t
+        for t, tt in sorted(_branch_row(state, branch)["targets"].items())
+        if tt["state"] == "stabilized" or (tt["late"] and not tt["ga"])
+    ]
 
 
 def _branch_row(state, branch):
@@ -594,11 +653,14 @@ def _repo_of(version):
 def _by_version(tags):
     """{id or digest: {id, digest, tags}}: one digest in two repositories is two versions."""
     by_version = {}
-    # Version order, so the last version is the newest RC (rc.10 after rc.9); other tags first.
-    for t, info in sorted(
-        tags.items(),
-        key=lambda kv: (_vkey(kv[0]) if VER_RE.fullmatch(kv[0]) else (-1, -1), kv[0]),
-    ):
+
+    # Version order, so the last version is the newest RC (rc.10 after rc.9); other tags first. Chart versions
+    # carry no "v".
+    def key(kv):
+        t = kv[0] if VER_RE.fullmatch(kv[0]) else f"{PREFIX}v{kv[0]}"
+        return (_vkey(t) if VER_RE.fullmatch(t) else (-1, -1), kv[0])
+
+    for t, info in sorted(tags.items(), key=key):
         by_version.setdefault(
             info.get("id") or info["digest"],
             {"id": info.get("id"), "digest": info["digest"], "tags": []},
@@ -627,14 +689,15 @@ def _abandon_versions(reg, rc_re):
 
 
 def abandon_plan(repo, branch, registry=registry_tags, services=rc_service_tags):
-    """What Retire `abandon` deletes for a release/X.Y line that never shipped (cut by mistake, or built only as RCs).
+    """What Abandon a line that never shipped deletes for release/X.Y (cut by mistake, or built only as RCs).
 
     {"ga": [...], "used": [...], "rc_tags": [...], "versions": {artifact: [{id, digest, tags}]}, "kept": [...]}.
-    A non-empty ga or used (commits that are not bot, pick or decline) refuses the abandon. A registry version is
-    deleted only when every tag on it is an RC of this line.
+    A non-empty ga refuses the abandon. used (commits that are not bot, pick or decline) are listed; the archive tag
+    keeps them. A registry version is deleted only when every tag on it is an RC of this line.
     """
     x, y = rm._line(branch)
-    rc_re = re.compile(rf"{re.escape(PREFIX)}v{x}\.{y}\.\d+-rc\.\d+")
+    # The on-prem RC chart's versions have no "v".
+    rc_re = re.compile(rf"(?:{re.escape(PREFIX)}v)?{x}\.{y}\.\d+-rc\.\d+")
     reg = {a: _read(a, registry) for a in _artifacts()}
     main = _main(repo)
     ga = [f"{PREFIX}v{x}.{y}.{z}" for z in sorted(rm._tags(repo, x, y, PREFIX)[0])]
@@ -677,13 +740,6 @@ def stabilizes(row, target, done=()):
     )
 
 
-def reopens(row, targets):
-    """Whether an RC for targets reopens the line row: one of them has no GA on it yet (on-prem enabled after cloud
-    GA, say), so the line is no longer GA on every enabled target and its OSS line's STABILIZED tag goes.
-    """
-    return not all(row["targets"].get(t, {}).get("ga") for t in targets)
-
-
 def promote_blockers(state, branch, target):
     """Older lines not GA for `target` yet: Promote of `branch` waits for them.
 
@@ -693,7 +749,7 @@ def promote_blockers(state, branch, target):
         return []
     line = _key(branch.split("/", 1)[1])
     return [
-        f"{b['branch']} is not GA for {target} yet: promote and publish it first, retire it, or force with a reason"
+        f"{b['branch']} is not GA for {target} yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); a release manager may override this with force and a reason"
         for b in state["branches"]
         if _key(b["line"]) < line
         and target in b["targets"]
@@ -725,9 +781,9 @@ def summary(state):
         if not tt:
             return "-"
         if tt["state"] == "stabilized":
-            return f"stabilized (GA {tt['ga']['tag']})"
+            return f"stabilized (GA {rm.tag_link(tt['ga']['tag'])})"
         if tt["state"] == "stabilizing" and tt["rcs"]:
-            return f"stabilizing (rc.{VER_RE.fullmatch(tt['rcs'][-1])[4]})"
+            return f"stabilizing (rc.{VER_RE.fullmatch(tt['rcs'][-1])[4]}{', late' * tt['late']})"
         return tt["state"]
 
     def slack(b):
@@ -739,8 +795,8 @@ def summary(state):
         "|---|---|" + "---|" * (len(TARGETS) + 3),
     ]
     out += [
-        f"| {b['branch']} | {b['state']} | {' | '.join(cell(b['targets'].get(t)) for t in TARGETS)} "
-        f"| {b['tip_rc'] or '-'}{slack(b)} | {b['next_rc'] or '-'} | {'-' if b['ahead_of_ga'] is None else b['ahead_of_ga']} |"
+        f"| {rm.branch_link(b['branch'])} | {b['state']} | {' | '.join(cell(b['targets'].get(t)) for t in TARGETS)} "
+        f"| {rm.tag_link(b['tip_rc']) if b['tip_rc'] else '-'}{slack(b)} | {b['next_rc'] or '-'} | {'-' if b['ahead_of_ga'] is None else b['ahead_of_ga']} |"
         for b in state["branches"]
     ]
     return (

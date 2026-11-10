@@ -1,4 +1,4 @@
-import { renderLabel } from "@v1/test/render";
+import { renderLabel } from "@v1/test/case-helper";
 import { expect, it } from "vitest";
 import { label } from "./Label";
 
