@@ -4,4 +4,5 @@
  *
  * Empty until the version switch (UN-4271) mounts v1 through it.
  */
-export {};
+// TEST BRANCH ONLY: the Lane B preview page. Never merged.
+export { V1Preview } from "@v1/app/Preview";
