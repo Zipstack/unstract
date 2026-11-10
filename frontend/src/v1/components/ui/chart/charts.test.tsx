@@ -940,7 +940,7 @@ describe("Sparkline", () => {
     const span = (values: number[]) =>
       Math.max(...values) - Math.min(...values);
     // Minimums far from zero, so each axis's dataMin..dataMax domain shows:
-    // both lines span the plot (40 minus 4 + 4 margin). On one shared axis
+    // both lines span the plot (40 less the 4 + 4 top and bottom margin = 32). On one shared axis
     // "Failed" (90 to 100) would sit flat far below "Pages" (900 to 1,000).
     expect(span(ys("Pages"))).toBeCloseTo(32, 0);
     expect(span(ys("Failed"))).toBeCloseTo(32, 0);
@@ -1049,7 +1049,7 @@ describe("edge cases", () => {
     expect(box("Loss").bottom).toBeGreaterThan(box("Gain").bottom + 1);
   });
 
-  it("reads a negative bar's marker label under its tip, kept inside the plot", () => {
+  it("reads a negative bar's marker label under its tip, or beside the dot at the plot's bottom edge", () => {
     const rows = [
       { day: "a", v: 10 },
       { day: "b", v: -20 },
@@ -1065,7 +1065,7 @@ describe("edge cases", () => {
         series={[{ key: "v", label: "V" }]}
         markers={[
           { index: 1, series: "v", label: "dip" },
-          { index: 2, series: "v", label: "low" },
+          { index: 2, series: "v", label: "the lowest day of the month" },
         ]}
       />,
     );
@@ -1079,15 +1079,45 @@ describe("edge cases", () => {
     const [dip, low] = [
       ...container.querySelectorAll("[data-slot=chart-marker]"),
     ].map((m) => ({
+      cx: Number(m.querySelector("circle")?.getAttribute("cx")),
       cy: Number(m.querySelector("circle")?.getAttribute("cy")),
+      x: Number(m.querySelector("text")?.getAttribute("x")),
       y: Number(m.querySelector("text")?.getAttribute("y")),
     }));
-    // Away from the edge: below the tip, clear of the bar.
-    expect(dip.y).toBeGreaterThan(dip.cy);
+    // Away from the edge: under the tip, its glyphs (about 9px above the
+    // baseline) clear of the dot (radius 4 and a 2px ring).
+    expect(dip.y - 9).toBeGreaterThanOrEqual(dip.cy + 6);
     expect(dip.y).toBeLessThanOrEqual(plotBottom);
-    // At the plot's bottom edge: below the tip as far as the plot allows.
-    expect(low.y).toBeGreaterThanOrEqual(low.cy);
+    // The lowest bar's tip is on the plot's bottom edge, with no room under
+    // it: the label reads beside the dot, not over it.
+    expect(low.cy).toBeGreaterThan(plotBottom - 16);
     expect(low.y).toBeLessThanOrEqual(plotBottom);
+    // The rightmost bar's long label has no room to its right: it reads
+    // leftward from the dot.
+    expect(low.cx - low.x).toBeGreaterThanOrEqual(8);
+  });
+
+  it("reads a bottom-edge label to the right of the dot where it fits", () => {
+    const { container } = renderV1(
+      <BarChart
+        title="Delta"
+        data={[
+          { day: "a", v: -40 },
+          { day: "b", v: 10 },
+          { day: "c", v: -20 },
+        ]}
+        xKey="day"
+        width={WIDTH}
+        height={HEIGHT}
+        series={[{ key: "v", label: "V" }]}
+        markers={[{ index: 0, series: "v", label: "low" }]}
+      />,
+    );
+    const mark = container.querySelector("[data-slot=chart-marker]");
+    const cx = Number(mark?.querySelector("circle")?.getAttribute("cx"));
+    const x = Number(mark?.querySelector("text")?.getAttribute("x"));
+    expect(x - cx).toBeGreaterThanOrEqual(8);
+    expect(mark?.querySelector("text")).toHaveAttribute("text-anchor", "start");
   });
 
   it("shows the empty state when every series value is a gap", () => {

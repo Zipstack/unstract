@@ -160,8 +160,9 @@ owner to settle, not part of P1-T17.
 
 Mark a point (a peak day, a spike) with `markers`. On a line or area they
 become a dot-only series aligned to the row; on a bar they are drawn from the
-bar itself, so the dot sits over its own bar in a group and on top of its own
-segment in a stack. Do not reach for Recharts' `ReferenceLine` or
+bar itself, so the dot sits on its own bar's tip in a group and on its own
+segment's tip in a stack (the top, or the bottom below zero, where the label
+reads under the tip, or beside the dot at the plot's bottom edge). Do not reach for Recharts' `ReferenceLine` or
 `ReferenceDot` on a categorical axis: they address a point by its category
 label, and when a label repeats ("Mon" across two weeks) recharts 3.7.0
 silently draws nothing. A marker addresses a row by index, so it always

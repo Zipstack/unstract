@@ -14,8 +14,9 @@ import { usePlotArea } from "recharts";
 type Anchor = "start" | "middle" | "end";
 
 /**
- * A marker: a dot ringed in the card colour, its label above; where the
- * label reads from is `labelAnchor`'s choice.
+ * A marker: a dot ringed in the card colour and its label, above the dot
+ * unless the caller places it (`labelX`, `labelY`); where the label reads
+ * from is the `anchor`.
  */
 function MarkerMark({
   x,
@@ -23,6 +24,7 @@ function MarkerMark({
   color,
   label,
   anchor = "middle",
+  labelX,
   labelY = y - 10,
 }: Readonly<{
   x: number;
@@ -30,6 +32,8 @@ function MarkerMark({
   color: string;
   label: string;
   anchor?: Anchor;
+  /** The label's x; by default nudged from the dot by its anchor. */
+  labelX?: number;
   /** The label's baseline; above the dot unless the caller moves it. */
   labelY?: number;
 }>) {
@@ -45,11 +49,12 @@ function MarkerMark({
       />
       <text
         x={
-          anchor === "start"
+          labelX ??
+          (anchor === "start"
             ? x - LABEL_NUDGE
             : anchor === "end"
               ? x + LABEL_NUDGE
-              : x
+              : x)
         }
         y={labelY}
         textAnchor={anchor}
@@ -80,6 +85,12 @@ const LABEL_NUDGE = 4;
 
 /** From a negative bar's tip to its label's baseline: past the dot, one line down. */
 const LABEL_BELOW = 16;
+
+/** From the dot's centre to a label read beside it: past the dot and its ring. */
+const LABEL_BESIDE = 8;
+
+/** Lowers a label read beside the dot so the dot sits at its middle. */
+const LABEL_MIDLINE = 4;
 
 /**
  * Where a marker's label reads from, given the plot's left and right bounds:
@@ -189,8 +200,8 @@ type BarMarkerProps = Readonly<{
  * clones it rather than mounting a new component type each render. Its
  * `dataKey` is the series' `markerLabelKey`, so `value` is the label carried
  * in that bar's own row (unmarked rows have none). Centred over the bar it
- * names, on top of its own segment in a stack, since Recharts gives the
- * bar's own geometry; near the plot's edges (Recharts' own plot area, so no
+ * names, at its own segment's tip in a stack (the top, or the bottom below
+ * zero), since Recharts gives the bar's own geometry; near the plot's edges (Recharts' own plot area, so no
  * layout is restated here) the label reads inward as on a line.
  */
 export function BarMarker({
@@ -218,23 +229,34 @@ export function BarMarker({
     plot === undefined ? undefined : plot.x + plot.width,
   );
   // A bar below zero has its tip at the bottom: read the label under the
-  // tip, not over the bar, and keep it inside the plot so it does not run
-  // into the X axis labels.
+  // tip, clear of the bar. Where the plot has no room under the tip (the
+  // lowest bar, whose tip sits on the plot's bottom edge) the label reads
+  // beside the dot instead, on whichever side it fits, so it covers neither
+  // the dot nor the X axis labels.
   const below = typeof height === "number" && height < 0;
-  const labelY = below
-    ? Math.min(
-        y + LABEL_BELOW,
-        plot === undefined ? Number.POSITIVE_INFINITY : plot.y + plot.height,
-      )
-    : undefined;
+  const bottom =
+    plot === undefined ? Number.POSITIVE_INFINITY : plot.y + plot.height;
+  let place: Readonly<{ anchor: Anchor; x?: number; y?: number }> = { anchor };
+  if (below && y + LABEL_BELOW <= bottom) {
+    place = { anchor, y: y + LABEL_BELOW };
+  } else if (below) {
+    const right =
+      plot === undefined ? Number.POSITIVE_INFINITY : plot.x + plot.width;
+    const fitsRight =
+      cx + LABEL_BESIDE + value.length * LABEL_CHAR_WIDTH <= right;
+    place = fitsRight
+      ? { anchor: "start", x: cx + LABEL_BESIDE, y: y + LABEL_MIDLINE }
+      : { anchor: "end", x: cx - LABEL_BESIDE, y: y + LABEL_MIDLINE };
+  }
   return (
     <MarkerMark
       x={cx}
       y={y}
       color={color}
       label={value}
-      anchor={anchor}
-      labelY={labelY}
+      anchor={place.anchor}
+      labelX={place.x}
+      labelY={place.y}
     />
   );
 }

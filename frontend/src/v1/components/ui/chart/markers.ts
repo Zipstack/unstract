@@ -11,7 +11,7 @@ import type { ChartDatum, ChartMarker, ChartSeries } from "./types";
  * marker here is indexed by row, and its value and label travel in the row
  * itself, so it always lands on the point it names: on a line or area as a
  * dot-only series aligned to the row, on a bar from the bar itself (so it
- * sits over its own bar in a group, and on top of its own segment in a
+ * sits over its own bar in a group, and at its own segment's tip in a
  * stack). `charts.test.tsx` asserts no reference element is ever rendered.
  */
 
