@@ -46,6 +46,12 @@ RUN bun install --frozen-lockfile --ignore-scripts
 # Copy the rest of the application files
 COPY ${BUILD_CONTEXT_PATH}/ .
 
+# Which v1 plugins the build offers (oss, cloud or onprem); the cloud
+# workflows set it. Declared after install so a different value keeps the
+# dependency layer cached. See frontend/src/v1/README.md.
+ARG VITE_DISTRIBUTION=oss
+ENV VITE_DISTRIBUTION=${VITE_DISTRIBUTION}
+
 # Build with Vite
 RUN bun run build
 
