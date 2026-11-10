@@ -2694,7 +2694,6 @@ class PendingPicksWorkflow(Workflow):
             inline("promote.yaml", "Plan"),
             RC=rc,
             TARGET="cloud",
-            PRODUCTS='["cloud"]',
             **env,
         )
 
@@ -2902,7 +2901,6 @@ class PendingPicksWorkflow(Workflow):
             inline("promote.yaml", "Plan"),
             RC="v1.7.0-rc.1",
             TARGET="on-prem",
-            PRODUCTS='["on-prem"]',
         )
         self.blocked(
             r, "::error::on-prem is not enabled on release/1.7 (enabled: ['cloud'])"
@@ -3195,7 +3193,6 @@ class LateTargetWorkflow(Workflow):
             inline("promote.yaml", "Plan"),
             RC="v1.7.0-rc.3",
             TARGET="on-prem",
-            PRODUCTS='["on-prem"]',
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         out = dict(line.split("=", 1) for line in self.read("output").splitlines())

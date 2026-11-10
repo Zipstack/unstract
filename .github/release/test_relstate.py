@@ -175,7 +175,7 @@ class Scenario(unittest.TestCase):
 
     def test_cloud_ga_stabilizes_a_line_with_onprem_pending(self):
         # The live case: on-prem RCs from before cloud GA, no on-prem GA. The first GA ends auto-picks; security and
-        # critical fixes wait for the RM's confirm, and Promote blocks on them for the pending target.
+        # critical fixes wait for the RM's confirm (Promote's block on them: test_oss.test_promote_held_fixes).
         self.onprem_rc()
         st = self.state()
         self.assertEqual(
@@ -1278,7 +1278,7 @@ class Scenario(unittest.TestCase):
             self.g("tag", f"v{line}.7", f"release/{line}")  # never the line's GA
         self.cut("1.7")
         self.g("tag", "ee-v1.7.0-rc.1", "release/1.7")
-        # Stabilized from its own ee-vX.Y.0, which cloud Promote tags at the paired cloud line's first GA.
+        # Stabilized from its own ee-vX.Y.0, which the paired cloud line's first Promote tags.
         st = self.state()
         self.assertEqual(
             [(b["branch"], b["state"]) for b in st["branches"]],
@@ -1287,6 +1287,14 @@ class Scenario(unittest.TestCase):
                 ("release/1.6", "stabilized"),
                 ("release/1.5", "stabilized"),
             ],
+        )
+        # No support window: past on-prem's, an OSS GA line stays stabilized; the cloud lines pinning it retire it.
+        late = rs.derive(
+            self.repo, NOW + 2 * rs.WINDOW, lambda a: self.fail(f"registry read of {a}")
+        )
+        self.assertEqual(
+            ([b["state"] for b in late["branches"]], late["retire"]),
+            (["stabilizing", "stabilized", "stabilized"], []),
         )
         self.assertEqual(
             (st["retire"], st["backport_targets"]["fix"], st["anomalies"]),

@@ -359,7 +359,7 @@ def target_state(t, name, rows, now):
     On-prem: stabilized for WINDOW after the line's first stable chart push (a patch does not extend it), and only while
     among the newest WINDOW_LINES lines with an on-prem GA. A LATEST_ONLY target (cloud): only the latest GA branch
     for it stays stabilized; older GA branches are past-eos for it. A KEPT target (OSS): stabilized from its GA
-    (cloud Promote tags it at its paired cloud line's first GA) while the branch exists; the cloud lines pinning it
+    (the paired cloud line's first Promote, of either product, tags it) while the branch exists; the cloud lines pinning it
     decide its retirement, and cloud Retire names it.
     """
     ga = rows[name]["targets"][t]["ga"]
@@ -536,7 +536,8 @@ def _set_states(rows, now):
         row["enabled"] = sorted(row["targets"])
         # No enabled target (cut, nothing built yet) is stabilizing: every line builds cloud by default.
         # The line's first GA, for any target, ends its auto-picks: a target with no GA yet then counts as stabilized,
-        # so it takes plain fixes only by a named Backport, and keeps the line supported until it has a GA.
+        # so it takes plain fixes only by a named Backport. Its own state stays stabilizing: it keeps its target
+        # supported and blocks that target's Promote on newer lines; Retire needs force for it only when it is late.
         any_ga = any(tt["ga"] for tt in row["targets"].values())
         row["state"] = _line_state(
             {
