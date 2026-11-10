@@ -74,7 +74,7 @@ Every chart:
 | --- | --- | --- | --- |
 | `data` | `readonly Row[]` | required | One row per category. `Row` is any object type, an `interface` or an API type with extra fields included, and is inferred from here: type an inline empty literal (`data={[] as Row[]}`), or it infers `never` and rejects every key. |
 | `xKey` | key of `Row` holding a string or number | required | The category field. Categories may repeat. |
-| `series` | `ChartSeries[]` | required | `{ key, label, tone?, axis?, format? }`, drawn in this order. `key` must name a field typed `number \| null \| undefined`; null or undefined is a gap. Parse numeric strings (a DRF Decimal) first. |
+| `series` | `ChartSeries[]` | required | `{ key, label, tone?, axis?, format? }`, drawn in this order. `key` must name a field typed `number \| null \| undefined`; null, undefined or anything not a finite number is a gap to the tooltip, table, summary, markers and empty state. Parse numeric strings (a DRF Decimal) first: Recharts may still draw one, so the plot and its text would disagree. |
 | `title` | `string` | required | The plot's accessible name and the table caption. The card shows the visible heading. |
 | `summary` | `string` | generated | The sentence screen readers hear. Pass one when the page knows the story ("10 Aug alone carries 49% of the month's pages"). |
 | `xLabel` | `string` | `"Category"` | First column header of the data table. |

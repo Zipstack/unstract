@@ -325,15 +325,15 @@ it("types series, marker and category keys by what their field holds", () => {
   ]).toHaveLength(15);
 });
 
-it("finds values only in the series' own keys, and reads null, missing and non-finite as gaps", () => {
+it("finds values only in the series' own keys, and reads null, missing, non-finite and strings as gaps", () => {
   const pages = [{ key: "pages" }];
   // A numeric category or extra column is not a series value.
   expect(hasValues([{ t: 1, other: 5, pages: null }], pages)).toBe(false);
   expect(hasValues([{ t: 1 }], pages)).toBe(false);
   expect(hasValues([{ pages: Number.NaN }], pages)).toBe(false);
   expect(hasValues([{ pages: 0 }], pages)).toBe(true);
-  // An unparsed numeric string is data, so it never reads as "no data".
-  expect(hasValues([{ pages: "12.5" }], pages)).toBe(true);
+  // An unparsed numeric string is a gap, as everywhere else in the chart.
+  expect(hasValues([{ pages: "12.5" }], pages)).toBe(false);
   expect(hasValues([{ pages: 3 }], [])).toBe(false);
   expect(hasValues([], pages)).toBe(false);
 });

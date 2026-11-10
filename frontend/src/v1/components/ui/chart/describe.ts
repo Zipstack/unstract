@@ -50,26 +50,18 @@ export function numberAt(row: ChartDatum, key: string): number | null {
 }
 
 /**
- * True when some series has something on some row. A chart whose series are
- * all gaps (null, missing or a non-finite number: a period with no activity,
- * bucketed by day) shows the empty state, not a blank plot. Any other value
- * counts, an unparsed numeric string included, so a payload the page forgot
- * to parse never reads as "no data". Only the series' own keys are read.
+ * True when some series has a value on some row. A gap is what `numberAt`
+ * reads as one (null, missing, not a finite number), the same rule as the
+ * tooltip, table, summary and markers, so a chart whose series are all gaps
+ * (a period with no activity, bucketed by day) shows the empty state, not a
+ * blank plot. An unparsed numeric string is a gap too: parse it first.
+ * Only the series' own keys are read.
  */
 export function hasValues(
   data: readonly ChartDatum[],
   series: readonly Readonly<{ key: string }>[],
 ): boolean {
-  return data.some((row) =>
-    series.some((s) => {
-      const value: unknown = (row as Record<string, unknown>)[s.key];
-      return (
-        value !== null &&
-        value !== undefined &&
-        !(typeof value === "number" && !Number.isFinite(value))
-      );
-    }),
-  );
+  return data.some((row) => series.some((s) => numberAt(row, s.key) !== null));
 }
 
 export type Formatters = Readonly<{

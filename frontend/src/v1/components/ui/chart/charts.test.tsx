@@ -1092,9 +1092,93 @@ describe("edge cases", () => {
     // it: the label reads beside the dot, not over it.
     expect(low.cy).toBeGreaterThan(plotBottom - 16);
     expect(low.y).toBeLessThanOrEqual(plotBottom);
-    // The rightmost bar's long label has no room to its right: it reads
-    // leftward from the dot.
+    // Beside, not above: the dot sits at the label's middle (baseline 4
+    // below the dot, unless the plot's bottom is nearer).
+    expect(low.y).toBeGreaterThan(low.cy);
+    expect(low.y).toBeLessThanOrEqual(low.cy + 4);
+    // The rightmost bar's long label would leave the plot on its right: it
+    // reads leftward from the dot.
     expect(low.cx - low.x).toBeGreaterThanOrEqual(8);
+  });
+
+  it("reads a bottom-edge label on the side where less of it leaves the plot, never above the dot", () => {
+    const label = "the lowest day of the whole month";
+    const bottomEdge = (
+      rows: { day: string; v: number }[],
+      index: number,
+      width = WIDTH,
+    ) => {
+      const { container, unmount } = renderV1(
+        <BarChart
+          title="Delta"
+          data={rows}
+          xKey="day"
+          width={width}
+          height={HEIGHT}
+          series={[{ key: "v", label: "V" }]}
+          markers={[{ index, series: "v", label }]}
+        />,
+      );
+      const mark = container.querySelector("[data-slot=chart-marker]");
+      const text = mark?.querySelector("text");
+      const plotBottom = Math.max(
+        ...[
+          ...container.querySelectorAll(
+            ".recharts-cartesian-grid-horizontal line",
+          ),
+        ].map((l) => Number(l.getAttribute("y1"))),
+      );
+      const out = {
+        cx: Number(mark?.querySelector("circle")?.getAttribute("cx")),
+        cy: Number(mark?.querySelector("circle")?.getAttribute("cy")),
+        x: Number(text?.getAttribute("x")),
+        y: Number(text?.getAttribute("y")),
+        anchor: text?.getAttribute("text-anchor"),
+        plotBottom,
+      };
+      unmount();
+      return out;
+    };
+    // Leftmost bar of a narrow chart: the long label fits on neither side,
+    // and leaves the plot less on its right.
+    const first = bottomEdge(
+      [
+        { day: "a", v: -40 },
+        { day: "b", v: 10 },
+        { day: "c", v: -20 },
+      ],
+      0,
+      200,
+    );
+    expect(first.anchor).toBe("start");
+    expect(first.x - first.cx).toBeGreaterThanOrEqual(8);
+    // Third of four bars: more room on its left, so less of it leaves the
+    // plot there.
+    const middle = bottomEdge(
+      [
+        { day: "a", v: 10 },
+        { day: "b", v: 10 },
+        { day: "c", v: -40 },
+        { day: "d", v: 10 },
+      ],
+      2,
+    );
+    expect(middle.anchor).toBe("end");
+    expect(middle.cx - middle.x).toBeGreaterThanOrEqual(8);
+    // A minimum on a nice tick puts the tip on the bottom edge itself: the
+    // baseline is held at the plot's bottom.
+    const onEdge = bottomEdge(
+      [
+        { day: "a", v: 20 },
+        { day: "b", v: -20 },
+      ],
+      1,
+    );
+    expect(onEdge.cy).toBeCloseTo(onEdge.plotBottom, 0);
+    expect(onEdge.y).toBeLessThanOrEqual(onEdge.plotBottom);
+    for (const placed of [first, middle, onEdge]) {
+      expect(placed.y).toBeGreaterThanOrEqual(placed.cy);
+    }
   });
 
   it("reads a bottom-edge label to the right of the dot where it fits", () => {

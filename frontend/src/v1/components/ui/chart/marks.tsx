@@ -199,7 +199,7 @@ type BarMarkerProps = Readonly<{
  * `LabelList` content for a bar's markers, passed as an element so Recharts
  * clones it rather than mounting a new component type each render. Its
  * `dataKey` is the series' `markerLabelKey`, so `value` is the label carried
- * in that bar's own row (unmarked rows have none). Centred over the bar it
+ * in that bar's own row (unmarked rows have none). Centred on the bar it
  * names, at its own segment's tip in a stack (the top, or the bottom below
  * zero), since Recharts gives the bar's own geometry; near the plot's edges (Recharts' own plot area, so no
  * layout is restated here) the label reads inward as on a line.
@@ -229,10 +229,10 @@ export function BarMarker({
     plot === undefined ? undefined : plot.x + plot.width,
   );
   // A bar below zero has its tip at the bottom: read the label under the
-  // tip, clear of the bar. Where the plot has no room under the tip (the
-  // lowest bar, whose tip sits on the plot's bottom edge) the label reads
-  // beside the dot instead, on whichever side it fits, so it covers neither
-  // the dot nor the X axis labels.
+  // tip, clear of the bar. Where the plot has no room under the tip (a tip
+  // within LABEL_BELOW of the plot's bottom edge, as the lowest bar's often
+  // is) the label reads beside the dot instead, on the side where less of it
+  // leaves the plot, its baseline kept within the plot's bottom.
   const below = typeof height === "number" && height < 0;
   const bottom =
     plot === undefined ? Number.POSITIVE_INFINITY : plot.y + plot.height;
@@ -240,13 +240,17 @@ export function BarMarker({
   if (below && y + LABEL_BELOW <= bottom) {
     place = { anchor, y: y + LABEL_BELOW };
   } else if (below) {
+    const left = plot === undefined ? Number.NEGATIVE_INFINITY : plot.x;
     const right =
       plot === undefined ? Number.POSITIVE_INFINITY : plot.x + plot.width;
-    const fitsRight =
-      cx + LABEL_BESIDE + value.length * LABEL_CHAR_WIDTH <= right;
-    place = fitsRight
-      ? { anchor: "start", x: cx + LABEL_BESIDE, y: y + LABEL_MIDLINE }
-      : { anchor: "end", x: cx - LABEL_BESIDE, y: y + LABEL_MIDLINE };
+    const width = value.length * LABEL_CHAR_WIDTH;
+    const overRight = Math.max(0, cx + LABEL_BESIDE + width - right);
+    const overLeft = Math.max(0, left - (cx - LABEL_BESIDE - width));
+    const labelY = Math.min(y + LABEL_MIDLINE, bottom);
+    place =
+      overRight <= overLeft
+        ? { anchor: "start", x: cx + LABEL_BESIDE, y: labelY }
+        : { anchor: "end", x: cx - LABEL_BESIDE, y: labelY };
   }
   return (
     <MarkerMark
