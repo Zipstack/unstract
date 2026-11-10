@@ -202,7 +202,7 @@ class MainCiAlertTest(unittest.TestCase):
             lines[-1], "…50 older commits not listed: compare returns at most 250"
         )
 
-    def test_a_failed_pr_lookup_skips_only_that_commit(self):
+    def test_a_failed_pr_lookup_replaces_only_that_commits_line(self):
         lines = self.alert(
             GH_FAIL="*/commits/9f7c090652cf6857daa1d6ac0d2214ee49bc2758/pulls"
         )

@@ -52,7 +52,7 @@ jobs:
     # cancelled is not documented. cancelled is never alerted, because a run
     # someone cancelled by hand ends that way too, so such a hang can go
     # unreported.
-    # A re-run that fails again is alerted again, with the same PR list.
+    # A re-run that fails again is alerted again.
     if: >-
       github.event_name == 'workflow_run'
       && contains(fromJSON('["failure", "startup_failure", "timed_out"]'), github.event.workflow_run.conclusion)
