@@ -690,33 +690,57 @@ def test_checking_a_large_module_scope_script_stays_roughly_linear():
     That one wraps its reads in a `for` body, so the exemption resolves through
     `_binds_as_own_target`. A shadowed read at module scope instead goes to
     `_unconditional_module_bindings`, which walked the entire module body once
-    per Load -- O(loads x statements). Measured before the fix, on this shape:
-    0.42 / 1.72 / 6.74 / 27.50s at 500 / 1000 / 2000 / 4000 reads, each
-    doubling quadrupling the time. After memoising: 0.01 / 0.03 / 0.07 / 0.22s.
+    per Load -- O(loads x statements). The cost is paid on the WORKER thread
+    inside `check_code_safe`, before any child exists, so neither the
+    wall-clock timeout nor `RLIMIT_CPU` bounds it, and 50.9 KB is under
+    `SANDBOX_MAX_CODE_BYTES` (65536) so the size cap does not either.
 
-    Why it matters beyond speed: this cost is paid on the WORKER thread inside
-    `check_code_safe`, before any child exists, so neither the wall-clock
-    timeout nor `RLIMIT_CPU` bounds it -- and 50.9 KB is under
-    `SANDBOX_MAX_CODE_BYTES` (65536), so the size cap does not either.
+    **This asserts SCALING, not elapsed time, and the first version of it was
+    wrong for exactly that reason.** It asserted `elapsed < 5.0` against a
+    locally measured 0.22s -- a 20x margin that looked ample and was not: CI
+    runs this suite under `pytest-xdist`, where every worker competes for the
+    same runner, and the same check took **8.76s** there. A 40x machine
+    difference makes any absolute bound either useless locally or flaky in CI.
 
-    The bound is ~20x the measured 0.22s and ~100x below the pre-fix 27.5s, so
-    it fails on a return to quadratic without failing on a slow machine.
+    A ratio over a 4x size span does not have that problem: both halves run
+    back to back on the same machine, so the machine's speed cancels. Measured
+    at n=500 -> n=2000, min of two runs each:
+
+        quadratic (before the memoisation):  ~16.0x   (0.42s -> 6.74s)
+        current:                              ~7.0x   (0.01s -> 0.07s)
+
+    The threshold sits between them with room on both sides. Per-doubling
+    ratios were ~2.9x current against ~4.0x quadratic, which is too narrow a
+    gap to hold up under noise -- hence the wider span.
     """
     import time
 
-    n = 4000
-    body = "\n".join(f"a{i} = vars" for i in range(n))
-    code = "vars = {}\n" + body + "\n"
-    assert len(code.encode()) < 65536, "fixture must stay a submittable size"
+    def best_of(n, repeats=2):
+        body = "\n".join(f"a{i} = vars" for i in range(n))
+        code = "vars = {}\n" + body + "\n"
+        assert len(code.encode()) < 65536, "fixture must stay a submittable size"
+        times = []
+        for _ in range(repeats):
+            start = time.perf_counter()
+            ok, reason = check_code_safe(code)
+            times.append(time.perf_counter() - start)
+            assert ok is True, reason
+        return min(times)
 
-    start = time.perf_counter()
-    ok, reason = check_code_safe(code)
-    elapsed = time.perf_counter() - start
+    small = best_of(500)
+    large = best_of(2000)  # 4x the statements
 
-    assert ok is True, reason
-    assert elapsed < 5.0, (
-        f"gate check took {elapsed:.2f}s for a {len(code.encode())}-byte "
-        "module-scope script; the module-binding lookup has gone quadratic again"
+    # Guard against a degenerate denominator on a very fast machine: a clock
+    # granularity artefact would otherwise produce a huge ratio and a false
+    # failure. 1ms is far below the ~10ms this takes even post-fix.
+    assert small > 0.001, f"small case too fast to time reliably ({small:.6f}s)"
+
+    ratio = large / small
+    assert ratio < 11.0, (
+        f"gate checking scaled {ratio:.1f}x for a 4x larger module-scope script "
+        f"({small:.4f}s -> {large:.4f}s); quadratic is ~16x and the current "
+        "implementation is ~7x, so the module-binding lookup has likely gone "
+        "quadratic again"
     )
 
 
