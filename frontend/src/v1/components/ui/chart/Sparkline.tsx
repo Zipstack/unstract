@@ -65,7 +65,7 @@ export function Sparkline<Row extends ChartDatum>({
   const resolved =
     state === "ready" && !hasValues(data, series) ? "empty" : state;
   // An unparsed value reads as a gap, so a payload the page forgot to parse
-  // shows the empty state; say why in development (see CartesianChart).
+  // shows the empty state; say why in the console (see CartesianChart).
   const warnings = JSON.stringify(unparsedWarnings(data, series));
   useEffect(() => {
     for (const warning of JSON.parse(warnings) as string[]) {
