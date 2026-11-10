@@ -147,9 +147,8 @@ def build_extraction_image_policy(
             )
         except SdkError as e:
             # The error type only, and the cause is dropped (``from None``):
-            # the adapter's validation error quotes the stored metadata,
-            # credentials included, and the executor logs this exception with
-            # its traceback.
+            # the executor logs this exception with its traceback, so no adapter
+            # error text goes in it.
             raise _unresolved(
                 llm_instance_id,
                 f"the adapter configuration did not validate ({type(e).__name__})",

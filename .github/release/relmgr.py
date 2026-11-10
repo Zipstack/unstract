@@ -15,7 +15,7 @@ _FORMAT_BODY = "--format=%B"
 PICK_RE = re.compile(r"\(cherry picked from commit ([0-9a-f]{7,40})\)")
 # At any line start; also after "* ", as a COMMIT_MESSAGES squash lists each subject that way.
 RBO_RE = re.compile(r"^(?:\* )?Release-branch-only: (\S+)", re.M)
-# Known limit: one ticket only; `A-1 B-2 [FIX] x` needs a fix/ label.
+# Known limit: one ticket only, so `A-1 B-2 [FIX] x` fails.
 PR_TITLE_RE = re.compile(
     r"^(?:(?P<ticket>[A-Z][A-Z0-9]*-\d+) )?\[(?P<type>FIX|HOT-FIX|FEAT|GATED-FEAT|DOCS|DEPS|MISC|DEV|WIP)\] \S"
 )
@@ -316,9 +316,11 @@ def ci_commits(
 
 
 FIX_LABELS = ("fix/security", "fix/critical", "fix/needs-backport")
+MAIN_ONLY = "main-only"
 
 
 def pr_fix_class(title, labels=()):
+    """The class comes from labels only; None without a fix/ label. A main merge also needs a backport label: main_fix_class."""
     # Reject near-miss class labels (fix/<x>, fix-class/<x>, typos) so a typo cannot drop the class.
     bad = [
         l
@@ -333,31 +335,39 @@ def pr_fix_class(title, labels=()):
     }
     if len(classes) > 1:
         raise ValueError(f"conflicting fix labels: {sorted('fix/' + c for c in classes)}")
-    # A revert takes the reverted PR's class. Strip: GitHub keeps a leading space.
+    fixes = sorted(set(labels) & set(FIX_LABELS))
+    # The changelogs read the title, so no label excuses it. strip: GitHub keeps a leading space.
     inner = title.strip()
     while r := REVERT_RE.match(inner):
         inner = r.group(1).strip()
-    m = PR_TITLE_RE.match(inner)
-    if not m and not set(labels) & set(FIX_LABELS):
-        raise ValueError(
-            f"no recognised '[TYPE]' or 'TICKET [TYPE]' prefix and no fix/ label: {title!r}"
-        )
+    if not PR_TITLE_RE.match(inner):
+        raise ValueError(f"no recognised '[TYPE]' or 'TICKET [TYPE]' prefix: {title!r}")
+    if MAIN_ONLY in labels and fixes:
+        raise ValueError(f"conflicting labels: {MAIN_ONLY} with {fixes}")
     if classes:
         return classes.pop()
-    # fix/needs-backport: a non-[FIX] PR (e.g. [MISC]) that stabilizing lines need; no-op on a [FIX] title.
-    return (
-        "fix"
-        if (m and m["type"] in ("FIX", "HOT-FIX")) or "fix/needs-backport" in labels
-        else None
-    )
+    return "fix" if fixes else None
+
+
+def main_fix_class(title, labels=()):
+    """pr_fix_class for a PR merged into main, which must say whether it is backported."""
+    cls = pr_fix_class(title, labels)
+    if refusal := release_only_refusal("main", labels):
+        raise ValueError(refusal)
+    return cls
 
 
 def release_only_refusal(base, labels):
+    """Label errors that depend on the base. Lint PR on every branch calls this by name, old workflow copies included."""
     if "release-branch-only" in labels and not base.startswith("release/"):
         return (
             "label `release-branch-only` is for PRs into a release/X.Y branch; remove it here "
             "(a main change reaches release branches through Backport)"
         )
+    if MAIN_ONLY in labels and base.startswith("release/"):
+        return f"label `{MAIN_ONLY}` is for PRs into main; remove it here"
+    if not base.startswith("release/") and not set(labels) & {MAIN_ONLY, *FIX_LABELS}:
+        return f"no backport label: add fix/needs-backport to copy it to release lines, or {MAIN_ONLY} to keep it on main"
     return None
 
 
@@ -436,6 +446,80 @@ def already_bumped(repo, branch, tag):
     return email.lower() == BOT_EMAIL.lower() and subject == want
 
 
+VALUES = "charts/unstract-platform/values.yaml"
+# The lines Promote's GA commit may change, by file: the chart version, appVersion and the image tag anchor.
+GA_KEYS = {
+    CHART: ("version: ", "appVersion: "),
+    VALUES: ("UNSTRACT_APPS_VERSION: &UNSTRACT_APPS_VERSION ",),
+}
+
+
+def ga_bump_stray(repo, base, sha, stable):
+    """What base..sha changes beyond the GA bump (each GA_KEYS line changed exactly once, to stable); empty when none."""
+    want = {
+        "version: ": stable.removeprefix("v"),
+        "appVersion: ": f'"{stable}"',
+        "UNSTRACT_APPS_VERSION: &UNSTRACT_APPS_VERSION ": stable,
+    }
+    stray = [
+        f"{s}: {p}"
+        for s, p in (
+            ln.split("\t", 1)
+            for ln in git(
+                repo, "diff", "--name-status", "--no-renames", base, sha
+            ).splitlines()
+        )
+        if s != "M" or p not in GA_KEYS
+    ]
+    if git(repo, "diff", "--summary", base, sha):  # a mode change, create or delete
+        stray.append("mode, create or delete")
+    path, hunk, count = None, False, {}
+    diff = git(
+        repo, "diff", "--no-ext-diff", "--no-color", "--no-renames", "-U0", base, sha
+    )
+    for ln in diff.splitlines():
+        if ln.startswith("diff --git "):
+            path, hunk = ln.rsplit(" b/", 1)[1], False
+        elif ln.startswith("@@"):
+            hunk = True
+        elif hunk and ln[:1] in ("+", "-") and path in GA_KEYS:
+            key = next((k for k in GA_KEYS[path] if ln[1:].startswith(k)), None)
+            if key is None or (ln[0] == "+" and ln[1 + len(key) :] != want[key]):
+                stray.append(f"{path}: {ln}")
+            else:
+                count[path, key, ln[0]] = count.get((path, key, ln[0]), 0) + 1
+    for path, key in ((p, k) for p, keys in GA_KEYS.items() for k in keys):
+        if not count.get((path, key, "+")) == count.get((path, key, "-")) == 1:
+            stray.append(
+                f"{path}: {key.strip()} changed {count.get((path, key, '+'), 0)} times"
+            )
+    return stray
+
+
+def is_ga_bump(repo, sha, base, stable):
+    """Is sha Promote's GA commit for stable on base: the bot's one commit on it, changing only the GA_KEYS lines?"""
+    parents = git(repo, "rev-list", "--parents", "-n1", sha).split()[1:]
+    return (
+        parents == [resolve(repo, base)]
+        and already_bumped(repo, sha, stable)
+        and not ga_bump_stray(repo, base, sha, stable)
+    )
+
+
+def rc_commit(repo, rev, prefix=""):
+    """The commit whose RC tag stands for rev: rev itself, or its parent when rev is a tagged GA commit."""
+    sha = git(repo, "rev-parse", f"{rev}^{{commit}}")
+    parents = git(repo, "rev-list", "--parents", "-n1", sha).split()[1:]
+    for t in git(repo, "tag", "--points-at", sha).split():
+        if (
+            len(parents) == 1
+            and re.fullmatch(rf"{re.escape(prefix)}v\d+\.\d+\.\d+", t)
+            and is_ga_bump(repo, sha, parents[0], t)
+        ):
+            return parents[0]
+    return sha
+
+
 def promote_version(repo, rc_tag):
     """Z follows commit order, so it can differ from the RC's Z. An RC older than an already-stable commit is
     refused as a downgrade.
@@ -448,7 +532,7 @@ def promote_version(repo, rc_tag):
     stable, _ = _tags(repo, x, y, p)
     for z in sorted(stable):
         shipped = git(repo, "rev-parse", f"refs/tags/{p}v{x}.{y}.{z}^{{commit}}")
-        if shipped == commit:
+        if commit in (shipped, rc_commit(repo, shipped, p)):
             return f"{p}v{x}.{y}.{z}"
         if is_ancestor(repo, commit, shipped):
             raise ValueError(

@@ -31,6 +31,17 @@ is convention.
 - **Static assets live in `assets/`**, imported as `@v1/assets/...` (e.g.
   `@v1/assets/logo.svg?react`). v1 never uses v0's `src/assets/` (enforced);
   where an asset file sits under v1 is convention, not checked.
+- **Lucide is the only icon library**, imported by canonical name
+  (`LoaderCircle`, not the `Loader2` alias) from `lucide-react` itself.
+  `scripts/check-v1-icons.mjs` enforces it by package name: any other package
+  whose name contains `icon` or `lucide`, a listed set whose name does not
+  (`react-feather`, `@mdi/*`, `@fortawesome/*`, flag sets), every alias the
+  installed lucide-react declares, and namespace, default, subpath,
+  `icons`-map and dynamic imports all fail lint:v1, and so does a stylesheet
+  `@import` of an icon package. A set outside the name
+  rule and the list is not caught; add it to the script's list. Shared glyphs
+  come by role from `lib/icons.ts`; provider logos, product marks and flags
+  from `components/ui/BrandMark`.
 
 ## Styling
 
@@ -85,6 +96,18 @@ is convention.
   `Spinner` sits only in buttons and running text. Errors on a screen are an
   `InlineAlert` above the content, with `onRetry`.
 
+## Code and data
+
+- Code, JSON, diffs, Markdown, copy controls and code editors come from
+  `components/ui/code/` (`CodeBlock`, `JsonView`, `DiffView`, `Markdown`,
+  `CopyButton`, `CodeEditor`, `InlineCode`); its README lists every prop.
+  Do not build another highlighter, JSON tree, diff or Markdown renderer.
+- Mono text (IDs, token counts) is `<InlineCode variant="plain">`; the font
+  comes only from the `font-mono` token. Syntax and diff colours are the
+  `code-*` and `diff-*` tokens.
+- `CodeEditor` uses Monaco from its default CDN, as v0 does. Never call
+  `loader.config()` in v1: the loader is shared with v0.
+
 ## Folders and what each may import
 
 Every folder may import from itself. Test files (`*.test.ts(x)`,
@@ -112,9 +135,18 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | Script | Checks |
 | --- | --- |
 | `bun run typecheck:v1` | TypeScript-only files, styles only in `styles/`, allowed file types only, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
-| `bun run lint:v1` | Biome on `src/v1/`, then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, the single notification entry point, then the styling policy (S1 to S8 above) |
+| `bun run lint:v1` | Biome on `src/v1/` (warnings fail), then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, the single notification entry point, then the styling policy (S1 to S8 above), then the icon rules |
 | `bun run tokens:v1` | Regenerates `styles/tokens.css` from `styles/tokens.json` (via `styles/tokens.ts`; runs under bun, which imports the TypeScript source directly) |
-| `bun run test:v1` | v1 unit tests (`vitest.v1.config.mts`, then cloud plugins with `vitest.v1-plugins.config.mts`) with v1's own coverage threshold, then the guardrail fixtures in `test-fixtures/v1-boundary/` and `test-fixtures/v1-harness/`. The harness is documented in `test/README.md` |
+| `bun run test:v1` | v1 unit tests (`vitest.v1.config.mts`, then cloud plugins with `vitest.v1-plugins.config.mts`) with v1's own coverage threshold, then the guardrail fixtures in `test-fixtures/v1-boundary/`, `test-fixtures/v1-harness/` and `test-fixtures/v1-unit-gate/` (the coverage threshold fails a run, and CI runs the rig group's config). The harness is documented in `test/README.md` |
+| `bun run seam:v1` | Seam guard: v1 work changes v0 (`src/` outside v1, `public/`) only at the files in `scripts/v1-seam-allowlist.json`, compared with `origin/main` |
+| `bun run separation:v1` | No enterprise plugin code: no folder under `plugins/` is tracked in the public repository |
+| `bun run bundle:v1` | Production build, then no v1 module reaches a v0 module or antd through the imports Rollup resolved |
+
+In CI these run as separate `v1 · …` checks (`.github/workflows/ci-frontend-v1.yaml`
+and `ci-frontend-v1-seam.yaml`), apart from v0's checks. `lint:v1` and CI
+fail on any Biome warning under `src/v1/`, and the accessibility rules are
+errors there. A PR that is v1 work and needs a v0 change outside the seam
+carries the `v0-change` label, which turns the seam check into a report.
 
 Biome (`biome.json`) also reports the banned imports and the plain spellings of
 the v0 ↔ v1 boundary, so `biome ci` and editors flag them too: `@/`, `../`,
@@ -123,4 +155,4 @@ the v0 ↔ v1 boundary, so `biome ci` and editors flag them too: `@/`, `../`,
 `v1`, so no v0 folder may take that name. Everything else (the folder
 contract, templates, globs, `new URL`, CSS, symlinks) is checked only by
 `scripts/check-v1.mjs`, the styling policy by `scripts/check-v1-styles.mjs`,
-and types by `src/v1/tsconfig.json`.
+the icon rules by `scripts/check-v1-icons.mjs`, and types by `src/v1/tsconfig.json`.

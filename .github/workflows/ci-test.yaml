@@ -439,3 +439,28 @@ jobs:
           [ "$e2e_result" = "success" ] || [ "$e2e_result" = "skipped" ] || exit 1
           release_result="${{ needs.release-tests.result }}"
           [ "$release_result" = "success" ] || [ "$release_result" = "skipped" ] || exit 1
+
+      # failure() covers a failed test job too: the step above then fails.
+      # A run cancelled by a newer push does not alert.
+      - name: Compose the main failure alert
+        id: alert
+        if: failure() && github.event_name == 'push'
+        env:
+          MESSAGE: ${{ github.event.head_commit.message }}
+          AUTHOR: ${{ github.event.head_commit.author.username || github.event.head_commit.author.name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # Slack reads <, > and & as markup: a commit title must not add a link or a mention.
+          esc() { local s=${1//'&'/'&amp;'}; s=${s//'<'/'&lt;'}; printf '%s' "${s//'>'/'&gt;'}"; }
+          title=${MESSAGE%%$'\n'*}
+          echo "text=:red_circle: *$GITHUB_WORKFLOW* failed on \`main\`: <$RUN_URL|view run>. Last merge: $(esc "${title%$'\r'}") by @$(esc "$AUTHOR")" >> "$GITHUB_OUTPUT"
+
+      - name: Alert Slack
+        if: failure() && steps.alert.outcome == 'success'
+        uses: slackapi/slack-github-action@af78098f536edbc4de71162a307590698245be95 # v3.0.1
+        with:
+          webhook-type: incoming-webhook
+          payload: |
+            {"text": ${{ toJSON(steps.alert.outputs.text) }}}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

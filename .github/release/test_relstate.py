@@ -608,7 +608,7 @@ class Scenario(unittest.TestCase):
 
     def test_promote_blockers(self):
         """Promote order per target: only an older line with the target enabled and not GA for it blocks."""
-        msg = "release/{} is not GA for {} yet: promote and publish it first or retire it; a release manager may override this with force and a reason"
+        msg = "release/{} is not GA for {} yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); a release manager may override this with force and a reason"
         self.onprem_rc()
         self.cut("1.6")
         self.push("cloud/backend", "v1.6.0-rc.1", git_ref="release/1.6")
@@ -740,6 +740,200 @@ class Scenario(unittest.TestCase):
             msg,
         )
         self.g("checkout", "-q", "main")
+
+    # The repo's own chart files, bumped with Take RC's and Promote's seds: GA commit fixtures from real chart files.
+    ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+    on_chart = unittest.skipUnless(
+        os.path.exists(os.path.join(ROOT, rm.CHART)), "the cloud repo's chart"
+    )
+
+    def sed_chart(self, tag):
+        chart, values = (os.path.join(self.repo, f) for f in (rm.CHART, rm.VALUES))
+        subprocess.run(
+            [
+                "sed",
+                "-i",
+                "-E",
+                f's/^version: .*/version: {tag[1:]}/; s/^appVersion: .*/appVersion: "{tag}"/',
+                chart,
+            ],
+            check=True,
+        )
+        subprocess.run(
+            ["sed", "-i", "-E", f"s/(&UNSTRACT_APPS_VERSION ).*/\\1{tag}/", values],
+            check=True,
+        )
+
+    def bot_commit(self, msg, *paths):
+        rm.git(
+            self.repo,
+            "-c",
+            "user.name=releases-bot",
+            "-c",
+            f"user.email={rm.BOT_EMAIL}",
+            "commit",
+            "-q",
+            "-m",
+            msg,
+            "--",
+            *paths,
+        )
+        return self.g("rev-parse", "HEAD")
+
+    def rc_on_chart(self, tag, branch="release/1.5"):
+        """Take RC's bump commit for tag on branch, tagged; the real chart files are added on the first one."""
+        self.g("checkout", "-q", branch)
+        for f in (rm.CHART, rm.VALUES):
+            dst = os.path.join(self.repo, f)
+            if not os.path.exists(dst):
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                with open(os.path.join(self.ROOT, f)) as src, open(dst, "w") as out:
+                    out.write(src.read())
+                self.g("add", f)
+                self.g("commit", "-q", "-m", f"add {f}")
+        self.sed_chart(tag)
+        sha = self.bot_commit(f"release: chart {tag[1:]}", rm.CHART, rm.VALUES)
+        self.g("tag", tag)
+        self.g("checkout", "-q", "main")
+        return sha
+
+    def ga_commit(self, stable, on, tag=True):
+        """Promote's GA commit on the RC commit on, off the line."""
+        self.g("checkout", "-q", "--detach", on)
+        self.sed_chart(stable)
+        sha = self.bot_commit(f"release: chart {stable[1:]}", rm.CHART, rm.VALUES)
+        if tag:
+            self.g("tag", stable)
+        self.g("checkout", "-q", "main")
+        return sha
+
+    @on_chart
+    def test_ga_commit_off_the_line(self):
+        self.cut("1.5")
+        rc = self.rc_on_chart("v1.5.0-rc.1")
+        self.push("cloud/backend", "v1.5.0-rc.1")
+        self.assertEqual(rm.promote_version(self.repo, "v1.5.0-rc.1"), "v1.5.0")
+        # A backport lands during QA; the GA commit still goes on the RC commit.
+        self.commit("fix during QA", "release/1.5")
+        ga = self.ga_commit("v1.5.0", rc)
+        self.push("cloud/backend", "v1.5.0")
+        self.assertFalse(rm.is_ancestor(self.repo, ga, "release/1.5"))
+        self.assertTrue(rm.is_ga_bump(self.repo, ga, rc, "v1.5.0"))
+        self.assertEqual(rm.rc_commit(self.repo, "v1.5.0"), rc)
+        self.assertEqual(rm.rc_commit(self.repo, rc), rc)
+        chart = self.g("show", f"v1.5.0:{rm.VALUES}").splitlines()[0]
+        self.assertEqual(chart, "UNSTRACT_APPS_VERSION: &UNSTRACT_APPS_VERSION v1.5.0")
+        # On-prem later promotes rc.1 onto the same v1.5.0.
+        self.assertEqual(rm.promote_version(self.repo, "v1.5.0-rc.1"), "v1.5.0")
+        state = self.state()
+        self.assertEqual(state["anomalies"], [])
+        row = self.branch(state, "release/1.5")
+        self.assertEqual(row["targets"]["cloud"]["ga"]["tag"], "v1.5.0")
+        self.assertEqual(row["ahead_of_ga"], 1)  # the fix, not the GA commit
+        self.assertEqual(rm.rc_version(self.repo, "release/1.5"), "v1.5.1-rc.1")
+        self.g("update-ref", "refs/remotes/origin/release/1.5", "release/1.5")
+        import backport as bp
+
+        self.assertEqual(bp.latest_tag(self.repo, "release/1.5"), ("v1.5.0", 1))
+        # The next patch: its RC and stable follow v1.5.0, and the old RC is a downgrade.
+        rc2 = self.rc_on_chart("v1.5.1-rc.1")
+        self.assertEqual(rm.promote_version(self.repo, "v1.5.1-rc.1"), "v1.5.1")
+        self.assertEqual(rm.rc_commit(self.repo, rc2), rc2)
+        # A stable tag on a GA commit whose RC commit is off the line is an anomaly.
+        self.g("checkout", "-q", "--detach", rc)
+        self.g("commit", "-q", "--allow-empty", "-m", "off the line")
+        off = self.g("rev-parse", "HEAD")
+        self.g("tag", "-d", "v1.5.0")
+        self.g("tag", "v1.5.0", self.ga_commit("v1.5.0", off, tag=False))
+        self.assertEqual(
+            [a["reason"] for a in self.state()["anomalies"]], ["commit not on branch"]
+        )
+
+    @on_chart
+    def test_ga_commit_guard(self):
+        self.cut("1.5")
+        self.g("checkout", "-q", "release/1.5")
+        with open(os.path.join(self.repo, "notes.txt"), "w") as f:
+            f.write("")
+        self.g("add", "notes.txt")
+        self.g("commit", "-q", "-m", "notes")
+        self.g("checkout", "-q", "main")
+        rc = self.rc_on_chart("v1.5.0-rc.1")
+
+        def stray(
+            edit, msg="release: chart 1.5.0", bot=True, paths=(rm.CHART, rm.VALUES)
+        ):
+            self.g("checkout", "-q", "--detach", rc)
+            self.sed_chart("v1.5.0")
+            edit()
+            self.g("add", *paths)
+            if bot:
+                sha = self.bot_commit(msg, *paths)
+            else:
+                self.g("commit", "-q", "-m", msg, "--", *paths)
+                sha = self.g("rev-parse", "HEAD")
+            self.g("checkout", "-q", "main")
+            return rm.ga_bump_stray(self.repo, rc, sha, "v1.5.0"), rm.is_ga_bump(
+                self.repo, sha, rc, "v1.5.0"
+            )
+
+        def append(path, text):
+            def edit():
+                with open(os.path.join(self.repo, path), "a") as f:
+                    f.write(text)
+
+            return edit
+
+        self.assertEqual(stray(lambda: None), ([], True))
+
+        def chmod():
+            os.chmod(os.path.join(self.repo, rm.CHART), 0o755)
+
+        # Each case trips one check only: another file, a mode change, an unknown line, a key set twice.
+        for edit, paths, want in (
+            (
+                append("notes.txt", "x\n"),
+                (rm.CHART, rm.VALUES, "notes.txt"),
+                ["M: notes.txt"],
+            ),
+            (chmod, (rm.CHART, rm.VALUES), ["mode, create or delete"]),
+            (
+                append(rm.VALUES, "extra: 1\n"),
+                (rm.CHART, rm.VALUES),
+                [f"{rm.VALUES}: +extra: 1"],
+            ),
+            (
+                append(rm.CHART, "version: 1.5.0\n"),
+                (rm.CHART, rm.VALUES),
+                [f"{rm.CHART}: version: changed 2 times"],
+            ),
+        ):
+            self.assertEqual(stray(edit, paths=paths), (want, False))
+        # A key left unchanged.
+        self.assertEqual(
+            stray(lambda: self.g("checkout", "-q", rc, "--", rm.VALUES)),
+            (
+                [
+                    f"{rm.VALUES}: UNSTRACT_APPS_VERSION: &UNSTRACT_APPS_VERSION changed 0 times"
+                ],
+                False,
+            ),
+        )
+        # A wrong value, a human author, a wrong subject.
+        self.assertEqual(
+            stray(lambda: self.sed_chart("v1.5.9"))[0][:3],
+            [
+                f"{rm.CHART}: +version: 1.5.9",
+                f'{rm.CHART}: +appVersion: "v1.5.9"',
+                f"{rm.VALUES}: +UNSTRACT_APPS_VERSION: &UNSTRACT_APPS_VERSION v1.5.9",
+            ],
+        )
+        self.assertFalse(stray(lambda: None, bot=False)[1])
+        self.assertFalse(stray(lambda: None, msg="release: chart 1.5.0-rc.1")[1])
+        # Not on the RC commit: a commit in between.
+        self.commit("in between", "release/1.5")
+        ga = self.ga_commit("v1.5.0", "release/1.5", tag=False)
+        self.assertFalse(rm.is_ga_bump(self.repo, ga, rc, "v1.5.0"))
 
     def test_already_bumped(self):
         self.cut("1.5")
@@ -1112,7 +1306,7 @@ class Scenario(unittest.TestCase):
         self.assertEqual(
             rs.promote_blockers(st, "release/1.8", "oss"),
             [
-                "release/1.7 is not GA for oss yet: promote and publish it first or retire it; a release manager may override this with force and a reason"
+                "release/1.7 is not GA for oss yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); a release manager may override this with force and a reason"
             ],
         )
 
@@ -1395,20 +1589,18 @@ class Scenario(unittest.TestCase):
 
 
 class PrFixClass(unittest.TestCase):
-    """Lint PR / Backport class rule: title type plus fix/ labels."""
+    """Lint PR / Backport class rule: labels only; the title is validated but does not route."""
 
     def test_pr_fix_class(self):
         c = rm.pr_fix_class
-        self.assertEqual(c("UN-1 [FIX] x"), "fix")
-        self.assertIsNone(c("UN-1 [MISC] x"))
-        self.assertEqual(c("UN-1 [MISC] x", ["fix/needs-backport"]), "fix")
-        self.assertEqual(
-            c("UN-1 [FIX] x", ["fix/needs-backport"]), "fix"
-        )  # no-op on a fix title
-        self.assertEqual(
-            c("UN-1 [MISC] x", ["fix/security", "fix/needs-backport"]), "security"
-        )
+        nb = ["fix/needs-backport"]
+        self.assertEqual(c("UN-1 [MISC] x", nb), "fix")
+        self.assertEqual(c("UN-1 [FIX] x", nb), "fix")
+        self.assertIsNone(c("UN-1 [FIX] x", ["main-only"]))
+        self.assertIsNone(c("UN-1 [MISC] x", ["main-only", "bug"]))
+        self.assertEqual(c("UN-1 [MISC] x", ["fix/security", *nb]), "security")
         self.assertEqual(c("UN-1 [FEAT] x", ["fix/critical", "bug"]), "critical")
+        self.assertEqual(c("UN-1 [FEAT] x", ["fix/security"]), "security")
         for labels in (
             ["fix/typo"],
             ["fix-class/security"],
@@ -1423,32 +1615,70 @@ class PrFixClass(unittest.TestCase):
                     "fix/security, fix/critical, fix/needs-backport", str(e.exception)
                 )
 
-    def test_revert_takes_inner_class(self):
-        c = rm.pr_fix_class
-        self.assertEqual(c('Revert "UN-1 [FIX] x"'), "fix")
-        self.assertIsNone(c('Revert "UN-1 [MISC] x"'))
-        self.assertEqual(c('Revert "Revert "UN-1 [FIX] x""'), "fix")
-        for title in ('Revert "fix x"', "Revert UN-1 [FIX] x", 'revert "UN-1 [FIX] x"'):
-            with self.assertRaises(ValueError, msg=title):
-                c(title)
-        with self.assertRaises(ValueError):
-            c("no prefix")
-        self.assertEqual(c("no prefix", ["fix/needs-backport"]), "fix")
+    def test_main_needs_one_routing_label(self):
+        c = rm.main_fix_class
+        for title in ("UN-1 [FIX] x", "UN-1 [HOT-FIX] x", "UN-1 [MISC] x"):
+            for labels in ([], ["bug"]):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "no backport label: add fix/needs-backport .* or main-only",
+                ):
+                    c(title, labels)
+                self.assertIsNone(rm.pr_fix_class(title, labels))
+            self.assertIsNone(c(title, ["main-only"]))
+            self.assertEqual(c(title, ["fix/needs-backport"]), "fix")
+        for fix in ("fix/needs-backport", "fix/security", "fix/critical"):
+            with self.assertRaisesRegex(
+                ValueError, rf"conflicting labels: main-only with \['{fix}'\]"
+            ):
+                c("UN-1 [MISC] x", ["main-only", fix])
+        with self.assertRaisesRegex(ValueError, "no recognised"):
+            c("no prefix", [])  # the title error wins over the missing label
 
-    def test_ticketless_title_same_class(self):
+    def test_a_release_pr_needs_no_routing_label(self):
+        f = rm.release_only_refusal
+        self.assertIsNone(f("release/0.186", []))
+        self.assertIsNone(f("release/0.186", ["bug"]))
+        for labels in ([], ["bug"], ["release-branch-only"]):
+            self.assertIsNone(rm.pr_fix_class("UN-1 [FIX] x", labels))
+        self.assertIn("no backport label", f("main", []))
+        self.assertIn("no backport label", f("main", ["bug"]))
+        for label in ("main-only", "fix/needs-backport", "fix/security", "fix/critical"):
+            self.assertIsNone(f("main", [label]), label)
+
+    def test_revert_validates_the_inner_title(self):
         c = rm.pr_fix_class
-        self.assertEqual(c("[FIX] x"), "fix")
-        self.assertEqual(c("[HOT-FIX] x"), "fix")
-        self.assertIsNone(c("[MISC] x"))
-        self.assertEqual(c("[MISC] x", ["fix/needs-backport"]), "fix")
+        nb = ["fix/needs-backport"]
+        self.assertEqual(c('Revert "UN-1 [FIX] x"', nb), "fix")
+        self.assertIsNone(c('Revert "UN-1 [FIX] x"', ["main-only"]))
+        self.assertEqual(c('Revert "Revert "UN-1 [FIX] x""', nb), "fix")
+        with self.assertRaisesRegex(ValueError, "no backport label"):
+            rm.main_fix_class('Revert "UN-1 [FIX] x"')  # GitHub's revert PR is unlabelled
+        for title in ('Revert "fix x"', "Revert UN-1 [FIX] x", 'revert "UN-1 [FIX] x"'):
+            with self.assertRaisesRegex(ValueError, "no recognised", msg=title):
+                c(title, ["main-only"])
+        with self.assertRaisesRegex(ValueError, "no recognised"):
+            c("no prefix", ["main-only"])
+        # A fix/ label does not excuse a bad title.
+        for labels in (nb, ["fix/security"], ["fix/critical"]):
+            with self.assertRaisesRegex(ValueError, "no recognised", msg=labels):
+                c("no prefix", labels)
+        self.assertIsNone(c("[MISC] x", ["main-only"]))
+
+    def test_ticketless_title_validated(self):
+        c = rm.pr_fix_class
+        self.assertEqual(c("[HOT-FIX] x", ["fix/needs-backport"]), "fix")
+        self.assertIsNone(c("[MISC] x", ["main-only"]))
         self.assertEqual(c("[FEAT] x", ["fix/security"]), "security")
-        self.assertEqual(c('Revert "[FIX] x"'), "fix")
-        self.assertEqual(c(" UN-1 [FIX] x"), "fix")  # GitHub keeps a typo'd leading space
+        self.assertIsNone(c('Revert "[FIX] x"', ["main-only"]))
+        self.assertIsNone(
+            c(" UN-1 [FIX] x", ["main-only"])
+        )  # GitHub keeps a typo'd leading space
         # The revert button copies the title, leading space included.
-        self.assertEqual(c('Revert " UN-1 [FIX] x"'), "fix")
+        self.assertIsNone(c('Revert " UN-1 [FIX] x"', ["main-only"]))
         for title in ("[fix] x", "[FIX]x", "UN-1[FIX] x", "un-1 [FIX] x"):
-            with self.assertRaises(ValueError, msg=title):
-                c(title)
+            with self.assertRaisesRegex(ValueError, "no recognised", msg=title):
+                c(title, ["main-only"])
 
     def test_release_only_label_refused_off_release(self):
         f = rm.release_only_refusal
@@ -1457,6 +1687,15 @@ class PrFixClass(unittest.TestCase):
         )
         self.assertIsNone(f("release/0.192", ["release-branch-only"]))
         self.assertIsNone(f("main", ["fix/critical"]))
+
+    def test_main_only_label_refused_on_release(self):
+        f = rm.release_only_refusal
+        self.assertEqual(
+            f("release/0.192", ["main-only"]),
+            "label `main-only` is for PRs into main; remove it here",
+        )
+        self.assertIsNone(f("main", ["main-only"]))
+        self.assertIsNone(f("release/0.192", ["fix/needs-backport"]))
 
     def test_rbo_key_ticket_else_pr(self):
         self.assertEqual(rm.rbo_key("UN-1 [FIX] x", "45"), "UN-1")

@@ -600,6 +600,7 @@ SHARED_APPS = (
     "tenant_account_v2",
     "connector_v2",
     "adapter_processor_v2",
+    "connection_check",
     "file_management",
     "workflow_manager.file_execution",
     "workflow_manager.endpoint_v2",
@@ -1013,6 +1014,9 @@ else:
     }
 
 SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
+# Dotted path to `callable(ip: str) -> str | None` naming an approximate location
+# for a signed-in session. Unset, sessions are listed without one.
+SESSION_LOCATION_RESOLVER = os.environ.get("SESSION_LOCATION_RESOLVER") or None
 
 RQ_QUEUES = {
     "default": {"USE_REDIS_CACHE": "default"},

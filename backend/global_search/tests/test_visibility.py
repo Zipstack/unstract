@@ -20,6 +20,7 @@ from utils.user_context import UserContext
 
 from global_search.constants import OSSSearchType
 from global_search.tests.base import (
+    ADAPTER_TYPES,
     OSS_BUILDERS,
     _pipeline,
     build_adapter,
@@ -100,15 +101,13 @@ class SearchVisibilityTests(CoOwnerOrgTestMixin, TestCase):
         )
         adapter.memberships.create(user=self.owner, role=ResourceRole.OWNER)
         for user in (self.owner, self.admin, self.service_account, self.outsider):
-            self.assertFalse(
-                self._found(user, OSSSearchType.ADAPTER, adapter), user.email
-            )
+            self.assertFalse(self._found(user, OSSSearchType.LLM, adapter), user.email)
 
     def test_adapter_route_follows_who_may_edit_it(self) -> None:
         # adapter.detail is gated like adapter retrieve: owners, co-owners,
         # admins and service accounts. Anyone else who can list the adapter
         # opens the read-only adapter.info.
-        adapter = self._private(OSSSearchType.ADAPTER)
+        adapter = self._private(OSSSearchType.LLM)
         set_resource_share_groups(adapter, [self.group.id])
         adapter.shared_to_org = True
         adapter.save()
@@ -123,9 +122,7 @@ class SearchVisibilityTests(CoOwnerOrgTestMixin, TestCase):
         }
         for user, route_key in expected.items():
             with self.subTest(user=user.email):
-                response = search(
-                    user, q=QUERY, types=OSSSearchType.ADAPTER, limit=20
-                )
+                response = search(user, q=QUERY, types=OSSSearchType.LLM, limit=20)
                 (result,) = response.data["groups"][0]["results"]
                 self.assertEqual(
                     result["route"],
@@ -158,7 +155,35 @@ class SearchVisibilityTests(CoOwnerOrgTestMixin, TestCase):
             adapter_id="noOpLlm|f673a5a2-90f9-40f5-94c0-9fbc663b7553",
             shared_to_org=True,
         )
-        self.assertFalse(self._found(self.admin, OSSSearchType.ADAPTER, adapter))
+        self.assertFalse(self._found(self.admin, OSSSearchType.LLM, adapter))
+
+    def test_each_adapter_kind_lands_only_in_its_own_type(self) -> None:
+        # One group per rail destination: an adapter is found under its own
+        # kind and no other, and OCR adapters under none (v1 drops OCR).
+        adapters = {
+            type_key: build_adapter(
+                self.org,
+                self.owner,
+                f"{QUERY}-{type_key}",
+                adapter_type=adapter_type,
+                shared_to_org=True,
+            )
+            for type_key, adapter_type in ADAPTER_TYPES.items()
+        }
+        ocr = build_adapter(
+            self.org, self.owner, f"{QUERY}-ocr", adapter_type="OCR", shared_to_org=True
+        )
+        response = search(self.admin, q=QUERY, types=",".join(ADAPTER_TYPES), limit=20)
+        found = {
+            group["type"]: {result["id"] for result in group["results"]}
+            for group in response.data["groups"]
+        }
+        self.assertEqual(
+            found,
+            {key: {str(adapter.pk)} for key, adapter in adapters.items()},
+        )
+        everything = search(self.admin, q=QUERY, limit=20)
+        self.assertNotIn(str(ocr.pk), result_ids(everything))
 
     def test_default_and_app_pipelines_are_never_returned(self) -> None:
         for pipeline_type in (Pipeline.PipelineType.DEFAULT, Pipeline.PipelineType.APP):

@@ -63,6 +63,17 @@
   --color-header: var(--header);
   --color-header-foreground: var(--header-foreground);
   --color-scrim: var(--scrim);
+  /* Syntax and diff colours (P1-T16): ui:text-code-*, ui:bg-diff-*. */
+  --color-code-key: var(--code-key);
+  --color-code-string: var(--code-string);
+  --color-code-number: var(--code-number);
+  --color-code-literal: var(--code-literal);
+  --color-code-keyword: var(--code-keyword);
+  --color-code-comment: var(--code-comment);
+  --color-diff-added: var(--diff-added);
+  --color-diff-added-foreground: var(--diff-added-foreground);
+  --color-diff-removed: var(--diff-removed);
+  --color-diff-removed-foreground: var(--diff-removed-foreground);
 
   /* --spacing is the base every bare step multiplies (ui:w-64 is 64 × 4px);
    * each named step reads its own token, so ui:p-5 is var(--space-5). */
