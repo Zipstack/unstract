@@ -11,6 +11,17 @@ import os
 from queue_backend import worker_task
 from sandbox.runner import RunResult, run_code
 
+#: Per-job address-space ceiling when `SANDBOX_MEMORY_MB` is unset, in MiB.
+#: It becomes `RLIMIT_AS` on each child.
+#:
+#: NAMED rather than inline so the deployment surfaces can read it instead of
+#: restating it. `workers/tests/test_queue_consumer_wiring.py` checks that the
+#: dev compose sandbox's `mem_limit` covers tmpfs + this x lanes + parent
+#: headroom, and it hard-coded 512 -- so raising this default here would have
+#: left that budget arithmetic quietly checking the wrong number, which is the
+#: one thing that test exists to prevent. Reported as a Low on #2309.
+DEFAULT_SANDBOX_MEMORY_MB = 512
+
 logger = logging.getLogger(__name__)
 
 # Celery's trace logger logs a task's RETURN VALUE at INFO ("Task ... succeeded
@@ -202,7 +213,7 @@ def _execute_sandboxed_code_unguarded(
     max_rows = _int_env("SANDBOX_MAX_ROWS", 100_000, minimum=1)
     timeout_max = _int_env("SANDBOX_TIMEOUT_MAX", 60, minimum=1)
     grace = _int_env("SANDBOX_TIMEOUT_GRACE", 5, minimum=1)
-    memory_mb = _int_env("SANDBOX_MEMORY_MB", 512, minimum=64)
+    memory_mb = _int_env("SANDBOX_MEMORY_MB", DEFAULT_SANDBOX_MEMORY_MB, minimum=64)
     max_pids = _int_env("SANDBOX_MAX_PIDS", 16, minimum=1)
     _log_configured_caps(
         {

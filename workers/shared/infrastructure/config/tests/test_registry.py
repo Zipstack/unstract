@@ -9,9 +9,21 @@ deleted, the concurrency slot is never released and the webhook never fires.
 Nothing errors, because nothing failed.
 """
 
+import re
+from pathlib import Path
+
+import yaml
 from shared.enums.worker_enums import WorkerType
 from shared.enums.worker_enums_base import QueueName
 from shared.infrastructure.config.registry import WorkerRegistry
+
+#: Repo root, from workers/shared/infrastructure/config/tests/ -> up five.
+#: Asserted rather than trusted: a file move would otherwise make the reads
+#: below silently skip, and a test that cannot find its inputs must fail, not
+#: pass.
+_REPO_ROOT = Path(__file__).resolve().parents[5]
+_DEV_COMPOSE = _REPO_ROOT / "docker" / "docker-compose.yaml"
+_RUN_WORKER = _REPO_ROOT / "workers" / "run-worker.sh"
 
 
 def test_sandbox_worker_registered():
@@ -59,6 +71,60 @@ def test_the_sandbox_queue_is_claimed_now_that_the_sandbox_ships():
     assert hasattr(QueueName, "SANDBOX_CODEGEN")
     assert hasattr(WorkerType, "SANDBOX")
     assert WorkerType.SANDBOX in WorkerRegistry._QUEUE_CONFIGS
+
+
+def test_the_deployment_configs_name_the_queue_the_registry_claims():
+    """Ties the SHIPPED consumer's queue strings to ``QueueName.SANDBOX_CODEGEN``.
+
+    The guard above asserts the registry CLAIMS the queue. That is a fact about
+    ``_QUEUE_CONFIGS`` and says nothing about what the deployed consumer
+    actually drains: the live consumer reads
+    ``WORKER_PG_QUEUE_CONSUMER_QUEUE`` from ``docker/docker-compose.yaml`` and
+    the ``pg-sandbox`` role from ``workers/run-worker.sh``, and nothing tied
+    either of those strings to the enum. A rename on one side would leave
+    ``execute_sandboxed_code`` enqueued onto a queue nothing drains -- no error
+    at the producer, no failed pod, the job simply never runs. Reported as a
+    High on #2309.
+
+    DERIVED, not another literal, and that is the point of putting it here:
+    this module can import ``QueueName``, which
+    ``workers/tests/test_queue_consumer_wiring.py`` cannot -- its own header
+    records that asymmetry as the reason its sandbox assertions are string
+    literals. So the literal/enum tie belongs on this side of the venv split.
+
+    The test-compose overlay is deliberately NOT asserted on: it is an overlay
+    (``tests/rig/runtime.COMPOSE_OVERLAY``) applied over the dev compose and
+    sets only an image, a grace period and four tuning vars, so it inherits the
+    queue rather than restating it. Requiring it here would pin a value that
+    file has no business carrying.
+    """
+    # `.value`, not `str()`: QueueName is `(str, Enum)`, so `str()` renders
+    # "QueueName.SANDBOX_CODEGEN" rather than the queue name, and the compose
+    # comparison below would never match. This assertion caught that on its
+    # first run, which is the behaviour wanted from it.
+    queue = QueueName.SANDBOX_CODEGEN.value
+
+    assert _DEV_COMPOSE.is_file(), f"dev compose not found at {_DEV_COMPOSE}"
+    services = yaml.safe_load(_DEV_COMPOSE.read_text())["services"]
+    assert "worker-sandbox" in services, sorted(services)
+    env = services["worker-sandbox"].get("environment") or {}
+    if isinstance(env, list):
+        env = dict(item.split("=", 1) for item in env if "=" in str(item))
+    composed = str(env.get("WORKER_PG_QUEUE_CONSUMER_QUEUE") or "")
+    assert queue in {q.strip() for q in composed.split(",") if q.strip()}, (
+        f"docker-compose.yaml's worker-sandbox drains {composed!r}, which does "
+        f"not include {queue!r} -- execute_sandboxed_code would be enqueued "
+        "onto a queue nothing serves"
+    )
+
+    assert _RUN_WORKER.is_file(), f"run-worker.sh not found at {_RUN_WORKER}"
+    text = _RUN_WORKER.read_text()
+    match = re.search(r'\["\$PG_ROLE_SANDBOX"\]="sandbox;([^"]+)"', text)
+    assert match, "could not find the PG_ROLE_SANDBOX queue mapping in run-worker.sh"
+    assert queue in {q.strip() for q in match.group(1).split(",") if q.strip()}, (
+        f"run-worker.sh's pg-sandbox role lists {match.group(1)!r}, which does "
+        f"not include {queue!r}"
+    )
 
 
 def test_the_sandbox_route_names_a_task_that_actually_exists():

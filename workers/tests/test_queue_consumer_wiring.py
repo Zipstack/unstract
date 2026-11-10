@@ -45,6 +45,7 @@ import re
 from pathlib import Path
 
 import pytest
+from sandbox.tasks import DEFAULT_SANDBOX_MEMORY_MB
 
 yaml = pytest.importorskip("yaml")
 
@@ -443,13 +444,55 @@ def test_the_compose_sandbox_memory_budget_closes():
     env = dict(e.split("=", 1) for e in svc["environment"] if "=" in e)
     lanes = int(env["WORKER_PG_QUEUE_CONSUMER_CONCURRENCY"].split(":-")[1].rstrip("}"))
     # The runner's default, which this service does not override.
-    per_job = 512
+    # READ from the code under test, not restated. It was `512` here, so a
+    # change to the default in sandbox/tasks.py would have left this arithmetic
+    # checking a number the sandbox no longer uses -- the budget would "close"
+    # against a stale figure, which is precisely the failure this test exists to
+    # catch. Reported as a Low on #2309.
+    per_job = DEFAULT_SANDBOX_MEMORY_MB
     parent_headroom = 128
     need = scratch + per_job * lanes + parent_headroom
     assert need <= limit, (
         f"mem_limit={limit}m does not cover tmpfs {scratch}m + "
         f"{lanes} x SANDBOX_MEMORY_MB {per_job}m + {parent_headroom}m parent "
         f"= {need}m"
+    )
+
+
+def test_the_compose_sandbox_env_files_do_not_widen():
+    """Pins the dev sandbox's env_file set so the blast radius cannot grow quietly.
+
+    This does NOT claim the current set is small enough. A reviewer on #2309
+    pointed out that `../workers/.env` carries the internal API key, MinIO, DB
+    and broker credentials, that generated code can read all of them from the
+    parent's environment via /proc/<ppid>/environ with no import, and that the
+    "isolated" framing therefore overstates what compose provides. That is
+    correct, and it is NOT fixed here -- see below for why -- so this asserts the
+    exposure rather than pretending it away.
+
+    Why not fixed: 16 of this file's 19 services share `../workers/.env`, and the
+    five vars the sandbox actually needs (DB_HOST / DB_PORT / DB_NAME / DB_USER /
+    DB_PASSWORD, for the PG queue connection in
+    `queue_backend/pg_queue/connection.py`) are not available for compose
+    interpolation -- `docker/sample.env` carries no DB_ keys at all. So trimming
+    means either requiring DB_* in every developer's compose env, or adding a
+    narrow env file they must create and keep in step with the broad one. Both
+    break local dev for everyone the moment they are out of step, and the gain is
+    confined to compose: in Kubernetes the chart scopes this pod's environment
+    through `workerPgSandbox.additionalConfigs`, and the credential that matters
+    there is guarded at render time by
+    `charts/unstract-platform/templates/validate-sandbox-db-credential.yaml`.
+
+    What this test buys is a tripwire. Adding a SECOND env file -- the realistic
+    way this widens -- fails here, and whoever does it reads the paragraph above.
+    The sibling below keeps `essentials.env` specifically out.
+    """
+    svc = yaml.safe_load(DEV_COMPOSE.read_text())["services"]["worker-sandbox"]
+    files = [str(f) for f in (svc.get("env_file") or [])]
+    assert files == ["../workers/.env"], (
+        f"the sandbox's env_file set changed to {files}. Every key in it is "
+        "readable by the code this container executes; widening the set widens "
+        "that. If this is deliberate, say so here and in the service comment."
     )
 
 
