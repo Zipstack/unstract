@@ -78,7 +78,7 @@ Every chart:
 | `title` | `string` | required | The plot's accessible name and the table caption. The card shows the visible heading. |
 | `summary` | `string` | generated | The sentence screen readers hear. Pass one when the page knows the story ("10 Aug alone carries 49% of the month's pages"). |
 | `xLabel` | `string` | `"Category"` | First column header of the data table. |
-| `state` | `"ready" \| "loading" \| "empty"` | `"ready"` | `ready` with no rows shows the empty state. |
+| `state` | `"ready" \| "loading" \| "empty"` | `"ready"` | `ready` with no rows, or only gaps, shows the empty state. |
 | `emptySlot` | `ReactNode` | — | Replaces the empty message. It is centred in a box of the chart's `height` (40 on a sparkline) and the box does not grow, so the slot must fit; it replaces the screen-reader title prefix too, so name the chart in it. |
 | `emptyMessage` | `string` | `"No data for this period"` | |
 | `height` | `number` | 240 (sparkline 40) | Plot height in pixels. |

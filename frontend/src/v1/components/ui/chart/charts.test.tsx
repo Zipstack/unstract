@@ -269,6 +269,10 @@ describe.each(VARIANTS)("%s", (slot, Chart) => {
       "empty",
     );
     expect(screen.getByText("No data for this period")).toBeInTheDocument();
+    // A screen reader hears which chart is empty.
+    expect(screen.getByText("No data for this period")).toHaveTextContent(
+      "Throughput: No data for this period",
+    );
     expect(container.querySelector("svg")).toBeNull();
     rerender(
       <Chart
@@ -313,6 +317,14 @@ describe("cartesian options", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "2981 pg" })).toBeInTheDocument();
     expect(screen.getAllByText(/!$/).length).toBeGreaterThan(0);
+    // xFormat reaches the visible X ticks too, not only the table.
+    const ticks = [
+      ...document.querySelectorAll(".recharts-xAxis-tick-labels text"),
+    ].map((t) => t.textContent);
+    expect(ticks.length).toBeGreaterThan(0);
+    for (const tick of ticks) {
+      expect(tick).toMatch(/^day /);
+    }
   });
 
   it("draws a right axis only when a series asks for it", () => {
@@ -864,7 +876,7 @@ describe("cartesian options", () => {
   it("separates stacked segments with a card-coloured stroke", () => {
     const { container } = renderV1(<StackedBarChart {...props()} />);
     const segments = container.querySelectorAll(".recharts-bar-rectangle path");
-    expect(segments.length).toBe(6);
+    expect(segments).toHaveLength(6);
     for (const s of segments) {
       expect(s).toHaveAttribute("stroke", "var(--card)");
     }
@@ -905,6 +917,11 @@ describe("Sparkline", () => {
     const { container } = renderV1(
       <Sparkline
         {...sparkProps}
+        data={[
+          { day: "9 Aug", pages: 900, failed: 90 },
+          { day: "10 Aug", pages: 1000, failed: 100 },
+          { day: "11 Aug", pages: 950, failed: 95 },
+        ]}
         series={[
           { key: "pages", label: "Pages" },
           { key: "failed", label: "Failed", axis: "right" },
@@ -922,10 +939,11 @@ describe("Sparkline", () => {
         .map((point) => Number(point.split(",")[1]));
     const span = (values: number[]) =>
       Math.max(...values) - Math.min(...values);
-    // On one shared axis "Failed" (1 to 600) would rise a fifth as far as
-    // "Pages" (10 to 2,981).
-    expect(span(ys("Failed"))).toBeGreaterThan(0);
-    expect(span(ys("Failed"))).toBeCloseTo(span(ys("Pages")), 0);
+    // Minimums far from zero, so each axis's dataMin..dataMax domain shows:
+    // both lines span the plot (40 minus 4 + 4 margin). On one shared axis
+    // "Failed" (90 to 100) would sit flat far below "Pages" (900 to 1,000).
+    expect(span(ys("Pages"))).toBeCloseTo(32, 0);
+    expect(span(ys("Failed"))).toBeCloseTo(32, 0);
   });
 
   it("draws one line with no axes, grid, legend or tooltip, as a static image", async () => {
@@ -1001,5 +1019,186 @@ describe("Sparkline", () => {
       />,
     );
     expect(screen.getByText("No pages yet")).toBeInTheDocument();
+  });
+});
+
+describe("edge cases", () => {
+  it("stacks a negative segment down from zero, not inside the positive one", () => {
+    const rows = [{ day: "a", gain: 5, loss: -3 }];
+    const { container } = renderV1(
+      <StackedBarChart
+        title="Net"
+        data={rows}
+        xKey="day"
+        width={WIDTH}
+        height={HEIGHT}
+        series={[
+          { key: "gain", label: "Gain" },
+          { key: "loss", label: "Loss" },
+        ]}
+      />,
+    );
+    const box = (name: string) => {
+      const el = container.querySelector(`path[name="${name}"]`);
+      const y = Number(el?.getAttribute("y"));
+      const h = Number(el?.getAttribute("height"));
+      return { top: Math.min(y, y + h), bottom: Math.max(y, y + h) };
+    };
+    // The gain bar's bottom is the zero line; the loss bar lies below it.
+    expect(box("Loss").top).toBeGreaterThanOrEqual(box("Gain").bottom - 0.5);
+    expect(box("Loss").bottom).toBeGreaterThan(box("Gain").bottom + 1);
+  });
+
+  it("reads a negative bar's marker label under its tip, kept inside the plot", () => {
+    const rows = [
+      { day: "a", v: 10 },
+      { day: "b", v: -20 },
+      { day: "c", v: -40 },
+    ];
+    const { container } = renderV1(
+      <BarChart
+        title="Delta"
+        data={rows}
+        xKey="day"
+        width={WIDTH}
+        height={HEIGHT}
+        series={[{ key: "v", label: "V" }]}
+        markers={[
+          { index: 1, series: "v", label: "dip" },
+          { index: 2, series: "v", label: "low" },
+        ]}
+      />,
+    );
+    const plotBottom = Math.max(
+      ...[
+        ...container.querySelectorAll(
+          ".recharts-cartesian-grid-horizontal line",
+        ),
+      ].map((l) => Number(l.getAttribute("y1"))),
+    );
+    const [dip, low] = [
+      ...container.querySelectorAll("[data-slot=chart-marker]"),
+    ].map((m) => ({
+      cy: Number(m.querySelector("circle")?.getAttribute("cy")),
+      y: Number(m.querySelector("text")?.getAttribute("y")),
+    }));
+    // Away from the edge: below the tip, clear of the bar.
+    expect(dip.y).toBeGreaterThan(dip.cy);
+    expect(dip.y).toBeLessThanOrEqual(plotBottom);
+    // At the plot's bottom edge: below the tip as far as the plot allows.
+    expect(low.y).toBeGreaterThanOrEqual(low.cy);
+    expect(low.y).toBeLessThanOrEqual(plotBottom);
+  });
+
+  it("shows the empty state when every series value is a gap", () => {
+    const rows: { day: string; pages: number | null }[] = [
+      { day: "a", pages: null },
+      { day: "b", pages: null },
+    ];
+    const series = [{ key: "pages", label: "Pages" }] as const;
+    const { container, unmount } = renderV1(
+      <LineChart
+        title="Quiet"
+        data={rows}
+        xKey="day"
+        width={WIDTH}
+        height={HEIGHT}
+        series={series}
+      />,
+    );
+    expect(container.querySelector("[data-slot=line-chart]")).toHaveAttribute(
+      "data-state",
+      "empty",
+    );
+    expect(screen.getByText("No data for this period")).toBeInTheDocument();
+    unmount();
+    const spark = renderV1(
+      <Sparkline
+        title="Quiet"
+        data={rows}
+        xKey="day"
+        width={120}
+        series={series}
+      />,
+    );
+    expect(
+      spark.container.querySelector("[data-slot=sparkline]"),
+    ).toHaveAttribute("data-state", "empty");
+  });
+
+  it("breaks a line, an area and a sparkline at a gap rather than joining across it", () => {
+    const rows = [
+      { day: "1", pages: 5 },
+      { day: "2", pages: null },
+      { day: "3", pages: 7 },
+      { day: "4", pages: 8 },
+    ];
+    const series = [{ key: "pages", label: "Pages" }] as const;
+    const subpaths = (container: HTMLElement, selector: string) =>
+      (container.querySelector(selector)?.getAttribute("d") ?? "").match(/M/g)
+        ?.length ?? 0;
+    for (const [Chart, selector] of [
+      [LineChart, ".recharts-line-curve"],
+      [AreaChart, ".recharts-area-curve"],
+    ] as const) {
+      const { container, unmount } = renderV1(
+        <Chart
+          title="T"
+          data={rows}
+          xKey="day"
+          width={WIDTH}
+          height={HEIGHT}
+          series={series}
+        />,
+      );
+      expect(subpaths(container, selector), selector).toBe(2);
+      unmount();
+    }
+    const { container } = renderV1(
+      <Sparkline
+        title="T"
+        data={rows}
+        xKey="day"
+        width={120}
+        series={series}
+      />,
+    );
+    expect(subpaths(container, ".recharts-line-curve")).toBe(2);
+  });
+
+  it("puts the caller's className on the chart root in every state", () => {
+    for (const state of ["ready", "loading", "empty"] as const) {
+      const { container, unmount } = renderV1(
+        <LineChart {...props({ state, className: "ui:mt-4" })} />,
+      );
+      expect(
+        container.querySelector("[data-slot=line-chart]"),
+        state,
+      ).toHaveClass("ui:mt-4");
+      unmount();
+      const spark = renderV1(
+        <Sparkline
+          title="T"
+          data={data}
+          xKey="day"
+          width={120}
+          series={[{ key: "pages", label: "Pages" }]}
+          state={state}
+          className="ui:mt-4"
+        />,
+      );
+      expect(
+        spark.container.querySelector("[data-slot=sparkline]"),
+        state,
+      ).toHaveClass("ui:mt-4");
+      spark.unmount();
+    }
+  });
+
+  it("draws the grid by default and none with grid={false}", () => {
+    const { container, rerender } = renderV1(<LineChart {...props()} />);
+    expect(container.querySelector(".recharts-cartesian-grid")).not.toBeNull();
+    rerender(<LineChart {...props({ grid: false })} />);
+    expect(container.querySelector(".recharts-cartesian-grid")).toBeNull();
   });
 });

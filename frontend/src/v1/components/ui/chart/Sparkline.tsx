@@ -17,6 +17,7 @@ import {
   type Formatters,
   formatCategory,
   formatValue,
+  hasValues,
   tableRows,
 } from "./describe";
 import { isolatedDot } from "./marks";
@@ -60,7 +61,8 @@ export function Sparkline<Row extends ChartDatum>({
   const [live, setLive] = useState("");
   const fmt: Formatters = { value: valueFormat, x: xFormat };
   const colors = seriesColors(series);
-  const resolved = data.length === 0 && state === "ready" ? "empty" : state;
+  const resolved =
+    state === "ready" && !hasValues(data, series) ? "empty" : state;
   const text =
     summary ??
     describeChart({ kind: "sparkline", title, data, xKey, series, fmt });

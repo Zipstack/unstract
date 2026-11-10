@@ -121,7 +121,8 @@ export type BaseChartProps<Row extends ChartDatum> = Readonly<{
   /** A sentence describing what the chart shows; generated from the data when left out. */
   summary?: string;
   /**
-   * Default `ready`. Data with no rows shows the empty state too. There is no
+   * Default `ready`. Data with no rows, or whose every series value is a gap,
+   * shows the empty state too. There is no
    * error state: on a failed request render the page's `InlineAlert` (with
    * `onRetry`) instead of the chart, so a failure never reads as "no data".
    */

@@ -24,6 +24,7 @@ import {
   formatAxisValue,
   formatCategory,
   formatValue,
+  hasValues,
   tableRows,
 } from "./describe";
 import {
@@ -82,7 +83,8 @@ export function CartesianChart<Row extends ChartDatum>({
   const colors = seriesColors(series);
   const stacked = kind === "stacked-bar";
   const bars = kind === "bar" || stacked;
-  const resolved = data.length === 0 && state === "ready" ? "empty" : state;
+  const resolved =
+    state === "ready" && !hasValues(data, series) ? "empty" : state;
   // Recharts resets its data store whenever the rows it gets change
   // identity, so the rows are `data` itself unless something is marked, and
   // are memoised on what the series and markers say rather than on their
@@ -225,6 +227,9 @@ export function CartesianChart<Row extends ChartDatum>({
       aria-label={title}
       aria-describedby={summaryId}
       barCategoryGap="20%"
+      // Positives stack up from zero and negatives down, so a mixed-sign
+      // stack (credits and refunds) is not drawn inside its positive segment.
+      {...(stacked ? { stackOffset: "sign" } : {})}
     >
       {grid ? (
         <CartesianGrid vertical={false} stroke="var(--border)" yAxisId="left" />

@@ -49,6 +49,18 @@ export function numberAt(row: ChartDatum, key: string): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/**
+ * True when some series has a value on some row. A chart whose rows are all
+ * gaps (a period with no activity, bucketed by day) shows the empty state,
+ * not a blank plot.
+ */
+export function hasValues(
+  data: readonly ChartDatum[],
+  series: readonly Readonly<{ key: string }>[],
+): boolean {
+  return data.some((row) => series.some((s) => numberAt(row, s.key) !== null));
+}
+
 export type Formatters = Readonly<{
   value: (value: number) => string;
   x: (value: string | number) => string;

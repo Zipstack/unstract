@@ -23,12 +23,15 @@ function MarkerMark({
   color,
   label,
   anchor = "middle",
+  labelY = y - 10,
 }: Readonly<{
   x: number;
   y: number;
   color: string;
   label: string;
   anchor?: Anchor;
+  /** The label's baseline; above the dot unless the caller moves it. */
+  labelY?: number;
 }>) {
   return (
     <g data-slot="chart-marker">
@@ -48,7 +51,7 @@ function MarkerMark({
               ? x + LABEL_NUDGE
               : x
         }
-        y={y - 10}
+        y={labelY}
         textAnchor={anchor}
         className="ui:fill-foreground"
       >
@@ -74,6 +77,9 @@ const LABEL_CHAR_WIDTH = 7;
 
 /** How far `MarkerMark` shifts a label read from one side of its dot. */
 const LABEL_NUDGE = 4;
+
+/** From a negative bar's tip to its label's baseline: past the dot, one line down. */
+const LABEL_BELOW = 16;
 
 /**
  * Where a marker's label reads from, given the plot's left and right bounds:
@@ -173,6 +179,8 @@ type BarMarkerProps = Readonly<{
   x?: number | string;
   y?: number | string;
   width?: number | string;
+  /** Negative for a bar below zero, whose `y` is then its lower tip. */
+  height?: number | string;
   value?: unknown;
 }>;
 
@@ -190,6 +198,7 @@ export function BarMarker({
   x,
   y,
   width,
+  height,
   value,
 }: BarMarkerProps): ReactElement {
   const plot = usePlotArea();
@@ -208,7 +217,24 @@ export function BarMarker({
     plot?.x,
     plot === undefined ? undefined : plot.x + plot.width,
   );
+  // A bar below zero has its tip at the bottom: read the label under the
+  // tip, not over the bar, and keep it inside the plot so it does not run
+  // into the X axis labels.
+  const below = typeof height === "number" && height < 0;
+  const labelY = below
+    ? Math.min(
+        y + LABEL_BELOW,
+        plot === undefined ? Number.POSITIVE_INFINITY : plot.y + plot.height,
+      )
+    : undefined;
   return (
-    <MarkerMark x={cx} y={y} color={color} label={value} anchor={anchor} />
+    <MarkerMark
+      x={cx}
+      y={y}
+      color={color}
+      label={value}
+      anchor={anchor}
+      labelY={labelY}
+    />
   );
 }
