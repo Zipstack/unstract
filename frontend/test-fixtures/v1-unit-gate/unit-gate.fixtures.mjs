@@ -98,6 +98,7 @@ const JOB_COMMANDS = {
   purity: [
     "node scripts/check-v1.mjs --code",
     "node scripts/check-v1-styles.mjs",
+    "node scripts/check-v1-icons.mjs",
   ],
   unit: ["./node_modules/.bin/vitest run --config vitest.v1.config.mts"],
   build: [

@@ -142,6 +142,10 @@ jobs:
         working-directory: frontend
         run: node scripts/check-v1-styles.mjs
 
+      - name: Run the icon rules
+        working-directory: frontend
+        run: node scripts/check-v1-icons.mjs
+
   # The v1 unit tests: the rig's `frontend-v1-unit` group (tests/groups.yaml),
   # run with the same config so CI and the rig cannot disagree. The config
   # fails the run below v1's coverage threshold. Run here rather than through

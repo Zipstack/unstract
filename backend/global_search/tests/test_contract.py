@@ -26,7 +26,7 @@ from utils.tests.auth_seam import admin_role, builtin_auth_service
 from global_search.constants import OSSSearchType as T
 from global_search.oss_providers import OSS_PROVIDERS, AdapterProvider, WorkflowProvider
 from global_search.providers import SearchProvider
-from global_search.tests.base import OSS_BUILDERS, search
+from global_search.tests.base import ADAPTER_TYPES, OSS_BUILDERS, search
 from global_search.views import GlobalSearchView
 
 APP_DIR = Path(__file__).parents[1]
@@ -66,7 +66,7 @@ class SearchContractTests(CoOwnerOrgTestMixin, TestCase):
             T.API_DEPLOYMENT: parent(T.API_DEPLOYMENT),
             T.ETL_PIPELINE: parent(T.ETL_PIPELINE),
             T.TASK_PIPELINE: parent(T.TASK_PIPELINE),
-            T.ADAPTER: "LLM · openai",
+            **{key: f"{kind} · openai" for key, kind in ADAPTER_TYPES.items()},
             T.CONNECTOR: "minio",
         }
         for type_key, item in items.items():
@@ -74,11 +74,13 @@ class SearchContractTests(CoOwnerOrgTestMixin, TestCase):
                 result = results[type_key]
                 self.assertEqual(result["context"], expected_context[type_key])
                 expected_params = {"id": str(item.pk)}
-                if type_key == T.ADAPTER:
-                    expected_params["adapter_type"] = "LLM"
+                route_key = f"{type_key}.detail"
+                if type_key in ADAPTER_TYPES:
+                    expected_params["adapter_type"] = ADAPTER_TYPES[type_key]
+                    route_key = "adapter.detail"
                 self.assertEqual(
                     result["route"],
-                    {"key": f"{type_key}.detail", "params": expected_params},
+                    {"key": route_key, "params": expected_params},
                 )
 
     def test_owner_context_skips_service_accounts_and_takes_the_earliest(self) -> None:
