@@ -109,12 +109,12 @@ jobs:
       - name: Alert
         if: failure() && github.event_name == 'push'
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_ALERT_SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           INVALID: ${{ steps.classify.outputs.invalid }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -z "$SLACK_WEBHOOK_URL" ]; then
-            echo "::warning::No alert sent: secret RELEASE_ALERT_SLACK_WEBHOOK_URL is not set"
+            echo "::warning::No alert sent: secret SLACK_WEBHOOK_URL is not set"
             exit 0
           fi
           if [ "${INVALID:-0}" != 0 ]; then
