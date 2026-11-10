@@ -18,14 +18,16 @@ const STARTING: AsyncState = { options: [], loading: true, error: null };
 
 /**
  * Options fetched by `load` for `query` while `enabled` (the list is open).
- * A query change waits `debounceMs`; the first load after `enabled` turns
- * true runs at once, and `loading` is true from that render on, so an empty
- * list never shows before it. Turning `enabled` false aborts and drops the
- * options and the error, so a reopened list shows nothing stale. Each load
- * aborts the one before it, a response for a query that is no longer current
- * is dropped, a failed load empties the options, and unmounting aborts.
- * `load` is read from a ref, so a new function identity (an inline arrow)
- * neither refetches nor cancels.
+ * A query change drops the options at once, so the previous query's results
+ * are neither shown nor selectable while the next load waits out
+ * `debounceMs`; the first load after `enabled` turns true runs at once. In
+ * both cases `loading` is true from that render on, so an empty list never
+ * shows before a load. Turning `enabled` false aborts and drops the options
+ * and the error, so a reopened list shows nothing stale. Each load aborts the
+ * one before it, a response for a query that is no longer current is dropped,
+ * a failed load empties the options, and unmounting aborts. `load` is read
+ * from a ref, so a new function identity (an inline arrow) neither refetches
+ * nor cancels.
  */
 export function useAsyncOptions(
   load: LoadOptions | undefined,
@@ -36,10 +38,11 @@ export function useAsyncOptions(
   const hasLoad = load !== undefined;
   const active = hasLoad && enabled;
   const [state, setState] = useState<AsyncState>(active ? STARTING : IDLE);
-  // Adjusting state while rendering, React's pattern for "on prop change".
-  const [wasActive, setWasActive] = useState(active);
-  if (active !== wasActive) {
-    setWasActive(active);
+  // Adjusting state while rendering, React's pattern for "on prop change":
+  // a change of `active`, or of the query while active, resets the state.
+  const [seen, setSeen] = useState({ active, query });
+  if (active !== seen.active || (active && query !== seen.query)) {
+    setSeen({ active, query });
     setState(active ? STARTING : IDLE);
   }
   const latestQuery = useRef(query);

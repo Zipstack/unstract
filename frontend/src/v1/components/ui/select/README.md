@@ -66,7 +66,10 @@ import {
   menus"), at least 192 wide and the trigger's width, at most 320 tall. It is
   a flex column with hidden overflow and exactly **one** scroll element
   inside: Radix Select's Viewport, or the `Listbox` scroll element for the
-  Popover lists. In the Popover lists the status rows ("Loading…", "No
+  Popover lists. That scroll element is also capped at the height Radix
+  finds free around the trigger (`--radix-select-content-available-height`
+  or `--radix-popover-content-available-height`), so a short viewport scrolls
+  the list instead of pushing the active option off-screen. In the Popover lists the status rows ("Loading…", "No
   options" or "No matches", "Could not load options") are `<output>`
   elements beside the `role="listbox"` element, never inside it, since a
   listbox may hold only options. `Select`'s list is Radix's listbox
@@ -181,12 +184,15 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
   the input; it is out of the tab order. The Clear button (shown with a
   value, while enabled) sets `null`.
 - `loadOptions`: the first load after opening runs at once, later queries
-  wait 250 ms. Each load aborts the one before through `signal`, a response
-  for a query that is no longer current is dropped, and a "Loading…" row
-  (with `aria-busy` on the listbox) or a "Could not load options" row shows
-  the state. "Loading…" shows from the moment the list opens, and closing
-  drops the loaded options, so a reopened list never flashes stale options
-  or "No options". In async mode the client filters nothing: the loader's
+  wait 250 ms. A query change drops the options at once, so the previous
+  query's results are neither shown nor selectable while the next load
+  waits. Each load aborts the one before through `signal`, a response for a
+  query that is no longer current is dropped, and a "Loading…" row (with
+  `aria-busy` on the listbox) or a "Could not load options" row shows the
+  state. "Loading…" shows from the moment the list opens, and closing drops
+  the loaded options, so a reopened list never flashes stale options or "No
+  options". Opening with a saved value before its options have loaded keeps
+  that value active, so it is the active option once the results hold it. In async mode the client filters nothing: the loader's
   result is the list. Pass a stable or inline function, either works (it is
   read from a ref).
 - The selected label comes from the current options, else from any option

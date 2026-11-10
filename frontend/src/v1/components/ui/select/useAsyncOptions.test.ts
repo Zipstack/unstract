@@ -86,11 +86,22 @@ it("debounces query changes by 250ms", async () => {
   rerender({ load, query: "ab", enabled: true });
   advance(249);
   expect(load).toHaveBeenCalledTimes(1);
-  expect(result.current.loading).toBe(false);
   advance(1);
   expect(load).toHaveBeenCalledTimes(2);
   expect(calls[1].query).toBe("ab");
   expect(result.current.loading).toBe(true);
+});
+
+it("drops the previous options the moment the query changes, before the debounce", async () => {
+  const { load, calls } = deferredLoader();
+  const { result, rerender } = setup({ load, query: "a", enabled: true });
+  advance(0);
+  await act(async () => calls[0].resolve([opt("Alpha")]));
+  expect(result.current.options).toEqual([opt("Alpha")]);
+  rerender({ load, query: "ab", enabled: true });
+  expect(result.current.options).toEqual([]);
+  expect(result.current.loading).toBe(true);
+  expect(load).toHaveBeenCalledTimes(1);
 });
 
 it("drops a response for a query that is no longer current", async () => {

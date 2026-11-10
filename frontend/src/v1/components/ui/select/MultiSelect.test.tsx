@@ -390,7 +390,7 @@ it("keeps a loaded chip's label after the query changes", async () => {
 
 it("has no axe violations closed and open", async () => {
   const { user } = setup({ defaultValue: ["invoice"] });
-  await expectNoA11yViolations(document.body);
+  await expect(document.body).toHaveNoA11yViolations();
   await user.click(screen.getByRole("button", { name: "Show options" }));
-  await expectNoA11yViolations(document.body);
+  await expect(document.body).toHaveNoA11yViolations();
 });

@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
-import { expectNoA11yViolations, renderV1, stubLayout } from "@v1/test";
+import { renderV1, stubLayout } from "@v1/test";
 import { Star } from "lucide-react";
 import { expect, it, vi } from "vitest";
 import { Combobox, type ComboboxProps } from "./Combobox";
@@ -67,6 +67,15 @@ it("is a combobox named by aria-label that focus alone does not open", async () 
   expect(document.activeElement).toBe(input());
   expect(input().getAttribute("aria-expanded")).toBe("false");
   expect(screen.queryByRole("listbox")).toBeNull();
+});
+
+it("caps the list at the height free around the frame, on its one scroll element", async () => {
+  const { user } = setup();
+  await user.click(input());
+  const scroll = document.querySelector('[data-slot="listbox-scroll"]');
+  expect(scroll?.className).toContain(
+    "ui:max-h-(--radix-popover-content-available-height)",
+  );
 });
 
 it("opens on a click on the input, at the selected option", async () => {
@@ -408,6 +417,26 @@ it("shows the latest query's options when responses arrive out of order", async 
   expect(optionNames()).toEqual(["Server One"]);
 });
 
+it("lets nothing be selected from the previous query while the next one waits", async () => {
+  const { load, calls } = deferredLoader();
+  const { user, onValueChange } = setup({
+    options: undefined,
+    loadOptions: load,
+  });
+  await user.tab();
+  await user.keyboard("a");
+  await waitFor(() => expect(calls).toHaveLength(1));
+  await act(async () => calls[0].resolve([opt("Alpha")]));
+  expect(optionNames()).toEqual(["Alpha"]);
+  // "az" is still waiting out its debounce: Alpha is gone, not merely stale.
+  await user.keyboard("z");
+  expect(optionNames()).toEqual([]);
+  expect(screen.getByRole("status").textContent).toBe("Loading…");
+  await user.keyboard("{Enter}");
+  expect(onValueChange).not.toHaveBeenCalled();
+  expect(input().value).toBe("az");
+});
+
 it("says No matches when the loader returns nothing", async () => {
   const { load, calls } = deferredLoader();
   const { user } = setup({ options: undefined, loadOptions: load });
@@ -544,7 +573,7 @@ it("renders a window of a 1,000-option list and filters it to one", async () => 
 
 it("has no axe violations closed and open", async () => {
   const { user } = setup({ defaultValue: "claude" });
-  await expectNoA11yViolations(document.body);
+  await expect(document.body).toHaveNoA11yViolations();
   await user.click(screen.getByRole("button", { name: "Show options" }));
-  await expectNoA11yViolations(document.body);
+  await expect(document.body).toHaveNoA11yViolations();
 });

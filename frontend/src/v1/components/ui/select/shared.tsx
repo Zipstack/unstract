@@ -172,7 +172,9 @@ export type ListPopoverProps = Readonly<{
 
 /**
  * The list under the frame: a portalled `Popover.Content` with the list
- * surface, the frame's width, and the `Listbox` as its one scroll element.
+ * surface, the frame's width, and the `Listbox` as its one scroll element,
+ * capped by the surface's height and by the height Radix finds free around
+ * the frame, so a short viewport never leaves the active option off-screen.
  * The caller's `Popover.Root` holds the open state (`listbox.open`).
  */
 export function ListPopover({
@@ -206,6 +208,7 @@ export function ListPopover({
           multiselectable={multiselectable}
           aria-label={ariaLabel}
           aria-labelledby={ariaLabelledBy}
+          className="ui:max-h-(--radix-popover-content-available-height)"
         />
       </PopoverPrimitive.Content>
     </PopoverPrimitive.Portal>

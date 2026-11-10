@@ -160,7 +160,15 @@ export function useListbox({
     const chosen = visible.findIndex(
       (option) => !option.disabled && selected.includes(option.value),
     );
-    setActiveIndex(chosen === -1 ? firstEnabled(visible) : chosen);
+    if (chosen !== -1) {
+      setActiveIndex(chosen);
+    } else if (visible.length === 0) {
+      // Nothing to land on yet (a server list still loading): the selection
+      // stays active, so it is the active option once the results hold it.
+      setActiveValue(selected[0] ?? null);
+    } else {
+      setActiveIndex(firstEnabled(visible));
+    }
     setOpenState(true);
   };
 

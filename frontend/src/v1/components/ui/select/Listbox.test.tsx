@@ -1,5 +1,5 @@
 import { fireEvent, screen } from "@testing-library/react";
-import { expectNoA11yViolations, renderV1, stubLayout } from "@v1/test";
+import { renderV1, stubLayout } from "@v1/test";
 import type { JSX } from "react";
 import { expect, it, vi } from "vitest";
 import { Listbox, VIRTUALIZE_ABOVE } from "./Listbox";
@@ -259,11 +259,11 @@ it("brings the active row of a virtual list into the rendered window", async () 
 
 it("has no axe violations with options, while loading, and when empty", async () => {
   const { unmount } = renderV1(<Harness selected={["apple"]} />);
-  await expectNoA11yViolations(document.body);
+  await expect(document.body).toHaveNoA11yViolations();
   unmount();
   const loading = renderV1(<Harness options={[]} loading />);
-  await expectNoA11yViolations(document.body);
+  await expect(document.body).toHaveNoA11yViolations();
   loading.unmount();
   renderV1(<Harness options={[]} />);
-  await expectNoA11yViolations(document.body);
+  await expect(document.body).toHaveNoA11yViolations();
 });

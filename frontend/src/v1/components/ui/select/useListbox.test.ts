@@ -243,6 +243,17 @@ it("opens through setOpen at the first selected option", () => {
   expect(result.current.activeId).toBeUndefined();
 });
 
+it("keeps the selection active while an empty list waits for its options", () => {
+  const props = { options: [], selected: ["delta"], filter: false };
+  const { result, rerender } = setup(props);
+  act(() => result.current.setOpen(true));
+  expect(result.current.open).toBe(true);
+  expect(result.current.activeIndex).toBe(-1);
+  rerender({ ...props, options: OPTIONS });
+  expect(result.current.activeIndex).toBe(3);
+  expect(result.current.activeId).toBe("fruit-option-3");
+});
+
 it("opens through setOpen at the first enabled option with no selection", () => {
   const { result, press } = setup();
   press("ArrowDown");
