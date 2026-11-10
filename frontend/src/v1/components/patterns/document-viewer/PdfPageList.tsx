@@ -55,7 +55,11 @@ export interface PdfPageListProps {
 interface Anchor {
   index: number;
   fraction: number;
-  /** Where across that page the middle of the view is, 0 to 1. */
+  /**
+   * Where across that page the middle of the view is, as a share of the
+   * page's width. It falls outside 0 to 1 when the middle of the view is
+   * beside a narrower page, so it must not be clamped.
+   */
   across: number;
 }
 

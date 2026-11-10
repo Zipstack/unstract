@@ -411,6 +411,7 @@ function layOut(
   container: HTMLElement,
   zoom: () => number,
   viewHeight: () => number = () => 400,
+  viewWidth = 500,
 ) {
   const root = container.querySelector<HTMLElement>("section");
   if (!root) {
@@ -419,7 +420,7 @@ function layOut(
   const count = container.querySelectorAll("[data-page-index]").length;
   Object.defineProperties(root, {
     clientHeight: { get: viewHeight },
-    clientWidth: { value: 500 },
+    clientWidth: { value: viewWidth },
     scrollHeight: {
       get: () => 16 + count * (800 * zoom() + 16),
       configurable: true,
@@ -436,7 +437,8 @@ function layOut(
       },
       offsetHeight: { get: () => 800 * zoom(), configurable: true },
       offsetWidth: { get: () => 600 * zoom() },
-      offsetLeft: { get: () => 16 },
+      // Centred while narrower than the view, else after the 16 px gutter.
+      offsetLeft: { get: () => Math.max(16, (viewWidth - 600 * zoom()) / 2) },
     });
   }
   return root;
@@ -499,13 +501,16 @@ it("centres a highlight, across as well as down for a box", () => {
 });
 
 /** Scrolls at zoom 1 with `place`, then zooms to 2; returns the scroller. */
-function zoomInAfter(place: (root: HTMLElement) => void): HTMLElement {
+function zoomInAfter(
+  place: (root: HTMLElement) => void,
+  viewWidth?: number,
+): HTMLElement {
   const { document } = fakeDocument(10);
   let zoom = 1;
   const { container, rerender } = render(
     <PdfPageList document={document} pageSizes={sizes(10)} zoom={zoom} />,
   );
-  const root = layOut(container, () => zoom);
+  const root = layOut(container, () => zoom, undefined, viewWidth);
   place(root);
   act(() => {
     root.dispatchEvent(new Event("scroll"));
@@ -533,6 +538,16 @@ it("keeps the same spot across the page in view across a zoom change", () => {
   });
   // Still 434/600 across the now 1200 px page.
   expect(root.scrollLeft).toBeCloseTo(16 + 868 - 250);
+});
+
+it("keeps the middle of a page that fit the view when zooming in", () => {
+  // At zoom 1 the 600 px page is centred in the 800 px view, 100 px in, so
+  // the middle of the view is half way across it.
+  const root = zoomInAfter((scroller) => {
+    scroller.scrollLeft = 0;
+  }, 800);
+  // At zoom 2 the page is 1200 px wide and starts at the 16 px gutter.
+  expect(root.scrollLeft).toBeCloseTo(16 + 600 - 400);
 });
 
 function scrollTo(root: HTMLElement, top: number) {
