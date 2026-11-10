@@ -123,6 +123,8 @@ export function TextView({
     ref,
     () => ({
       scrollToPage() {
+        // The latest request wins over a highlight still being centred.
+        cancelAnimationFrame(recentreRef.current);
         if (rootRef.current) {
           rootRef.current.scrollTop = 0;
         }
