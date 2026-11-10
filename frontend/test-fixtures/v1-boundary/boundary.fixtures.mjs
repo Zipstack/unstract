@@ -216,6 +216,8 @@ const CASES = parseTable(`
   bundle-v1-shares-package       | node scripts/check-v1-bundle.mjs | -
   bundle-v1-pulls-v0             | node scripts/check-v1-bundle.mjs | reaches v0 module src/legacy.js
   bundle-v1-dynamic-v0           | node scripts/check-v1-bundle.mjs | reaches v0 module src/legacy.js
+  # Through a CommonJS module, which Rollup reaches via a virtual \0 module.
+  bundle-v1-cjs-v0               | node scripts/check-v1-bundle.mjs | reaches v0 module src/legacy.cjs
   # Mounted statically, so v1 is inlined into a v0 chunk and has none of its own.
   bundle-v1-static-mount         | node scripts/check-v1-bundle.mjs | src/v1/lib/text.ts (v1) reaches v0 module src/legacy.js
   # antd reached through a package, which only this guard can see.

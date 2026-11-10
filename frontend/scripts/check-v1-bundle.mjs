@@ -60,12 +60,19 @@ function parseArgs(argv) {
 }
 
 /* A module id as the report keeps it: frontend-relative for our sources,
- * as-is (absolute) for packages, null for virtual modules. */
+ * as-is (absolute) for packages. Virtual modules stay in the graph, because
+ * edges run through them: Rollup reaches a CommonJS module through
+ * "\0<file>?commonjs-…", which is named after <file> so the walk continues
+ * into it. One with no file behind it ("\0commonjsHelpers.js") is
+ * "virtual:<id>", never v1, v0 or antd. */
 function moduleName(id) {
-  if (id.startsWith("\0")) {
+  const file = id.replace(/^\0/, "").split("?")[0];
+  if (!file) {
     return null;
   }
-  const file = id.split("?")[0];
+  if (!path.isAbsolute(file)) {
+    return `virtual:${file}`;
+  }
   if (file.includes("/node_modules/")) {
     return file;
   }
@@ -89,8 +96,11 @@ function reporter(graph) {
         }
         const deps = [...info.importedIds, ...info.dynamicallyImportedIds]
           .map(moduleName)
-          .filter(Boolean);
-        graph[name] = [...new Set(deps)].sort(byName);
+          .filter((dep) => dep && dep !== name);
+        // A file and its virtual wrapper share a name, so merge their edges.
+        graph[name] = [...new Set([...(graph[name] ?? []), ...deps])].sort(
+          byName,
+        );
       }
     },
   };
