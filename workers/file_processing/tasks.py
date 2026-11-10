@@ -325,7 +325,7 @@ def _all_failed_result(n_files: int, organization_id: str | None) -> dict[str, A
 
 
 def _run_stages_under_barrier(
-    file_batch_data: dict[str, Any], celery_task_id: str
+    file_batch_data: dict[str, Any], celery_task_id: str, batch_index: int
 ) -> dict[str, Any]:
     """Run the batch stages; a stopped run's failed batch still counts down.
 
@@ -338,7 +338,9 @@ def _run_stages_under_barrier(
         execution_id = file_data.get("execution_id") or ""
         organization_id = file_data.get("organization_id") or ""
         api_client = create_api_client(organization_id)
-        if not _stopped_before_error_mark(api_client, execution_id, organization_id):
+        if not _stopped_before_error_mark(
+            api_client, execution_id, organization_id, batch_index
+        ):
             raise
         logger.exception(
             "[exec:%s] Batch failed after the run was stopped; counting it down",
@@ -350,19 +352,24 @@ def _run_stages_under_barrier(
 
 
 def _stopped_before_error_mark(
-    api_client: InternalAPIClient, execution_id: str, organization_id: str | None
+    api_client: InternalAPIClient,
+    execution_id: str,
+    organization_id: str | None,
+    batch_index: int,
 ) -> bool:
     """Mark the run ERROR; True when the backend refuses because it is STOPPED.
 
     The backend orders this write and an abort under the run's row lock, so an
-    abort landing just before the batch failed is not missed.
+    abort landing just before the batch failed is not missed. The write matches
+    the barrier's own ERROR mark, so the two agree.
     """
     try:
         response = api_client.update_workflow_execution_status(
             execution_id=execution_id,
             status=ExecutionStatus.ERROR.value,
-            error_message="Batch failed",
+            error_message=f"[pg-barrier-abort] batch {batch_index} failed.",
             organization_id=organization_id,
+            cascade_terminal_files=True,
         )
     except InternalAPIClientError as error:
         logger.warning(
@@ -461,7 +468,9 @@ def _process_file_batch_core(
     # the barrier in-body / self-chain the callback.
     return run_batch_with_barrier(
         barrier_context,
-        lambda: _run_stages_under_barrier(file_batch_data, celery_task_id),
+        lambda: _run_stages_under_barrier(
+            file_batch_data, celery_task_id, int(barrier_context["batch_index"])
+        ),
     )
 
 

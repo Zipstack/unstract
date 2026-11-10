@@ -137,7 +137,7 @@ Once that commits, it:
 
 - Queued batches of a stopped run are skipped when a worker picks them up, and
   still count down on the barrier. So does a batch that fails after the abort,
-  unless the backend can't be reached when it fails.
+  unless its status write fails.
 - A re-run ignores the active-file markers of a stopped run, so it keeps those
   files even if no worker has picked up the queued batch yet.
 - A running batch checks the status before each file and stops once it is
@@ -151,8 +151,7 @@ Once that commits, it:
   and notifications to the abort.
 - A caller waiting on a synchronous API deployment `POST` gets 422 for an aborted
   run, the same as polling with `GET`. Both apply the same result filters.
-- Later status writes from workers cannot undo the abort, unless the run's
-  `queue_message_id` is empty.
+- Later status writes from workers cannot undo the abort.
 
 ### Errors
 
@@ -190,13 +189,11 @@ callback reports an aborted run with a completed file as completed.
   pick it up while the old worker finishes it: double LLM spend, and two writes to
   a database destination. Wait for that file to finish before re-running.
 - **A dead worker's run never gets its callback**, and neither does a run whose
-  batch fails while the backend can't be reached. The pipeline status,
+  batch fails and then can't write its status. The pipeline status,
   notifications and file counts are still set by the abort, but usage for its
   completed files is not committed and its execution directory, which can hold
   uploaded documents, is not cleaned up. It stays in storage until something else
   deletes it. The reaper's `ERROR` path has the same gap.
-- A run whose `queue_message_id` is empty (from before the PG queue, or whose
-  handle write failed) is not protected from a late worker status write.
 - The file being processed when the abort lands is billed once it finishes, but an
   API caller can't get its result: the first read after the abort returns the
   results so far and discards them, and later reads answer 406. Its processing cost

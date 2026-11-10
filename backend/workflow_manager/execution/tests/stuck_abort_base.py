@@ -68,8 +68,12 @@ class StuckAbortTestBase(GroupSharingTestBase):
         resource: Any = None,
         status: ExecutionStatus = ExecutionStatus.EXECUTING,
         idle: timedelta = OLD,
+        queue_message_id: int | None = 1,
     ) -> WorkflowExecution:
-        """A PG-transport run whose last own write was ``idle`` ago."""
+        """A run whose last own write was ``idle`` ago.
+
+        Scheduled and API-triggered pipeline runs have no ``queue_message_id``.
+        """
         execution: WorkflowExecution = WorkflowExecution.objects.create(
             workflow=self.workflow,
             pipeline_id=resource.id if resource else None,
@@ -77,7 +81,7 @@ class StuckAbortTestBase(GroupSharingTestBase):
             execution_method=WorkflowExecution.Method.DIRECT,
             execution_type=WorkflowExecution.Type.COMPLETE,
             status=status.value,
-            queue_message_id=1,
+            queue_message_id=queue_message_id,
         )
         self.backdate(WorkflowExecution, execution.pk, idle)
         execution.refresh_from_db()

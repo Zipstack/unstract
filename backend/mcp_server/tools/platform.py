@@ -178,8 +178,8 @@ def platform_read_me_first(context: PlatformMCPContext) -> dict[str, Any]:
         "to_run_an_extraction": (
             "Call listApiDeployments for an api_name, then extractDocument "
             "with that name and your document URLs. If the response is not "
-            "already COMPLETED, poll getExecutionStatus with the returned "
-            "execution_id.\n\n"
+            "already COMPLETED, ERROR or STOPPED, poll getExecutionStatus with "
+            "the returned execution_id.\n\n"
             "The same extraction is also available on a deployment-scoped "
             "server at /deployment/api/<org>/<api_name>/mcp, which takes that "
             "one deployment's own API key and can reach nothing else. Both "

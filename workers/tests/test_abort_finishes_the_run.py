@@ -34,6 +34,7 @@ ERROR = ExecutionStatus.ERROR.value
 COMPLETED = ExecutionStatus.COMPLETED.value
 _TASKS = "file_processing.tasks"
 _REFUSAL = {"status": "skipped", "reason": "already_final", "new_status": STOPPED}
+_COMPLETED_REFUSAL = {**_REFUSAL, "new_status": COMPLETED}
 _UPDATED = {"status": "updated"}
 
 
@@ -105,7 +106,7 @@ def _failing_batch(write: Any) -> tuple[Any, Any, Any]:
 def test_a_batch_failing_after_the_abort_counts_down() -> None:
     """Also covers an abort landing after the batch's last status check."""
     stages, factory, client = _failing_batch(SimpleNamespace(data=_REFUSAL))
-    context: Any = {"execution_id": "e", "batch_index": 0, "callback_descriptor": {}}
+    context: Any = {"execution_id": "e", "batch_index": 3, "callback_descriptor": {}}
     with (
         stages,
         factory,
@@ -117,18 +118,27 @@ def test_a_batch_failing_after_the_abort_counts_down() -> None:
 
     mark = client.update_workflow_execution_status.call_args.kwargs
     assert (mark["execution_id"], mark["status"]) == ("e", ERROR)
+    # The same write as the barrier's own mark (see test_pg_barrier).
+    assert mark["error_message"] == "[pg-barrier-abort] batch 3 failed."
+    assert mark["cascade_terminal_files"] is True
     assert decrement.call_args.args[0]["failed_files"] == 2
     assert SKIPPED_TERMINAL_EXECUTION_KEY not in decrement.call_args.args[0]
     abort.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    "write", [SimpleNamespace(data=_UPDATED), APIRequestError("500")], ids=["up", "down"]
+    "write",
+    [
+        SimpleNamespace(data=_UPDATED),
+        SimpleNamespace(data=_COMPLETED_REFUSAL),
+        APIRequestError("500"),
+    ],
+    ids=["up", "completed", "down"],
 )
 def test_a_batch_failing_in_a_live_run_still_raises(write: Any) -> None:
     stages, factory, _ = _failing_batch(write)
     with stages, factory, pytest.raises(RuntimeError, match="boom"):
-        _run_stages_under_barrier(_PAYLOAD, "task-1")
+        _run_stages_under_barrier(_PAYLOAD, "task-1", 0)
 
 
 def _status_for(run_status: str, successful: int, failed: int) -> str:
@@ -450,3 +460,15 @@ def test_the_final_log_tells_a_stopped_run_apart(
         workflow_logger.publish_final_workflow_logs(3, 1, 2, stopped=stopped)
 
     assert mock.call(state, message, mock.ANY) in update.call_args_list
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"), [(STOPPED, (3, 3, 0)), (COMPLETED, (3, 2, 1))]
+)
+def test_a_stopped_runs_final_log_uses_the_saved_counts(
+    status: str, expected: tuple[int, int, int]
+) -> None:
+    worker = {"total_files": 3, "successful_files": 2, "failed_files": 1}
+    saved = {"execution": {"total_files": 3, "successful_files": 3, "failed_files": 0}}
+
+    assert cb._final_log_counts(worker, saved, status) == expected

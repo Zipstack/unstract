@@ -47,8 +47,9 @@ def read_me_first(context: MCPContext) -> dict[str, Any]:
             "1. Call getApiInfo to confirm the deployment is active and see "
             "what it is meant to process.",
             "2. Call extractDocument with the URL(s) of the document(s).",
-            "3. If the response has execution_status COMPLETED, the result is "
-            "already in the response — you are done.",
+            "3. If the response has execution_status COMPLETED, ERROR or "
+            "STOPPED, it is final and any result is already in it — you are "
+            "done.",
             "4. Otherwise poll getExecutionStatus with the returned "
             "execution_id until the status is COMPLETED, ERROR or STOPPED, pausing a "
             "few seconds between polls.",

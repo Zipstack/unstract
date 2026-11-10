@@ -401,39 +401,55 @@ class AbortExecutionTests(StuckAbortTestBase):
         response = _abort(request)
         self.assertIn(response.status_code, (401, 403))
 
-    def test_later_completion_cannot_undo_the_abort(self) -> None:
-        execution = self.execution(self.pipeline())
-        self._abort(self.owner, execution.id)
+    def test_later_writes_cannot_undo_the_abort(self) -> None:
+        # Scheduled and API-triggered pipeline runs have no queue_message_id.
+        for queue_message_id in (1, None):
+            for status in (ExecutionStatus.COMPLETED, ExecutionStatus.ERROR):
+                with self.subTest(queue_message_id=queue_message_id, status=status):
+                    execution = self.execution(
+                        self.pipeline(), queue_message_id=queue_message_id
+                    )
+                    self._abort(self.owner, execution.id)
 
+                    out = self._write_status(execution, {"status": status.value})
+
+                    self.assertEqual(out.data.get("reason"), "already_final")
+                    self.assertEqual(out.data.get("new_status"), "STOPPED")
+                    self.assertEqual(
+                        self._status(execution), ExecutionStatus.STOPPED.value
+                    )
+
+    @staticmethod
+    def _write_status(execution: WorkflowExecution, data: dict[str, Any]) -> Any:
+        """A worker's status write through the internal API."""
         view = WorkflowExecutionInternalViewSet()
         request = MagicMock()
-        request.data = {"status": ExecutionStatus.COMPLETED.value}
+        request.data = data
         fresh = WorkflowExecution.objects.get(pk=execution.pk)
         with patch.object(view, "get_object", return_value=fresh):
-            out = view.update_status(request, id=str(execution.id))
-
-        self.assertEqual(out.data.get("reason"), "already_final")
-        self.assertEqual(self._status(execution), ExecutionStatus.STOPPED.value)
+            return view.update_status(request, id=str(execution.id))
 
     def test_a_stopped_write_saves_the_counts_of_the_file_rows(self) -> None:
         execution = self.execution(self.pipeline())
         for status in (ExecutionStatus.COMPLETED, ExecutionStatus.COMPLETED):
             self.file(execution, status, idle=RECENT)
-        self.file(execution, ExecutionStatus.EXECUTING, idle=RECENT)
+        in_flight = self.file(execution, ExecutionStatus.EXECUTING, idle=RECENT)
         self._abort(self.owner, execution.id)
+        # The file in progress at the abort finishes afterwards.
+        WorkflowFileExecution.objects.filter(pk=in_flight.pk).update(
+            status=ExecutionStatus.COMPLETED.value
+        )
 
         # The worker reports zeros, as a failed callback's retry does.
-        view = WorkflowExecutionInternalViewSet()
-        request = MagicMock()
-        request.data = {
-            "status": ExecutionStatus.STOPPED.value,
-            "total_files": 0,
-            "successful_files": 0,
-            "failed_files": 0,
-        }
-        fresh = WorkflowExecution.objects.get(pk=execution.pk)
-        with patch.object(view, "get_object", return_value=fresh):
-            out = view.update_status(request, id=str(execution.id))
+        out = self._write_status(
+            execution,
+            {
+                "status": ExecutionStatus.STOPPED.value,
+                "total_files": 0,
+                "successful_files": 0,
+                "failed_files": 0,
+            },
+        )
 
         self.assertEqual(out.data.get("status"), "updated")
         execution.refresh_from_db()
@@ -443,5 +459,5 @@ class AbortExecutionTests(StuckAbortTestBase):
                 execution.successful_files,
                 execution.failed_files,
             ),
-            (3, 2, 1),
+            (3, 3, 0),
         )

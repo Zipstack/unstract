@@ -1955,6 +1955,26 @@ def process_batch_callback_api(
             logger.warning("api_client.close() failed during cleanup: %s", e)
 
 
+def _final_log_counts(
+    aggregated_results: dict[str, Any],
+    execution_data: dict[str, Any] | None,
+    execution_status: str,
+) -> tuple[int, int, int]:
+    """Total, successful and failed files for the final log line.
+
+    A stopped run logs the counts the backend saved from its file rows.
+    """
+    counts = aggregated_results
+    if execution_status == ExecutionStatus.STOPPED.value:
+        saved = (execution_data or {}).get("execution") or {}
+        counts = {**aggregated_results, **saved}
+    return (
+        counts.get("total_files") or 0,
+        counts.get("successful_files") or 0,
+        counts.get("failed_files") or 0,
+    )
+
+
 def _publish_final_workflow_ui_logs(
     context: "CallbackContext",
     aggregated_results: dict[str, Any],
@@ -1971,11 +1991,6 @@ def _publish_final_workflow_ui_logs(
         execution_status: Final execution status
     """
     try:
-        # Extract file statistics from aggregated results
-        total_files = aggregated_results.get("total_files", 0)
-        successful_files = aggregated_results.get("successful_files", 0)
-        failed_files = aggregated_results.get("failed_files", 0)
-
         # Get execution data to extract cost information (with cost calculation)
         execution_response = context.api_client.get_workflow_execution(
             context.execution_id, include_cost=True, file_execution=False
@@ -1988,6 +2003,9 @@ def _publish_final_workflow_ui_logs(
 
         # Cost data is at the top level of response when include_cost=True
         aggregated_usage_cost = execution_response.data.get("aggregated_usage_cost")
+        total_files, successful_files, failed_files = _final_log_counts(
+            aggregated_results, execution_response.data, execution_status
+        )
 
         # Create workflow logger for UI feedback
         # Use general workflow logger since this is called from general workflow callback
@@ -2046,11 +2064,6 @@ def _publish_final_workflow_ui_logs_api(
         execution_status: Final execution status
     """
     try:
-        # Extract file statistics from aggregated results
-        total_files = aggregated_results.get("total_files", 0)
-        successful_files = aggregated_results.get("successful_files", 0)
-        failed_files = aggregated_results.get("failed_files", 0)
-
         # Get execution data to extract cost information (with cost calculation)
         execution_response = context.api_client.get_workflow_execution(
             context.execution_id, include_cost=True, file_execution=False
@@ -2063,6 +2076,9 @@ def _publish_final_workflow_ui_logs_api(
 
         # Cost data is at the top level of response when include_cost=True
         aggregated_usage_cost = execution_response.data.get("aggregated_usage_cost")
+        total_files, successful_files, failed_files = _final_log_counts(
+            aggregated_results, execution_response.data, execution_status
+        )
 
         # Create workflow logger for UI feedback
         # Use API workflow logger since this is called from API workflow callback
