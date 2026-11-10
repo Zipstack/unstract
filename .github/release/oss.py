@@ -8,8 +8,8 @@ Usage (OSS_REPO: a clone of the OSS repo with full history, tags and origin/rele
                                                         its OSS line's tip, after a new OSS RC when the tip has none
   oss.py promote --rc vX.Y.Z-rc.N [--force --reason R] [--stabilized]
                                                         promote the OSS RC the cloud RC pins; prints the stable tag.
-                                                        --stabilized (the promote that leaves every enabled cloud
-                                                        target GA) also tags the OSS line stabilized/X.Y once
+                                                        --stabilized (every cloud Promote passes it: the line's
+                                                        first GA stabilizes it) also tags stabilized/X.Y once
 
 cut, rc and promote print one OSS tag on stdout. Every write is re-runnable: a tag already on the same commit is
 skipped, a tag on another commit fails. A branch and its new tag go in one atomic push.

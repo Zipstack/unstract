@@ -2730,12 +2730,17 @@ class PendingPicksWorkflow(Workflow):
             f"ship it; open conflict PRs: {oss.OSS}#40",
         )
 
-    def test_promote_marks_a_cloud_only_line_stabilized(self):
-        # A cloud-only line: its cloud promote leaves every enabled target GA, so the OSS step gets --stabilized.
-        self.line("1.7", "v1.7.0-rc.1")
-        r = self.promote()
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("stabilized=true\n", self.read("output"))
+    def test_every_product_promotes_the_pinned_oss_rc(self):
+        # The OSS GA and its stabilized/X.Y mark come from whichever product promotes the line first, on-prem
+        # alone included: the OSS step runs for every product, before the cloud tag.
+        with open(os.path.join(HERE, "..", "workflows", "promote.yaml")) as fh:
+            wf = fh.read()
+        start = wf.index("      - name: Promote the pinned OSS RC\n")
+        step = wf[start : wf.index("      - name: ", start + 1)]
+        self.assertNotIn("if:", step)
+        self.assertIn("flags=(--stabilized)", step)
+        self.assertIn("oss.py promote", step)
+        self.assertLess(start, wf.index("      - name: GA commit and tag\n"))
 
     def test_promote_needs_the_rc_on_every_image(self):
         self.line("1.7", "v1.7.0-rc.1")
@@ -2950,35 +2955,6 @@ class PendingPicksWorkflow(Workflow):
         self.assertEqual(
             self.forced(self.promote(FORCE="true", REASON="hotfix")), "hotfix"
         )
-
-    def test_promote_of_both_products_stabilizes_on_the_second(self):
-        # Cloud, promoted first in this run, has tagged v1.7.0; its registry retag is not read back yet.
-        self.line("1.7", "v1.7.0-rc.1")
-        self.write(
-            "reg-on-prem_backend.jsonl",
-            json.dumps(
-                {
-                    "digest": "sha256:op",
-                    "pushed_at": "2026-09-01T00:00:00Z",
-                    "tags": ["v1.7.0-rc.1"],
-                }
-            )
-            + "\n",
-        )
-        dev_git(self.cloud, "tag", "v1.7.0", "v1.7.0-rc.1")
-        dev_git(self.cloud, "push", "-q", "origin", "v1.7.0")
-        plan = lambda products: self.run_step(
-            inline("promote.yaml", "Plan"),
-            RC="v1.7.0-rc.1",
-            TARGET="on-prem",
-            PRODUCTS=products,
-        )
-        r = plan('["cloud", "on-prem"]')
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("stabilized=true\n", self.read("output"))
-        r = plan('["on-prem"]')  # cloud not in this run and not GA: the line stays open
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("stabilized=false\n", self.read("output"))
 
     def test_promote_held_fixes(self):
         self.line("1.7", "v1.7.0-rc.1", "v1.7.0")  # cloud GA: the line is stabilized
@@ -3223,8 +3199,8 @@ class LateTargetWorkflow(Workflow):
         out = dict(line.split("=", 1) for line in self.read("output").splitlines())
         ga = dev_git(self.cloud, "rev-parse", "v1.7.0^{commit}")
         self.assertEqual(
-            (out["stable"], out["sha"], out["new_tag"], out["forced"], out["stabilized"]),
-            ("v1.7.0", ga, "false", "", "true"),
+            (out["stable"], out["sha"], out["new_tag"], out["forced"]),
+            ("v1.7.0", ga, "false", ""),
         )
 
     def test_after_a_patch_pick_builds_the_next_patch_rc(self):
@@ -3241,7 +3217,7 @@ class LateTargetWorkflow(Workflow):
             ("stabilized", True),
         )
 
-    def test_take_rc_never_deletes_the_oss_stabilized_tag(self):
+    def test_take_rc_never_reopens_a_line(self):
         with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
             self.assertNotIn("reopen", fh.read())
         self.assertFalse(hasattr(oss, "reopen"))
