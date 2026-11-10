@@ -143,8 +143,11 @@ class RunAndRecordTests(ConnectionCheckTestBase):
             AdapterInstance.objects.filter(pk=self.adapter.pk).delete()
             return True
 
-        with self.assertRaises(NotFound):
-            run_and_record(AdapterTestResult, self.adapter, run)
+        with self.assertLogs("connection_check.services", "WARNING") as logs:
+            with self.assertRaises(NotFound):
+                run_and_record(AdapterTestResult, self.adapter, run)
+
+        self.assertIn("deleted during its connection test", logs.output[0])
 
     def test_organization_comes_from_the_profile(self) -> None:
         connector = self.make_connector("bucket")

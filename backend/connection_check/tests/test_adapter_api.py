@@ -8,6 +8,7 @@ from unittest.mock import patch
 from adapter_processor_v2.deprecated_adapters import get_deprecation_message
 from adapter_processor_v2.models import AdapterInstance
 from adapter_processor_v2.views import AdapterInstanceViewSet, AdapterViewSet
+from django.utils import timezone
 from rest_framework import status
 
 from connection_check.constants import NOT_CONNECTED_REASON, ConnectionStatus
@@ -140,6 +141,20 @@ class AdapterTestAndRecordTests(ConnectionCheckTestBase):
         self.assertTrue(response.data["tested_before_last_change"])
         self.assertTrue(self._detail()["tested_before_last_change"])
 
+    def test_edit_saved_while_loading_is_flagged(self, _ctx: Any) -> None:
+        load = AdapterInstanceViewSet.get_object
+
+        def load_then_edit(view: Any) -> Any:
+            adapter = load(view)
+            AdapterInstance.objects.filter(pk=adapter.pk).update(modified_at=timezone.now())
+            return adapter
+
+        with patch.object(AdapterInstanceViewSet, "get_object", load_then_edit):
+            with mock_llm(True):
+                self._test()
+
+        self.assertTrue(self._detail()["tested_before_last_change"])
+
     def test_viewer_gets_403(self, _ctx: Any) -> None:
         AdapterInstance.objects.filter(pk=self.adapter.pk).update(shared_to_org=True)
 
@@ -188,6 +203,18 @@ class AdapterListFilterTests(ConnectionCheckTestBase):
         self.assertEqual(self._names("?last_test_status=connected"), {"connected"})
         self.assertEqual(self._names("?last_test_status=failed"), {"failed"})
         self.assertEqual(self._names("?last_test_status=never_tested"), {"untested"})
+        self.assertEqual(self._names("?last_test_status=FAILED"), {"failed"})
+
+    def test_status_filters_leave_other_actions_alone(self, _ctx: Any) -> None:
+        response = self.call(
+            AdapterInstanceViewSet,
+            "get",
+            "retrieve",
+            path="/?failing=true",
+            pk=self.connected.pk,
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
 
     def _page(self, query: str) -> Any:
         path = f"/?page=1&page_size=1{query}"

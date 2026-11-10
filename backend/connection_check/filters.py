@@ -24,5 +24,5 @@ def filter_by_test_status(queryset: QuerySet, params: QueryDict) -> QuerySet:
     """
     if params.get(ListParam.FAILING, "").lower() == "true":
         queryset = failing(queryset)
-    lookup = _STATUS_LOOKUPS.get(params.get(ListParam.LAST_TEST_STATUS, ""))
+    lookup = _STATUS_LOOKUPS.get(params.get(ListParam.LAST_TEST_STATUS, "").lower())
     return queryset.filter(**lookup) if lookup else queryset

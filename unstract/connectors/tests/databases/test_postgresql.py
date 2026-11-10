@@ -56,8 +56,12 @@ class TestMalformedConnectionUrl(unittest.TestCase):
             "postgresql://alice:INPW,db.invalid/prod",
             "postgresql://alice:INPW\0INPW@db.invalid/prod",
         ):
-            with self.subTest(url=url):
-                self._assert_hidden(url, CONNECT_FAILED)
+            echo = psycopg2.OperationalError(f'could not translate host name "{url}"')
+            with self.subTest(url=url), patch("psycopg2.connect", side_effect=echo):
+                with self.assertLogs(PostgreSQL.__module__, "WARNING") as logs:
+                    self._assert_hidden(url, CONNECT_FAILED)
+
+            self.assertNotIn("INPW", "\n".join(logs.output))
 
     def test_bad_port_with_no_at_sign_stays_out_of_the_error(self) -> None:
         for port in ("0", "65536", "123456"):

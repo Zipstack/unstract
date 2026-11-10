@@ -126,8 +126,10 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
         PostgreSQL._check_url(url)
         try:
             return psycopg2.connect(**conn_params)
-        except psycopg2.OperationalError:
+        except psycopg2.OperationalError as exc:
             if PostgreSQL._password_may_be_misread(url):
+                # The error text may echo the password, so only its code is logged.
+                logger.warning("Connect failed, URL may be misread: %s", exc.pgcode)
                 raise ConnectorError(CONNECT_FAILED_MESSAGE) from None
             raise
 
@@ -145,9 +147,9 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
     def _password_may_be_misread(url: str) -> bool:
         """Best-effort check that libpq read part of a password as another setting.
 
-        An unescaped ``@`` or ``/`` moves it into the host, port or database, and
-        libpq's errors echo those. With no ``@``, only a port that isn't a number
-        gives it away. Not caught: any other URL with no ``@``, or a keyword
+        An unescaped ``@``, ``/`` or ``?`` moves it into the host, port or database,
+        and libpq's errors echo those. With no ``@``, only a port that isn't a
+        number from 1 to 65535 gives it away. Not caught: any other URL with no ``@``, or a keyword
         inside a query password.
         """
         # libpq stops reading at a NUL.

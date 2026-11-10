@@ -1,6 +1,6 @@
 """Existing endpoints keep their paths, params, response keys and behaviour:
 the new keys only append, the old test endpoints store nothing, and list
-queries do not grow with the row count.
+queries never read the result table per row.
 """
 
 from types import SimpleNamespace

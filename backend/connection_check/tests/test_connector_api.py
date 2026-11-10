@@ -9,6 +9,7 @@ from connector_auth_v2.models import ConnectorAuth
 from connector_processor.views import ConnectorViewSet
 from connector_v2.models import ConnectorInstance
 from connector_v2.views import ConnectorInstanceViewSet
+from django.utils import timezone
 from rest_framework import status
 
 from connection_check.constants import NOT_CONNECTED_REASON, ConnectionStatus
@@ -122,6 +123,22 @@ class ConnectorTestAndRecordTests(ConnectionCheckTestBase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_edit_saved_while_loading_is_flagged(self) -> None:
+        load = ConnectorInstanceViewSet.get_object
+
+        def load_then_edit(view: Any) -> Any:
+            connector = load(view)
+            ConnectorInstance.objects.filter(pk=connector.pk).update(
+                modified_at=timezone.now()
+            )
+            return connector
+
+        with patch.object(ConnectorInstanceViewSet, "get_object", load_then_edit):
+            with mock_connector_kit(True):
+                self._test()
+
+        self.assertTrue(self._detail()["tested_before_last_change"])
+
 
 class ConnectorListFilterTests(ConnectionCheckTestBase):
     def setUp(self) -> None:
@@ -142,6 +159,20 @@ class ConnectorListFilterTests(ConnectionCheckTestBase):
         self.assertEqual(self._names("?last_test_status=connected"), {"connected"})
         self.assertEqual(self._names("?last_test_status=failed"), {"failed"})
         self.assertEqual(self._names("?last_test_status=never_tested"), {"untested"})
+        self.assertEqual(self._names("?last_test_status=FAILED"), {"failed"})
+
+    def test_status_filters_leave_other_actions_alone(self) -> None:
+        connected = ConnectorInstance.objects.get(connector_name="connected")
+
+        response = self.call(
+            ConnectorInstanceViewSet,
+            "get",
+            "retrieve",
+            path="/?failing=true",
+            pk=connected.pk,
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
 
     def _page(self, query: str) -> Any:
         path = f"/?page=1&page_size=1{query}"

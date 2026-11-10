@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any
 
 from django.db import IntegrityError
@@ -23,14 +24,16 @@ def run_and_record(
     result_model: type[ConnectionTestResult],
     profile: Profile,
     run_test: Callable[[], bool],
+    tested_at: datetime | None = None,
 ) -> ConnectionTestResult:
     """Run ``run_test`` for a saved profile and return the outcome, storing it
     unless a test that started later is already stored.
 
     ``tested_at`` is the start time, so an edit made while the test runs
-    still reads as a change after the test.
+    still reads as a change after the test. Callers pass the time from before
+    they loaded the profile; it defaults to now.
     """
-    tested_at = timezone.now()
+    tested_at = tested_at or timezone.now()
     status, reason = _run(run_test, profile)
     result = result_model(
         profile=profile,
@@ -56,7 +59,12 @@ def _store(
     try:
         result_model.objects.bulk_create([result], ignore_conflicts=True)
     except IntegrityError as exc:
-        # The profile was deleted while its test ran.
+        # Deleted mid-test. The FK is checked at commit, so this needs autocommit.
+        logger.warning(
+            "%s %s was deleted during its connection test",
+            type(result.profile).__name__,
+            result.profile.pk,
+        )
         raise NotFound() from exc
     result_model.objects.filter(
         profile=result.profile, tested_at__lt=result.tested_at
@@ -70,7 +78,7 @@ def _run(
     try:
         connected = run_test()
     except APIException as exc:
-        # Error text can echo settings, so only a 5xx logs it, through its traceback.
+        # Error text can echo settings; only a 5xx (most adapter errors) logs it.
         logger.warning(
             "Connection test failed for %s %s: %s, status %s",
             type(profile).__name__,

@@ -13,6 +13,7 @@ from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from django.http import HttpRequest
 from django.http.response import HttpResponse
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import (
@@ -185,7 +186,7 @@ class AdapterInstanceViewSet(
         return adapter_notification_type(resource.adapter_type)
 
     def get_permissions(self) -> list[Any]:
-        # Frictionless adapters: hidden from non-owners (update/retrieve/test),
+        # Frictionless adapters: blocked for everyone (update/retrieve/test),
         # deletable by any org member. Others use owner / shared-user gating.
         if self.action in ["update", "partial_update", "retrieve", "test_and_record"]:
             return [IsFrictionLessAdapter()]
@@ -201,9 +202,11 @@ class AdapterInstanceViewSet(
         return [IsOwner()]
 
     def get_queryset(self) -> QuerySet | None:
-        return filter_by_test_status(
-            self.get_status_base_queryset(), self.request.query_params
-        )
+        queryset = self.get_status_base_queryset()
+        # The test-status filters are for the list only.
+        if self.action == "list":
+            queryset = filter_by_test_status(queryset, self.request.query_params)
+        return queryset
 
     def get_status_base_queryset(self) -> QuerySet:
         """Visible adapters with every list filter except the test-status ones."""
@@ -530,11 +533,14 @@ class AdapterInstanceViewSet(
     @action(detail=True, methods=["post"])
     def test_and_record(self, request: Request, pk: str | None = None) -> Response:
         """Test the saved adapter and return the result."""
+        # Taken before loading, so an edit saved meanwhile reads as untested.
+        tested_at = timezone.now()
         adapter = self.get_object()
         result = run_and_record(
             AdapterTestResult,
             adapter,
             lambda: AdapterProcessor.test_saved_adapter(adapter),
+            tested_at,
         )
         return Response(ConnectionCheckResultSerializer(result).data)
 

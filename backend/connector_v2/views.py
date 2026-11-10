@@ -15,6 +15,7 @@ from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.exceptions import OAuthTimeOut
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
@@ -92,9 +93,11 @@ class ConnectorInstanceViewSet(
         enforce_capability(request, Capability.CREATE_CONNECTORS)
 
     def get_queryset(self) -> QuerySet | None:
-        return filter_by_test_status(
-            self.get_status_base_queryset(), self.request.query_params
-        )
+        queryset = self.get_status_base_queryset()
+        # The test-status filters are for the list only.
+        if self.action == "list":
+            queryset = filter_by_test_status(queryset, self.request.query_params)
+        return queryset
 
     def get_status_base_queryset(self) -> QuerySet:
         """Visible connectors with every list filter except the test-status ones."""
@@ -279,6 +282,8 @@ class ConnectorInstanceViewSet(
     @action(detail=True, methods=["post"])
     def test_and_record(self, request: Request, pk: str | None = None) -> Response:
         """Test the saved connector and return the result."""
+        # Taken before loading, so an edit saved meanwhile reads as untested.
+        tested_at = timezone.now()
         connector = self.get_object()
         result = run_and_record(
             ConnectorTestResult,
@@ -287,6 +292,7 @@ class ConnectorInstanceViewSet(
                 connector_id=connector.connector_id,
                 credentials=connector.connector_metadata or {},
             ),
+            tested_at,
         )
         return Response(ConnectionCheckResultSerializer(result).data)
 
