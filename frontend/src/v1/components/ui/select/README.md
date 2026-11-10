@@ -192,7 +192,8 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
   state. "Loading…" shows from the moment the list opens, and closing drops
   the loaded options, so a reopened list never flashes stale options or "No
   options". Opening with a saved value before its options have loaded keeps
-  that value active, so it is the active option once the results hold it. In async mode the client filters nothing: the loader's
+  that value active, so it is the active option once the results hold it
+  (unless they return it disabled: a disabled option is never active). In async mode the client filters nothing: the loader's
   result is the list. Pass a stable or inline function, either works (it is
   read from a ref).
 - The selected label comes from the current options, else from any option

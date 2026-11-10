@@ -110,7 +110,12 @@ export function useListbox({
   );
   const visible = useMemo(() => filterBy(query), [filterBy, query]);
 
-  const tracked = visible.findIndex((option) => option.value === activeValue);
+  // A disabled option is never active: one that was remembered (a saved
+  // value whose options were still loading) and arrives disabled, or one
+  // made active by hand, gives way to the first enabled option.
+  const tracked = visible.findIndex(
+    (option) => option.value === activeValue && !option.disabled,
+  );
   const activeIndex = tracked === -1 ? firstEnabled(visible) : tracked;
 
   const setActiveIndex = (index: number) =>

@@ -129,12 +129,13 @@ it("selects the active option with Enter while open", () => {
   expect(result.current.open).toBe(true);
 });
 
-it("does not select a disabled active option, but still keeps Enter", () => {
-  const { result, press, onSelect } = setup();
+it("never makes a disabled option active: it falls back to the first enabled one", () => {
+  const { result, press } = setup();
   press("ArrowDown");
+  press("End");
+  expect(result.current.activeIndex).toBe(3);
   act(() => result.current.setActiveIndex(1));
-  expect(press("Enter")).toHaveBeenCalled();
-  expect(onSelect).not.toHaveBeenCalled();
+  expect(result.current.activeIndex).toBe(0);
 });
 
 it("closes with Escape, preventing the default only while open", () => {
@@ -252,6 +253,14 @@ it("keeps the selection active while an empty list waits for its options", () =>
   rerender({ ...props, options: OPTIONS });
   expect(result.current.activeIndex).toBe(3);
   expect(result.current.activeId).toBe("fruit-option-3");
+});
+
+it("lands on the first enabled option when the saved value arrives disabled", () => {
+  const props = { options: [], selected: ["beta"], filter: false };
+  const { result, rerender } = setup(props);
+  act(() => result.current.setOpen(true));
+  rerender({ ...props, options: OPTIONS });
+  expect(result.current.activeIndex).toBe(0);
 });
 
 it("opens through setOpen at the first enabled option with no selection", () => {
