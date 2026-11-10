@@ -793,6 +793,76 @@ class TestDeleteWithdrawsTheShadowingExemption:
         "label,code",
         [
             (
+                "for target, read INSIDE the body",
+                "for eval in [1]:\n    del eval\n    f = eval\n",
+            ),
+            (
+                "for target, and call what it produced",
+                "for eval in [1]:\n    del eval\n    f = eval\n    f('1+1')\n",
+            ),
+            (
+                "with target, read inside the body",
+                "import json\nclass C:\n    def __enter__(self):\n        return 1\n"
+                "    def __exit__(self, *a):\n        return False\n"
+                "with C() as eval:\n    del eval\n    f = eval\n",
+            ),
+            (
+                "except handler target",
+                "try:\n    pass\nexcept Exception as eval:\n    del eval\n    f = eval\n",
+            ),
+            (
+                "global del inside a function the module then calls",
+                "eval = 1\ndef g():\n    global eval\n    del eval\ng()\nf = eval\n",
+            ),
+        ],
+    )
+    def test_the_check_precedes_every_other_exemption_path(self, label, code):
+        """The first fix put the deletion check in the Module arm only.
+
+        A `for`/`with`/`except` target grants its own exemption through
+        `_binds_as_own_target`, which returns BEFORE the Module arm is reached
+        -- so all four target forms still gate-passed and executed. The
+        `global` case is the mirror image: the del is inside a function, which
+        the collector skipped, but `global` makes it remove the MODULE binding.
+        Both reported by greptile on the commit that closed the first route.
+        """
+        ok, reason = check_code_safe(code)
+        assert ok is False, f"{label}: gate accepted a read of the real builtin"
+        assert reason == "safety gate: disallowed name 'eval'", reason
+
+    @pytest.mark.parametrize(
+        "label,code",
+        [
+            (
+                "del of a dict ENTRY is not an unbind of the dict",
+                "vars = {'drop': 1, 'keep': 2}\ndel vars['drop']\nprint(vars)\n",
+            ),
+            (
+                "del of an ATTRIBUTE is not an unbind of the object",
+                "import json\nvars = json\ndel vars.dumps\n",
+            ),
+            (
+                "a del of a plain local stays local (UnboundLocalError, not builtins)",
+                "def f():\n    eval = 1\n    del eval\n    return eval\n",
+            ),
+        ],
+    )
+    def test_it_refuses_only_real_unbindings(self, label, code):
+        """The first fix collected every `ast.Name` under the del target, so
+        `del vars['drop']` read as deleting `vars` and refused ordinary
+        calculation code. A guard that refuses valid work is its own defect.
+
+        The function-local case is here because it is genuinely safe and must
+        stay allowed: after `del`, the name is still local for the whole scope,
+        so the read raises `UnboundLocalError` rather than reaching builtins.
+        """
+        ok, reason = check_code_safe(code)
+        assert ok is True, f"{label}: gate refused valid code -- {reason}"
+
+    @pytest.mark.parametrize(
+        "label,code",
+        [
+            (
                 "a genuine rebinding with no del still shadows",
                 "eval = 1\nx = eval\n",
             ),

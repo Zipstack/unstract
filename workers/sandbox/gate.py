@@ -576,6 +576,55 @@ def _unconditional_module_bindings(module) -> dict[str, tuple[int, ast.stmt]]:
     return out
 
 
+def _delete_unbinds(target) -> list[str]:
+    """Names a single ``del`` TARGET actually unbinds.
+
+    ``del d["k"]`` and ``del obj.attr`` call ``__delitem__`` /
+    ``__delattr__`` -- they do NOT unbind ``d`` or ``obj``. Collecting every
+    ``ast.Name`` under ``ast.walk(target)`` therefore over-refused ordinary
+    calculation code: ``vars = {"drop": 1}; del vars["drop"]; print(vars)``
+    came back ``disallowed name 'vars'``, and ``del vars.value`` with it.
+    Reported on #2309 alongside the bypasses this rule exists for -- a guard
+    that refuses valid work is its own defect, not a safe default.
+
+    Tuple, list and starred targets ARE unbindings, for every name in them.
+    """
+    if isinstance(target, ast.Name):
+        return [target.id]
+    if isinstance(target, (ast.Tuple, ast.List)):
+        names: list[str] = []
+        for element in target.elts:
+            names.extend(_delete_unbinds(element))
+        return names
+    if isinstance(target, ast.Starred):
+        return _delete_unbinds(target.value)
+    # Subscript / Attribute: a container or attribute mutation, not an unbind.
+    return []
+
+
+def _global_deletes_in(scope) -> set[str]:
+    """Names ``scope`` declares ``global`` AND deletes, at any depth in it.
+
+    Both halves are required. Deleting a plain local is safe (the name stays
+    local, so a later read is an ``UnboundLocalError``), and a bare
+    ``global eval`` with no ``del`` removes nothing.
+    """
+    declared: set[str] = set()
+    deleted: set[str] = set()
+
+    def walk(n):
+        if isinstance(n, ast.Global):
+            declared.update(n.names)
+        elif isinstance(n, ast.Delete):
+            for target in n.targets:
+                deleted.update(_delete_unbinds(target))
+        for child in ast.iter_child_nodes(n):
+            walk(child)
+
+    walk(scope)
+    return declared & deleted
+
+
 def _module_scope_deleted_names(module) -> set[str]:
     """Names a module-scope ``del`` removes, at any depth below the body.
 
@@ -616,12 +665,20 @@ def _module_scope_deleted_names(module) -> set[str]:
 
     def walk(n, top=False):
         if not top and isinstance(n, nested):
+            # A `del` in here unbinds that scope's LOCAL, which is safe: the
+            # name stays local for the whole scope, so a later read raises
+            # UnboundLocalError rather than reaching builtins.
+            #
+            # EXCEPT a name the scope declares `global`. Then the `del` removes
+            # the MODULE binding when the function runs, and a module-level read
+            # afterwards falls through to the builtin --
+            # `eval = 1; def g(): global eval; del eval` then `g(); f = eval`
+            # gate-passed and executed until this arm existed.
+            found.update(_global_deletes_in(n))
             return
         if isinstance(n, ast.Delete):
             for target in n.targets:
-                for sub in ast.walk(target):
-                    if isinstance(sub, ast.Name):
-                        found.add(sub.id)
+                found.update(_delete_unbinds(target))
         for child in ast.iter_child_nodes(n):
             walk(child)
 
@@ -848,6 +905,23 @@ def _shadows_builtin(node, parents) -> bool:
     # `prev` trails `cur` by one, so it is always the direct child of `cur` on
     # the path down to the Load. That is what makes the guarded-region test
     # below an identity check against `cur.body` instead of a walk of it.
+    # BEFORE the walk, not inside the Module arm. A `for`/`with`/`except`
+    # target grants its own exemption through `_binds_as_own_target`, which
+    # returns before the Module arm is ever reached -- so
+    # `for eval in [1]: del eval; f = eval`, with the read INSIDE the body,
+    # gate-passed and executed, and the `with` and `except` target forms with
+    # it. The deletion is a fact about the whole module scope, so it is checked
+    # once, here, where no exemption path can precede it.
+    module = None
+    probe = parents.get(node)
+    while probe is not None:
+        if isinstance(probe, ast.Module):
+            module = probe
+            break
+        probe = parents.get(probe)
+    if module is not None and node.id in _module_scope_deleted_names(module):
+        return False
+
     prev = node
     cur = parents.get(node)
     while cur is not None:
@@ -870,12 +944,6 @@ def _shadows_builtin(node, parents) -> bool:
             if _function_scope_binds(cur, node.id):
                 return True
         elif isinstance(cur, ast.Module):
-            # A module-scope `del` of this name withdraws the exemption: the
-            # binding the collector found may no longer exist at the read, and
-            # then the Load reaches the builtin. See
-            # `_module_scope_deleted_names` for the route this closes.
-            if node.id in _module_scope_deleted_names(cur):
-                return False
             bound = _unconditional_module_bindings(cur).get(node.id)
             if bound is not None:
                 pos, stmt = bound
