@@ -576,19 +576,55 @@ def _unconditional_module_bindings(module) -> dict[str, tuple[int, ast.stmt]]:
     return out
 
 
-def _in_function_scope(node, parents) -> bool:
-    """Is ``node`` lexically inside a function, lambda or comprehension?
+def _declares_global(scope, name: str) -> bool:
+    """Does ``scope`` declare ``name`` ``global`` (or ``nonlocal``) in its own body?
 
-    What makes a module-level `del` irrelevant. A name bound in a function --
-    a parameter, an assignment, a `for`/`with`/`except` target -- is local for
-    that whole scope, so a read of it never consults module globals and a
-    module-level `del` cannot expose the builtin. Reading it after a `del` in
-    the same function raises ``UnboundLocalError`` instead.
+    Module-level, with one definition, because two uses need the same answer:
+    `_function_scope_binds` (a declared name is not a local, so the scope
+    shadows nothing) and `_target_is_function_local` below (a declared name's
+    `for`/`with`/`except` target writes the MODULE binding, so a `del` of it
+    unbinds the global). Keeping one copy is deliberate -- re-listing a
+    predicate is what left `sys` out of the class-pattern rule earlier in this
+    PR.
+
+    Nested scopes are not descended into: a `global` in there is that scope's
+    business.
+    """
+    nested = _FUNCTION_SCOPES + (ast.ClassDef,)
+
+    def walk(n, top=False):
+        if not top and isinstance(n, nested):
+            return False
+        if isinstance(n, (ast.Global, ast.Nonlocal)) and name in n.names:
+            return True
+        return any(walk(c) for c in ast.iter_child_nodes(n))
+
+    return walk(scope, top=True)
+
+
+def _target_is_function_local(node, parents, name: str) -> bool:
+    """Is ``node``'s binder inside a function that treats ``name`` as a LOCAL?
+
+    `_in_function_scope` asked only whether the binder sat lexically inside a
+    function, and that is not the same question. With ``global eval`` in scope,
+    a `for eval in ...` target writes the MODULE binding, so deleting it in the
+    loop body unbinds the global and the next read reaches the real builtin:
+
+        def g():
+            global eval
+            for eval in [1]:
+                del eval
+                f = eval      # the real builtin
+            return f
+
+    That gate-passed on the commit that introduced the coarse check, and
+    calling through `f` sidesteps `_rule_denylisted_call` as well. Reported by
+    greptile.
     """
     cur = parents.get(node)
     while cur is not None:
         if isinstance(cur, _FUNCTION_SCOPES):
-            return True
+            return not _declares_global(cur, name)
         if isinstance(cur, ast.Module):
             return False
         cur = parents.get(cur)
@@ -745,14 +781,7 @@ def _function_scope_binds(scope, name: str) -> bool:
     # Measured: `def f(): global eval; e = eval; eval = 1` gate-passed and
     # executed `__import__('os').getuid()` through the real builtin, because the
     # module global is unset at the read and falls through to builtins.
-    def declares_global(n, top=False):
-        if not top and isinstance(n, nested):
-            return False
-        if isinstance(n, (ast.Global, ast.Nonlocal)) and name in n.names:
-            return True
-        return any(declares_global(c) for c in ast.iter_child_nodes(n))
-
-    if declares_global(scope, top=True):
+    if _declares_global(scope, name):
         return False
 
     # A walrus inside a COMPREHENSION binds in the enclosing scope, not in the
@@ -961,7 +990,7 @@ def _shadows_builtin(node, parents) -> bool:
             # `vars = {}; del vars` followed by `def t(vars): return vars["n"]`
             # -- the parameter is a function LOCAL that no module-level delete
             # can touch, so refusing it broke valid calculations.
-            if _in_function_scope(cur, parents):
+            if _target_is_function_local(cur, parents, node.id):
                 return True
             if node.id in _module_scope_deleted_names_for(cur, parents):
                 return False

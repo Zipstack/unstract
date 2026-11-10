@@ -873,13 +873,15 @@ class TestDeleteWithdrawsTheShadowingExemption:
                 False,
             ),
             (
-                # The case `_in_function_scope` actually exists for, and the
+                # The case `_target_is_function_local` exists for, and the
                 # one the sibling above does NOT reach: here the `del` is at
                 # MODULE scope, so the deleted-names set does contain `vars`,
                 # while the Load resolves through a FUNCTION-scope `for`
                 # target. Without that guard the module delete would refuse a
                 # loop variable it cannot touch. Found by a surviving mutant --
                 # removing the guard broke no test until this case existed.
+                # (It was `_in_function_scope` when first written; that proved
+                # too coarse -- see the global-declaration cases below.)
                 "a module del must not reach a function's own for target",
                 "vars = {}\ndel vars\ndef f(rows):\n    for vars in rows:\n        return vars\n",
                 False,
@@ -888,6 +890,26 @@ class TestDeleteWithdrawsTheShadowingExemption:
                 "but a function that does NOT bind it still reads the builtin",
                 "eval = 1\ndel eval\ndef f():\n    return eval\n",
                 True,
+            ),
+            (
+                # `global` makes the for TARGET write the module binding, so
+                # the del in the body unbinds the global and the next read is
+                # the real builtin. Being lexically inside a function is not
+                # the same question as the target being local, and the first
+                # version of this guard asked only the former.
+                "a global for-target in a function is NOT a local",
+                "def g():\n    global eval\n    for eval in [1]:\n"
+                "        del eval\n        f = eval\n    return f\n",
+                True,
+            ),
+            (
+                # The same shape WITHOUT the declaration: genuinely local, so
+                # the del makes the read an UnboundLocalError, not a builtin.
+                # This is what stops the fix above becoming a blanket refusal.
+                "the same loop without `global` is a real local",
+                "def g():\n    for eval in [1]:\n        del eval\n"
+                "        f = eval\n    return f\n",
+                False,
             ),
         ],
     )
