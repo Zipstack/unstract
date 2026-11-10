@@ -6,6 +6,7 @@ tests drive two independent clients through a trimmed production middleware
 chain rather than calling the views directly.
 """
 
+import contextlib
 import secrets
 import uuid
 from datetime import timedelta
@@ -775,6 +776,99 @@ class SessionEndpointsTest(APITestCase):
         self.assertEqual(desktop.get(SESSIONS_URL).status_code, 401)
         self.assertEqual(len(laptop.get(SESSIONS_URL).json()), 1)
 
+    def test_a_revoked_session_whose_cached_copy_cannot_go_stays_refused(
+        self,
+    ) -> None:
+        # The first refusal must not open the refresh window: one that did would
+        # let every later replay of the cookie in that window skip the row check.
+        laptop = self._sign_in(self.user)
+        desktop = self._sign_in(self.user)
+        desktop_key = self._key(desktop)
+        desktop_id = SessionRecord.objects.get(session_key=desktop_key).id
+
+        with self._copy_delete_fails(desktop_key):
+            laptop.delete(f"{SESSIONS_URL}{desktop_id}/")
+            for attempt in range(3):
+                with self.subTest(attempt=attempt):
+                    # Each refusal clears the cookie; a replay sends it again.
+                    desktop.cookies[settings.SESSION_COOKIE_NAME] = desktop_key
+                    self.assertEqual(desktop.get(SESSIONS_URL).status_code, 401)
+            cache.delete(f"{self.touch_prefix}{desktop_key}")  # A minute passes.
+            desktop.cookies[settings.SESSION_COOKIE_NAME] = desktop_key
+            self.assertEqual(desktop.get(SESSIONS_URL).status_code, 401)
+
+        self.assertIsNone(cache.get(f"{self.touch_prefix}{desktop_key}"))
+
+    def test_revoking_inside_an_open_window_refuses_the_surviving_copy(
+        self,
+    ) -> None:
+        laptop = self._sign_in(self.user)
+        desktop = self._sign_in(self.user)
+        desktop_key = self._key(desktop)
+        desktop_id = SessionRecord.objects.get(session_key=desktop_key).id
+        desktop.get(SESSIONS_URL)  # Opens the desktop's refresh window.
+        self.assertIsNotNone(cache.get(f"{self.touch_prefix}{desktop_key}"))
+
+        with self._copy_delete_fails(desktop_key) as copy_key:
+            laptop.delete(f"{SESSIONS_URL}{desktop_id}/")
+
+        self.assertIsNotNone(caches[settings.SESSION_CACHE_ALIAS].get(copy_key))
+        self.assertEqual(desktop.get(SESSIONS_URL).status_code, 401)
+
+    @contextlib.contextmanager
+    def _copy_delete_fails(self, session_key: str):
+        """Fail deleting only this session's cached copy, not other cache keys."""
+        session_cache = caches[settings.SESSION_CACHE_ALIAS]
+        copy_key = (
+            import_module(settings.SESSION_ENGINE)
+            .SessionStore(session_key=session_key)
+            .cache_key
+        )
+        real_delete = session_cache.delete
+
+        def delete(key, *args, **kwargs):
+            if key == copy_key:
+                raise ConnectionError("redis down")
+            return real_delete(key, *args, **kwargs)
+
+        with patch.object(session_cache, "delete", delete):
+            yield copy_key
+
+    def test_an_unreadable_refresh_window_still_checks_the_row(self) -> None:
+        laptop = self._sign_in(self.user)
+        laptop_key = self._key(laptop)
+        laptop.get(SESSIONS_URL)  # Opens the throttle window.
+        Session.objects.filter(session_key=laptop_key).delete()
+        touch_key = f"{self.touch_prefix}{laptop_key}"
+        real_get = cache.get
+
+        def get_failing_for_the_window(key, *args, **kwargs):
+            # The session's cached copy still loads; only the window is unread.
+            if key == touch_key:
+                raise ConnectionError("redis down")
+            return real_get(key, *args, **kwargs)
+
+        with (
+            self._copy_delete_fails(laptop_key),
+            patch.object(cache, "get", get_failing_for_the_window),
+        ):
+            self.assertEqual(laptop.get(SESSIONS_URL).status_code, 401)
+
+    def test_a_throttled_request_does_not_query_the_session(self) -> None:
+        laptop = self._sign_in(self.user)
+        laptop.get(SESSIONS_URL)  # Opens the throttle window.
+
+        with CaptureQueriesContext(connection) as queries:
+            self.assertEqual(laptop.get(SESSIONS_URL).status_code, 200)
+
+        sql = [q["sql"] for q in queries]
+        # The view itself reads django_session to list sessions; the throttled
+        # touch adds neither the row check nor an activity write.
+        self.assertFalse(
+            [q for q in sql if 'FROM "django_session"' in q and "LIMIT 1" in q]
+        )
+        self.assertFalse([q for q in sql if q.startswith('UPDATE "session_record')])
+
     def test_revoking_the_current_session_when_its_cached_copy_cannot_go(
         self,
     ) -> None:
@@ -1099,6 +1193,7 @@ class TouchIgnoresNonSessionRequestsTest(SimpleTestCase):
         ):
             with patch("account_v2.session_tracking.django_cache") as fake_cache:
                 SessionTracker.touch(request)
+            fake_cache.get.assert_not_called()
             fake_cache.add.assert_not_called()
 
 

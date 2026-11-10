@@ -203,6 +203,16 @@ def _close_socket_room(room: str) -> None:
         logger.warning("Failed to close a socket room", exc_info=True)
 
 
+def _close_refresh_window(session_key: str) -> None:
+    """Send the session's next request to touch()'s row check.
+
+    A cached copy that outlives the ended session can still authenticate, and an
+    open refresh window would admit it without that check.
+    """
+    with contextlib.suppress(Exception):
+        django_cache.delete(f"{_TOUCH_CACHE_PREFIX}{session_key}")
+
+
 class SessionTracker:
     @staticmethod
     def _upsert(request: HttpRequest, user: User, details: dict[str, Any]) -> None:
@@ -262,8 +272,10 @@ class SessionTracker:
         refused. The cache-backed engine authenticates from its cached copy, and
         that copy can outlive the session's row: a concurrent request can re-cache
         a session as it is revoked, or deleting the copy can fail after the row
-        went. Checking the row here, once per refresh interval, bounds either to
-        one interval.
+        went. The row is checked whenever the refresh window is closed, and only a
+        session whose row exists opens it, so a refused session is refused on
+        every request after. Ending a session closes its window too; only a
+        request whose row check raced the end can reopen it, for one interval.
 
         Otherwise best effort: this runs on every authenticated request, so any
         failure is logged and swallowed rather than failing the request.
@@ -272,12 +284,16 @@ class SessionTracker:
         user = request.user
         if not (session_key and user.is_authenticated):
             return True
+        touch_key = f"{_TOUCH_CACHE_PREFIX}{session_key}"
         try:
-            if not django_cache.add(
-                f"{_TOUCH_CACHE_PREFIX}{session_key}",
-                True,
-                timeout=int(ACTIVITY_REFRESH_INTERVAL.total_seconds()),
-            ):
+            try:
+                window_open = django_cache.get(touch_key) is not None
+            except Exception:
+                # Unknown is not open: the cached copy of the session may
+                # still have loaded, so its row must be checked.
+                logger.warning("Could not read the session refresh window", exc_info=True)
+                window_open = False
+            if window_open:
                 return True
             if _sessions_have_rows() and not _session_row_exists(session_key):
                 logger.info("Refused an ended session of user %s", user.pk)
@@ -293,6 +309,14 @@ class SessionTracker:
                     )
                     _replace_with_empty_session(request)
                 return False
+            # Opened only now, past the row check: a window opened by a refused
+            # session would let its later requests skip that check.
+            if not django_cache.add(
+                touch_key,
+                True,
+                timeout=int(ACTIVITY_REFRESH_INTERVAL.total_seconds()),
+            ):
+                return True  # A concurrent request is refreshing it.
             with transaction.atomic():
                 updated = SessionRecord.objects.filter(
                     session_key=session_key, user=user
@@ -424,6 +448,7 @@ class SessionTracker:
             )
             if is_current:
                 _replace_with_empty_session(request)
+        _close_refresh_window(session_key)
         cls.forget(session_key)
 
     @classmethod
@@ -437,6 +462,9 @@ class SessionTracker:
     def _after_end(request: HttpRequest, session_key: str) -> None:
         # Best effort: the session is already over, and an unreachable cache or
         # broker must not undo or fail that.
+        # Again after the commit: a request that saw the row before it went may
+        # have reopened the window meanwhile.
+        _close_refresh_window(session_key)
         _disconnect_session_sockets(session_key)
         try:
             LogService.remove_logs_on_logout(session_id=session_key)
