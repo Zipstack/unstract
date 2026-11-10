@@ -305,41 +305,44 @@ class Lines(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "did not run"):
             oss.promote(self.cloud, self.oss, "v1.7.1-rc.2", force=True, reason="x")
 
-    def test_stabilized_promote_tags_the_line_once(self):
-        # only --stabilized writes the tag, once; a later promote keeps it on the GA commit
+    def test_first_promote_stabilizes_the_oss_line(self):
+        # The OSS line did not move since the cut: the first promote, of any cloud product, still tags its GA, and
+        # that GA alone makes the OSS line stabilized. No stabilized/X.Y mark is written.
+        self.addCleanup(rs.use, rs.SLUG)
+        rs.use("unstract")
+        state = lambda: rs.derive(
+            self.oss,
+            dt.datetime.now(dt.UTC),
+            lambda a: self.fail(f"registry read of {a}"),
+        )
         self.quiet(oss.cut, self.oss, "1.7")
         self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
-        # Cloud GA, on-prem still enabled.
-        oss.promote(self.cloud, self.oss, "v1.7.0-rc.1")
-        self.assertEqual(self.remote("tag", "-l", "stabilized/*"), "")
-        self.clone()
-        oss.promote(self.cloud, self.oss, "v1.7.0-rc.1", stabilized=True)
-        ga = self.remote("rev-parse", "ee-v1.7.0^{commit}")
-        self.assertEqual(self.remote("rev-parse", "stabilized/1.7^{commit}"), ga)
-        self.work("release/1.7", "oss fix")
-        self.quiet(oss.rc, self.oss, "release/1.7")
-        self.pin("ee-v1.7.1-rc.1", "v1.7.1-rc.1")
-        self.clone()
+        st = state()
         self.assertEqual(
-            oss.promote(self.cloud, self.oss, "v1.7.1-rc.1", stabilized=True), "ee-v1.7.1"
+            (st["branches"][0]["state"], st["backport_targets"]["fix"]),
+            ("stabilizing", ["release/1.7"]),
         )
-        self.assertEqual(self.remote("rev-parse", "stabilized/1.7^{commit}"), ga)
+        self.assertEqual(oss.promote(self.cloud, self.oss, "v1.7.0-rc.1"), "ee-v1.7.0")
+        st = state()
+        self.assertEqual(
+            (st["branches"][0]["state"], st["backport_targets"]["fix"]),
+            ("stabilized", []),
+        )
+        self.assertEqual(st["branches"][0]["targets"]["oss"]["ga"]["tag"], "ee-v1.7.0")
+        self.assertEqual(
+            self.remote("tag", "-l", "ee-v*").split(), ["ee-v1.7.0", "ee-v1.7.0-rc.1"]
+        )
+        self.assertEqual(self.remote("tag", "-l", "stabilized/*"), "")
 
-    def test_cli_stabilized_flag(self):
+    def test_cli_promote(self):
         self.quiet(oss.cut, self.oss, "1.7")
         self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
         self.addCleanup(os.chdir, os.getcwd())
         os.chdir(self.cloud)  # main promotes the cloud clone in the working directory
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            code = oss.main(
-                ["--oss-repo", self.oss, "promote", "--rc", "v1.7.0-rc.1", "--stabilized"]
-            )
+            code = oss.main(["--oss-repo", self.oss, "promote", "--rc", "v1.7.0-rc.1"])
         self.assertEqual((code, out.getvalue()), (0, "ee-v1.7.0\n"))
-        self.assertEqual(
-            self.remote("rev-parse", "stabilized/1.7^{commit}"),
-            self.remote("rev-parse", "ee-v1.7.0^{commit}"),
-        )
 
     def test_promote_refuses_a_downgrade(self):
         self.quiet(oss.cut, self.oss, "1.7")
@@ -2731,14 +2734,13 @@ class PendingPicksWorkflow(Workflow):
         )
 
     def test_every_product_promotes_the_pinned_oss_rc(self):
-        # The OSS GA and its stabilized/X.Y mark come from whichever product promotes the line first, on-prem
+        # The OSS GA, which stabilizes the OSS line, comes from whichever product promotes the line first, on-prem
         # alone included: the OSS step runs for every product, before the cloud tag.
         with open(os.path.join(HERE, "..", "workflows", "promote.yaml")) as fh:
             wf = fh.read()
         start = wf.index("      - name: Promote the pinned OSS RC\n")
         step = wf[start : wf.index("      - name: ", start + 1)]
         self.assertNotIn("if:", step)
-        self.assertIn("flags=(--stabilized)", step)
         self.assertIn("oss.py promote", step)
         self.assertLess(start, wf.index("      - name: GA commit and tag\n"))
 

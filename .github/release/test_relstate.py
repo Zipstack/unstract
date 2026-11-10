@@ -1278,13 +1278,7 @@ class Scenario(unittest.TestCase):
             self.g("tag", f"v{line}.7", f"release/{line}")  # never the line's GA
         self.cut("1.7")
         self.g("tag", "ee-v1.7.0-rc.1", "release/1.7")
-        # Stabilizing past its own ee-vX.Y.0 until the paired cloud line's first GA tags it.
-        self.g("tag", "stabilized/1.5", "release/1.5")
-        self.assertEqual(
-            [(b["branch"], b["state"]) for b in self.state()["branches"]][1:],
-            [("release/1.6", "stabilizing"), ("release/1.5", "stabilized")],
-        )
-        self.g("tag", "stabilized/1.6", "release/1.6")
+        # Stabilized from its own ee-vX.Y.0, which cloud Promote tags at the paired cloud line's first GA.
         st = self.state()
         self.assertEqual(
             [(b["branch"], b["state"]) for b in st["branches"]],

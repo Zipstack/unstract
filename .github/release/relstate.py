@@ -83,9 +83,6 @@ def missing_images(target, tag):
 
 
 AR_API = "https://artifactregistry.googleapis.com/v1"
-# OSS tag stabilized/X.Y: the paired cloud line reached its first GA. OSS git cannot see the cloud registry, so cloud
-# Promote writes it.
-STABILIZED = "stabilized/"
 
 
 def ar_repository(kind):
@@ -361,10 +358,9 @@ def target_state(t, name, rows, now):
 
     On-prem: stabilized for WINDOW after the line's first stable chart push (a patch does not extend it), and only while
     among the newest WINDOW_LINES lines with an on-prem GA. A LATEST_ONLY target (cloud): only the latest GA branch
-    for it stays stabilized; older GA branches are past-eos for it. A KEPT target (OSS): stabilizing until its paired
-    cloud line's first GA (the STABILIZED tag, which `oss.py promote --stabilized` writes on every cloud Promote;
-    nothing removes it), then stabilized while the branch exists; the cloud lines pinning it decide its retirement,
-    and cloud Retire names it.
+    for it stays stabilized; older GA branches are past-eos for it. A KEPT target (OSS): stabilized from its GA
+    (cloud Promote tags it at its paired cloud line's first GA) while the branch exists; the cloud lines pinning it
+    decide its retirement, and cloud Retire names it.
     """
     ga = rows[name]["targets"][t]["ga"]
     # Known limit: a target never GA stays stabilizing. Its line goes by Retire one shipped line now (force when the
@@ -372,7 +368,7 @@ def target_state(t, name, rows, now):
     if not ga:
         return "stabilizing"
     if t in KEPT:
-        return "stabilized" if rows[name]["targets"][t]["stabilized"] else "stabilizing"
+        return "stabilized"
     t_ga = sorted(
         (n for n, r in rows.items() if r["targets"].get(t, {}).get("ga")),
         key=lambda n: _key(rows[n]["line"]),
@@ -501,8 +497,6 @@ def _fill_ga(repo, t, builds, anchor, reg, refs, rows):
                 key=_vkey,
             ):
                 tt[key] = {"tag": tags[pick], **reg[artifact][tags[pick]]}
-        if t in KEPT:
-            tt["stabilized"] = bool(_tag_commit(repo, STABILIZED + row["line"]))
 
 
 def _line_state(states):

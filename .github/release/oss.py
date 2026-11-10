@@ -6,10 +6,9 @@ Usage (OSS_REPO: a clone of the OSS repo with full history, tags and origin/rele
   oss.py rc --branch release/X.Y [--slack-url URL] [--force --reason R --notes FILE]
                                                         the tag to pin for the next RC of a cloud line: the tag on
                                                         its OSS line's tip, after a new OSS RC when the tip has none
-  oss.py promote --rc vX.Y.Z-rc.N [--force --reason R] [--stabilized]
+  oss.py promote --rc vX.Y.Z-rc.N [--force --reason R]
                                                         promote the OSS RC the cloud RC pins; prints the stable tag.
-                                                        --stabilized (every cloud Promote passes it: the line's
-                                                        first GA stabilizes it) also tags stabilized/X.Y once
+                                                        The line's first stable tag also makes it stabilized
 
 cut, rc and promote print one OSS tag on stdout. Every write is re-runnable: a tag already on the same commit is
 skipped, a tag on another commit fails. A branch and its new tag go in one atomic push.
@@ -233,27 +232,6 @@ def rc(oss, branch, slack_url="", force=False, reason="", notes=None):
     return tag
 
 
-# Known limit: force accepts an empty reason.
-def promote(repo, oss, cloud_rc, force=False, reason="", stabilized=False):
-    """Known limit: stabilized/X.Y marks the promote, not the retag or chart push after it; if those fail, the OSS
-    line is stabilized before its cloud line is GA.
-    """
-    stable = _promote(repo, oss, cloud_rc, force, reason)
-    mark = rs.STABILIZED + line_of(stable).split("/", 1)[1]
-    if stabilized and not rs._tag_commit(oss, mark):
-        sha = rs._tag_commit(oss, stable)
-        if not sha:
-            raise RuntimeError(f"no OSS tag {stable}")
-        _tag_push(
-            oss,
-            mark,
-            sha,
-            [f"stabilized: {stable} (cloud {cloud_rc})"],
-            f"refs/tags/{mark}",
-        )
-    return stable
-
-
 def _conflicts(branch, force):
     unchecked = []
     try:
@@ -273,8 +251,13 @@ def _conflicts(branch, force):
     return prs, unchecked
 
 
-def _promote(repo, oss, cloud_rc, force, reason):
-    """The other cloud product finds the tag already there and skips the conflict and gate checks."""
+# Known limit: force accepts an empty reason.
+def promote(repo, oss, cloud_rc, force=False, reason=""):
+    """Known limit: the OSS stable tag, which stabilizes the OSS line, comes before the cloud tag, the retag and the
+    chart push; if those fail, the OSS line is stabilized before its cloud line is GA.
+
+    The other cloud product finds the tag already there and skips the conflict and gate checks.
+    """
     pinned = pin(repo, cloud_rc)
     branch = line_of(pinned)
     if "-rc." not in pinned:
@@ -391,7 +374,6 @@ def main(argv=None):
     m.add_argument("--rc", type=rm.option_free, required=True)
     m.add_argument("--force", action="store_true")
     m.add_argument("--reason", default="")
-    m.add_argument("--stabilized", action="store_true")
     a = p.parse_args(argv)
     try:
         if not a.oss_repo:
@@ -401,7 +383,7 @@ def main(argv=None):
         elif a.cmd == "rc":
             tag = rc(a.oss_repo, a.branch, a.slack_url, a.force, a.reason, a.notes)
         else:
-            tag = promote(".", a.oss_repo, a.rc, a.force, a.reason, a.stabilized)
+            tag = promote(".", a.oss_repo, a.rc, a.force, a.reason)
     except RuntimeError as e:
         print(f"::error::{e}", file=sys.stderr)  # stdout is the tag the workflow captures
         return 1
