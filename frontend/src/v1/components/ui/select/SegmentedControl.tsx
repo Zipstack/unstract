@@ -21,14 +21,21 @@ export type SegmentedControlProps = Readonly<{
   onValueChange?: (value: string) => void;
   /** Disables every item. */
   disabled?: boolean;
+  /** Sets `aria-invalid` and `data-invalid` on the group, which draws a destructive outline. */
+  invalid?: boolean;
+  id?: string;
   "aria-label"?: string;
   "aria-labelledby"?: string;
+  "aria-describedby"?: string;
   /** Classes for the group. */
   className?: string;
 }>;
 
+// The invalid outline sits outside the track, so the pills do not move.
+// `outline-1` sets the style too (Tailwind 4), so no bare `outline`, which
+// tailwind-merge would drop as a conflict.
 const GROUP_CLASS =
-  "ui:inline-flex ui:h-8 ui:items-center ui:rounded-md ui:bg-muted ui:p-0.5";
+  "ui:inline-flex ui:h-8 ui:items-center ui:rounded-md ui:bg-muted ui:p-0.5 ui:data-invalid:outline-1 ui:data-invalid:outline-destructive";
 
 const ITEM_CLASS =
   "ui:inline-flex ui:h-7 ui:cursor-pointer ui:items-center ui:justify-center ui:gap-1.5 ui:rounded-sm ui:border-0 ui:bg-transparent ui:px-3 ui:text-body-small ui:font-medium ui:text-muted-foreground ui:outline-none ui:focus-visible:focus-ring ui:disabled:pointer-events-none ui:disabled:opacity-50 ui:data-[state=on]:bg-background ui:data-[state=on]:text-foreground ui:data-[state=on]:shadow-sm";
@@ -47,8 +54,11 @@ export function SegmentedControl({
   defaultValue,
   onValueChange,
   disabled,
+  invalid,
+  id,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
+  "aria-describedby": ariaDescribedBy,
   className,
 }: SegmentedControlProps): JSX.Element {
   if (options.length < 2 || options.length > 5) {
@@ -74,8 +84,12 @@ export function SegmentedControl({
       value={current}
       onValueChange={select}
       disabled={disabled}
+      id={id}
       aria-label={ariaLabel}
       aria-labelledby={ariaLabelledBy}
+      aria-describedby={ariaDescribedBy}
+      aria-invalid={invalid || undefined}
+      data-invalid={invalid ? "" : undefined}
       data-slot="segmented-control"
       className={cn(GROUP_CLASS, className)}
     >

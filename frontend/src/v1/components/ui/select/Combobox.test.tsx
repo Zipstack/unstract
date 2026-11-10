@@ -499,6 +499,31 @@ it("shows a preset selectedOption before any load", () => {
   expect(load).not.toHaveBeenCalled();
 });
 
+it("names the value from the options, then from a seen option, then from selectedOption", async () => {
+  const { load, calls } = deferredLoader();
+  const { user } = renderV1(
+    <Combobox
+      aria-label="Model"
+      loadOptions={load}
+      value="x"
+      selectedOption={{ value: "x", label: "Saved" }}
+    />,
+  );
+  expect(input().value).toBe("Saved");
+  await user.tab();
+  await user.keyboard("{ArrowDown}");
+  await waitFor(() => expect(calls).toHaveLength(1));
+  await act(async () => calls[0].resolve([{ value: "x", label: "Fresh" }]));
+  await user.keyboard("{Escape}");
+  expect(input().value).toBe("Fresh");
+  await user.keyboard("z");
+  await waitFor(() => expect(calls).toHaveLength(2));
+  await act(async () => calls[1].resolve([]));
+  await user.keyboard("{Escape}");
+  // No longer listed: the seen option outranks the preset.
+  expect(input().value).toBe("Fresh");
+});
+
 it("renders a window of a 1,000-option list and filters it to one", async () => {
   stubLayout();
   const options = Array.from({ length: 1000 }, (_, i) => ({

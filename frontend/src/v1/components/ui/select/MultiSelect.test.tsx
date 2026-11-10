@@ -334,6 +334,34 @@ it("names preset chips from selectedOptions before any load", () => {
   expect(load).not.toHaveBeenCalled();
 });
 
+it("names a chip from the options, then from a seen option, then from selectedOptions", async () => {
+  const calls: { resolve: (options: readonly SelectOption[]) => void }[] = [];
+  const load = vi.fn<LoadOptions>(
+    () =>
+      new Promise((resolve) => {
+        calls.push({ resolve });
+      }),
+  );
+  const { user } = renderV1(
+    <MultiSelect
+      aria-label="Tags"
+      loadOptions={load}
+      value={["x"]}
+      selectedOptions={[{ value: "x", label: "Saved X" }]}
+    />,
+  );
+  expect(chipNames()).toEqual(["Saved X"]);
+  await user.tab();
+  await user.keyboard("{ArrowDown}");
+  await waitFor(() => expect(calls).toHaveLength(1));
+  await act(async () => calls[0].resolve([{ value: "x", label: "Fresh X" }]));
+  expect(chipNames()).toEqual(["Fresh X"]);
+  await user.keyboard("z");
+  await waitFor(() => expect(calls).toHaveLength(2));
+  await act(async () => calls[1].resolve([]));
+  expect(chipNames()).toEqual(["Fresh X"]);
+});
+
 it("keeps a loaded chip's label after the query changes", async () => {
   const calls: {
     query: string;

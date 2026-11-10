@@ -1,48 +1,32 @@
 import { cn } from "@v1/lib/cn";
 import { ACTION_ICONS } from "@v1/lib/icons";
-import { getPortalContainer } from "@v1/lib/portal";
 import { Popover as PopoverPrimitive } from "radix-ui";
-import {
-  type FocusEvent,
-  type JSX,
-  type KeyboardEvent,
-  useId,
-  useRef,
-  useState,
-} from "react";
-import { Listbox } from "./Listbox";
+import { type JSX, type KeyboardEvent, useRef, useState } from "react";
 import { OPTION_LEADING_CLASS } from "./OptionRow";
 import type { SelectOption } from "./options";
-import { ICON_BUTTON, isInside, listContentProps } from "./shared";
-import { LIST_SURFACE, TRIGGER_CHEVRON, TRIGGER_FRAME } from "./trigger";
-import { type LoadOptions, useAsyncOptions } from "./useAsyncOptions";
-import { useListbox } from "./useListbox";
+import {
+  ChevronButton,
+  closeOnLeave,
+  fieldInputProps,
+  ICON_BUTTON,
+  type ListFieldProps,
+  ListPopover,
+  toggleList,
+  useLoadedOptions,
+} from "./shared";
+import { TRIGGER_FRAME } from "./trigger";
 
-const ChevronIcon = ACTION_ICONS.expand;
 const ClearIcon = ACTION_ICONS.close;
 const NO_OPTIONS: readonly SelectOption[] = [];
 
-export type ComboboxProps = Readonly<{
-  options?: readonly SelectOption[];
-  /** Server-loaded options; when given, `options` are ignored and the query is sent to the loader. */
-  loadOptions?: LoadOptions;
-  value?: string | null;
-  defaultValue?: string | null;
-  onValueChange?: (value: string | null, option: SelectOption | null) => void;
-  /** The option for `value` when it is not in `options` yet, e.g. a saved choice before the first load. */
-  selectedOption?: SelectOption | null;
-  placeholder?: string;
-  emptyText?: string;
-  disabled?: boolean;
-  invalid?: boolean;
-  id?: string;
-  name?: string;
-  "aria-label"?: string;
-  "aria-labelledby"?: string;
-  "aria-describedby"?: string;
-  /** Classes for the frame. */
-  className?: string;
-}>;
+export type ComboboxProps = ListFieldProps &
+  Readonly<{
+    value?: string | null;
+    defaultValue?: string | null;
+    onValueChange?: (value: string | null, option: SelectOption | null) => void;
+    /** The option for `value` when it is not in `options` yet, e.g. a saved choice before the first load. */
+    selectedOption?: SelectOption | null;
+  }>;
 
 /**
  * A single choice from a long or server-loaded list: typing filters (or, with
@@ -53,67 +37,36 @@ export type ComboboxProps = Readonly<{
  * click so typing replaces it; Escape and leaving the field drop the typed
  * text and show it again.
  */
-export function Combobox({
-  options = NO_OPTIONS,
-  loadOptions,
-  value: valueProp,
-  defaultValue = null,
-  onValueChange,
-  selectedOption,
-  placeholder,
-  emptyText,
-  disabled,
-  invalid,
-  id,
-  name,
-  "aria-label": ariaLabel,
-  "aria-labelledby": ariaLabelledBy,
-  "aria-describedby": ariaDescribedBy,
-  className,
-}: ComboboxProps): JSX.Element {
+export function Combobox(props: ComboboxProps): JSX.Element {
+  const {
+    options = NO_OPTIONS,
+    loadOptions,
+    value: valueProp,
+    defaultValue = null,
+    onValueChange,
+    selectedOption,
+    placeholder,
+    disabled,
+    name,
+    className,
+  } = props;
   const [uncontrolled, setUncontrolled] = useState(defaultValue);
   const value = valueProp === undefined ? uncontrolled : valueProp;
   // Typing since the list last closed: the input shows the query, not the label.
   const [editing, setEditing] = useState(false);
-  // The last loaded options, fed back to the engine (it filters nothing then).
-  const [served, setServed] = useState(NO_OPTIONS);
-  const known = loadOptions ? served : options;
 
   const frameRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  const listbox = useListbox({
-    options: known,
+  const { listbox, loading, error, lookup } = useLoadedOptions({
+    loadOptions,
+    staticOptions: options,
+    extraSelected: selectedOption ? [selectedOption] : undefined,
     selected: value === null ? [] : [value],
     onSelect: select,
-    filter: !loadOptions,
-    id: useId(),
   });
-  const loaded = useAsyncOptions(loadOptions, listbox.query, listbox.open);
-  if (loadOptions && loaded.options !== served) {
-    setServed(loaded.options);
-  }
-
-  // Every option seen, by value, so the selected label survives a list (or a
-  // server response) that no longer holds it. Filling is idempotent, so it
-  // runs while rendering, once per new list.
-  const seen = useRef(new Map<string, SelectOption>());
-  const seenList = useRef<readonly SelectOption[] | null>(null);
-  if (seenList.current !== known) {
-    seenList.current = known;
-    for (const option of known) {
-      seen.current.set(option.value, option);
-    }
-  }
-  if (selectedOption) {
-    seen.current.set(selectedOption.value, selectedOption);
-  }
-  const selected =
-    value === null
-      ? undefined
-      : (known.find((option) => option.value === value) ??
-        seen.current.get(value));
+  const selected = value === null ? undefined : lookup(value);
 
   /** Closes the list and drops the typed text, so the label shows again. */
   function close() {
@@ -124,7 +77,6 @@ export function Combobox({
 
   function select(option: SelectOption) {
     setUncontrolled(option.value);
-    seen.current.set(option.value, option);
     onValueChange?.(option.value, option);
     close();
   }
@@ -144,12 +96,7 @@ export function Combobox({
     }
   }
 
-  /** Focus leaving the field and its list closes the list. */
-  function onBlur(event: FocusEvent<HTMLElement>) {
-    if (!isInside(frameRef.current, contentRef.current, event.relatedTarget)) {
-      close();
-    }
-  }
+  const onBlur = closeOnLeave(frameRef, contentRef, close);
 
   /** The shown label is selected, so the first keystroke replaces it. */
   function selectLabel(event: { currentTarget: HTMLInputElement }) {
@@ -168,7 +115,7 @@ export function Combobox({
           ref={frameRef}
           data-slot="combobox"
           data-state={listbox.open ? "open" : "closed"}
-          data-invalid={invalid ? "" : undefined}
+          data-invalid={props.invalid ? "" : undefined}
           data-disabled={disabled ? "" : undefined}
           className={cn(
             TRIGGER_FRAME,
@@ -185,12 +132,7 @@ export function Combobox({
             ref={inputRef}
             data-slot="control"
             {...listbox.comboboxProps}
-            id={id}
-            aria-label={ariaLabel}
-            aria-labelledby={ariaLabelledBy}
-            aria-describedby={ariaDescribedBy}
-            aria-invalid={invalid || undefined}
-            disabled={disabled}
+            {...fieldInputProps(props)}
             placeholder={placeholder}
             autoComplete="off"
             spellCheck={false}
@@ -221,54 +163,28 @@ export function Combobox({
               <ClearIcon aria-hidden className="ui:size-3.5" />
             </button>
           ) : null}
-          <button
-            type="button"
-            tabIndex={-1}
-            aria-label="Show options"
-            aria-expanded={listbox.open}
-            aria-controls={listbox.listId}
+          <ChevronButton
+            open={listbox.open}
             disabled={disabled}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              // setOpen(true) re-lands the active row, so it runs only when closed.
-              if (listbox.open) {
-                close();
-              } else {
-                listbox.setOpen(true);
-              }
-              inputRef.current?.focus();
-            }}
-            className={cn(ICON_BUTTON, "ui:-mr-1 ui:size-6")}
-          >
-            <ChevronIcon aria-hidden className={TRIGGER_CHEVRON} />
-          </button>
+            listId={listbox.listId}
+            onToggle={() => toggleList(listbox, close, inputRef.current)}
+          />
           {/* A disabled control does not submit, so neither does this. */}
           {name && !disabled ? (
             <input type="hidden" name={name} value={value ?? ""} />
           ) : null}
         </div>
       </PopoverPrimitive.Anchor>
-      <PopoverPrimitive.Portal container={getPortalContainer()}>
-        <PopoverPrimitive.Content
-          ref={contentRef}
-          {...listContentProps(frameRef)}
-          sideOffset={4}
-          align="start"
-          className={cn(
-            LIST_SURFACE,
-            "ui:flex ui:flex-col ui:overflow-hidden ui:w-(--radix-popover-trigger-width)",
-          )}
-        >
-          <Listbox
-            listbox={listbox}
-            loading={loaded.loading}
-            error={Boolean(loaded.error)}
-            emptyText={emptyText}
-            aria-label={ariaLabel}
-            aria-labelledby={ariaLabelledBy}
-          />
-        </PopoverPrimitive.Content>
-      </PopoverPrimitive.Portal>
+      <ListPopover
+        listbox={listbox}
+        loading={loading}
+        error={error}
+        emptyText={props.emptyText}
+        frameRef={frameRef}
+        contentRef={contentRef}
+        aria-label={props["aria-label"]}
+        aria-labelledby={props["aria-labelledby"]}
+      />
     </PopoverPrimitive.Root>
   );
 }

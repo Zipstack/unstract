@@ -105,12 +105,11 @@ list is open" over the APG's caret-only reading.
 `Field` and `useFieldControl` come with P1-T06 (#2416, not merged). Until
 then nothing here imports from it, and the seam is the props: `Select`,
 `Combobox` and `MultiSelect` accept `id`, `aria-describedby`, `invalid` and
-`disabled` on their trigger or input, matching `useFieldControl`'s
-`FieldControlInput`, so they plug in without changes. `SegmentedControl`
-takes `disabled`, `aria-label` and `aria-labelledby` only: it has no `id`,
-`aria-describedby` or `invalid`, and `Field`'s `<label>` cannot name a
-`radiogroup` in any case; label it with `aria-label` or point
-`aria-labelledby` at a visible heading.
+`disabled` on their trigger or input, and `SegmentedControl` on its group,
+matching `useFieldControl`'s `FieldControlInput`, so they plug in without
+changes. `Field`'s `<label>` cannot name a `radiogroup`, though: label a
+`SegmentedControl` with `aria-label` or point `aria-labelledby` at a
+visible heading.
 
 **Interim rule:** do not put these inside `Field` yet; its label would point
 at its own control's id, not at the select. Name them with `aria-label` or
@@ -185,8 +184,9 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
   or "No options". In async mode the client filters nothing: the loader's
   result is the list. Pass a stable or inline function, either works (it is
   read from a ref).
-- Every option seen is remembered by value, so the selected label survives
-  a filter or a server response that no longer holds it.
+- The selected label comes from the current options, else from any option
+  seen before (remembered by value, so it survives a filter or a server
+  response that no longer holds it), else from `selectedOption`.
 
 ## MultiSelect
 
@@ -200,7 +200,7 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
 | `options`, `loadOptions`, `placeholder`, `emptyText` | as Combobox | | the placeholder shows only with no chips |
 | `value` / `defaultValue` | `readonly string[]` | `[]` | chip order; duplicates in a controlled `value` collapse |
 | `onValueChange` | `(values: readonly string[]) => void` | — | |
-| `selectedOptions` | `readonly SelectOption[]` | — | names preset values before the first load |
+| `selectedOptions` | `readonly SelectOption[]` | — | names preset values before the first load; a chip's label comes from the current options, then any option seen, then these |
 | `name` | `string` | — | one hidden input per value, only while enabled |
 | `disabled`, `invalid`, `id`, `aria-label`, `aria-labelledby`, `aria-describedby`, `className` | as Combobox | | |
 
@@ -226,6 +226,8 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
 | `value` / `defaultValue` | `string` | the first enabled option | |
 | `onValueChange` | `(value: string) => void` | — | only with a new, non-empty value |
 | `disabled` | `boolean` | `false` | disables every item |
+| `invalid` | `boolean` | `false` | `aria-invalid` and `data-invalid` on the group, drawn as a destructive outline outside the track |
+| `id`, `aria-describedby` | `string` | — | on the group |
 | `aria-label`, `aria-labelledby` | `string` | — | names the group |
 | `className` | `string` | — | the group |
 

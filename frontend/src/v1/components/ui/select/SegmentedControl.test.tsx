@@ -150,6 +150,31 @@ it("disables every item when the control is disabled", async () => {
   expect(onValueChange).not.toHaveBeenCalled();
 });
 
+it("puts id and aria-describedby on the group", () => {
+  setup({ id: "view", "aria-describedby": "view-help" });
+  const group = screen.getByRole("radiogroup", { name: "View" });
+  expect(group.id).toBe("view");
+  expect(group.getAttribute("aria-describedby")).toBe("view-help");
+});
+
+it("marks the group invalid with aria-invalid and data-invalid", () => {
+  const { rerender } = setup();
+  const group = screen.getByRole("radiogroup", { name: "View" });
+  expect(group.hasAttribute("aria-invalid")).toBe(false);
+  expect(group.hasAttribute("data-invalid")).toBe(false);
+  rerender(<SegmentedControl options={VIEWS} aria-label="View" invalid />);
+  expect(group.getAttribute("aria-invalid")).toBe("true");
+  expect(group.getAttribute("data-invalid")).toBe("");
+  expect(group.className).toContain(
+    "ui:data-invalid:outline-1 ui:data-invalid:outline-destructive",
+  );
+  rerender(
+    <SegmentedControl options={VIEWS} aria-label="View" invalid={false} />,
+  );
+  expect(group.hasAttribute("aria-invalid")).toBe(false);
+  expect(group.hasAttribute("data-invalid")).toBe(false);
+});
+
 it("puts className on the group", () => {
   setup({ className: "ui:w-full" });
   expect(screen.getByRole("radiogroup").className).toContain("ui:w-full");

@@ -1,51 +1,38 @@
 import { cn } from "@v1/lib/cn";
-import { ACTION_ICONS } from "@v1/lib/icons";
-import { getPortalContainer } from "@v1/lib/portal";
 import { Popover as PopoverPrimitive } from "radix-ui";
 import {
-  type FocusEvent,
   type JSX,
   type KeyboardEvent,
   type MouseEvent,
-  useId,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { Chip } from "./Chip";
-import { Listbox } from "./Listbox";
 import type { SelectOption } from "./options";
-import { ICON_BUTTON, isInside, listContentProps } from "./shared";
-import { LIST_SURFACE, TRIGGER_CHEVRON, TRIGGER_FRAME } from "./trigger";
-import { type LoadOptions, useAsyncOptions } from "./useAsyncOptions";
-import { useListbox } from "./useListbox";
+import {
+  ChevronButton,
+  closeOnLeave,
+  fieldInputProps,
+  type ListFieldProps,
+  ListPopover,
+  toggleList,
+  useLoadedOptions,
+} from "./shared";
+import { TRIGGER_FRAME } from "./trigger";
 
-const ChevronIcon = ACTION_ICONS.expand;
 const NO_OPTIONS: readonly SelectOption[] = [];
 const NO_VALUES: readonly string[] = [];
 
-export type MultiSelectProps = Readonly<{
-  options?: readonly SelectOption[];
-  /** Server-loaded options; when given, `options` are ignored and the query is sent to the loader. */
-  loadOptions?: LoadOptions;
-  /** The selected values, in chip order; duplicates are collapsed. */
-  value?: readonly string[];
-  defaultValue?: readonly string[];
-  onValueChange?: (values: readonly string[]) => void;
-  /** The options for values not in `options` yet, e.g. saved choices before the first load. */
-  selectedOptions?: readonly SelectOption[];
-  placeholder?: string;
-  emptyText?: string;
-  disabled?: boolean;
-  invalid?: boolean;
-  id?: string;
-  name?: string;
-  "aria-label"?: string;
-  "aria-labelledby"?: string;
-  "aria-describedby"?: string;
-  /** Classes for the frame. */
-  className?: string;
-}>;
+export type MultiSelectProps = ListFieldProps &
+  Readonly<{
+    /** The selected values, in chip order; duplicates are collapsed. */
+    value?: readonly string[];
+    defaultValue?: readonly string[];
+    onValueChange?: (values: readonly string[]) => void;
+    /** The options for values not in `options` yet, e.g. saved choices before the first load. */
+    selectedOptions?: readonly SelectOption[];
+  }>;
 
 /**
  * Several choices from a long or server-loaded list, shown as chips before
@@ -54,62 +41,34 @@ export type MultiSelectProps = Readonly<{
  * Enter or a click toggles an option and keeps the list open with the query
  * cleared; Backspace in an empty input removes the last chip.
  */
-export function MultiSelect({
-  options = NO_OPTIONS,
-  loadOptions,
-  value: valueProp,
-  defaultValue = NO_VALUES,
-  onValueChange,
-  selectedOptions,
-  placeholder,
-  emptyText,
-  disabled,
-  invalid,
-  id,
-  name,
-  "aria-label": ariaLabel,
-  "aria-labelledby": ariaLabelledBy,
-  "aria-describedby": ariaDescribedBy,
-  className,
-}: MultiSelectProps): JSX.Element {
+export function MultiSelect(props: MultiSelectProps): JSX.Element {
+  const {
+    options = NO_OPTIONS,
+    loadOptions,
+    value: valueProp,
+    defaultValue = NO_VALUES,
+    onValueChange,
+    selectedOptions,
+    disabled,
+    name,
+  } = props;
   const [uncontrolled, setUncontrolled] = useState(defaultValue);
   const raw = valueProp ?? uncontrolled;
   const value = useMemo(() => [...new Set(raw)], [raw]);
-  // The last loaded options, fed back to the engine (it filters nothing then).
-  const [served, setServed] = useState(NO_OPTIONS);
-  const known = loadOptions ? served : options;
 
   const frameRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  const listbox = useListbox({
-    options: known,
+  // A chip keeps its label when the list (or a server response) no longer
+  // holds its option: the lookup remembers every option seen.
+  const { listbox, loading, error, lookup } = useLoadedOptions({
+    loadOptions,
+    staticOptions: options,
+    extraSelected: selectedOptions,
     selected: value,
     onSelect: toggle,
-    filter: !loadOptions,
-    id: useId(),
   });
-  const loaded = useAsyncOptions(loadOptions, listbox.query, listbox.open);
-  if (loadOptions && loaded.options !== served) {
-    setServed(loaded.options);
-  }
-
-  // Every option seen, by value, so a chip keeps its label when the list (or
-  // a server response) no longer holds its option. Filling is idempotent, so
-  // it runs while rendering, once per new list.
-  const seen = useRef(new Map<string, SelectOption>());
-  const seenList = useRef<readonly SelectOption[] | null>(null);
-  if (seenList.current !== known) {
-    seenList.current = known;
-    for (const option of known) {
-      seen.current.set(option.value, option);
-    }
-  }
-  const labelOf = (item: string) =>
-    seen.current.get(item)?.label ??
-    selectedOptions?.find((option) => option.value === item)?.label ??
-    item;
 
   function change(next: readonly string[]) {
     setUncontrolled(next);
@@ -158,12 +117,7 @@ export function MultiSelect({
     }
   }
 
-  /** Focus leaving the field and its list closes the list. */
-  function onBlur(event: FocusEvent<HTMLElement>) {
-    if (!isInside(frameRef.current, contentRef.current, event.relatedTarget)) {
-      close();
-    }
-  }
+  const onBlur = closeOnLeave(frameRef, contentRef, close);
 
   /**
    * A press on the frame's padding or a chip's label focuses the input and
@@ -197,20 +151,20 @@ export function MultiSelect({
           ref={frameRef}
           data-slot="multi-select"
           data-state={listbox.open ? "open" : "closed"}
-          data-invalid={invalid ? "" : undefined}
+          data-invalid={props.invalid ? "" : undefined}
           data-disabled={disabled ? "" : undefined}
           onMouseDown={onFrameMouseDown}
           className={cn(
             TRIGGER_FRAME,
             "ui:h-auto ui:min-h-8 ui:flex-wrap ui:gap-1 ui:py-1",
             "ui:has-[[data-slot=control]:focus-visible]:focus-ring",
-            className,
+            props.className,
           )}
         >
           {value.map((item) => (
             <Chip
               key={item}
-              label={labelOf(item)}
+              label={lookup(item)?.label ?? item}
               disabled={disabled}
               // Backspace removes chips from the input; one tab stop, not N.
               removeFocusable={false}
@@ -224,13 +178,8 @@ export function MultiSelect({
             ref={inputRef}
             data-slot="control"
             {...listbox.comboboxProps}
-            id={id}
-            aria-label={ariaLabel}
-            aria-labelledby={ariaLabelledBy}
-            aria-describedby={ariaDescribedBy}
-            aria-invalid={invalid || undefined}
-            disabled={disabled}
-            placeholder={value.length === 0 ? placeholder : undefined}
+            {...fieldInputProps(props)}
+            placeholder={value.length === 0 ? props.placeholder : undefined}
             autoComplete="off"
             spellCheck={false}
             value={listbox.query}
@@ -244,27 +193,12 @@ export function MultiSelect({
             onBlur={onBlur}
             className="ui:min-w-16 ui:flex-1 ui:border-0 ui:bg-transparent ui:p-0 ui:text-body ui:text-foreground ui:outline-none ui:placeholder:text-muted-foreground"
           />
-          <button
-            type="button"
-            tabIndex={-1}
-            aria-label="Show options"
-            aria-expanded={listbox.open}
-            aria-controls={listbox.listId}
+          <ChevronButton
+            open={listbox.open}
             disabled={disabled}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              // setOpen(true) re-lands the active row, so it runs only when closed.
-              if (listbox.open) {
-                close();
-              } else {
-                listbox.setOpen(true);
-              }
-              inputRef.current?.focus();
-            }}
-            className={cn(ICON_BUTTON, "ui:-mr-1 ui:size-6")}
-          >
-            <ChevronIcon aria-hidden className={TRIGGER_CHEVRON} />
-          </button>
+            listId={listbox.listId}
+            onToggle={() => toggleList(listbox, close, inputRef.current)}
+          />
           {/* A disabled control does not submit, so neither do these. */}
           {name && !disabled
             ? value.map((item) => (
@@ -273,28 +207,17 @@ export function MultiSelect({
             : null}
         </div>
       </PopoverPrimitive.Anchor>
-      <PopoverPrimitive.Portal container={getPortalContainer()}>
-        <PopoverPrimitive.Content
-          ref={contentRef}
-          {...listContentProps(frameRef)}
-          sideOffset={4}
-          align="start"
-          className={cn(
-            LIST_SURFACE,
-            "ui:flex ui:flex-col ui:overflow-hidden ui:w-(--radix-popover-trigger-width)",
-          )}
-        >
-          <Listbox
-            listbox={listbox}
-            loading={loaded.loading}
-            error={Boolean(loaded.error)}
-            emptyText={emptyText}
-            aria-label={ariaLabel}
-            aria-labelledby={ariaLabelledBy}
-            multiselectable
-          />
-        </PopoverPrimitive.Content>
-      </PopoverPrimitive.Portal>
+      <ListPopover
+        listbox={listbox}
+        loading={loading}
+        error={error}
+        emptyText={props.emptyText}
+        multiselectable
+        frameRef={frameRef}
+        contentRef={contentRef}
+        aria-label={props["aria-label"]}
+        aria-labelledby={props["aria-labelledby"]}
+      />
     </PopoverPrimitive.Root>
   );
 }
