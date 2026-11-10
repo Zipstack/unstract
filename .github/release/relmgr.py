@@ -62,7 +62,7 @@ def pr_link(n, repo=None):
 
 def commit_link(sha, n=7, repo=None):
     web = _web(repo)
-    return f"[`{sha[:int(n)]}`]({web}/commit/{sha})" if web else f"`{sha[:int(n)]}`"
+    return f"[`{sha[: int(n)]}`]({web}/commit/{sha})" if web else f"`{sha[: int(n)]}`"
 
 
 def tag_link(tag, repo=None):

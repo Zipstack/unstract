@@ -1091,8 +1091,7 @@ def request_too_large_message(
     else:
         size = f"{total} {_mib(raw_total)}"
         bound = (
-            f"over the {_mib(policy.bytes_ceiling or 0)} limit for one image-mode "
-            "request"
+            f"over the {_mib(policy.bytes_ceiling or 0)} limit for one image-mode request"
         )
     return (
         f"The {images} of this document {size}, {bound}, and "

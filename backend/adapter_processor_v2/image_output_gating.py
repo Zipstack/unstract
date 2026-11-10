@@ -12,7 +12,6 @@ import logging
 from typing import Any
 
 from rest_framework.exceptions import ValidationError
-
 from unstract.sdk1.adapters.x2text.constants import ImageOutputConstants
 
 logger = logging.getLogger(__name__)

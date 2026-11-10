@@ -9,7 +9,6 @@ import logging
 import time
 
 from shared.infrastructure.config import WorkerConfig
-
 from unstract.core.cache.redis_client import create_redis_client
 
 logger = logging.getLogger(__name__)

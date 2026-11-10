@@ -28,7 +28,6 @@ from typing import Any
 
 import requests
 from executor.executors.exceptions import ExtractionError
-
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.llm import LLM
@@ -158,8 +157,7 @@ def build_extraction_image_policy(
         except Exception:
             # Not the adapter's fault: a defect while resolving the limits.
             logger.exception(
-                "Image mode: internal error resolving the image limits of LLM "
-                "adapter %s",
+                "Image mode: internal error resolving the image limits of LLM adapter %s",
                 llm_instance_id,
             )
             raise _internal_error(llm_instance_id) from None

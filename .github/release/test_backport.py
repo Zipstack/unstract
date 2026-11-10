@@ -1305,11 +1305,9 @@ class FinishOpen(unittest.TestCase):
         self.softs, self.soft_rc = [], 0
         self.tmp = tempfile.TemporaryDirectory()
         d = self.tmp.name
-        g = (
-            lambda *a, cwd=d + "/w": subprocess.run(
-                ["git", "-C", cwd, *a], check=True, capture_output=True, text=True
-            ).stdout.strip()
-        )
+        g = lambda *a, cwd=d + "/w": subprocess.run(
+            ["git", "-C", cwd, *a], check=True, capture_output=True, text=True
+        ).stdout.strip()
         subprocess.run(
             ["git", "init", "-q", "--bare", "-b", "main", d + "/o"], check=True
         )
