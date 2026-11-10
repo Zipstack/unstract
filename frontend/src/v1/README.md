@@ -118,10 +118,10 @@ is convention.
   options; it renders every one), `Combobox` for a long or server-loaded
   list (`loadOptions`), `MultiSelect` for several values, and
   `SegmentedControl` for 2 to 5 always-visible options.
-- Every component takes `SelectOption` (`value`, `label`, `description`,
-  `leading`, `disabled`, `keywords`). A provider or connector logo goes in
-  `leading` as `<ProviderLogo decorative … />` from
-  `@v1/components/ui/BrandMark`.
+- `Select`, `Combobox` and `MultiSelect` take `SelectOption`, and
+  `SegmentedControl` takes `SegmentedOption`; the folder README lists their
+  fields. A provider or connector logo goes in a `SelectOption`'s `leading`
+  as `<ProviderLogo decorative … />` from `@v1/components/ui/BrandMark`.
 - Until P1-T06's `Field` lands, name them with `aria-label` or
   `aria-labelledby`; do not put them inside `Field`.
 

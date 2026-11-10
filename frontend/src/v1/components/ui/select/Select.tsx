@@ -119,10 +119,24 @@ export function Select({
           )}
         >
           <SelectPrimitive.Viewport className="ui:flex ui:min-h-0 ui:flex-col ui:gap-0.5 ui:max-h-(--radix-select-content-available-height)">
+            {/*
+             * Radix's Content is the listbox, which must hold at least one
+             * option and nothing but options and groups (axe flags a status
+             * element, even inside a group, and an empty listbox), so the
+             * empty row is a disabled option outside Radix's collection: the
+             * keyboard never lands on it and it cannot be chosen.
+             */}
             {options.length === 0 ? (
-              <output className="ui:flex ui:h-8 ui:items-center ui:px-2 ui:text-caption ui:text-muted-foreground">
+              // biome-ignore lint/a11y/useFocusableInteractive: focus stays on Radix's listbox; this disabled row is never a target.
+              <div
+                role="option"
+                aria-selected={false}
+                aria-disabled
+                data-slot="option-empty"
+                className="ui:flex ui:h-8 ui:items-center ui:px-2 ui:text-caption ui:text-muted-foreground"
+              >
                 No options
-              </output>
+              </div>
             ) : null}
             {options.map((option) => (
               <SelectItem key={option.value} option={option} />

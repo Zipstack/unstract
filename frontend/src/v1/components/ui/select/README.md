@@ -40,7 +40,8 @@ import {
   the rows in view (`@tanstack/react-virtual`). `Select` never virtualises and
   has no `loading` prop. Past five always-visible options, a
   `SegmentedControl` becomes a `Select`.
-- **One option model.** Every component takes `SelectOption`:
+- **One option model.** `Select`, `Combobox` and `MultiSelect` take
+  `SelectOption` (`SegmentedControl` takes its own `SegmentedOption`, below):
 
   ```ts
   type SelectOption = Readonly<{
@@ -54,8 +55,9 @@ import {
   ```
 
   `keywords` feed the Combobox and MultiSelect filter (a case-insensitive
-  substring of the label or any keyword, e.g. a model id); type-ahead in
-  `Select` matches labels only. Logos go in `leading`:
+  substring of the label or any keyword, e.g. a model id). Type-ahead is
+  Radix Select's own (it matches labels); `Combobox` and `MultiSelect`
+  filter instead. Logos go in `leading`:
   `leading: <ProviderLogo provider={adapter.id} name={adapter.name} decorative />`
   from `@v1/components/ui/BrandMark` (decorative, because the label beside it
   already names it). A row is 32 tall, or 48 with a description.
@@ -67,8 +69,11 @@ import {
   Popover lists. In the Popover lists the status rows ("Loading…", "No
   options" or "No matches", "Could not load options") are `<output>`
   elements beside the `role="listbox"` element, never inside it, since a
-  listbox may hold only options. (`Select`'s "No options" row is also an
-  `<output>`, in Radix's Viewport, shown only when the list is empty.)
+  listbox may hold only options. `Select`'s list is Radix's listbox
+  itself, so its "No options" row, shown only when the list is empty, is a
+  disabled `role="option"` outside Radix's collection (the keyboard never
+  lands on it): axe rejects a status element there, even inside a group,
+  and an empty listbox.
 - **Combobox pattern.** `Combobox` and `MultiSelect` follow the ARIA
   combobox-with-listbox pattern: focus stays on the input (`role="combobox"`,
   `aria-expanded`, `aria-controls`, `aria-autocomplete="list"`), which points
@@ -84,7 +89,7 @@ import {
 
 | Key | Select | Combobox | MultiSelect | SegmentedControl |
 | --- | --- | --- | --- | --- |
-| Typing | type-ahead on labels (Radix) | filters and opens | filters and opens | — |
+| Typing | type-ahead on labels (Radix's own) | filters and opens | filters and opens | — |
 | ArrowDown / ArrowUp | open, then move | open, then move (no wrap) | open, then move (no wrap) | — |
 | ArrowLeft / ArrowRight | — | caret | caret | move focus, looping |
 | Home / End | first / last option | first / last while open; caret while closed | as Combobox | first / last item |
@@ -243,9 +248,15 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
 
 ## Chip
 
-`<Chip label="Invoices" onRemove={…} />`. `onRemove` adds the remove button;
-`removeFocusable={false}` takes it out of the tab order (as MultiSelect
-does); `disabled` disables it.
+`<Chip label="Invoices" onRemove={…} />`
+
+| Prop | Type | Default | |
+| --- | --- | --- | --- |
+| `label` | `string` | required | the text; the remove button is named "Remove {label}" |
+| `onRemove` | `() => void` | — | adds the remove button |
+| `removeFocusable` | `boolean` | `true` | `false` takes the remove button out of the tab order (as MultiSelect does) |
+| `disabled` | `boolean` | `false` | disables the remove button |
+| `className` | `string` | — | the chip |
 
 ## Gallery and tests
 
@@ -257,6 +268,10 @@ lists are not gallery entries: Radix portals them out of the rendered
 container. `Listbox.test.tsx` and the component tests cover them, including
 axe on the open state.
 
+- Radix Select is modal while open: it aria-hides the rest of the page,
+  its own focus guards and the trigger included, so a page scan of an open
+  `Select` turns `aria-hidden-focus` off (`Select.test.tsx`); every other
+  rule runs.
 - Virtual lists need a laid-out scroll element: call `stubLayout()` from
   `@v1/test` (the 1,000-option tests in `Combobox.test.tsx` and
   `Listbox.test.tsx` do).

@@ -224,10 +224,26 @@ it("keeps both height caps: max-h-80 on the list, the available height on the vi
   );
 });
 
-it("shows a status row when there are no options", async () => {
+it("shows a disabled No options row when there are no options", async () => {
+  const { user, onValueChange } = setup({ options: [] });
+  await user.click(trigger());
+  const empty = screen.getByRole("option", { name: "No options" });
+  expect(empty.getAttribute("aria-disabled")).toBe("true");
+  expect(empty.getAttribute("aria-selected")).toBe("false");
+  await user.click(empty);
+  await user.keyboard("{ArrowDown}{Enter}");
+  expect(onValueChange).not.toHaveBeenCalled();
+});
+
+it("has no axe violations open with no options", async () => {
   const { user } = setup({ options: [] });
   await user.click(trigger());
-  expect(screen.getByRole("status").textContent).toBe("No options");
+  // Radix Select is modal: it aria-hides the rest of the page, its own
+  // focus guards and the trigger included, while focus is in the list. Any
+  // open Select trips aria-hidden-focus on a page scan, so it is off here.
+  await expect(document.body).toHaveNoA11yViolations({
+    rules: { "aria-hidden-focus": { enabled: false } },
+  });
 });
 
 it("passes name and required to the native select a form submits", async () => {
