@@ -206,8 +206,9 @@ class MainCiAlertTest(unittest.TestCase):
         lines = self.alert(
             GH_FAIL="*/commits/9f7c090652cf6857daa1d6ac0d2214ee49bc2758/pulls"
         )
-        self.assertIn("• 9f7c090: could not look up its PR", lines)
-        self.assertEqual(len(lines), 5)
+        expected = self.alert()
+        expected[3] = "• 9f7c090: could not look up its PR"
+        self.assertEqual(lines, expected)
 
     def test_alert_still_posts_when_the_list_fails(self):
         for call in ("*/runs", "*/compare/*"):
