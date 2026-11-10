@@ -1,0 +1,252 @@
+name: Frontend v1 checks
+
+# The frontend v1 rules as PR checks (P0-T10, UN-4363), reported apart from
+# v0's checks in ci-frontend-lint.yaml. Each guard is its own job so a PR shows
+# which rule failed by name. Every guard has fixture cases in
+# frontend/test-fixtures/v1-boundary/ proving it fails when it should; the
+# "Guard fixtures" job runs them.
+#
+# The seam guard reads PR labels, so it lives in ci-frontend-v1-seam.yaml:
+# re-running these jobs on every label change would cost minutes for nothing.
+#
+# This workflow runs on a clean checkout of the public repository, with no
+# cloud overlay, so green Typecheck, Biome, Purity and Unit tests jobs are the
+# separation guard's "v1 works with no overlay" half. The Build job covers v1
+# only once v0 imports it (the version switch, P0-T03).
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/**"
+      # The guard fixtures also read these (the unit-gate drift check).
+      - ".github/workflows/ci-frontend-v1.yaml"
+      - "tests/groups.yaml"
+  # No `paths` on pull_request: an untriggered workflow reports no check run,
+  # so a required check would wait forever on non-frontend PRs. Filtering is
+  # done by the `changes` job instead; a job skipped via `if:` reports
+  # `skipped`, which satisfies a required check. Same as ci-frontend-lint.yaml.
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # Gating jobs run when `changes` finds frontend files, AND whenever `changes`
+  # itself did not succeed: a broken filter must fail open (run the checks),
+  # never skip them. `!cancelled()` lets them run past a failed dependency.
+  changes:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # dorny/paths-filter lists PR files via the API.
+      pull-requests: read
+    outputs:
+      # Push is already path-filtered by its trigger, so force true off-PR.
+      frontend: ${{ github.event_name != 'pull_request' || steps.filter.outputs.frontend == 'true' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Check for frontend changes
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - "frontend/**"
+              - ".github/workflows/ci-frontend-v1.yaml"
+              - "tests/groups.yaml"
+
+  # Biome's recommended rules and the accessibility rules as errors: biome.json
+  # raises the a11y rules for src/v1, and --error-on-warnings turns every
+  # remaining warning under src/v1 into a failure.
+  biome:
+    name: v1 · Biome
+    needs: changes
+    if: ${{ !cancelled() && github.event.pull_request.draft != true && (needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Setup Biome
+        uses: biomejs/setup-biome@4c91541eaada48f67d7dbd7833600ce162b68f51 # v2.7.1
+        with:
+          version: "2.3.13"
+
+      - name: Run Biome on src/v1
+        working-directory: frontend
+        run: biome ci --error-on-warnings src/v1/
+
+  typecheck:
+    name: v1 · Typecheck
+    needs: changes
+    if: ${{ !cancelled() && github.event.pull_request.draft != true && (needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - name: Install dependencies
+        working-directory: frontend
+        # No dependency lifecycle scripts: nothing here needs them.
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      # scripts/check-v1.mjs --files (TypeScript only, styles only in styles/,
+      # allowed file types, no symlinks, folder taxonomy), then strict tsc.
+      - name: Run v1 typecheck
+        working-directory: frontend
+        run: bun run typecheck:v1
+
+  # No shim, antd, `ant-` class, CSS file, inline style, PropTypes or JS file
+  # under v1, plus the folder import contract and the styling policy. The JS
+  # and CSS-file rules run in the Typecheck job (check-v1 --files).
+  purity:
+    name: v1 · Purity
+    needs: changes
+    if: ${{ !cancelled() && github.event.pull_request.draft != true && (needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Run the import and purity checks
+        working-directory: frontend
+        run: node scripts/check-v1.mjs --code
+
+      - name: Run the styling policy
+        working-directory: frontend
+        run: node scripts/check-v1-styles.mjs
+
+      - name: Run the icon rules
+        working-directory: frontend
+        run: node scripts/check-v1-icons.mjs
+
+  # The v1 unit tests: the rig's `frontend-v1-unit` group (tests/groups.yaml),
+  # run with the same config so CI and the rig cannot disagree. The config
+  # fails the run below v1's coverage threshold. Run here rather than through
+  # ci-test.yaml because its tiers skip frontend-only PRs. Cloud v1 plugins
+  # (vitest.v1-plugins.config.mts) are for the cloud mirror (UN-4614), not here:
+  # OSS has none.
+  unit:
+    name: v1 · Unit tests
+    needs: changes
+    if: ${{ !cancelled() && github.event.pull_request.draft != true && (needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Run v1 unit tests
+        working-directory: frontend
+        # The lockfile's vitest, never a fetched one.
+        run: ./node_modules/.bin/vitest run --config vitest.v1.config.mts
+
+      # The summary is in the log; the lcov report is for reading what a
+      # failed threshold missed.
+      - name: Upload v1 coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: frontend-v1-coverage
+          path: frontend/coverage/v1/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # One production build, then the bundle guard (no v1 module reaches v0 or
+  # antd) and the separation guard (no enterprise plugin code in this repo).
+  build:
+    name: v1 · Build, bundle and separation
+    needs: changes
+    if: ${{ !cancelled() && github.event.pull_request.draft != true && (needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Build and run the bundle guard
+        working-directory: frontend
+        run: node scripts/check-v1-bundle.mjs
+
+      - name: Run the separation guard
+        working-directory: frontend
+        run: node scripts/check-v1-separation.mjs
+
+  # Proves every guard above fails and passes when it should, and that the
+  # unit harness (src/v1/test) fails a test that sends an unmocked request,
+  # and that the Unit tests check fails below the coverage threshold and runs
+  # the rig group's config (node --test, Node 22 APIs). Spawns the real tools, two small
+  # Vite builds included.
+  guard-fixtures:
+    name: v1 · Guard fixtures
+    needs: changes
+    if: ${{ !cancelled() && github.event.pull_request.draft != true && (needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Run the guard fixtures
+        working-directory: frontend
+        run: node --test test-fixtures/v1-boundary/boundary.fixtures.mjs test-fixtures/v1-harness/harness.fixtures.mjs test-fixtures/v1-unit-gate/unit-gate.fixtures.mjs

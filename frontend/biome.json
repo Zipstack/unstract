@@ -207,6 +207,19 @@
               }
             }
           },
+          "a11y": {
+            "noLabelWithoutControl": "error",
+            "noNoninteractiveElementInteractions": "error",
+            "noRedundantRoles": "error",
+            "noStaticElementInteractions": "error",
+            "useAriaPropsSupportedByRole": "error",
+            "useButtonType": "error",
+            "useFocusableInteractive": "error",
+            "useGenericFontNames": "error",
+            "useKeyWithClickEvents": "error",
+            "useSemanticElements": "error",
+            "useValidAnchor": "error"
+          },
           "suspicious": {
             "noExplicitAny": "error"
           }
