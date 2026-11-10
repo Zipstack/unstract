@@ -1,9 +1,11 @@
 name: Main CI failure alert
 
 # Posts to Slack when a watched workflow fails on a push to main, naming the
-# GitHub user of every commit since that workflow's last green run on main. A
-# failure can span several merges because main does not require branches to be
-# up to date, so the culprit is not necessarily the head commit.
+# author of each human PR merged since that workflow's last green run on main,
+# or since its last failing run if main was already failing.
+# Several merges can land between two runs, so the culprit is not necessarily
+# the head commit. A failure caused by something else (a flaky e2e test, a
+# download) is reported the same way.
 
 on:
   workflow_run:
@@ -11,15 +13,52 @@ on:
       - "Run tests (unit + integration + e2e)"
     types: [completed]
     branches: [main]
+  pull_request:
+    paths:
+      # A rename of the watched workflow must run the test that checks its name.
+      # The check is advisory: test is not a required check, so it cannot block
+      # the merge.
+      - .github/workflows/ci-test.yaml
+      - .github/scripts/main-ci-alert.sh
+      - .github/scripts/test_main_ci_alert.py
+      - .github/scripts/testdata/main-ci-alert/**
+      - .github/workflows/main-ci-alert.yaml
 
 permissions:
   actions: read
   contents: read
+  pull-requests: read # commits/<sha>/pulls names each commit's PR
 
 jobs:
-  alert:
-    if: github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.event == 'push'
+  test:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          sparse-checkout: |
+            .github/scripts
+            .github/workflows
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+      - name: Test
+        run: python3 -m unittest discover -s .github/scripts -p 'test_main_ci_alert.py'
+
+  alert:
+    # Whether a job that hits timeout-minutes ends the run timed_out or
+    # cancelled is not documented. cancelled is never alerted, because a run
+    # someone cancelled by hand ends that way too, so such a hang can go
+    # unreported.
+    # A re-run that fails again is alerted again, with the same PR list.
+    if: >-
+      github.event_name == 'workflow_run'
+      && contains(fromJSON('["failure", "startup_failure", "timed_out"]'), github.event.workflow_run.conclusion)
+      && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       # workflow_run checks out the default branch, never the failing run's code.
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -36,6 +75,7 @@ jobs:
           WORKFLOW_ID: ${{ github.event.workflow_run.workflow_id }}
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
+          ALERT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_CREATED: ${{ github.event.workflow_run.created_at }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: .github/scripts/main-ci-alert.sh
