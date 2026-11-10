@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { setOldVersion } from "@v1/app/api";
 import { DEMO_PAGES } from "@v1/app/registry/entries";
 import { buildLiveRegistry, type LiveRegistry } from "@v1/app/registry/live";
+import { toast } from "@v1/lib/notify";
 import { oldVersionStorageKey } from "@v1/lib/oldVersion";
 import { useOldVersionStore } from "@v1/stores/oldVersion";
 import { useEffect } from "react";
@@ -179,6 +180,27 @@ describe("VersionSwitch", () => {
     renderAt("/acme/v1-demo-review", { userId: "8" });
     expect(await screen.findByTestId("v1-demo-review")).toBeTruthy();
     expect(visited).not.toContain("/acme/v0-demo-review");
+  });
+
+  it("mounts the Toaster with the v1 tree, so notify() shows a toast only while v1 renders", async () => {
+    renderAt("/acme/v1-demo");
+    await screen.findByTestId("v1-demo");
+    act(() => {
+      toast.success("Saved", { persistent: true });
+    });
+    expect(screen.getByText("Saved")).toBeTruthy();
+
+    // Moving to a v0 screen unmounts the v1 tree and its Toaster: notify()
+    // falls back to the console.
+    act(() => {
+      navigate("/acme/workflows");
+    });
+    expect(screen.getByTestId("v0").textContent).toBe("v0 other");
+    expect(screen.queryByText("Saved")).toBeNull();
+    const log = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    expect(toast.success("After v1")).toBeUndefined();
+    expect(log).toHaveBeenCalledWith("[v1 notify] After v1");
+    vi.restoreAllMocks();
   });
 
   it("contains a v1 failure in its own boundary instead of unmounting the app", async () => {
