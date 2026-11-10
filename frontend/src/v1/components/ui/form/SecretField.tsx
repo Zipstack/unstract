@@ -1,4 +1,4 @@
-import { composeRefs } from "@v1/lib/compose-refs";
+import { composeRefs } from "@v1/lib/merge-refs";
 import { Copy, Eye, EyeOff } from "lucide-react";
 import { type JSX, useMemo, useRef, useState } from "react";
 import { FieldAction } from "./FieldAction";

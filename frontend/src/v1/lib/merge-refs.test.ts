@@ -1,6 +1,6 @@
 import { createRef } from "react";
 import { expect, it, vi } from "vitest";
-import { composeRefs } from "./compose-refs";
+import { composeRefs } from "./merge-refs";
 
 it("sets object refs and calls callback refs, skipping missing ones", () => {
   const objectRef = createRef<string>();
