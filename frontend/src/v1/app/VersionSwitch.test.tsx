@@ -174,6 +174,20 @@ describe("VersionSwitch", () => {
     expect(where()).toBe("/acme/v1-demo-review");
   });
 
+  it("on a load that starts on a v1 URL with no known user, the toggle changes nothing (until P0-T06)", async () => {
+    // v0 loads the session in PersistentLogin, a v0 route, so a v1 URL never
+    // gets a userId; with no unstract.v1.lastUser there is no user at all.
+    const user = userEvent.setup();
+    renderAt("/acme/v1-demo-review", { userId: null });
+    await user.click(
+      await screen.findByRole("button", { name: "Switch to old version" }),
+    );
+    expect(where()).toBe("/acme/v1-demo-review");
+    expect(screen.getByTestId("v1-demo-review")).toBeTruthy();
+    expect(setOldVersion(true)).toBe(false);
+    expect(window.localStorage.length).toBe(0);
+  });
+
   it("is per user: another user signing in never passes through the previous user's old version", async () => {
     window.localStorage.setItem(oldVersionStorageKey("7"), "true");
     useOldVersionStore.setState({ userId: "7", oldVersion: true });

@@ -25,9 +25,10 @@ export function setOldVersion(on: boolean): boolean {
  * The URL that opens `page` at one of its v1 route patterns, in the version
  * the user gets: the v1 URL when the page is live (unless it is Human Review
  * and the user chose the old version), else its mapped v0 URL. Params are raw
- * values and are encoded here. Null when the page is not declared or the
- * pattern is not one of its v1 routes. Follows the last user known to this
- * browser while a new user's session loads.
+ * values and are encoded here. Null when the page is not declared, the
+ * pattern is not one of its v1 routes, or a `:param` of the pattern is missing
+ * or empty. Follows the last user known to this browser while a new user's
+ * session loads.
  *
  *   resolveUrl("UN05", "/:orgName/workflows/:id", { orgName, id })
  */

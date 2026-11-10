@@ -9,6 +9,7 @@ import {
   DISTRIBUTIONS,
   type Distribution,
   type PageKey,
+  PREVIEW_STORAGE_KEY,
   type RegistryEntry,
 } from "./types";
 import { isPageKey, registryProblems } from "./validate";
@@ -21,12 +22,8 @@ import { isPageKey, registryProblems } from "./validate";
 export const V1_DEV_ROUTES: boolean =
   import.meta.env.VITE_V1_DEV_ROUTES === "true";
 
-/**
- * Dev/test override: a JSON array of declared page keys to render as v1
- * before they are registered (D9), e.g. `["UN05"]`, read when the app loads.
- * Honoured only with V1_DEV_ROUTES.
- */
-export const PREVIEW_STORAGE_KEY = "unstract.v1.preview";
+// Declared in types.ts so the E2E harness can import it without Vite.
+export { PREVIEW_STORAGE_KEY };
 
 /**
  * The build's distribution from VITE_UNSTRACT_DISTRIBUTION: OSS when unset,

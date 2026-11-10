@@ -1,4 +1,5 @@
 import { generatePath, matchRoutes, type Params } from "react-router-dom";
+import { paramNames } from "./patterns";
 import type { Distribution, PageKey, RegistryEntry } from "./types";
 
 /** What the version switch does with a URL. */
@@ -123,8 +124,9 @@ export function resolveRoute(
  * The URL that opens a page's v1 route in the version the user gets: the v1
  * URL when the page is live (unless it is a toggle page and the user chose the
  * old version), else its mapped v0 URL. Params are raw values; they are
- * encoded here. Null when the page is not declared or the pattern is not one
- * of its v1 routes.
+ * encoded here. Null when the page is not declared, the pattern is not one
+ * of its v1 routes, or a `:param` of the pattern is missing or empty (a final
+ * `*` may be omitted).
  */
 export function resolvePageUrl(
   page: PageKey,
@@ -135,6 +137,11 @@ export function resolvePageUrl(
 ): string | null {
   const entry = pages.find((e) => e.page === page);
   if (!entry?.v1Routes.includes(v1Pattern)) {
+    return null;
+  }
+  // generatePath throws on a missing param and drops an empty one's segment
+  // (`/:orgName/x` with "" gives `/x`), so neither can build a right URL.
+  if (paramNames(v1Pattern).some((name) => name !== "*" && !params[name])) {
     return null;
   }
   const live = ctx.entries.some((e) => e.page === page);

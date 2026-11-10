@@ -40,7 +40,8 @@ function checkMapping(
   }
 }
 
-function checkEntry(entry: RegistryEntry, problems: string[]): void {
+/** The entry's own fields: key, pattern syntax, and that it has routes and distributions. */
+function checkShape(entry: RegistryEntry, problems: string[]): void {
   const { page, v1Routes, replaces } = entry;
   if (!isPageKey(page)) {
     problems.push(`${page}: not a page key (UN01–UN20, LW01–LW07 or DEMO-…)`);
@@ -57,40 +58,70 @@ function checkEntry(entry: RegistryEntry, problems: string[]): void {
   if (!entry.distributions.length) {
     problems.push(`${page}: ships in no distribution`);
   }
-  if (entry.toggle && !TOGGLE_PAGES.includes(page)) {
+}
+
+function checkToggle(entry: RegistryEntry, problems: string[]): void {
+  if (entry.toggle && !TOGGLE_PAGES.includes(entry.page)) {
     problems.push(
-      `${page}: only Human Review (UN11) may honour the old-version preference (D14)`,
+      `${entry.page}: only Human Review (UN11) may honour the old-version preference (D14)`,
     );
   }
-  // A URL matching both a v1 route and a different v0 route of the page is
-  // ambiguous: the more specific pattern wins, so a redirect can land on the
-  // other version and bounce on to the wrong screen, or back, forever.
-  // Identical patterns (the page keeps its v0 URL) are fine.
-  for (const v1 of v1Routes) {
-    for (const v0 of replaces) {
+}
+
+/**
+ * A URL matching both a v1 route and a different v0 route of the page is
+ * ambiguous: the more specific pattern wins, so a redirect can land on the
+ * other version and bounce on to the wrong screen, or back, forever.
+ * Identical patterns (the page keeps its v0 URL) are fine.
+ */
+function checkSamePageOverlap(entry: RegistryEntry, problems: string[]): void {
+  for (const v1 of entry.v1Routes) {
+    for (const v0 of entry.replaces) {
       if (v1 !== v0 && patternsOverlap(v1, v0)) {
-        problems.push(`${page}: v1 route ${v1} overlaps v0 route ${v0}`);
+        problems.push(`${entry.page}: v1 route ${v1} overlaps v0 route ${v0}`);
       }
     }
   }
+}
+
+/** Every route in `routes` has a key in the `name` mapping. */
+function checkCoverage(
+  entry: RegistryEntry,
+  name: "toV0" | "toV1",
+  routes: readonly string[],
+  missing: (pattern: string) => string,
+  problems: string[],
+): void {
+  for (const pattern of routes) {
+    if (!(pattern in entry[name])) {
+      problems.push(`${entry.page}: ${missing(pattern)}`);
+    }
+  }
+}
+
+function checkEntry(entry: RegistryEntry, problems: string[]): void {
+  const { v1Routes, replaces } = entry;
+  checkShape(entry, problems);
+  checkToggle(entry, problems);
+  checkSamePageOverlap(entry, problems);
   checkMapping(entry, "toV1", replaces, v1Routes, problems);
   checkMapping(entry, "toV0", v1Routes, replaces, problems);
-  for (const pattern of replaces) {
-    if (!(pattern in entry.toV1)) {
-      problems.push(
-        `${page}: v0 route ${pattern} has no v1 route to redirect to`,
-      );
-    }
-  }
+  checkCoverage(
+    entry,
+    "toV1",
+    replaces,
+    (p) => `v0 route ${p} has no v1 route to redirect to`,
+    problems,
+  );
   // Every v1 route maps back: Human Review's old-version mode needs it, and
   // so does resolveUrl for a page that is declared but not live yet.
-  for (const pattern of v1Routes) {
-    if (!(pattern in entry.toV0)) {
-      problems.push(
-        `${page}: v1 route ${pattern} has no v0 route to map back to`,
-      );
-    }
-  }
+  checkCoverage(
+    entry,
+    "toV0",
+    v1Routes,
+    (p) => `v1 route ${p} has no v0 route to map back to`,
+    problems,
+  );
 }
 
 /**

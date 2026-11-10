@@ -3,8 +3,18 @@
  *
  * This folder's data files (types.ts, entries.ts) import only each other, with
  * `./`, and never touch `import.meta.env`, so a Playwright E2E harness (no
- * Vite, no `@v1` alias) can import them; P0-T09 (UN-4345) wires one in.
+ * Vite, no `@v1` alias) can import them; P0-T09 (UN-4345) wires one in. The
+ * same holds for `lib/oldVersion.ts` (the old-version preference keys), which
+ * imports nothing. Keep it that way: `live.ts` reads `import.meta.env` when it
+ * loads, so a key the harness needs is declared here, not there.
  */
+
+/**
+ * Dev/test override: a JSON array of declared page keys to render as v1
+ * before they are registered (D9), e.g. `["UN05"]`, read when the app loads.
+ * Honoured only with VITE_V1_DEV_ROUTES=true.
+ */
+export const PREVIEW_STORAGE_KEY = "unstract.v1.preview";
 
 /** The builds the frontend ships in. */
 export const DISTRIBUTIONS = ["oss", "cloud", "onprem"] as const;

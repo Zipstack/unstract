@@ -131,6 +131,14 @@ only when a v1 page first renders.
   reload. `unstract.v1.lastUser` lets a reload apply it before the session
   loads; on a shared browser that is the previous user's choice until the
   session says otherwise.
+- Until the v1 session lands (P0-T06), the switch learns the user only from
+  v0's session, which v0 loads in `PersistentLogin`, a v0 route. A page load
+  that starts on a v1 URL never loads it, so the switch has only
+  `unstract.v1.lastUser`. With none (a fresh browser, or an E2E context
+  signed in by API), `setOldVersion` returns false and changes nothing; with
+  another person's, a choice made there is saved as theirs. Both last until a
+  v0 page loads in that tab. E2E round trips seed `unstract.v1.lastUser` or
+  open a v0 page first.
 - `VITE_V1_DEV_ROUTES=true` (the E2E image, or `.env` locally) registers the
   demo pages (`/:orgName/v1-demo`, `/:orgName/v1-demo-review`, and their v0
   stand-ins `/:orgName/v0-demo…`). It also renders declared pages as v1 before

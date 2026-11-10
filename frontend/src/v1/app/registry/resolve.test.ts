@@ -227,6 +227,36 @@ describe("resolvePageUrl", () => {
       resolvePageUrl("UN11", "/:orgName/nope", params, entries, ctx),
     ).toBeNull();
   });
+  it("is null, not a throw or a wrong URL, when a param is missing or empty", () => {
+    const missingOrEmpty: Record<string, string>[] = [
+      { orgName: "acme" },
+      { orgName: "", id: "9" },
+    ];
+    for (const ctx of [
+      { entries, oldVersion: false },
+      { entries: [], oldVersion: false },
+    ]) {
+      for (const bad of missingOrEmpty) {
+        expect(
+          resolvePageUrl(
+            "UN11",
+            "/:orgName/hitl/:id/approve",
+            bad,
+            entries,
+            ctx,
+          ),
+        ).toBeNull();
+      }
+    }
+  });
+  it("lets a final splat be omitted", () => {
+    expect(
+      resolvePageUrl("UN05", "/:orgName/flows/:id/*", params, entries, {
+        entries,
+        oldVersion: false,
+      }),
+    ).toBe("/acme/flows/9");
+  });
 });
 
 /** Mapping both ways, for every entry the app declares. */
