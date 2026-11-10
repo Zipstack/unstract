@@ -155,6 +155,19 @@ class AdapterTestAndRecordTests(ConnectionCheckTestBase):
 
         self.assertTrue(self._detail()["tested_before_last_change"])
 
+    def test_viewer_sees_the_status_but_not_the_reason(self, _ctx: Any) -> None:
+        AdapterInstance.objects.filter(pk=self.adapter.pk).update(shared_to_org=True)
+        reason = "Incorrect API key provided: sk-te****test."
+        self.store_result(AdapterTestResult, self.adapter, ConnectionStatus.FAILED, reason)
+
+        viewer = self.call(AdapterInstanceViewSet, "get", "list", self.member)
+        viewer_row = self.rows(viewer)[0]
+        owner_row = self.rows(self._list())[0]
+
+        self.assertEqual(viewer_row["last_test_status"], ConnectionStatus.FAILED)
+        self.assertIsNone(viewer_row["last_failure_reason"])
+        self.assertEqual(owner_row["last_failure_reason"], reason)
+
     def test_viewer_gets_403(self, _ctx: Any) -> None:
         AdapterInstance.objects.filter(pk=self.adapter.pk).update(shared_to_org=True)
 

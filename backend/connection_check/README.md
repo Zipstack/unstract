@@ -72,7 +72,7 @@ end with four keys, after every existing key:
 |---|---|---|
 | `last_test_status` | `connected` \| `failed` \| `never_tested` | Outcome of the latest stored test |
 | `last_tested_at` | datetime or `null` | When that test started |
-| `last_failure_reason` | string or `null` | Set only when `failed` |
+| `last_failure_reason` | string or `null` | Set only when `failed`. On adapters, `null` for callers who can't edit the adapter |
 | `tested_before_last_change` | bool | The profile's `modified_at` is later than `last_tested_at`; `false` when never tested |
 
 `tested_before_last_change` follows `modified_at`, so anything that saves the
