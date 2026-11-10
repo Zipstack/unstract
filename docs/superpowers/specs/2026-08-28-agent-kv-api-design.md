@@ -605,3 +605,38 @@ Changes to `src/kv` in the port — the engine's extraction logic is otherwise u
 Feature-flagged (Flipt) on the cloud deployment; OSS scaffold merges dark (fails closed
 without plugin, D3). Sandbox worker ships before the first flag-on. MCP (D8), batch,
 webhooks-if-cut, and the enforce_type reconciliation follow as separate efforts.
+
+**Flipt gate NOT built (deliberate deviation, 2026-11-10).** The sentence above
+is the spec's plan and is kept as written; what shipped differs, and this note
+is the difference rather than a quiet edit.
+
+There is no Flipt flag on the `kv` path — not in the OSS backend, the cloud
+capability marker, or the executor plugin. `AGENT_KV_KV_EXTRACTOR_ENABLED` is
+**not** a substitute: it is derived in the chart from whether `workerPgAgentKv`
+is deployed, so it answers "does this deployment drain
+`celery_executor_agentic_kv`" (capability, per-deployment, changes only on a
+chart deploy) and not "should this org see `kv` yet" (rollout, per-org, runtime).
+Those are the two jobs one hand-set flag was doing before it was derived.
+
+What this costs, stated plainly so nobody rediscovers it as a surprise: there is
+**no staged rollout**. `global.pgWorkerFleet` is `enabled: true, except: []` in
+base values, so the pool deploys and the flag derives `"true"` everywhere —
+`kv` becomes available to **every org in prod.us and prod.eu at once** on the
+first deploy, and on every on-prem install. There is no way to enable one tenant,
+watch the OCR/LLM spend, and then widen. The spec's own phrase "before the first
+flag-on" presumes a per-org flag-on event that does not exist.
+
+Why: key-value extraction became an on-prem feature after this spec was written
+(see the on-prem enablement in unstract-cloud#1816), and requiring an operator to
+find and set a flag for a shipped feature was judged the wrong default. Decided
+during the review of #2309 / unstract-cloud#1816.
+
+The other two clauses above still hold and are implemented: the OSS scaffold does
+fail closed without the plugin (D3 — `get_plugin("agent_kv")` falsy ⇒
+`EngineUnavailable`), and the sandbox worker does ship first (#2309).
+
+If staged rollout is wanted later, add the Flipt gate rather than re-purposing
+the derived flag — `unstract.flags.client.FliptClient` already exists with
+precedent in `backend/plugins/authentication/auth_unstract_id/flags.py`, and the
+cloud capability marker is the natural home, since the subscription gate already
+lives there.
