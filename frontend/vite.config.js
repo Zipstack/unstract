@@ -29,7 +29,7 @@ const ASSET_EXTENSIONS = new Set([
 // Asset imports (images, SVGs, etc.) are resolved to a module that exports
 // an empty string as default, so static `import logo from "..."` statements
 // don't break the build.
-function optionalPluginImports() {
+export function optionalPluginImports() {
   return {
     name: "optional-plugin-imports",
     resolveId(source, importer) {
