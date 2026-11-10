@@ -33,6 +33,12 @@ services:
   platform-service:
     image: unstract/platform-service:${UNSTRACT_TEST_VERSION:-latest}
 
+  # Not published by docker/docker-compose.yaml; the rig's readiness probe and
+  # e2e smoke test reach its health endpoint from the host (UNSTRACT_X2TEXT_URL).
+  x2text-service:
+    ports:
+      - "127.0.0.1:3004:3004"
+
   runner:
     image: unstract/runner:${UNSTRACT_TEST_VERSION:-latest}
 
