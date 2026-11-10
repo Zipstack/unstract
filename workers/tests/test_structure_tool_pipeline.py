@@ -1224,6 +1224,391 @@ class TestAutoEnableHighlight:
         assert HIGHLIGHT_AUTO_ENABLED_MESSAGE not in messages
 
 
+class TestAgenticTableParamsAndResults:
+    """Agentic table: params forwarding and result assembly.
+
+    Covers the enable_highlight gate, extraction_priority,
+    enable_raw_extraction, and the _raw_data / _highlight_data paths
+    in both mixed (agentic + regular) and all-agentic results.
+    """
+
+    # -- Fixtures local to agentic table tests --
+
+    @staticmethod
+    def _agentic_output(
+        *,
+        name: str = "rent_roll",
+        extraction_priority: str | None = "accuracy",
+        enable_raw_extraction: bool = True,
+    ) -> dict:
+        """Single agentic_table output entry for tool_metadata["outputs"]."""
+        return {
+            "name": name,
+            "type": "agentic_table",
+            "llm": "llm-agentic",
+            "agentic_table_settings": {
+                "target_table": "invoice_lines",
+                "json_structure": {"line": "int", "amount": "float"},
+                "instructions": "Extract all rows",
+                "lite_llm_adapter_instance_id": "llm-lite",
+                "extraction_priority": extraction_priority,
+                "enable_raw_extraction": enable_raw_extraction,
+            },
+        }
+
+    @staticmethod
+    def _make_agentic_result(
+        tables: list | None = None,
+        raw_data: dict | None = None,
+        highlight_data: dict | None = None,
+        metrics: dict | None = None,
+    ) -> ExecutionResult:
+        """Build an ExecutionResult matching the agentic_table executor shape."""
+        output: dict = {"tables": tables or [{"line": 1, "amount": 100}]}
+        if raw_data is not None:
+            output["_raw_data"] = raw_data
+        if highlight_data is not None:
+            output["_highlight_data"] = highlight_data
+        meta: dict = {}
+        if metrics is not None:
+            meta["metrics"] = metrics
+        return ExecutionResult(success=True, data={"output": output, "metadata": meta})
+
+    @staticmethod
+    def _tool_metadata_agentic_only(outputs: list[dict]) -> dict:
+        """tool_metadata with only agentic_table prompts (no regular)."""
+        return {
+            "name": "Agentic Only Project",
+            "is_agentic": False,
+            "tool_id": "tool-at-1",
+            "tool_settings": {
+                "vector-db": "vdb-1",
+                "embedding": "emb-1",
+                "x2text_adapter": "x2t-1",
+                "llm": "llm-1",
+            },
+            "outputs": outputs,
+        }
+
+    @staticmethod
+    def _tool_metadata_mixed(
+        regular_output: dict, agentic_outputs: list[dict]
+    ) -> dict:
+        """tool_metadata with both regular and agentic_table prompts."""
+        return {
+            "name": "Mixed Project",
+            "is_agentic": False,
+            "tool_id": "tool-mx-1",
+            "tool_settings": {
+                "vector-db": "vdb-1",
+                "embedding": "emb-1",
+                "x2text_adapter": "x2t-1",
+                "llm": "llm-1",
+            },
+            "outputs": [regular_output] + agentic_outputs,
+        }
+
+    # -- enable_highlight gate (Gate 1) --
+
+    @pytest.mark.parametrize("highlight_on", [True, False])
+    @patch(_PATCH_SHIM)
+    @patch(_PATCH_FILE_STORAGE)
+    @patch(_PATCH_PLATFORM_HELPER)
+    @patch(_PATCH_DISPATCHER)
+    def test_enable_highlight_forwarded_to_agentic_params(
+        self,
+        mock_get_executor_dispatcher,
+        mock_create_ph,
+        mock_get_fs,
+        mock_shim_cls,
+        highlight_on,
+        base_params,
+        mock_fs,
+        mock_platform_helper,
+    ):
+        """enable_highlight in agentic_params mirrors the workflow setting."""
+        from file_processing.structure_tool_task import (
+            _execute_structure_tool_impl as execute_structure_tool,
+        )
+
+        mock_get_fs.return_value = mock_fs
+        mock_create_ph.return_value = mock_platform_helper
+
+        at_out = self._agentic_output()
+        mock_platform_helper.get_prompt_studio_tool.return_value = {
+            "tool_metadata": self._tool_metadata_agentic_only([at_out]),
+        }
+        base_params["tool_instance_metadata"]["enable_highlight"] = highlight_on
+
+        dispatcher_instance = create_autospec(
+            PgExecutionDispatcher, instance=True
+        )
+        mock_get_executor_dispatcher.return_value = dispatcher_instance
+        dispatcher_instance.dispatch.return_value = self._make_agentic_result()
+
+        execute_structure_tool(base_params)
+
+        ctx = dispatcher_instance.dispatch.call_args[0][0]
+        assert ctx.executor_params["enable_highlight"] is highlight_on
+
+    # -- extraction_priority and enable_raw_extraction forwarding --
+
+    @patch(_PATCH_SHIM)
+    @patch(_PATCH_FILE_STORAGE)
+    @patch(_PATCH_PLATFORM_HELPER)
+    @patch(_PATCH_DISPATCHER)
+    def test_extraction_priority_and_raw_extraction_forwarded(
+        self,
+        mock_get_executor_dispatcher,
+        mock_create_ph,
+        mock_get_fs,
+        mock_shim_cls,
+        base_params,
+        mock_fs,
+        mock_platform_helper,
+    ):
+        """extraction_priority and enable_raw_extraction pass through."""
+        from file_processing.structure_tool_task import (
+            _execute_structure_tool_impl as execute_structure_tool,
+        )
+
+        mock_get_fs.return_value = mock_fs
+        mock_create_ph.return_value = mock_platform_helper
+
+        at_out = self._agentic_output(
+            extraction_priority="accuracy",
+            enable_raw_extraction=True,
+        )
+        mock_platform_helper.get_prompt_studio_tool.return_value = {
+            "tool_metadata": self._tool_metadata_agentic_only([at_out]),
+        }
+
+        dispatcher_instance = create_autospec(
+            PgExecutionDispatcher, instance=True
+        )
+        mock_get_executor_dispatcher.return_value = dispatcher_instance
+        dispatcher_instance.dispatch.return_value = self._make_agentic_result()
+
+        execute_structure_tool(base_params)
+
+        ep = dispatcher_instance.dispatch.call_args[0][0].executor_params
+        assert ep["extraction_priority"] == "accuracy"
+        assert ep["enable_raw_extraction"] is True
+
+    @patch(_PATCH_SHIM)
+    @patch(_PATCH_FILE_STORAGE)
+    @patch(_PATCH_PLATFORM_HELPER)
+    @patch(_PATCH_DISPATCHER)
+    def test_extraction_priority_defaults_none(
+        self,
+        mock_get_executor_dispatcher,
+        mock_create_ph,
+        mock_get_fs,
+        mock_shim_cls,
+        base_params,
+        mock_fs,
+        mock_platform_helper,
+    ):
+        """extraction_priority defaults to None when not set."""
+        from file_processing.structure_tool_task import (
+            _execute_structure_tool_impl as execute_structure_tool,
+        )
+
+        mock_get_fs.return_value = mock_fs
+        mock_create_ph.return_value = mock_platform_helper
+
+        at_out = self._agentic_output(
+            extraction_priority=None,
+            enable_raw_extraction=False,
+        )
+        mock_platform_helper.get_prompt_studio_tool.return_value = {
+            "tool_metadata": self._tool_metadata_agentic_only([at_out]),
+        }
+
+        dispatcher_instance = create_autospec(
+            PgExecutionDispatcher, instance=True
+        )
+        mock_get_executor_dispatcher.return_value = dispatcher_instance
+        dispatcher_instance.dispatch.return_value = self._make_agentic_result()
+
+        execute_structure_tool(base_params)
+
+        ep = dispatcher_instance.dispatch.call_args[0][0].executor_params
+        assert ep["extraction_priority"] is None
+        assert ep["enable_raw_extraction"] is False
+
+    # -- All-agentic result assembly --
+
+    @patch(_PATCH_SHIM)
+    @patch(_PATCH_FILE_STORAGE)
+    @patch(_PATCH_PLATFORM_HELPER)
+    @patch(_PATCH_DISPATCHER)
+    def test_all_agentic_preserves_highlight_and_raw_data(
+        self,
+        mock_get_executor_dispatcher,
+        mock_create_ph,
+        mock_get_fs,
+        mock_shim_cls,
+        base_params,
+        mock_fs,
+        mock_platform_helper,
+    ):
+        """All-agentic: _highlight_data and _raw_data appear in result."""
+        from file_processing.structure_tool_task import (
+            _execute_structure_tool_impl as execute_structure_tool,
+        )
+
+        mock_get_fs.return_value = mock_fs
+        mock_create_ph.return_value = mock_platform_helper
+
+        at_out = self._agentic_output()
+        mock_platform_helper.get_prompt_studio_tool.return_value = {
+            "tool_metadata": self._tool_metadata_agentic_only([at_out]),
+        }
+        base_params["tool_instance_metadata"]["enable_highlight"] = True
+
+        raw = {"pages": [{"page": 1, "text": "raw"}]}
+        hl = {"tables": {"coords": [1, 2, 3]}}
+
+        dispatcher_instance = create_autospec(
+            PgExecutionDispatcher, instance=True
+        )
+        mock_get_executor_dispatcher.return_value = dispatcher_instance
+        dispatcher_instance.dispatch.return_value = self._make_agentic_result(
+            raw_data=raw,
+            highlight_data=hl,
+        )
+
+        result = execute_structure_tool(base_params)
+
+        assert result["success"] is True
+        data = result["data"]
+        # _raw_data keyed by prompt name
+        assert data["output"]["_raw_data"]["rent_roll"] == raw
+        # highlight_data in metadata keyed by prompt name
+        assert data["metadata"]["highlight_data"]["rent_roll"] == hl
+        assert data["metadata"]["agentic_only"] is True
+
+    @patch(_PATCH_SHIM)
+    @patch(_PATCH_FILE_STORAGE)
+    @patch(_PATCH_PLATFORM_HELPER)
+    @patch(_PATCH_DISPATCHER)
+    def test_all_agentic_no_highlight_when_absent(
+        self,
+        mock_get_executor_dispatcher,
+        mock_create_ph,
+        mock_get_fs,
+        mock_shim_cls,
+        base_params,
+        mock_fs,
+        mock_platform_helper,
+    ):
+        """All-agentic: no highlight_data key when executor omits it."""
+        from file_processing.structure_tool_task import (
+            _execute_structure_tool_impl as execute_structure_tool,
+        )
+
+        mock_get_fs.return_value = mock_fs
+        mock_create_ph.return_value = mock_platform_helper
+
+        at_out = self._agentic_output()
+        mock_platform_helper.get_prompt_studio_tool.return_value = {
+            "tool_metadata": self._tool_metadata_agentic_only([at_out]),
+        }
+
+        dispatcher_instance = create_autospec(
+            PgExecutionDispatcher, instance=True
+        )
+        mock_get_executor_dispatcher.return_value = dispatcher_instance
+        # No raw_data or highlight_data in result
+        dispatcher_instance.dispatch.return_value = self._make_agentic_result()
+
+        result = execute_structure_tool(base_params)
+
+        assert result["success"] is True
+        assert "highlight_data" not in result["data"]["metadata"]
+        assert "_raw_data" not in result["data"]["output"]
+
+    # -- Mixed result assembly (regular + agentic) --
+
+    @patch(_PATCH_SHIM)
+    @patch(_PATCH_FILE_STORAGE)
+    @patch(_PATCH_PLATFORM_HELPER)
+    @patch(_PATCH_DISPATCHER)
+    def test_mixed_preserves_highlight_and_raw_data(
+        self,
+        mock_get_executor_dispatcher,
+        mock_create_ph,
+        mock_get_fs,
+        mock_shim_cls,
+        base_params,
+        mock_fs,
+        mock_platform_helper,
+    ):
+        """Mixed: agentic highlight_data and _raw_data merged into pipeline result."""
+        from file_processing.structure_tool_task import (
+            _execute_structure_tool_impl as execute_structure_tool,
+        )
+
+        mock_get_fs.return_value = mock_fs
+        mock_create_ph.return_value = mock_platform_helper
+
+        regular = {
+            "name": "field_a",
+            "prompt": "What is the revenue?",
+            "type": "text",
+            "active": True,
+            "chunk-size": 512,
+            "chunk-overlap": 128,
+            "retrieval-strategy": "simple",
+            "llm": "llm-1",
+            "embedding": "emb-1",
+            "vector-db": "vdb-1",
+            "x2text_adapter": "x2t-1",
+            "similarity-top-k": 5,
+        }
+        at_out = self._agentic_output()
+        mock_platform_helper.get_prompt_studio_tool.return_value = {
+            "tool_metadata": self._tool_metadata_mixed(regular, [at_out]),
+        }
+        base_params["tool_instance_metadata"]["enable_highlight"] = True
+
+        raw = {"pages": [{"page": 1}]}
+        hl = {"tables": {"coords": [10, 20]}}
+
+        dispatcher_instance = create_autospec(
+            PgExecutionDispatcher, instance=True
+        )
+        mock_get_executor_dispatcher.return_value = dispatcher_instance
+
+        # First call: agentic_table dispatch; second call: legacy pipeline
+        agentic_result = self._make_agentic_result(
+            raw_data=raw,
+            highlight_data=hl,
+        )
+        pipeline_result = _make_pipeline_result(
+            output={"field_a": "$1M"},
+            metadata={"run_id": "fexec-789", "file_name": "test.pdf"},
+        )
+        dispatcher_instance.dispatch.side_effect = [
+            agentic_result,
+            pipeline_result,
+        ]
+
+        result = execute_structure_tool(base_params)
+
+        assert result["success"] is True
+        data = result["data"]
+        # Regular output merged
+        assert data["output"]["field_a"] == "$1M"
+        # Agentic tables merged
+        assert "rent_roll" in data["output"]
+        # _raw_data keyed by prompt name
+        assert data["output"]["_raw_data"]["rent_roll"] == raw
+        # highlight_data in metadata keyed by prompt name
+        assert data["metadata"]["highlight_data"]["rent_roll"] == hl
+
+
 class TestHelperFunctions:
     """Test standalone helper functions."""
 

@@ -8,7 +8,8 @@
  *            the v1 folder taxonomy. Run by `typecheck:v1`.
  *   --code   Imports: nothing outside src/v1 and the folder import contract
  *            (which v1 folder may import which). No PropTypes, no antd `ant-`
- *            class names. Also scans v0 (the rest of src/) for imports that
+ *            class names, and one notification entry point: toast
+ *            libraries only in components/ui/feedback/. Also scans v0 (the rest of src/) for imports that
  *            reach into v1 other than through `@v1`. Every file is read
  *            except assets, data and docs; one of unknown type is read as
  *            code, since Vite can load any file (`?worker`). Run by
@@ -500,6 +501,56 @@ const ANT_CLASS = /(?<![\w$-])ant-/g;
 // The nodes that hold text, where a class name can appear.
 const TEXT_NODES = new Set(["StringLiteral", "TemplateElement", "JSXText"]);
 
+/*
+ * One notification entry point (P1-T13): v1 tells the user something happened
+ * only through `notify()` in lib/notify.ts, which the Toaster in
+ * components/ui/feedback/ implements. A toast library anywhere else would be
+ * a second entry point; v0 already ships sonner, so it is one import away.
+ */
+const NOTIFY_HOME = "components/ui/feedback/";
+const TOAST_PACKAGES =
+  /^(sonner|react-hot-toast|react-toastify|notistack|@radix-ui\/react-toast)(\/|$)/;
+const NOTIFY_MSG =
+  "One notification entry point in v1: call notify() or toast.* from @v1/lib/notify; toast libraries are imported only in components/ui/feedback/.";
+
+/*
+ * Toast-library imports outside the feedback folder, as { index, msg }.
+ *
+ * radix-ui bundles every primitive, Toast among them, and a namespace, default,
+ * dynamic, required or re-exported binding can reach Toast in more spellings
+ * than a walk can follow (`R.Toast`, `<R.Toast.Root>`, `R["Toast"]`, aliases,
+ * `.then`). So the rule is structural, not a hunt for spellings: outside the
+ * feedback folder radix-ui may be used only as a static named import that does
+ * not name Toast, and every other reference to it is reported. (antd's
+ * notification and message are already rejected by Biome's noRestrictedImports,
+ * which lint:v1 runs first.)
+ */
+const RADIX = /^radix-ui(\/|$)/;
+const isNamedRadixImport = (node) =>
+  node.type === "ImportDeclaration" &&
+  node.source.value === "radix-ui" &&
+  node.specifiers.length > 0 &&
+  node.specifiers.every(
+    (spec) =>
+      spec.type === "ImportSpecifier" &&
+      (spec.imported.name ?? spec.imported.value) !== "Toast",
+  );
+
+function* notifyEntryPoints(ast, specs) {
+  const allowed = new Set(
+    ast.program.body.filter(isNamedRadixImport).map((node) => node.start),
+  );
+  for (const arg of specs) {
+    const spec = arg.spec ?? "";
+    if (
+      TOAST_PACKAGES.test(spec) ||
+      (RADIX.test(spec) && !allowed.has(arg.index))
+    ) {
+      yield { index: arg.index, msg: NOTIFY_MSG };
+    }
+  }
+}
+
 /* PropTypes and antd `ant-` class names, as { index, msg }. */
 function* bannedUses(ast, src) {
   for (const node of nodes(ast.program)) {
@@ -820,10 +871,16 @@ for (const rel of walk(ROOT)) {
   }
   const isTestFile = TEST_FILE.test(name);
 
-  for (const arg of importSpecs(parsed.ast)) {
+  const specs = importSpecs(parsed.ast);
+  for (const arg of specs) {
     const problem = v1ImportProblem(folder, rel, arg, isTestFile);
     if (problem) {
       report(rel, arg.line, problem);
+    }
+  }
+  if (!rel.startsWith(NOTIFY_HOME)) {
+    for (const { index, msg } of notifyEntryPoints(parsed.ast, specs)) {
+      report(rel, lineAt(src, index), msg);
     }
   }
   for (const { index, msg } of bannedUses(parsed.ast, src)) {
