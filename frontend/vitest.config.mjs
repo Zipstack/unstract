@@ -47,7 +47,7 @@ function jsxInJs() {
  * reported as a failed file, not a failed assertion, and easy to read as
  * unrelated infrastructure noise.
  */
-function optionalPluginImports() {
+export function optionalPluginImports() {
   return {
     name: "optional-plugin-imports",
     resolveId(source, importer) {

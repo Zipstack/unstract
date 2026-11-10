@@ -887,3 +887,28 @@ test("v1 --code reads unknown file types and style files outside styles/", () =>
   assert.ok(badge[0].includes("is outside src/v1"), badge[0]);
   assert.ok(badge[1].includes("No antd 'ant-' class names"), badge[1]);
 });
+
+/*
+ * v0's optionalPluginImports turns a missing import under `/plugins/` into a
+ * stub. v1 has no optional imports, so both copies must leave a v1 importer to
+ * fail. The v1 vitest config never loads this resolver, so only a direct call
+ * proves the guard.
+ */
+test("optionalPluginImports stubs missing v0 plugin imports but never v1 ones", async () => {
+  const v1 = path.join(FRONTEND, "src/v1/lib/plugins/registry.ts");
+  const v0 = path.join(FRONTEND, "src/components/app.jsx");
+  for (const config of ["vite.config.js", "vitest.config.mjs"]) {
+    const { optionalPluginImports } = await import(path.join(FRONTEND, config));
+    const { resolveId } = optionalPluginImports();
+    assert.equal(
+      resolveId("./does-not-exist", v1),
+      null,
+      `${config}: v1 stubbed`,
+    );
+    assert.notEqual(
+      resolveId("../plugins/does-not-exist", v0),
+      null,
+      `${config}: v0 not stubbed`,
+    );
+  }
+});
