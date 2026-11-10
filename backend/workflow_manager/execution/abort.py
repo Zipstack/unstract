@@ -145,7 +145,7 @@ def _abort_one(request: Any, execution_id: UUID, entity: str | None) -> AbortRes
             status=ExecutionStatus.STOPPED, error=ABORT_ERROR_MESSAGE, row_locked=True
         )
         _stop_open_files(execution)
-        _write_file_counts(execution)
+        write_file_counts(execution)
         # After commit, so a rolled-back abort reports nothing.
         transaction.on_commit(lambda: _report_abort(execution), robust=True)
     _record_abort(request, execution, previous_status, entity)
@@ -169,8 +169,8 @@ def _stop_open_files(execution: WorkflowExecution) -> None:
     )
 
 
-def _write_file_counts(execution: WorkflowExecution) -> None:
-    """Save the run's file counts; anything that did not finish counts as failed."""
+def write_file_counts(execution: WorkflowExecution) -> None:
+    """Save the run's file counts from its rows; anything not completed is failed."""
     counts = WorkflowFileExecution.objects.filter(workflow_execution=execution).aggregate(
         total=Count("pk"),
         completed=Count("pk", filter=Q(status=ExecutionStatus.COMPLETED.value)),
@@ -186,17 +186,44 @@ def _report_abort(execution: WorkflowExecution) -> None:
 
     The abort does this because a dead worker's run gets no callback.
     """
-    pipeline = Pipeline.objects.filter(pk=execution.pipeline_id).first()
-    if pipeline is not None:
-        _report_to_pipeline(pipeline, execution)
-        return
-    deployment = APIDeployment.objects.filter(pk=execution.pipeline_id).first()
-    if deployment is not None:
-        APIDeploymentUtils.send_notification(api=deployment, workflow_execution=execution)
+    try:
+        pipeline = Pipeline.objects.filter(pk=execution.pipeline_id).first()
+        if pipeline is not None:
+            _report_to_pipeline(pipeline, execution)
+            return
+        deployment = APIDeployment.objects.filter(pk=execution.pipeline_id).first()
+        if deployment is not None:
+            APIDeploymentUtils.send_notification(
+                api=deployment, workflow_execution=execution
+            )
+    except Exception:
+        logger.exception(
+            "Failed to report aborted execution %s to %s",
+            execution.id,
+            execution.pipeline_id,
+        )
 
 
 def _report_to_pipeline(pipeline: Pipeline, execution: WorkflowExecution) -> None:
     """Notify subscribers; the pipeline's own status follows only its newest run."""
+    try:
+        _save_pipeline_status(pipeline, execution)
+    except Exception:
+        # Subscribers are still notified.
+        logger.exception(
+            "Failed to save pipeline %s status for aborted execution %s",
+            pipeline.id,
+            execution.id,
+        )
+    PipelineNotification(
+        pipeline=pipeline,
+        execution_id=execution.id,
+        error_message=execution.error_message,
+    ).send()
+
+
+def _save_pipeline_status(pipeline: Pipeline, execution: WorkflowExecution) -> None:
+    """Set the last-run status to failure, unless the pipeline has a newer run."""
     pipeline.last_run_status = Pipeline.PipelineStatus.FAILURE
     newer_runs = WorkflowExecution.objects.filter(
         pipeline_id=execution.pipeline_id, created_at__gt=execution.created_at
@@ -204,11 +231,6 @@ def _report_to_pipeline(pipeline: Pipeline, execution: WorkflowExecution) -> Non
     if not newer_runs.exists():
         pipeline.last_run_time = timezone.now()
         pipeline.save(update_fields=["last_run_status", "last_run_time"])
-    PipelineNotification(
-        pipeline=pipeline,
-        execution_id=execution.id,
-        error_message=execution.error_message,
-    ).send()
 
 
 def _record_abort(

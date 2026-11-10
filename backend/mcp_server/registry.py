@@ -266,8 +266,8 @@ def build_deployment_registry() -> MCPToolRegistry:
                 "Fetch the status and, once available, the result of an "
                 "extraction previously started by `extractDocument`. Pass the "
                 "`execution_id` that call returned.\n\n"
-                "Returns an `execution_status` of PENDING, EXECUTING, COMPLETED "
-                "or ERROR. Poll while it is PENDING or EXECUTING, leaving a few "
+                "Returns an `execution_status` of PENDING, EXECUTING, COMPLETED, "
+                "ERROR or STOPPED. Poll while it is PENDING or EXECUTING, leaving a few "
                 "seconds between calls."
             ),
             input_schema=get_execution_status_schema(),
@@ -715,7 +715,7 @@ def build_platform_registry() -> MCPToolRegistry:
                 "extractDocument. Free to call.\n\n"
                 "If extractDocument already returned execution_status "
                 "COMPLETED, the result is in that response and no polling is "
-                "needed. Otherwise poll this until COMPLETED or ERROR, "
+                "needed. Otherwise poll this until COMPLETED, ERROR or STOPPED, "
                 "pausing a few seconds between calls."
             ),
             input_schema=platform_execution_status_schema(),

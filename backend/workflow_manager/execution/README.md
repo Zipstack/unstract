@@ -3,8 +3,7 @@
 Finding executions that stopped making progress, and stopping running ones
 (PB-T08, UN-4318). This README is the published contract, backed by the
 `@extend_schema` annotations in `views/stuck_abort.py` and `views/execution.py`.
-`stuck_since` is documented here only: the generated schema shows the plain list
-row. Changes to anything below are contract changes.
+Changes to anything below are contract changes.
 
 - [Endpoints](#endpoints)
 - [What counts as stuck](#what-counts-as-stuck)
@@ -118,17 +117,18 @@ run in the organisation. Shared users who are not owners get `not_permitted`.
 2. Sets its `PENDING` and `EXECUTING` file rows to `STOPPED` with the same error,
    and stamps their execution time. Finished file rows, file history, destination
    writes and usage are kept.
-3. Writes the run's file counts: finished files are successful, and every other
-   file is failed.
+3. Writes the run's file counts from its file rows: completed files are
+   successful, and every other file is failed.
 
 Once that commits, it:
 
-1. Sends the notifications of the run's pipeline (status `FAILURE`) or API
-   deployment (status `STOPPED`), paused pipelines included. A failure here is
-   logged and does not change the answer.
 1. Sets the pipeline's last-run status to failure, unless the pipeline has a newer
    run.
-2. Records an `execution.aborted` event in the platform audit log, with target
+2. Sends the notifications of the run's pipeline (status `FAILURE`) or API
+   deployment (status `STOPPED`), paused pipelines included. They go out even if
+   step 1 fails. A failure in either step is logged with the run's id and does
+   not change the answer.
+3. Records an `execution.aborted` event in the platform audit log, with target
    `execution`, the workflow name, the summary `was <previous status>` and
    `previous_status`, `pipeline_id` and `entity` in its metadata. This is best
    effort: a lost event does not fail the abort and is not retried.
@@ -136,7 +136,8 @@ Once that commits, it:
 ### How the work stops
 
 - Queued batches of a stopped run are skipped when a worker picks them up, and
-  still count down on the barrier. So does a batch that fails after the abort.
+  still count down on the barrier. So does a batch that fails after the abort,
+  unless the backend can't be reached when it fails.
 - A re-run ignores the active-file markers of a stopped run, so it keeps those
   files even if no worker has picked up the queued batch yet.
 - A running batch checks the status before each file and stops once it is
@@ -144,7 +145,8 @@ Once that commits, it:
 - The file being processed when the abort lands finishes, and its own result
   replaces `STOPPED` on its row.
 - The last batch fires the aggregating callback. It keeps the status `STOPPED`,
-  saves the final file counts, commits usage for finished files, publishes the
+  saves the final file counts (the backend counts a stopped run's file rows,
+  whatever the worker sends), commits usage for completed files, publishes the
   final log and cleans up the execution directory. It leaves the pipeline status
   and notifications to the abort.
 - A caller waiting on a synchronous API deployment `POST` gets 422 for an aborted
@@ -173,10 +175,11 @@ ids already aborted answer `already_finished`.
 Deploy the backend before the workers. Workers read the status from the
 internal `GET /internal/v1/workflow-execution/<id>/status/` endpoint. An older
 backend answers 404, and the worker then processes the file anyway (fail
-open), as it did before this change.
+open), as it did before this change. Until the backend is updated, each file
+also logs an `ERROR` and a `WARNING` for the failed check.
 
 Expose abort to users only once the workers are updated too. An older worker's
-callback reports an aborted run with a finished file as completed.
+callback reports an aborted run with a completed file as completed.
 
 ## Limits
 
@@ -186,9 +189,10 @@ callback reports an aborted run with a finished file as completed.
   being processed no longer counts as active, so a manual or scheduled re-run can
   pick it up while the old worker finishes it: double LLM spend, and two writes to
   a database destination. Wait for that file to finish before re-running.
-- **A dead worker's run never gets its callback.** The pipeline status,
+- **A dead worker's run never gets its callback**, and neither does a run whose
+  batch fails while the backend can't be reached. The pipeline status,
   notifications and file counts are still set by the abort, but usage for its
-  finished files is not committed and its execution directory, which can hold
+  completed files is not committed and its execution directory, which can hold
   uploaded documents, is not cleaned up. It stays in storage until something else
   deletes it. The reaper's `ERROR` path has the same gap.
 - A run whose `queue_message_id` is empty (from before the PG queue, or whose

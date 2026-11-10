@@ -530,7 +530,7 @@ class FileHistoryFilter(FileFilter):
 class ActiveFileFilter(FileFilter):
     """Filter files that are currently being processed by other executions."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._cache_checked: set[str] = (
             set()
         )  # Track composite identifiers we've already checked
@@ -613,7 +613,7 @@ class ActiveFileFilter(FileFilter):
 
     @staticmethod
     def _marker_run_is_live(
-        run_id: str, api_client: Any, live_runs: dict[str, bool]
+        run_id: str, identifier: str, api_client: Any, live_runs: dict[str, bool]
     ) -> bool:
         """False for a stopped run, whose queued files no longer hold their markers.
 
@@ -628,6 +628,12 @@ class ActiveFileFilter(FileFilter):
                 )
                 status = None
             live_runs[run_id] = status != ExecutionStatus.STOPPED.value
+        if not live_runs[run_id]:
+            logger.info(
+                "[ActiveFileFilter] Ignoring the marker of stopped run %s for file %s",
+                run_id,
+                identifier,
+            )
         return live_runs[run_id]
 
     def _check_active_files_batch(
@@ -678,7 +684,7 @@ class ActiveFileFilter(FileFilter):
                         cached_exec_id
                         and cached_exec_id != execution_id
                         and self._marker_run_is_live(
-                            cached_exec_id, api_client, live_runs
+                            cached_exec_id, identifier, api_client, live_runs
                         )
                     ):
                         active_identifiers.add(identifier)

@@ -153,6 +153,17 @@ class AbortExecutionTests(StuckAbortTestBase):
                 self.assertIsNotNone(pipeline.last_run_time)
                 self.assertEqual(sent["execution_id"], execution.id)
 
+    def test_a_failed_pipeline_save_still_notifies(self) -> None:
+        execution = self.execution(self.pipeline())
+        with (
+            patch.object(Pipeline, "save", side_effect=RuntimeError("boom")),
+            self.assertLogs("workflow_manager.execution.abort", level="ERROR") as logs,
+        ):
+            sent = self._abort_with_notification_patched(execution)
+
+        self.assertEqual(sent["execution_id"], execution.id)
+        self.assertIn(str(execution.id), logs.output[0])
+
     def test_abort_of_an_old_run_notifies_but_keeps_the_pipeline_status(self) -> None:
         pipeline = self.pipeline()
         old_run = self.execution(pipeline)
@@ -403,3 +414,34 @@ class AbortExecutionTests(StuckAbortTestBase):
 
         self.assertEqual(out.data.get("reason"), "already_final")
         self.assertEqual(self._status(execution), ExecutionStatus.STOPPED.value)
+
+    def test_a_stopped_write_saves_the_counts_of_the_file_rows(self) -> None:
+        execution = self.execution(self.pipeline())
+        for status in (ExecutionStatus.COMPLETED, ExecutionStatus.COMPLETED):
+            self.file(execution, status, idle=RECENT)
+        self.file(execution, ExecutionStatus.EXECUTING, idle=RECENT)
+        self._abort(self.owner, execution.id)
+
+        # The worker reports zeros, as a failed callback's retry does.
+        view = WorkflowExecutionInternalViewSet()
+        request = MagicMock()
+        request.data = {
+            "status": ExecutionStatus.STOPPED.value,
+            "total_files": 0,
+            "successful_files": 0,
+            "failed_files": 0,
+        }
+        fresh = WorkflowExecution.objects.get(pk=execution.pk)
+        with patch.object(view, "get_object", return_value=fresh):
+            out = view.update_status(request, id=str(execution.id))
+
+        self.assertEqual(out.data.get("status"), "updated")
+        execution.refresh_from_db()
+        self.assertEqual(
+            (
+                execution.total_files,
+                execution.successful_files,
+                execution.failed_files,
+            ),
+            (3, 2, 1),
+        )

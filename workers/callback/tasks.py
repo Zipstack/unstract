@@ -12,6 +12,7 @@ from queue_backend.pg_barrier import PG_TRANSPORT_CALLBACK_KWARG
 
 # Import shared worker infrastructure
 from shared.api import InternalAPIClient
+from shared.clients.execution_client import refused_as_stopped
 
 # Import from shared worker modules
 from shared.enums import PipelineType
@@ -56,7 +57,7 @@ _performance_managers_initialized = False
 class CallbackContext:
     """Container for callback processing context data."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.task_id: str = ""
         self.execution_id: str = ""
         self.pipeline_id: str | None = None
@@ -334,8 +335,10 @@ def _determine_execution_status_unified(
     # An abort ended this run, whatever its file counts say.
     if _was_stopped(execution_context):
         logger.warning(
-            f"Execution {execution_id} was stopped - {successful_files} of "
-            f"{total_files} files finished"
+            "Execution %s was stopped - %s of %s files completed",
+            execution_id,
+            successful_files,
+            total_files,
         )
         return aggregated_results, ExecutionStatus.STOPPED.value, expected_files
 
@@ -374,15 +377,6 @@ def _determine_execution_status_unified(
             )
 
     return aggregated_results, final_status, expected_files
-
-
-def _stopped_meanwhile(response: Any) -> bool:
-    """True when the backend refused the write because an abort got there first."""
-    data = getattr(response, "data", None) or {}
-    return (
-        data.get("reason") == "already_final"
-        and data.get("new_status") == ExecutionStatus.STOPPED.value
-    )
 
 
 def _update_execution_status_unified(
@@ -432,10 +426,12 @@ def _update_execution_status_unified(
 
         # Make the unified API call
         response = post_status(final_status, error_message)
-        if _stopped_meanwhile(response):
+        if refused_as_stopped(response):
             logger.warning(
-                f"Execution {execution_id} was stopped during this callback; "
-                f"reporting STOPPED instead of {final_status}"
+                "Execution %s was stopped during this callback; "
+                "reporting STOPPED instead of %s",
+                execution_id,
+                final_status,
             )
             final_status = ExecutionStatus.STOPPED.value
             # The refused write saved no file counts.
@@ -651,7 +647,9 @@ def _handle_notifications_unified(
     """
     # The abort handles these, so a run with a dead worker notifies too.
     if status == ExecutionStatus.STOPPED.value:
-        logger.info(f"Execution {execution_id} was stopped - the abort handles notifying")
+        logger.info(
+            "Execution %s was stopped - the abort handles notifying", execution_id
+        )
         return {
             "status": "skipped",
             "reason": "handled_by_abort",
@@ -1359,7 +1357,7 @@ def _track_subscription_usage_if_available(
 
     This is a non-blocking operation - errors are logged but do not fail the workflow.
     Only tracks usage for completed or stopped workflows with successful file
-    executions; files that finished before an abort are billed.
+    executions; files that completed before an abort are billed.
 
     Args:
         context: Callback execution context with organization and execution IDs

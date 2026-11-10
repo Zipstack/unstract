@@ -20,6 +20,7 @@ from queue_backend.pg_barrier import (
 # Import shared worker infrastructure
 from shared.api import InternalAPIClient
 from shared.clients.base_client import InternalAPIClientError
+from shared.clients.execution_client import refused_as_stopped
 
 # Import from shared worker modules
 from shared.constants import Account
@@ -241,8 +242,7 @@ class _TerminalExecutionSkip(Exception):
 
     The resurrection this prevents exists because the **reaper** can mark an
     in-flight execution terminal (and tear its barrier down) while a batch for it
-    is still in flight or waiting to be redelivered. An abort can mark it STOPPED
-    the same way.
+    is still in flight or waiting to be redelivered.
 
     This is a validate-first *narrowing*, not a transactional guarantee: the
     status read and the later ``EXECUTING`` write are not atomic, so a reaper
@@ -335,10 +335,10 @@ def _run_stages_under_barrier(
         return _run_batch_stages(file_batch_data, celery_task_id)
     except Exception:
         file_data = file_batch_data.get("file_data") or {}
-        execution_id = file_data.get("execution_id")
-        organization_id = file_data.get("organization_id")
+        execution_id = file_data.get("execution_id") or ""
+        organization_id = file_data.get("organization_id") or ""
         api_client = create_api_client(organization_id)
-        if not _is_execution_stopped(api_client, execution_id):
+        if not _stopped_before_error_mark(api_client, execution_id, organization_id):
             raise
         logger.exception(
             "[exec:%s] Batch failed after the run was stopped; counting it down",
@@ -347,6 +347,31 @@ def _run_stages_under_barrier(
         return _all_failed_result(
             len(file_batch_data.get("files") or []), organization_id
         )
+
+
+def _stopped_before_error_mark(
+    api_client: InternalAPIClient, execution_id: str, organization_id: str | None
+) -> bool:
+    """Mark the run ERROR; True when the backend refuses because it is STOPPED.
+
+    The backend orders this write and an abort under the run's row lock, so an
+    abort landing just before the batch failed is not missed.
+    """
+    try:
+        response = api_client.update_workflow_execution_status(
+            execution_id=execution_id,
+            status=ExecutionStatus.ERROR.value,
+            error_message="Batch failed",
+            organization_id=organization_id,
+        )
+    except InternalAPIClientError as error:
+        logger.warning(
+            "[exec:%s] Marking the failed batch's run ERROR failed: %s",
+            execution_id,
+            error,
+        )
+        return False
+    return refused_as_stopped(response)
 
 
 def _run_batch_stages(
@@ -361,16 +386,18 @@ def _run_batch_stages(
     # Step 1: Validate and parse input data
     batch_data = _validate_and_parse_batch_data(file_batch_data)
 
-    # Step 2: Setup execution context. The terminal guard inside it may skip a
-    # stale/redelivered batch for an already-terminal execution — see
+    # Step 2: Setup execution context. The terminal guard inside it skips a
+    # batch whose execution is already terminal — see
     # :class:`_TerminalExecutionSkip`.
     try:
         context = _setup_execution_context(batch_data, celery_task_id)
     except _TerminalExecutionSkip as skip:
         logger.warning(
-            f"[exec:{skip.execution_id}] Skipping batch of "
-            f"{len(batch_data.files)} file(s): execution already terminal "
-            f"({skip.status}); not processing."
+            "[exec:%s] Skipping batch of %s file(s): execution already terminal "
+            "(%s); not processing.",
+            skip.execution_id,
+            len(batch_data.files),
+            skip.status,
         )
         return _terminal_skip_result(batch_data, skip.status)
 
@@ -518,8 +545,7 @@ def _setup_execution_context(
 
     Raises:
         ValueError: If required context fields are missing
-        _TerminalExecutionSkip: If the execution is already terminal (a
-            stale/redelivered batch after reaper-recovery).
+        _TerminalExecutionSkip: If the execution is already terminal.
     """
     # Extract context using dataclass
     file_data = batch_data.file_data
@@ -559,9 +585,9 @@ def _setup_execution_context(
     execution_context = execution_response.data
     workflow_execution = execution_context.get("execution", {})
 
-    # Validate-first terminal guard — skip a stale/redelivered batch
-    # for an already-terminal execution, before we touch status or process
-    # anything. See :class:`_TerminalExecutionSkip`.
+    # Validate-first terminal guard — skip a batch whose execution is already
+    # terminal, before we touch status or process anything. See
+    # :class:`_TerminalExecutionSkip`.
     _raise_if_execution_terminal(workflow_execution, execution_id)
 
     # Set LOG_EVENTS_ID in StateStore for WebSocket messaging (critical for UI logs)

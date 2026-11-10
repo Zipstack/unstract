@@ -13,7 +13,7 @@ Handles:
 
 import logging
 import uuid
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from unstract.core.data_models import ExecutionStatus
@@ -86,6 +86,15 @@ def circuit_breaker(
 
 
 logger = logging.getLogger(__name__)
+
+
+def refused_as_stopped(response: Any) -> bool:
+    """True when a status write was refused because an abort got there first."""
+    data = getattr(response, "data", None) or {}
+    return bool(
+        data.get("reason") == "already_final"
+        and data.get("new_status") == ExecutionStatus.STOPPED.value
+    )
 
 
 class ExecutionAPIClient(BaseAPIClient):
@@ -344,7 +353,7 @@ class ExecutionAPIClient(BaseAPIClient):
         )
 
         # Convert dict response to consistent APIResponse
-        api_response = convert_dict_response(response, APIResponse)
+        api_response = cast(APIResponse, convert_dict_response(response, APIResponse))
         # The body is flat, and a refused write says why only there.
         api_response.data = response
         return api_response

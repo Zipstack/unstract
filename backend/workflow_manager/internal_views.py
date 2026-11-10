@@ -645,7 +645,13 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 # either way: Django's foreign keys are DEFERRABLE INITIALLY DEFERRED,
                 # so an open insert holds no lock on this row until it commits, and
                 # FOR UPDATE never waited for it.)
-                self._update_file_aggregates(execution, validated_data)
+                if status_enum == ExecutionStatus.STOPPED:
+                    from workflow_manager.execution.abort import write_file_counts
+
+                    # A stopped run's counts come from its file rows, not the worker.
+                    write_file_counts(execution)
+                else:
+                    self._update_file_aggregates(execution, validated_data)
 
                 # Reaper recovery: cascade the terminal status to any non-terminal
                 # file executions so the execution and its files agree (atomic with

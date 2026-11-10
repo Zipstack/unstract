@@ -14,6 +14,7 @@ from rest_framework.exceptions import ValidationError
 from tags.serializers import TagParamsSerializer
 from utils.enums import CeleryTaskState
 from workflow_manager.workflow_v2.dto import ExecutionResponse
+from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
@@ -375,7 +376,11 @@ def get_execution_status(
             ),
         }
 
-    if response.execution_status == CeleryTaskState.COMPLETED.value:
+    # A stopped run returns its results so far, filtered the same way.
+    if response.execution_status in (
+        CeleryTaskState.COMPLETED.value,
+        ExecutionStatus.STOPPED.value,
+    ):
         deployment_execution_dto = DeploymentExecutionDTO(
             api=context.api, api_key=context.api_key
         )

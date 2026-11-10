@@ -106,13 +106,17 @@ class AbortTransactionTests(TransactionTestCase):
         deployment.memberships.create(user=self.owner, role=ResourceRole.OWNER)
         execution = self._execution(deployment.id)
 
-        with patch(
-            f"{_ABORT}.APIDeploymentUtils.send_notification",
-            side_effect=RuntimeError("boom"),
-        ) as send:
+        with (
+            patch(
+                f"{_ABORT}.APIDeploymentUtils.send_notification",
+                side_effect=RuntimeError("boom"),
+            ) as send,
+            self.assertLogs(_ABORT, level="ERROR") as logs,
+        ):
             outcomes = self._post(execution.id)
 
         send.assert_called_once()
+        self.assertIn(str(execution.id), logs.output[0])
         self.assertEqual(outcomes, {str(execution.id): ("aborted", "STOPPED")})
         self.assertEqual(self._status(execution), ExecutionStatus.STOPPED.value)
         self.assertEqual(PlatformAuditEvent.objects.count(), 1)

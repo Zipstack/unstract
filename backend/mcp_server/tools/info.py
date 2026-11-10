@@ -50,7 +50,7 @@ def read_me_first(context: MCPContext) -> dict[str, Any]:
             "3. If the response has execution_status COMPLETED, the result is "
             "already in the response — you are done.",
             "4. Otherwise poll getExecutionStatus with the returned "
-            "execution_id until the status is COMPLETED or ERROR, pausing a "
+            "execution_id until the status is COMPLETED, ERROR or STOPPED, pausing a "
             "few seconds between polls.",
         ],
         "notes": [

@@ -1,10 +1,11 @@
 """An aborted run still finishes: skipped and failed batches count down, and the
-callback keeps STOPPED, bills finished files and leaves the pipeline status and
+callback keeps STOPPED, bills completed files and leaves the pipeline status and
 notifications to the abort. A re-run ignores the stopped run's markers (UN-4318).
 """
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 from types import SimpleNamespace
 from typing import Any
 from unittest import mock
@@ -12,13 +13,14 @@ from unittest import mock
 import callback.tasks as cb
 import pytest
 from shared.clients.base_client import APIRequestError
-from shared.clients.execution_client import ExecutionAPIClient
+from shared.clients.execution_client import ExecutionAPIClient, refused_as_stopped
 from shared.infrastructure.logging.workflow_logger import WorkerWorkflowLogger
 from shared.processing.filter_pipeline import ActiveFileFilter
 from unstract.core.data_models import ExecutionStatus
 from unstract.workflow_execution.enums import LogState
 
 from file_processing.tasks import (
+    _process_file_batch_core,
     _run_batch_stages,
     _run_stages_under_barrier,
     _terminal_skip_result,
@@ -32,6 +34,7 @@ ERROR = ExecutionStatus.ERROR.value
 COMPLETED = ExecutionStatus.COMPLETED.value
 _TASKS = "file_processing.tasks"
 _REFUSAL = {"status": "skipped", "reason": "already_final", "new_status": STOPPED}
+_UPDATED = {"status": "updated"}
 
 
 def _batch_data() -> Any:
@@ -88,40 +91,43 @@ _PAYLOAD = {
 }
 
 
-def _failing_batch(status: Any) -> Any:
+def _failing_batch(write: Any) -> tuple[Any, Any, Any]:
+    """A batch whose stages raise; ``write`` answers its run's ERROR mark."""
     client = mock.Mock()
-    client.get_workflow_execution_status.side_effect = [status]
+    client.update_workflow_execution_status.side_effect = [write]
     return (
         mock.patch(f"{_TASKS}._run_batch_stages", side_effect=RuntimeError("boom")),
         mock.patch(f"{_TASKS}.create_api_client", return_value=client),
+        client,
     )
 
 
 def test_a_batch_failing_after_the_abort_counts_down() -> None:
-    stages, client = _failing_batch(STOPPED)
+    """Also covers an abort landing after the batch's last status check."""
+    stages, factory, client = _failing_batch(SimpleNamespace(data=_REFUSAL))
     context: Any = {"execution_id": "e", "batch_index": 0, "callback_descriptor": {}}
     with (
         stages,
-        client,
+        factory,
         mock.patch.object(pg_barrier, "claim_batch", return_value=True),
         mock.patch.object(pg_barrier, "_barrier_pg_decrement") as decrement,
         mock.patch.object(pg_barrier, "_abort_barrier_in_body") as abort,
     ):
-        pg_barrier.run_batch_with_barrier(
-            context, lambda: _run_stages_under_barrier(_PAYLOAD, "task-1")
-        )
+        _process_file_batch_core(mock.Mock(), _PAYLOAD, context)
 
+    mark = client.update_workflow_execution_status.call_args.kwargs
+    assert (mark["execution_id"], mark["status"]) == ("e", ERROR)
     assert decrement.call_args.args[0]["failed_files"] == 2
     assert SKIPPED_TERMINAL_EXECUTION_KEY not in decrement.call_args.args[0]
     abort.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    "status", [ExecutionStatus.EXECUTING.value, APIRequestError("500")], ids=["up", "down"]
+    "write", [SimpleNamespace(data=_UPDATED), APIRequestError("500")], ids=["up", "down"]
 )
-def test_a_batch_failing_in_a_live_run_still_raises(status: Any) -> None:
-    stages, client = _failing_batch(status)
-    with stages, client, pytest.raises(RuntimeError, match="boom"):
+def test_a_batch_failing_in_a_live_run_still_raises(write: Any) -> None:
+    stages, factory, _ = _failing_batch(write)
+    with stages, factory, pytest.raises(RuntimeError, match="boom"):
         _run_stages_under_barrier(_PAYLOAD, "task-1")
 
 
@@ -206,7 +212,102 @@ def test_the_client_keeps_the_body_of_a_refused_write() -> None:
         response = client.update_workflow_execution_status("e1", COMPLETED)
 
     assert response.success is True
-    assert cb._stopped_meanwhile(response) is True
+    assert refused_as_stopped(response) is True
+
+
+_DOWNSTREAM = (
+    "_handle_pipeline_updates_unified",
+    "_track_subscription_usage_if_available",
+    "_publish_final_workflow_ui_logs",
+    "_publish_final_workflow_ui_logs_api",
+    "_cleanup_execution_resources",
+    "_handle_notifications_unified",
+)
+
+
+def _refusing_client() -> Any:
+    """Refuses the callback's COMPLETED write, then accepts STOPPED."""
+    api_client = mock.Mock()
+    api_client.update_workflow_execution_status.side_effect = [
+        SimpleNamespace(data=_REFUSAL),
+        SimpleNamespace(data=_UPDATED),
+    ]
+    api_client.get_workflow_execution.return_value = SimpleNamespace(
+        success=True,
+        data={"execution": {"status": "EXECUTING", "workflow_id": "wf"}, "workflow": {}},
+    )
+    return api_client
+
+
+def _run_callback(run: Any) -> dict[str, Any]:
+    """Run a callback whose COMPLETED write is refused; return the stubbed steps."""
+    determined = ({"total_files": 1, "successful_files": 1}, COMPLETED, 0)
+    with ExitStack() as stack:
+        stack.enter_context(
+            mock.patch.object(
+                cb, "_determine_execution_status_unified", return_value=determined
+            )
+        )
+        stack.enter_context(mock.patch.object(cb, "_initialize_performance_managers"))
+        steps = {
+            name: stack.enter_context(mock.patch.object(cb, name)) for name in _DOWNSTREAM
+        }
+        run()
+    return steps
+
+
+def _statuses(steps: dict[str, Any]) -> set[Any]:
+    """Every status the callback handed to its later steps."""
+    seen = set()
+    for step in steps.values():
+        for call in step.call_args_list:
+            seen.update(call.args[1:2])
+            seen.update(
+                value
+                for key, value in call.kwargs.items()
+                if key in ("final_status", "execution_status", "status")
+            )
+    return seen
+
+
+def test_the_general_callback_carries_on_as_stopped() -> None:
+    context = cb.CallbackContext()
+    context.execution_id = "e1"
+    context.organization_id = "org-1"
+    context.api_client = _refusing_client()
+    context.execution_status = "EXECUTING"
+
+    def run() -> None:
+        with mock.patch.object(cb, "_extract_callback_parameters", return_value=context):
+            cb._process_batch_callback_core(mock.Mock(), [])
+
+    steps = _run_callback(run)
+
+    assert steps["_handle_pipeline_updates_unified"].called
+    assert steps["_handle_notifications_unified"].called
+    assert _statuses(steps) == {STOPPED}
+
+
+def test_the_api_callback_carries_on_as_stopped() -> None:
+    api_client = _refusing_client()
+
+    def run() -> None:
+        with (
+            mock.patch.object(cb, "create_api_client", return_value=api_client),
+            mock.patch.object(
+                cb, "_fetch_pipeline_data_simplified", return_value=("api", "API")
+            ),
+        ):
+            # Celery binds the task itself as ``self``.
+            cb.process_batch_callback_api(
+                [], execution_id="e1", organization_id="org-1", pipeline_id="p1"
+            )
+
+    steps = _run_callback(run)
+
+    assert steps["_handle_pipeline_updates_unified"].called
+    assert steps["_handle_notifications_unified"].called
+    assert _statuses(steps) == {STOPPED}
 
 
 @pytest.mark.parametrize(("status", "calls"), [(STOPPED, 0), (COMPLETED, 1)])
@@ -313,10 +414,13 @@ def _active_files(status: Any) -> tuple[set[str], Any]:
 
 
 def test_a_rerun_ignores_a_stopped_runs_markers() -> None:
-    found, api_client = _active_files(STOPPED)
+    with mock.patch("shared.processing.filter_pipeline.logger") as logger:
+        found, api_client = _active_files(STOPPED)
 
     assert found == set()
     api_client.get_workflow_execution_status.assert_called_once_with("old-run")
+    ignored = [c.args[2] for c in logger.info.call_args_list if "stopped run" in c.args[0]]
+    assert ignored == ["u1:/a", "u2:/b"]
 
 
 @pytest.mark.parametrize(
