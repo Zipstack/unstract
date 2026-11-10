@@ -147,9 +147,10 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
     def _password_may_be_misread(url: str) -> bool:
         """Best-effort check that libpq read part of a password as another setting.
 
-        An unescaped ``@``, ``/`` or ``?`` moves it into the host, port or database,
-        and libpq's errors echo those. With no ``@``, only a port that isn't a
-        number from 1 to 65535 gives it away. Not caught: any other URL with no ``@``, or a keyword
+        An unescaped ``@`` or ``/`` in it, or an ``@`` in a query value with no ``/``
+        before it, moves text into the host, port or database, and libpq's errors
+        echo those. With no ``@``, only a port that isn't a number from 1 to 65535
+        gives it away. Not caught: any other URL with no ``@``, or a keyword
         inside a query password.
         """
         # libpq stops reading at a NUL.
