@@ -72,7 +72,8 @@ Mounted under the organisation path: `/api/v1/unstract/{org_id}/`.
   refused. Agentic Studio projects (cloud) are `false`: deleting the adapter
   is allowed and clears it from the project.
 - `role` (connectors only) is `source`, `destination`, or `both` when one
-  workflow reads from and writes to the same connector.
+  workflow reads from and writes to the same connector. It is `null` on items
+  with no role, such as those in `other`.
 - `used_as` (connectors only) sums up the roles of the counted items:
   `source`, `destination`, `both` or `none`. `none` means no source or
   destination role, not unused: a connector referenced only from `other` is
@@ -147,8 +148,8 @@ the delete guard refuses on, with the exceptions listed under the table.
 - The tool-instance check matches what the delete guard matches, in one query
   per request. The database first narrows the organisation's tool instances
   to those whose `metadata` text contains an adapter's id or name as a whole
-  JSON string (one text conversion per row, matched against every name and id
-  at once); only those rows are sent back and walked.
+  JSON string (one text conversion per row, then each name and id pattern in
+  turn); only those rows are sent back and walked.
 
 ## Adding references from another app
 

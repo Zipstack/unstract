@@ -49,8 +49,9 @@ class Reference:
     direct: bool = True
 
     @property
-    def key(self) -> tuple[str, str]:
-        return (self.group, str(self.pk))
+    def key(self) -> tuple[str, str, str]:
+        # The model too: ``other`` mixes models whose pks may coincide.
+        return (self.group, self.model._meta.label, str(self.pk))
 
     def merge(self, other: Reference) -> None:
         self.blocks_delete = self.blocks_delete or other.blocks_delete
@@ -72,7 +73,7 @@ def _merge_roles(first: str | None, second: str | None) -> str | None:
 class ProfileUsage:
     """Everything that references one profile."""
 
-    references: dict[tuple[str, str], Reference] = field(default_factory=dict)
+    references: dict[tuple[str, str, str], Reference] = field(default_factory=dict)
 
     def add(self, reference: Reference) -> None:
         existing = self.references.get(reference.key)

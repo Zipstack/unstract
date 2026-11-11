@@ -31,6 +31,7 @@ from resource_usage.adapters import prompt_studio_refs, string_leaves
 from resource_usage.constants import OTHER_GROUP, ProfileKind
 from resource_usage.serializers import usage_payload
 from resource_usage.references import (
+    ProfileUsage,
     Reference,
     blocking_relations,
     collect,
@@ -180,6 +181,8 @@ class AdapterGuardParityTests(UsageTestBase):
         self.make_tool_instance(foreign, {"llm": str(adapter.pk), "org": "other"})
         # A value that only contains the name is not a reference.
         self.make_tool_instance(workflow, {"model": "unnamed-model"})
+        self.make_tool_instance(workflow, {"model": "named-model"})
+        self.make_tool_instance(workflow, {"model": "un-named"})
         with patch(
             "resource_usage.adapters.string_leaves", wraps=string_leaves
         ) as walk:
@@ -189,6 +192,8 @@ class AdapterGuardParityTests(UsageTestBase):
         self.assertNotIn({"llm": "something-else"}, walked)
         self.assertNotIn({"llm": str(adapter.pk), "org": "other"}, walked)
         self.assertNotIn({"model": "unnamed-model"}, walked)
+        self.assertNotIn({"model": "named-model"}, walked)
+        self.assertNotIn({"model": "un-named"}, walked)
 
     def test_profile_without_project_is_in_other(self, _ctx: Any) -> None:
         cases = self._cases()
@@ -243,6 +248,14 @@ class StringLeavesTests(ConnectionCheckTestBase):
                 manager.filter.return_value.values_list.return_value = [metadata]
                 guard = AdapterInstanceViewSet._adapter_used_in_tool_instance(adapter)
             self.assertEqual(needle in set(string_leaves(metadata)), guard, metadata)
+
+
+class ProfileUsageTests(ConnectionCheckTestBase):
+    def test_items_of_two_models_with_one_pk_stay_apart(self) -> None:
+        usage = ProfileUsage()
+        for model in (Pipeline, APIDeployment):
+            usage.add(Reference(OTHER_GROUP, "x", model, pk=1, name=None))
+        self.assertEqual(usage.used_in_count, 2)
 
 
 class ConnectorRoleTests(UsageTestBase):

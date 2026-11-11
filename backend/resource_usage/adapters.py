@@ -77,7 +77,10 @@ def tool_instance_refs(adapters: Sequence[Any]) -> Iterable[tuple[Any, Reference
     # Fetch only tool instances whose metadata text contains a needle as a
     # whole JSON string; the exact walk below then decides, as the guard
     # does. A string sits in the JSON text quoted and escaped, so match that
-    # form. One cast per row, tested against every pattern at once.
+    # form. One cast per row; Postgres then tries the patterns in turn, so
+    # the work is rows x patterns. Accepted: the delete guard's own walk
+    # costs the same, the rows are one organisation's, and the lists only
+    # run this when asked (``with_usage``/``unused``).
     patterns = [
         f'%"{connection.ops.prep_for_like_query(_json_escaped(key[1]))}"%'
         for key in needles
