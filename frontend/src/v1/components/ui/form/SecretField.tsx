@@ -7,9 +7,16 @@ import { FieldAction } from "./FieldAction";
 import { useFieldControl } from "./field-context";
 import { Input, type InputProps } from "./Input";
 
+// onCopy is replaced: the native clipboard-event handler would otherwise widen
+// the callback's argument to ClipboardEvent | CopyResult.
 export type SecretFieldProps = Omit<
   InputProps,
-  "type" | "trailing" | "autoComplete" | "spellCheck" | "autoCapitalize"
+  | "type"
+  | "trailing"
+  | "autoComplete"
+  | "spellCheck"
+  | "autoCapitalize"
+  | "onCopy"
 > &
   Readonly<{
     /** Hears each copy's outcome; the field raises the toast itself. Not called for an empty field. */
