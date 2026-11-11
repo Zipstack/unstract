@@ -118,10 +118,6 @@ class PipelineListBaselineTests(_PipelineRows, TestCase):
     def test_the_existing_filters_select_their_rows(self) -> None:
         cases: FilterCases = {
             "none": ({}, {"nightly", "hourly", "sorter", "nightly draft", "paused"}),
-            "blank type": (
-                {"type": ""},
-                {"nightly", "hourly", "sorter", "nightly draft", "paused"},
-            ),
             "type": ({"type": TASK}, {"sorter", "nightly draft"}),
             "search": ({"search": "NIGHTLY"}, {"nightly", "nightly draft"}),
             "workflow": ({"workflow": str(self.ok.workflow_id)}, {"nightly"}),
@@ -206,7 +202,9 @@ class PipelineAggregateTests(_PipelineRows, TestCase):
         )
 
     def test_the_response_matches_the_contract(self) -> None:
-        for params in ({}, {"search": "no such row"}):
+        self.assertIn("date-time", jsonschema.FormatChecker().checkers)
+        cases: list[dict[str, Any]] = [{}, {"search": "no such row"}]
+        for params in cases:
             with self.subTest(**params):
                 jsonschema.validate(
                     self._aggregate(**params),
@@ -236,6 +234,10 @@ class PipelineAggregateTests(_PipelineRows, TestCase):
                 {"sorter", "paused"},
             ),
             "combined": ({"type": TASK, "status": "error"}, {"sorter"}),
+            "blank type": (
+                {"type": ""},
+                {"nightly", "hourly", "sorter", "nightly draft", "paused"},
+            ),
         }
         for label, (params, expected) in cases.items():
             with self.subTest(label):

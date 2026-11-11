@@ -36,7 +36,8 @@ caller's organisation.
 Both endpoints take the same filters, so the aggregate's `total` always equals
 the list's `count`. A row must match every filter given. Blank values are
 ignored. With none of the new filters, the list query and response are as
-before.
+before. To fill the status counts and the failing list while the list is filtered
+by `status` or `failing`, call the aggregate without those two.
 
 | Parameter | Type | Meaning |
 |---|---|---|
@@ -44,7 +45,7 @@ before.
 | `workflow` | UUID | Deployments of this workflow. |
 | `api_name` | string | Exactly this `api_name`. |
 | `status` | `success`, `error`, `never_run`, `inactive` | New. See [Status rule](#status-rule). |
-| `owner` | user id | New. Owned or co-owned by this user, as in `owner_emails`. |
+| `owner` | user id | New. Owned or co-owned by this user. Not in the published client spec, which returns no user ids. |
 | `last_run_after` | ISO 8601 datetime | New. `last_run_time` at or after this. |
 | `last_run_before` | ISO 8601 datetime | New. `last_run_time` at or before this. |
 | `failing` | boolean | New. `true` keeps only failing rows. See [Failing rule](#failing-rule). |

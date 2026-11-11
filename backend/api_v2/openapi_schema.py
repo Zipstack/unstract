@@ -371,7 +371,12 @@ API_DEPLOYMENT_LIST_SCHEMA = extend_schema_view(
         summary=LIST_API_DEPLOYMENTS_SUMMARY,
         tags=["deployment"],
         auth=[{"platformKey": []}],
-        parameters=[*API_DEPLOYMENT_LIST_QUERY_PARAMETERS, ListFilterSerializer],
+        parameters=[
+            *API_DEPLOYMENT_LIST_QUERY_PARAMETERS,
+            ListFilterSerializer,
+            # No published operation returns a user id to pass.
+            OpenApiParameter("owner", exclude=True),
+        ],
         responses={
             200: OpenApiResponse(
                 APIDeploymentSummary(many=True),

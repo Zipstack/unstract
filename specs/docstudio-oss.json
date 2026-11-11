@@ -563,15 +563,6 @@
             }
           },
           {
-            "description": "Return only rows this user owns or co-owns (user id).",
-            "in": "query",
-            "name": "owner",
-            "schema": {
-              "minimum": 1,
-              "type": "integer"
-            }
-          },
-          {
             "description": "A page number within the paginated result set.",
             "in": "query",
             "name": "page",

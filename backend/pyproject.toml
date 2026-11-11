@@ -81,6 +81,7 @@ test = [
     "pytest>=8.0.1",
     "pytest-django>=4.12.0",
     "jsonschema>=4.18.6,<5.0",
+    "rfc3339-validator>=0.1.4", # jsonschema checks date-time only with this
 ]
 deploy = [
     "gunicorn~=23.0", # For serving the application

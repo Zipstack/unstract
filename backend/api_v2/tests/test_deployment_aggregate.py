@@ -118,7 +118,9 @@ class DeploymentAggregateTests(ListRowsSeed, TestCase):
         self.assertEqual(self._hours_ago(row["last_failure"]), 5)
 
     def test_the_response_matches_the_contract(self) -> None:
-        for params in ({}, {"search": "no such row"}):
+        self.assertIn("date-time", jsonschema.FormatChecker().checkers)
+        cases: list[dict[str, Any]] = [{}, {"search": "no such row"}]
+        for params in cases:
             with self.subTest(**params):
                 jsonschema.validate(
                     self._aggregate(**params),

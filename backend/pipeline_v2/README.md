@@ -31,8 +31,8 @@ query is scoped to the caller's organisation.
 
 Both endpoints take the same filters, so the aggregate's `total` always equals
 the list's `count`. A row must match every filter given. Blank values are
-ignored. With none of the new filters, the list query and response are as
-before.
+ignored. To fill the status counts and the failing list while the list is filtered
+by `status` or `failing`, call the aggregate without those two.
 
 | Parameter | Type | Meaning |
 |---|---|---|
