@@ -4,6 +4,7 @@ The core rule: a profile the delete guard refuses is reported as used, and one
 it allows as unused. The parity tests check that against the real ``destroy``.
 """
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -14,7 +15,7 @@ from api_v2.models import APIDeployment
 from connection_check.tests.base import ConnectionCheckTestBase, make_user
 from connector_v2.models import ConnectorInstance
 from connector_v2.views import ConnectorInstanceViewSet
-from django.db import connection
+from django.db import connection, models
 from django.test.utils import CaptureQueriesContext
 from permissions.models import ResourceRole
 from pipeline_v2.models import Pipeline
@@ -228,6 +229,29 @@ class AdapterGuardParityTests(UsageTestBase):
         claimed = set().union(*(reg.claims for reg in _providers[ProfileKind.ADAPTER]))
         for rel in blocking_relations(AdapterInstance):
             self.assertIn(relation_label(rel.related_model, rel.field.name), claimed)
+
+
+class BlockingRelationsTests(ConnectionCheckTestBase):
+    def test_hidden_relation_is_included(self) -> None:
+        # A FK declared with related_name="+" is a hidden reverse relation:
+        # Options.related_objects leaves it out, the delete collector does not.
+        hidden = SimpleNamespace(
+            auto_created=True,
+            concrete=False,
+            one_to_one=False,
+            one_to_many=True,
+            many_to_many=False,
+            hidden=True,
+            on_delete=models.PROTECT,
+        )
+
+        def get_fields(include_hidden: bool = False) -> list[Any]:
+            return [hidden] if include_hidden else []
+
+        fake = SimpleNamespace(
+            _meta=SimpleNamespace(get_fields=get_fields, related_objects=[])
+        )
+        self.assertEqual(blocking_relations(fake), [hidden])  # type: ignore[arg-type]
 
 
 class StringLeavesTests(ConnectionCheckTestBase):

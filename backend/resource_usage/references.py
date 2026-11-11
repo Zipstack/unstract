@@ -21,6 +21,7 @@ from typing import Any
 
 from django.db import models
 from django.db.models import Model
+from django.db.models.deletion import get_candidate_relations_to_delete
 
 from resource_usage.constants import (
     OTHER_GROUP,
@@ -157,10 +158,14 @@ _BLOCKING = (models.PROTECT, models.RESTRICT)
 
 
 def blocking_relations(profile_model: type[Model]) -> list[Any]:
-    """Every direct relation whose rows make deleting a profile raise."""
+    """Every direct relation whose rows make deleting a profile raise.
+
+    Read from the delete collector's own candidates, which include hidden
+    relations (``related_name="+"``) that ``_meta.related_objects`` leaves out.
+    """
     return [
         rel
-        for rel in profile_model._meta.related_objects
+        for rel in get_candidate_relations_to_delete(profile_model._meta)
         if getattr(rel, "on_delete", None) in _BLOCKING
     ]
 
