@@ -2,6 +2,7 @@
 the ``aggregate/`` counts (UN-4320).
 """
 
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest import mock
@@ -131,6 +132,14 @@ class FailingRuleTests(ListRowsSeed, TestCase):
             summary = aggregate_rows(Pipeline.objects.all(), PIPELINE_ROW_FIELDS)
         self.assertEqual([s.row for s in summary.failing], [newer])
         self.assertEqual(summary.failing_count, 2)
+
+    def test_rows_failing_at_the_same_time_are_in_descending_id_order(self) -> None:
+        """Created in ascending id order, so a missing tie-break shows."""
+        tied = [self._pipeline(f"tied {n}", id=uuid.UUID(int=n)) for n in (1, 2, 3)]
+        for row in tied:
+            self._runs(row, FIVE_ERRORS)
+
+        self.assertEqual(self._failing(), tied[::-1])
 
     def test_the_failing_filter_matches_the_failing_count(self) -> None:
         self._runs(self._pipeline("broken"), FIVE_ERRORS)

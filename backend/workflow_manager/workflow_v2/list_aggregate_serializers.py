@@ -1,8 +1,5 @@
 """List filter parameters and ``aggregate/`` response shapes shared by the
 deployment and pipeline lists.
-
-Help text and docstrings here are published as the parameter and model
-descriptions, so they are written for the caller.
 """
 
 import uuid

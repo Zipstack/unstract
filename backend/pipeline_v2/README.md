@@ -41,7 +41,7 @@ by `status` or `failing`, call the aggregate without those two.
 | `search` | string | Name contains this text, case-insensitively. |
 | `pipeline_name` | string | Exactly this name. |
 | `status` | `success`, `error`, `never_run`, `inactive` | New. See the [status rule](../api_v2/README.md#status-rule); `inactive` means `active` is false. |
-| `owner` | user id | New. Owned or co-owned by this user, as in `owner_emails`. |
+| `owner` | user id | New. Owned or co-owned by this user. |
 | `last_run_after` | ISO 8601 datetime | New. `last_run_time` at or after this. |
 | `last_run_before` | ISO 8601 datetime | New. `last_run_time` at or before this. |
 | `failing` | boolean | New. `true` keeps only failing rows. See the [failing rule](../api_v2/README.md#failing-rule). |
@@ -80,7 +80,8 @@ with no finished run has none and is left out by either bound.
 
 - `not_scheduled` counts the active pipelines with no `cron_string`. It
   overlaps `by_status` rather than being one of its buckets.
-- `next_run_time` comes from `cron_string`, as on the list; `null` when the
+- `next_run_time` comes from `cron_string`. It is the time the list shows,
+  written with `Z` where the list writes `+00:00`. It is `null` when the
   pipeline has no schedule or its schedule can never fire (`0 0 31 2 *`). Such a
   pipeline still has a `cron_string`, so `not_scheduled` does not count it.
 - The other fields are as for
