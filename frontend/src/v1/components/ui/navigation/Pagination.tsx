@@ -79,6 +79,13 @@ export function Pagination({
   // outside (a new search, a smaller total) drops an uncommitted entry.
   const [draft, setDraft] = useState<{ text: string; on: number } | null>(null);
   const typed = draft?.on === current ? draft.text : null;
+  // Drop it for good once the page moves, so it cannot come back if the page
+  // returns to where it was typed.
+  useEffect(() => {
+    if (draft !== null && draft.on !== current) {
+      setDraft(null);
+    }
+  }, [draft, current]);
   const sizeId = useId();
 
   // A page past the end (the total shrank, or the page size grew) is shown as

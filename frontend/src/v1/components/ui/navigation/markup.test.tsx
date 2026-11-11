@@ -6,11 +6,10 @@ import { NAVIGATION_GALLERY } from "./navigation.gallery";
 /*
  * One file for every variant and state, so a markup or class change shows in
  * review. Markdown rather than a `.snap`, because v1 holds no `.snap` files.
- * Radix ids (`radix-:r1:`) and React ids differ per run, so they are
- * normalised.
+ * React ids (`_r_0_`) follow the render count, so they are normalised.
  */
 function normalise(html: string): string {
-  return html.replaceAll(/«r[0-9a-z]+»|:r[0-9a-z]+:/g, "{id}");
+  return html.replaceAll(/_r_[0-9a-z]+_|«r[0-9a-z]+»|:r[0-9a-z]+:/g, "_id_");
 }
 
 it("matches the committed markup of every variant", async () => {

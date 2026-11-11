@@ -460,7 +460,35 @@ describe("Pagination", () => {
       />,
     );
     expect(input.value).toBe("1");
+    // Back on the page it was typed on, the abandoned entry stays gone.
+    rerender(
+      <Pagination
+        page={2}
+        pageSize={10}
+        total={42}
+        onPageChange={onPageChange}
+      />,
+    );
+    expect(input.value).toBe("2");
     await user.keyboard("{Enter}");
     expect(onPageChange).not.toHaveBeenCalled();
+  });
+
+  it("puts a custom accordion trigger in charge with asChild", async () => {
+    const user = userEvent.setup();
+    render(
+      <Accordion type="single" collapsible>
+        <AccordionItem value="one">
+          <AccordionTrigger asChild>
+            <button type="button">Custom</button>
+          </AccordionTrigger>
+          <AccordionContent>Body</AccordionContent>
+        </AccordionItem>
+      </Accordion>,
+    );
+    const trigger = screen.getByRole("button", { name: "Custom" });
+    expect(trigger.querySelector("svg")).toBeNull();
+    await user.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
   });
 });
