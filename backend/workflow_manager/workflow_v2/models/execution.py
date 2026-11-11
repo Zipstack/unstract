@@ -460,7 +460,11 @@ class WorkflowExecution(BaseModel):
                 )
             if locked is None:
                 return
-            if locked["queue_message_id"] is None:
+            # A stopped row takes the guarded write too, so nothing replaces the stop.
+            if (
+                locked["queue_message_id"] is None
+                and locked["status"] != ExecutionStatus.STOPPED.value
+            ):
                 should_release_rate_limit = self._apply_legacy_update(
                     status, error, increment_attempt
                 )
@@ -492,8 +496,9 @@ class WorkflowExecution(BaseModel):
         error: str | None,
         increment_attempt: bool,
     ) -> bool:
-        """Celery-path (queue_message_id NULL) — unchanged full save(); runs inside the
-        caller's locked transaction. Returns whether to release the rate-limit slot.
+        """Celery-path (queue_message_id NULL, not STOPPED) — unchanged full save();
+        runs inside the caller's locked transaction. Returns whether to release the
+        rate-limit slot.
         """
         should_release = False
         if status is not None:
@@ -520,12 +525,12 @@ class WorkflowExecution(BaseModel):
         error: str | None,
         increment_attempt: bool,
     ) -> bool:
-        """PG-path terminal-one-way guarded write, inside the caller's row lock. Refuses
-        a revert of a protected-terminal (COMPLETED/STOPPED) status — ERROR stays
-        correctable — while still applying error / increment_attempt. Field-scoped
-        (``update_fields``) so a stale object can never clobber counters or the marker,
-        and the post-save cache publishes the status actually persisted. Returns whether
-        to release the rate-limit slot.
+        """Terminal-one-way guarded write for PG and STOPPED rows, inside the caller's
+        row lock. Refuses a revert of a protected-terminal (COMPLETED/STOPPED) status
+        — ERROR stays correctable — while still applying error / increment_attempt.
+        Field-scoped (``update_fields``) so a stale object can never clobber counters or
+        the marker, and the post-save cache publishes the status actually persisted.
+        Returns whether to release the rate-limit slot.
         """
         committed = locked["status"]
         should_release = False

@@ -380,26 +380,53 @@ def test_a_stopped_run_bills_only_its_finished_files(status: str, commits: int) 
     ],
     ids=["general", "api"],
 )
-@pytest.mark.parametrize(("status", "stopped"), [(STOPPED, True), (COMPLETED, False)])
+@pytest.mark.parametrize(
+    ("status", "stopped", "counts"),
+    [(STOPPED, True, (3, 3, 0)), (COMPLETED, False, (3, 2, 1))],
+)
 def test_both_callbacks_pass_the_stop_to_the_final_log(
-    publish: Any, creator: str, status: str, stopped: bool
+    publish: Any, creator: str, status: str, stopped: bool, counts: tuple[int, int, int]
 ) -> None:
     context = cb.CallbackContext()
     context.execution_id = "e1"
     context.organization_id = "org-1"
     context.pipeline_id = "p1"
     context.api_client = mock.Mock()
+    saved = {"total_files": 3, "successful_files": 3, "failed_files": 0}
     context.api_client.get_workflow_execution.return_value = SimpleNamespace(
-        success=True, data={"aggregated_usage_cost": 0}
+        success=True, data={"aggregated_usage_cost": 0, "execution": saved}
     )
+    worker = {"total_files": 3, "successful_files": 2, "failed_files": 1}
     workflow_logger = mock.Mock()
     with mock.patch.object(
         cb.WorkerWorkflowLogger, creator, return_value=workflow_logger
     ):
-        publish(context=context, aggregated_results={}, execution_status=status)
+        publish(context=context, aggregated_results=worker, execution_status=status)
 
-    final = workflow_logger.publish_final_workflow_logs
-    assert final.call_args.kwargs["stopped"] is stopped
+    final = workflow_logger.publish_final_workflow_logs.call_args.kwargs
+    assert final["stopped"] is stopped
+    logged = (final["total_files"], final["successful_files"], final["failed_files"])
+    assert logged == counts
+
+
+@pytest.mark.parametrize(
+    ("reply", "pipeline_writes"),
+    [(_REFUSAL, 0), (_UPDATED, 1), (_COMPLETED_REFUSAL, 1)],
+    ids=["stopped", "live", "completed"],
+)
+def test_a_run_with_no_files_leaves_a_stopped_pipeline_to_the_abort(
+    reply: dict[str, Any], pipeline_writes: int
+) -> None:
+    from general import tasks as general_tasks
+
+    api_client = mock.Mock()
+    api_client.update_workflow_execution_status.return_value = SimpleNamespace(
+        data=reply
+    )
+
+    general_tasks._complete_without_files(api_client, "exec-1", "pipe-1")
+
+    assert api_client.update_pipeline_status.call_count == pipeline_writes
 
 
 def _active_files(status: Any) -> tuple[set[str], Any]:

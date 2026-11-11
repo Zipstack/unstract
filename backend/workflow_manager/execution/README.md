@@ -151,7 +151,7 @@ Once that commits, it:
   and notifications to the abort.
 - A caller waiting on a synchronous API deployment `POST` gets 422 for an aborted
   run, the same as polling with `GET`. Both apply the same result filters.
-- Later status writes from workers cannot undo the abort.
+- Later status writes, from workers or the backend, cannot undo the abort.
 
 ### Errors
 
@@ -189,7 +189,8 @@ callback reports an aborted run with a completed file as completed.
   pick it up while the old worker finishes it: double LLM spend, and two writes to
   a database destination. Wait for that file to finish before re-running.
 - **A dead worker's run never gets its callback**, and neither does a run whose
-  batch fails and then can't write its status. The pipeline status,
+  batch fails and then can't write its status, or a workflow or ETL run aborted
+  before a worker picks it up (the worker then skips it). The pipeline status,
   notifications and file counts are still set by the abort, but usage for its
   completed files is not committed and its execution directory, which can hold
   uploaded documents, is not cleaned up. It stays in storage until something else

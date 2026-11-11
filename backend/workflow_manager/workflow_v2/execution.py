@@ -175,8 +175,8 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         increment_attempt: bool = False,
     ) -> None:
         # Delegate to the model method, which owns the single, robust terminal-one-way
-        # guard (atomic select_for_update, PG-scoped, field-scoped writes). Duplicating
-        # the guard here risked drift + its own TOCTOU/dropped-field bugs.
+        # guard (atomic select_for_update, PG and STOPPED rows, field-scoped writes).
+        # Duplicating the guard here risked drift + its own TOCTOU/dropped-field bugs.
         execution = WorkflowExecution.objects.get(pk=self.execution_id)
         execution.update_execution(
             status=status, error=error, increment_attempt=increment_attempt
@@ -405,23 +405,23 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution = WorkflowExecution.objects.get(pk=execution_id)
             # One transaction, so on-commit hooks of the status write see the counts.
             with transaction.atomic():
-                # Routed through the model method so the PG terminal-one-way guard
-                # applies; the legacy transport has no such guard.
+                # Routed through the model method so its guard applies.
                 execution.update_execution(status=ExecutionStatus.COMPLETED)
-                execution.total_files = total_files
-                execution.successful_files = 0
-                execution.failed_files = failed_files
-                # Field-scoped for the columns, but save() still republishes this
-                # object's status to the execution cache. Safe only because the row
-                # is undispatched here, so no worker can have moved it on.
-                execution.save(
-                    update_fields=[
-                        "total_files",
-                        "successful_files",
-                        "failed_files",
-                        "modified_at",
-                    ]
-                )
+                # A refused write (e.g. the run was aborted) keeps the stored counts.
+                if execution.status == ExecutionStatus.COMPLETED.value:
+                    execution.total_files = total_files
+                    execution.successful_files = 0
+                    execution.failed_files = failed_files
+                    # Field-scoped, but save() still republishes this object's status
+                    # to the cache; safe under the lock this block's write holds.
+                    execution.save(
+                        update_fields=[
+                            "total_files",
+                            "successful_files",
+                            "failed_files",
+                            "modified_at",
+                        ]
+                    )
             # The guard may have refused the status change without raising; re-read
             # so the returned row reflects what is actually stored.
             execution.refresh_from_db()

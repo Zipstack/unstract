@@ -17,6 +17,7 @@ from scheduler.tasks import execute_pipeline_task_v2
 
 # Import shared worker infrastructure using new structure
 from shared.api import InternalAPIClient
+from shared.clients.execution_client import refused_as_stopped
 
 # Import worker-specific data models
 from shared.data.models import (
@@ -781,25 +782,7 @@ def _execute_general_workflow(
                 successful_files=0, failed_files=0, total_time=0.0
             )
 
-            # Complete immediately with no files
-            try:
-                api_client.update_workflow_execution_status(
-                    execution_id=execution_id,
-                    status=ExecutionStatus.COMPLETED.value,
-                    total_files=0,
-                )
-            except Exception as status_error:
-                logger.warning(f"Failed to update execution status: {status_error}")
-
-            # Update pipeline status if needed
-            if pipeline_id:
-                try:
-                    api_client.update_pipeline_status(
-                        pipeline_id=pipeline_id,
-                        status=PipelineStatus.SUCCESS.value,
-                    )
-                except Exception as pipeline_error:
-                    logger.warning(f"Failed to update pipeline status: {pipeline_error}")
+            _complete_without_files(api_client, execution_id, pipeline_id)
 
             execution_time = time.time() - start_time
             response = WorkerTaskResponse.success_response(
@@ -879,6 +862,33 @@ def _execute_general_workflow(
         execution_time = time.time() - start_time
         logger.error(f"General workflow failed after {execution_time:.2f}s: {e}")
         raise
+
+
+def _complete_without_files(
+    api_client: InternalAPIClient, execution_id: str, pipeline_id: str | None
+) -> None:
+    """Mark a run with no files COMPLETED and its pipeline SUCCESS.
+
+    A run aborted meanwhile stays STOPPED, and the abort sets its pipeline status.
+    """
+    stopped = False
+    try:
+        reply = api_client.update_workflow_execution_status(
+            execution_id=execution_id,
+            status=ExecutionStatus.COMPLETED.value,
+            total_files=0,
+        )
+        stopped = refused_as_stopped(reply)
+    except Exception as status_error:
+        logger.warning("Failed to update execution status: %s", status_error)
+    if not pipeline_id or stopped:
+        return
+    try:
+        api_client.update_pipeline_status(
+            pipeline_id=pipeline_id, status=PipelineStatus.SUCCESS.value
+        )
+    except Exception as pipeline_error:
+        logger.warning("Failed to update pipeline status: %s", pipeline_error)
 
 
 def _orchestrate_file_processing_general(

@@ -55,7 +55,7 @@ class MCPTool:
         consumes_result: True when *reading* is itself destructive — the result
             store is one-shot, so a successful read acknowledges the execution
             and the payload cannot be fetched again. ``getExecutionStatus`` on
-            a COMPLETED or STOPPED execution is the case: it neither writes
+            a finished execution is the case: it neither writes
             configuration nor spends money, so ``writes``/``billable`` are both
             false, but calling it twice loses data. Without this flag the derivation below
             would advertise ``readOnlyHint: true`` and tell an agent it is safe
@@ -272,7 +272,7 @@ def build_deployment_registry() -> MCPToolRegistry:
             ),
             input_schema=get_execution_status_schema(),
             handler=get_execution_status,
-            # Reading a COMPLETED or STOPPED execution acknowledges it and the
+            # Reading a finished execution acknowledges it and the
             # result store is one-shot, so the payload cannot be fetched again.
             # Not `writes` (no configuration changes) and not `billable`
             # (no spend), but emphatically not read-only either.
@@ -720,7 +720,7 @@ def build_platform_registry() -> MCPToolRegistry:
             ),
             input_schema=platform_execution_status_schema(),
             handler=get_platform_execution_status,
-            # Reading a COMPLETED or STOPPED execution acknowledges it and the
+            # Reading a finished execution acknowledges it and the
             # result store is one-shot, so the payload cannot be fetched again.
             # Not `writes` (no configuration changes) and not `billable`
             # (no spend), but emphatically not read-only either.

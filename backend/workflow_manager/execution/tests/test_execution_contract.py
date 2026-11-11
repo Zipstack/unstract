@@ -22,6 +22,7 @@ _URLCONF = "workflow_manager.execution.urls"
 _list = ExecutionViewSet.as_view({"get": "list"})
 _detail = ExecutionViewSet.as_view({"get": "retrieve"})
 _status = WorkflowExecutionInternalViewSet.as_view({"get": "execution_status"})
+_retrieve = WorkflowExecutionInternalViewSet.as_view({"get": "retrieve"})
 
 # The default row, pinned: a new key here is a contract change.
 _EXECUTION_KEYS = {
@@ -128,6 +129,23 @@ class InternalStatusActionTests(StuckAbortTestBase):
             with self.subTest(execution_id=execution_id, org=organization_id):
                 response = self._get(execution_id, organization_id)
                 self.assertEqual(response.status_code, 404)
+
+
+class InternalExecutionPayloadTests(StuckAbortTestBase):
+    def test_carries_the_saved_file_counts(self) -> None:
+        # A stopped run's final log uses these counts.
+        execution = self.execution(status=ExecutionStatus.STOPPED)
+        WorkflowExecution.objects.filter(pk=execution.pk).update(
+            total_files=3, successful_files=3, failed_files=0
+        )
+        request = APIRequestFactory().get("/", {"file_execution": "false"})
+        request.organization_id = self.org.organization_id
+
+        response = _retrieve(request, id=str(execution.id))
+
+        self.assertEqual(response.status_code, 200, response.data)
+        saved = response.data["execution"]
+        self.assertEqual((saved["successful_files"], saved["failed_files"]), (3, 0))
 
 
 class WorkerStatusRouteTests(StuckAbortTestBase):

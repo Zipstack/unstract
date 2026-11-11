@@ -20,6 +20,7 @@ from utils.organization_utils import filter_queryset_by_organization
 
 # Import new dataclasses for WorkflowDefinitionAPIView
 from unstract.core.data_models import (
+    ALREADY_FINAL_REASON,
     ConnectionType,
     ConnectorInstanceData,
     WorkflowDefinitionResponseData,
@@ -607,7 +608,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                     return Response(
                         {
                             "status": "skipped",
-                            "reason": "already_final",
+                            "reason": ALREADY_FINAL_REASON,
                             "execution_id": str(execution.id),
                             "new_status": execution.status,
                         }

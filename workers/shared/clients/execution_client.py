@@ -16,7 +16,7 @@ import uuid
 from typing import Any, cast
 from uuid import UUID
 
-from unstract.core.data_models import ExecutionStatus
+from unstract.core.data_models import ALREADY_FINAL_REASON, ExecutionStatus
 
 from ..data.models import (
     BatchOperationRequest,
@@ -92,7 +92,7 @@ def refused_as_stopped(response: Any) -> bool:
     """True when a status write was refused because an abort got there first."""
     data = getattr(response, "data", None) or {}
     return bool(
-        data.get("reason") == "already_final"
+        data.get("reason") == ALREADY_FINAL_REASON
         and data.get("new_status") == ExecutionStatus.STOPPED.value
     )
 

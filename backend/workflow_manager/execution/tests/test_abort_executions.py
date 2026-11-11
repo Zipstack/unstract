@@ -1,6 +1,7 @@
 """``POST execution/abort/`` (UN-4318): owner-or-admin, per-id outcomes, audit."""
 
 import uuid
+from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -23,6 +24,7 @@ from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.file_execution.serializers import FileCentricExecutionSerializer
 from workflow_manager.internal_views import WorkflowExecutionInternalViewSet
 from workflow_manager.workflow_v2.enums import ExecutionStatus
+from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
@@ -418,6 +420,28 @@ class AbortExecutionTests(StuckAbortTestBase):
                     self.assertEqual(
                         self._status(execution), ExecutionStatus.STOPPED.value
                     )
+
+    def test_backend_writes_before_dispatch_cannot_undo_the_abort(self) -> None:
+        # Staging or dispatch fails, or stages nothing, after a PENDING run's abort.
+        helper = WorkflowExecutionServiceHelper
+        writes: dict[str, Callable[[str], Any]] = {
+            "error": lambda pk: helper.update_execution_err(pk, "staging failed"),
+            "completed": lambda pk: helper.update_execution_completed(pk, 2, 2),
+        }
+        for name, write in writes.items():
+            with self.subTest(write=name):
+                execution = self.execution(
+                    self.deployment(),
+                    status=ExecutionStatus.PENDING,
+                    queue_message_id=None,
+                )
+                self._abort(self.owner, execution.id)
+
+                write(str(execution.pk))
+
+                execution.refresh_from_db()
+                self.assertEqual(execution.status, ExecutionStatus.STOPPED.value)
+                self.assertEqual((execution.total_files, execution.failed_files), (0, 0))
 
     @staticmethod
     def _write_status(execution: WorkflowExecution, data: dict[str, Any]) -> Any:
