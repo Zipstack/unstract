@@ -23,6 +23,9 @@ from permissions.resource_share_views import ResourceShareManagementMixin
 from platform_audit.actions import Action
 from platform_audit.resources import record_resource_event, resource_ref
 from plugins import get_plugin
+from resource_usage.constants import ProfileKind
+from resource_usage.schema import USAGE_LIST_PARAMETERS, usage_schema
+from resource_usage.views import ProfileUsageMixin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -52,10 +55,17 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
-@extend_schema_view(list=extend_schema(parameters=LIST_FILTER_PARAMETERS))
+@extend_schema_view(
+    list=extend_schema(parameters=LIST_FILTER_PARAMETERS + USAGE_LIST_PARAMETERS),
+    usage=usage_schema(ProfileKind.CONNECTOR),
+)
 class ConnectorInstanceViewSet(
-    OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+    ProfileUsageMixin,
+    OwnerManagementMixin,
+    ResourceShareManagementMixin,
+    viewsets.ModelViewSet,
 ):
+    usage_kind = ProfileKind.CONNECTOR
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceWithStatusSerializer
     pagination_class = FailingCountPagination
@@ -97,6 +107,7 @@ class ConnectorInstanceViewSet(
         # The test-status filters are for the list only.
         if self.action == "list":
             queryset = filter_by_test_status(queryset, self.request.query_params)
+            queryset = self.filter_by_usage(queryset)
         return queryset
 
     def get_status_base_queryset(self) -> QuerySet:

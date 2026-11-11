@@ -32,6 +32,9 @@ from platform_audit.recorder import (
 )
 from platform_audit.resources import record_resource_event, resource_ref
 from plugins import get_plugin
+from resource_usage.constants import ProfileKind
+from resource_usage.schema import USAGE_LIST_PARAMETERS, usage_schema
+from resource_usage.views import ProfileUsageMixin
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -165,10 +168,14 @@ class AdapterViewSet(GenericViewSet):
         )
 
 
-@extend_schema_view(list=extend_schema(parameters=LIST_FILTER_PARAMETERS))
+@extend_schema_view(
+    list=extend_schema(parameters=LIST_FILTER_PARAMETERS + USAGE_LIST_PARAMETERS),
+    usage=usage_schema(ProfileKind.ADAPTER),
+)
 class AdapterInstanceViewSet(
-    OwnerManagementMixin, ResourceShareManagementMixin, ModelViewSet
+    ProfileUsageMixin, OwnerManagementMixin, ResourceShareManagementMixin, ModelViewSet
 ):
+    usage_kind = ProfileKind.ADAPTER
     serializer_class = AdapterInstanceSerializer
     pagination_class = FailingCountPagination
     # `pk` tiebreaker keeps paging deterministic when modified_at collides.
@@ -197,6 +204,7 @@ class AdapterInstanceViewSet(
             "adapter_info",
             "share",
             "effective_members",
+            "usage",
         ]:
             return [IsOwnerOrSharedUserOrSharedToOrg()]
         return [IsOwner()]
@@ -206,6 +214,7 @@ class AdapterInstanceViewSet(
         # The test-status filters are for the list only.
         if self.action == "list":
             queryset = filter_by_test_status(queryset, self.request.query_params)
+            queryset = self.filter_by_usage(queryset)
         return queryset
 
     def get_status_base_queryset(self) -> QuerySet:
