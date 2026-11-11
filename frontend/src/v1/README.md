@@ -97,6 +97,20 @@ is convention.
 - `CodeEditor` uses Monaco from its default CDN, as v0 does. Never call
   `loader.config()` in v1: the loader is shared with v0.
 
+## Text inputs
+
+- Text controls come from `components/ui/form/` (`Input`, `Textarea`,
+  `PromptTextarea`, `SearchField`, `SecretField`) inside a `Field`, which
+  ties the label, helper and error text to the control. A control the Field
+  cannot name with `<label for>` (a radiogroup) takes `labelId` from
+  `useFieldControl` as `aria-labelledby`. A trigger that is itself the frame
+  (a select) uses `fieldFrameVariants({ focus: "self" })`.
+- A control's own `invalid`, `disabled` and `readOnly` win over its Field's.
+- An overlay (Dialog, Popover, Menu) that can hold a `SearchField` must call
+  `event.preventDefault()` in `onEscapeKeyDown` when
+  `isEscapeClearTarget(event)` is true, so Escape clears the search before it
+  closes the overlay.
+
 ## Folders and what each may import
 
 Every folder may import from itself. Test files (`*.test.ts(x)`,

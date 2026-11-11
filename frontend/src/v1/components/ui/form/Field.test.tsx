@@ -1,8 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import { renderV1 } from "@v1/test";
 import type { JSX } from "react";
 import { expect, it } from "vitest";
 import { ErrorText } from "./ErrorText";
 import { Field } from "./Field";
+import { fieldFrameVariants } from "./FieldFrame";
+import { useFieldControl } from "./field-context";
 import { Input } from "./Input";
 import { Label } from "./Label";
 import { PromptTextarea } from "./PromptTextarea";
@@ -16,7 +19,7 @@ const CONTROLS: [string, (props: ControlProps) => JSX.Element][] = [
   ["Textarea", (p) => <Textarea {...p} />],
   ["PromptTextarea", (p) => <PromptTextarea {...p} />],
   ["SearchField", (p) => <SearchField {...p} />],
-  ["SecretField", (p) => <SecretField onCopyResult={() => undefined} {...p} />],
+  ["SecretField", (p) => <SecretField {...p} />],
 ];
 
 type ControlProps = Readonly<{
@@ -30,7 +33,7 @@ const frameOf = (control: HTMLElement) =>
   control.closest("[data-slot=field-frame]") as HTMLElement;
 
 it.each(CONTROLS)("associates the Field label with a %s", (_, make) => {
-  render(<Field label="Name">{make({})}</Field>);
+  renderV1(<Field label="Name">{make({})}</Field>);
   const named = screen.getByLabelText("Name");
   expect(named.dataset.slot).toBe("control");
 });
@@ -38,7 +41,7 @@ it.each(CONTROLS)("associates the Field label with a %s", (_, make) => {
 it.each(
   CONTROLS,
 )("wires a %s to the Field's error, helper and states", (_, make) => {
-  render(
+  renderV1(
     <Field label="Name" id="name" helperText="Help" error="Bad" disabled>
       {make({})}
     </Field>,
@@ -56,7 +59,7 @@ it.each(
 it.each(
   CONTROLS,
 )("takes a %s's own state props over an empty frame", (_, make) => {
-  const { rerender } = render(make({ "aria-label": "C" }));
+  const { rerender } = renderV1(make({ "aria-label": "C" }));
   const control = () => screen.getByLabelText("C") as HTMLInputElement;
   expect(control().hasAttribute("aria-invalid")).toBe(false);
   for (const flag of ["data-invalid", "data-disabled", "data-readonly"]) {
@@ -76,14 +79,14 @@ it.each([
   ["Input", <Input key="i" id="own" />],
   ["Textarea", <Textarea key="t" id="own" />],
 ])("names a %s that has its own id: the Field's id wins", (_, control) => {
-  render(<Field label="Name">{control}</Field>);
+  renderV1(<Field label="Name">{control}</Field>);
   const named = screen.getByLabelText("Name");
   expect(named.id).not.toBe("own");
   expect(document.querySelector("label")?.htmlFor).toBe(named.id);
 });
 
 it("associates a standalone Label through htmlFor", () => {
-  render(
+  renderV1(
     <>
       <Label htmlFor="api-key">API key</Label>
       <Input id="api-key" />
@@ -93,7 +96,7 @@ it("associates a standalone Label through htmlFor", () => {
 });
 
 it("describes the control by its helper text, and adds the error when it appears", () => {
-  const { rerender } = render(
+  const { rerender } = renderV1(
     <Field label="Name" helperText="As shown on invoices">
       <Input />
     </Field>,
@@ -121,7 +124,7 @@ it("describes the control by its helper text, and adds the error when it appears
 });
 
 it("keeps the control's own description after the field's", () => {
-  render(
+  renderV1(
     <Field label="Name" helperText="Help" id="name">
       <Input aria-describedby="extra" />
     </Field>,
@@ -132,7 +135,7 @@ it("keeps the control's own description after the field's", () => {
 });
 
 it("passes disabled and read-only from the field to the control and frame", () => {
-  render(
+  renderV1(
     <>
       <Field label="Off" disabled>
         <Input />
@@ -151,6 +154,57 @@ it("passes disabled and read-only from the field to the control and frame", () =
 });
 
 it("renders ErrorText as an alert so it is announced", () => {
-  render(<ErrorText>Bad value</ErrorText>);
+  renderV1(<ErrorText>Bad value</ErrorText>);
   expect(screen.getByRole("alert").textContent).toBe("Bad value");
+});
+
+// FormField (P1-T06) passes `error` into Field, so this precedence is what a form control gets.
+it.each(
+  CONTROLS,
+)("a %s's own invalid, disabled and readOnly win over its Field's", (_, make) => {
+  renderV1(
+    <Field label="Name" error="x" disabled readOnly>
+      {make({ invalid: false, disabled: false, readOnly: false })}
+    </Field>,
+  );
+  const control = screen.getByLabelText("Name") as HTMLInputElement;
+  expect(control).not.toHaveAttribute("aria-invalid");
+  expect(control).toBeEnabled();
+  expect(control.readOnly).toBe(false);
+  expect(frameOf(control)).not.toHaveAttribute("data-invalid");
+});
+
+it("invalid={false} on a Field keeps its error text but not the invalid mark", () => {
+  renderV1(
+    <Field label="Name" error="Taken" invalid={false}>
+      <Input />
+    </Field>,
+  );
+  const control = screen.getByLabelText("Name");
+  expect(control).not.toHaveAttribute("aria-invalid");
+  expect(screen.getByText("Taken")).toBeInTheDocument();
+});
+
+it("gives the label an id that useFieldControl hands to a group control", () => {
+  function Group() {
+    const { labelId } = useFieldControl({});
+    return <div role="radiogroup" aria-labelledby={labelId} />;
+  }
+  renderV1(
+    <Field id="plan" label="Plan">
+      <Group />
+    </Field>,
+  );
+  expect(screen.getByRole("radiogroup", { name: "Plan" })).toBeInTheDocument();
+  expect(screen.getByText("Plan")).toHaveAttribute("id", "plan-label");
+});
+
+it("fieldFrameVariants: focus within rings on the control, focus self on the frame", () => {
+  expect(fieldFrameVariants()).toContain(
+    "ui:has-[[data-slot=control]:focus-visible]:focus-ring",
+  );
+  const self = fieldFrameVariants({ focus: "self" });
+  expect(self).toContain("ui:focus-visible:focus-ring");
+  expect(self).not.toContain("has-[[data-slot=control]");
+  expect(self).toContain("ui:data-readonly:bg-muted");
 });

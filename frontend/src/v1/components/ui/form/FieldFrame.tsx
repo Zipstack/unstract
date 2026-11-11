@@ -4,27 +4,31 @@ import type { ComponentProps, JSX } from "react";
 
 /*
  * The one border, radius, padding and focus treatment for every text control.
- * The ring follows the control (data-slot="control"), not the whole frame, so
- * tabbing to an adornment button rings only that button. Invalid swaps the
+ * By default the ring follows the control (data-slot="control"), not the whole
+ * frame, so tabbing to an adornment button rings only that button. A trigger
+ * that is itself the frame (a select) takes `focus: "self"`. Invalid swaps the
  * ring colour, so an invalid field keeps a destructive ring while focused.
  */
 export const fieldFrameVariants = cva(
   [
     "ui:box-border ui:flex ui:w-full ui:min-w-0 ui:gap-1.5 ui:rounded-md ui:border ui:border-input ui:bg-background ui:text-body ui:text-foreground ui:transition-[border-color,box-shadow]",
     "ui:hover:border-muted-foreground",
-    "ui:has-[[data-slot=control]:focus-visible]:focus-ring",
     "ui:data-readonly:border-input ui:data-readonly:bg-muted",
     "ui:data-invalid:border-destructive ui:data-invalid:[--ring:var(--destructive)]",
     "ui:data-disabled:pointer-events-none ui:data-disabled:opacity-50",
   ],
   {
     variants: {
+      focus: {
+        within: "ui:has-[[data-slot=control]:focus-visible]:focus-ring",
+        self: "ui:outline-none ui:focus-visible:focus-ring",
+      },
       multiline: {
         false: "ui:h-8 ui:items-center ui:px-2.5",
         true: "ui:items-stretch",
       },
     },
-    defaultVariants: { multiline: false },
+    defaultVariants: { focus: "within", multiline: false },
   },
 );
 
@@ -47,6 +51,7 @@ export function FieldFrame({
   disabled,
   readOnly,
   multiline,
+  focus,
   className,
   ...props
 }: FieldFrameProps): JSX.Element {
@@ -56,7 +61,7 @@ export function FieldFrame({
       data-invalid={flag(invalid)}
       data-disabled={flag(disabled)}
       data-readonly={flag(readOnly)}
-      className={cn(fieldFrameVariants({ multiline }), className)}
+      className={cn(fieldFrameVariants({ focus, multiline }), className)}
       {...props}
     />
   );

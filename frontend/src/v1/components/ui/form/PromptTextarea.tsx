@@ -1,5 +1,5 @@
 import { cn } from "@v1/lib/cn";
-import { composeRefs } from "@v1/lib/compose-refs";
+import { composeRefs } from "@v1/lib/merge-refs";
 import {
   type JSX,
   type KeyboardEvent,

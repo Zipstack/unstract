@@ -1,32 +1,30 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { installResizeObserver } from "@v1/test";
+import { fireEvent, screen } from "@testing-library/react";
+import { installResizeObserver, renderV1 } from "@v1/test";
 import { type JSX, useState } from "react";
-import { afterEach, expect, it, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import { Field } from "./Field";
 import { PromptTextarea } from "./PromptTextarea";
 
-afterEach(() => vi.unstubAllGlobals());
-
 function setup(onSubmit = vi.fn()) {
-  render(<PromptTextarea aria-label="Prompt" onSubmit={onSubmit} />);
+  const { user } = renderV1(
+    <PromptTextarea aria-label="Prompt" onSubmit={onSubmit} />,
+  );
   return {
+    user,
     onSubmit,
     textarea: screen.getByLabelText("Prompt") as HTMLTextAreaElement,
   };
 }
 
 it("submits the text on Enter without inserting a line break", async () => {
-  const user = userEvent.setup();
-  const { onSubmit, textarea } = setup();
+  const { user, onSubmit, textarea } = setup();
   await user.type(textarea, "Summarise{Enter}");
   expect(onSubmit).toHaveBeenCalledExactlyOnceWith("Summarise");
   expect(textarea.value).toBe("Summarise");
 });
 
 it("inserts a line break on Shift+Enter and does not submit", async () => {
-  const user = userEvent.setup();
-  const { onSubmit, textarea } = setup();
+  const { user, onSubmit, textarea } = setup();
   await user.type(textarea, "one{Shift>}{Enter}{/Shift}two");
   expect(onSubmit).not.toHaveBeenCalled();
   expect(textarea.value).toBe("one\ntwo");
@@ -44,7 +42,7 @@ it("does not submit an Enter that ends an IME composition", () => {
 
 it("lets the caller's onKeyDown cancel the submit", () => {
   const onSubmit = vi.fn();
-  render(
+  renderV1(
     <PromptTextarea
       aria-label="Prompt"
       onSubmit={onSubmit}
@@ -56,8 +54,7 @@ it("lets the caller's onKeyDown cancel the submit", () => {
 });
 
 it("inserts a line break on Enter when there is no onSubmit", async () => {
-  const user = userEvent.setup();
-  render(<PromptTextarea aria-label="Prompt" />);
+  const { user } = renderV1(<PromptTextarea aria-label="Prompt" />);
   const textarea = screen.getByLabelText("Prompt") as HTMLTextAreaElement;
   await user.type(textarea, "a{Enter}b");
   expect(textarea.value).toBe("a\nb");
@@ -89,7 +86,6 @@ function measureByLength(textarea: HTMLTextAreaElement) {
 
 it("re-fits a controlled value cleared after submit, without an input event", async () => {
   vi.stubGlobal("CSS", { supports: () => false });
-  const user = userEvent.setup();
   function Controlled() {
     const [value, setValue] = useState("");
     return (
@@ -101,7 +97,7 @@ it("re-fits a controlled value cleared after submit, without an input event", as
       />
     );
   }
-  render(<Controlled />);
+  const { user } = renderV1(<Controlled />);
   const textarea = screen.getByLabelText("Prompt") as HTMLTextAreaElement;
   measureByLength(textarea);
   await user.type(textarea, "twelve chars");
@@ -113,7 +109,7 @@ it("re-fits a controlled value cleared after submit, without an input event", as
 
 it("re-fits an uncontrolled value after its form resets", async () => {
   vi.stubGlobal("CSS", { supports: () => false });
-  render(
+  renderV1(
     <form>
       <PromptTextarea aria-label="Prompt" defaultValue="" />
     </form>,
@@ -188,7 +184,7 @@ it.each([
   ],
 ])("does not submit when read-only by %s", (_, wrap, props) => {
   const onSubmit = vi.fn();
-  render(
+  renderV1(
     wrap(<PromptTextarea aria-label="Prompt" onSubmit={onSubmit} {...props} />),
   );
   fireEvent.keyDown(screen.getByLabelText("Prompt"), { key: "Enter" });
