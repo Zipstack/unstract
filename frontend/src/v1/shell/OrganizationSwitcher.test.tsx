@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   type CurrentOrganization,
   OrganizationSwitcher,
+  sessionEndedPath,
 } from "./OrganizationSwitcher";
 
 const list = vi.fn<() => Promise<Organization[]>>();
@@ -26,7 +27,10 @@ beforeEach(() => {
     assign,
   });
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 const zipstack: Organization = {
   id: "org_zs",
@@ -200,7 +204,65 @@ describe("OrganizationSwitcher", () => {
       }),
     );
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(switchTo).not.toHaveBeenCalled();
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  // The Switch button that opened the dialog unmounted with the popover.
+  test.each([
+    [
+      "Cancel",
+      () => userEvent.click(screen.getByRole("button", { name: "Cancel" })),
+    ],
+    ["Escape", () => userEvent.keyboard("{Escape}")],
+  ])("closing the confirm dialog with %s puts focus back on the pill", async (_, close) => {
+    list.mockResolvedValue([zipstack, personal]);
+    await open();
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Switch to Tanushree’s organisation",
+      }),
+    );
+    await close();
+    await waitFor(() =>
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
+    );
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /Organisation: Zipstack/ }),
+    );
+  });
+
+  test("a 403 says access was removed, disables the switch and reloads the list", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    list.mockResolvedValue([zipstack, personal]);
+    switchTo.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 403 },
+    });
+    await open();
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Switch to Tanushree’s organisation",
+      }),
+    );
+    const dialog = screen.getByRole("alertdialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Switch organisation" }),
+    );
+    expect(
+      await within(dialog).findByText(
+        "You no longer have access to Tanushree’s organisation.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: "Switch organisation" }),
+    ).toBeDisabled();
+    expect(list).toHaveBeenCalledTimes(2);
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Cancel" }),
+    );
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(assign).not.toHaveBeenCalled();
   });
 
@@ -267,7 +329,28 @@ describe("OrganizationSwitcher", () => {
     ).toBeEnabled();
   });
 
-  test("a 412 from the list means the session is gone: go to sign-in", async () => {
+  test("a 412 with a known cause goes to the error page that explains it", async () => {
+    list.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 412, data: { code: "INS", domain: "acme.com" } },
+    });
+    await open();
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith("/error?code=INS&domain=acme.com"),
+    );
+  });
+
+  test("sessionEndedPath: code without domain, and junk bodies", () => {
+    expect(sessionEndedPath({ code: "USR" })).toBe("/error?code=USR");
+    expect(sessionEndedPath({ code: "a&b", domain: "x y" })).toBe(
+      "/error?code=a%26b&domain=x+y",
+    );
+    expect(sessionEndedPath(undefined)).toBe("/landing");
+    expect(sessionEndedPath("<html>")).toBe("/landing");
+    expect(sessionEndedPath({ code: 7 })).toBe("/landing");
+  });
+
+  test("a 412 with an empty body means the session is gone: go to sign-in", async () => {
     list.mockRejectedValue({ isAxiosError: true, response: { status: 412 } });
     await open();
     await waitFor(() => expect(assign).toHaveBeenCalledWith("/landing"));
@@ -317,13 +400,12 @@ describe("OrganizationSwitcher", () => {
     expect(rows[1]).not.toHaveAttribute("aria-current");
   });
 
-  test("the loading text is a polite live region", async () => {
+  test("loading shows a skeleton announced as a status", async () => {
     list.mockReturnValue(new Promise(() => undefined));
     await open();
-    expect(await screen.findByText("Loading…")).toHaveAttribute(
-      "aria-live",
-      "polite",
-    );
+    const status = await screen.findByRole("status");
+    expect(status).toHaveAttribute("data-slot", "skeleton");
+    expect(status).toHaveTextContent("Loading organisations");
   });
 
   test("ignores a list response that is not from the latest request", async () => {
