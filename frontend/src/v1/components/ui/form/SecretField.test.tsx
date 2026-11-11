@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import type { CopyResult } from "@v1/lib/code/clipboard";
 import * as notify from "@v1/lib/notify";
 import { renderV1 } from "@v1/test";
 import type { JSX } from "react";
@@ -160,4 +161,18 @@ it("keeps password managers and spellcheck off, whatever the caller passes", () 
   expect(input().getAttribute("autocapitalize")).toBe("off");
   expect(input().hasAttribute("data-1p-ignore")).toBe(true);
   expect(input().getAttribute("data-lpignore")).toBe("true");
+});
+
+it("hands onCopy the copy outcome only, not the native clipboard event", async () => {
+  const seen: CopyResult[] = [];
+  const { user } = renderV1(
+    <SecretField
+      aria-label="API key"
+      defaultValue="sk-1"
+      // Fails typecheck:v1 if the argument widens to ClipboardEvent | CopyResult.
+      onCopy={(result) => seen.push(result)}
+    />,
+  );
+  await user.click(button("Copy"));
+  await vi.waitFor(() => expect(seen).toEqual(["copied"]));
 });
