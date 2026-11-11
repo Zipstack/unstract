@@ -49,6 +49,18 @@ describe("ExternalRedirect", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("goes nowhere when there is no destination", () => {
+    // `propTypes.isRequired` is a dev-only warning, not a guard. Without the
+    // check this was `assign(undefined)`, which navigates to `/undefined`
+    // — the same class of bug as `flowAppPath()`'s in the paired cloud PR.
+    const assign = stubLocation();
+
+    const { container } = render(<ExternalRedirect to={undefined} />);
+
+    expect(assign).not.toHaveBeenCalled();
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("navigates once per destination, not on every render", () => {
     const assign = stubLocation();
 

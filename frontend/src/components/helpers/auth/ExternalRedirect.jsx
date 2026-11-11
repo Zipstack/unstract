@@ -13,11 +13,24 @@ import { useEffect } from "react";
  * a page the visitor is not going to stay on, and anything that navigates
  * would race this.
  *
+ * It also renders nothing — and now goes nowhere — when `to` is falsy.
+ * `propTypes.isRequired` is a development-only warning, not a guard, so
+ * without the check below a missing destination became
+ * `window.location.assign(undefined)`, which navigates to `/undefined`
+ * rather than failing (Wicky, review on #2475). Callers are expected to
+ * decide BEFORE rendering this — `RequireGuest` does, and so must any
+ * future one — so the guard is a backstop rather than a supported way to
+ * call it. A missing destination there means the caller's own answer was
+ * wrong, and staying put is the recoverable half of that.
+ *
  * `assign`, not `replace`: the visitor is leaving this app, so Back should
  * bring them back to it rather than to whatever preceded it.
  */
 function ExternalRedirect({ to }) {
   useEffect(() => {
+    if (!to) {
+      return;
+    }
     window.location.assign(to);
   }, [to]);
   return null;
