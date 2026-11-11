@@ -258,7 +258,12 @@ export function OrganizationSwitcher({
 }) {
   const { state, load } = useOrganizationList();
   const [query, setQuery] = useState("");
-  const [target, setTarget] = useState<Organization>();
+  // `from` is captured on Switch, so a reload after a 403 (which empties the
+  // list) cannot blank the current organisation's details in the dialog.
+  const [pending, setPending] = useState<{
+    from: Organization;
+    to: Organization;
+  }>();
   const pill = useRef<HTMLButtonElement>(null);
 
   const organizations = state.status === "ready" ? state.organizations : [];
@@ -366,7 +371,19 @@ export function OrganizationSwitcher({
                             type="button"
                             aria-label={`Switch to ${org.display_name}`}
                             className={`${BUTTON} ui:px-2.5`}
-                            onClick={() => setTarget(org)}
+                            onClick={() =>
+                              setPending({
+                                from: {
+                                  ...organizations.find(
+                                    (o) => o.id === current.id,
+                                  ),
+                                  id: current.id,
+                                  name: current.name,
+                                  display_name: current.displayName,
+                                },
+                                to: org,
+                              })
+                            }
                           >
                             <ArrowRightLeft aria-hidden className="ui:size-4" />
                             Switch
@@ -386,17 +403,12 @@ export function OrganizationSwitcher({
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>
-      {target && (
+      {pending && (
         <ConfirmSwitch
-          from={{
-            ...organizations.find((org) => org.id === current.id),
-            id: current.id,
-            name: current.name,
-            display_name: current.displayName,
-          }}
-          to={target}
+          from={pending.from}
+          to={pending.to}
           viaLogin={current.switchViaLogin === true}
-          onClose={() => setTarget(undefined)}
+          onClose={() => setPending(undefined)}
           onAccessRemoved={load}
           returnFocus={() => pill.current?.focus()}
         />

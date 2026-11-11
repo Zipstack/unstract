@@ -235,7 +235,10 @@ describe("OrganizationSwitcher", () => {
 
   test("a 403 says access was removed, disables the switch and reloads the list", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    list.mockResolvedValue([zipstack, personal]);
+    // The reload never settles, so the list stays empty behind the dialog.
+    list
+      .mockResolvedValueOnce([zipstack, personal])
+      .mockReturnValueOnce(new Promise(() => undefined));
     switchTo.mockRejectedValue({
       isAxiosError: true,
       response: { status: 403 },
@@ -259,6 +262,8 @@ describe("OrganizationSwitcher", () => {
       within(dialog).getByRole("button", { name: "Switch organisation" }),
     ).toBeDisabled();
     expect(list).toHaveBeenCalledTimes(2);
+    // The current organisation keeps its details while the list reloads.
+    expect(within(dialog).getByText("Admin · 40 members")).toBeInTheDocument();
     await userEvent.click(
       within(dialog).getByRole("button", { name: "Cancel" }),
     );
@@ -315,8 +320,12 @@ describe("OrganizationSwitcher", () => {
     await waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
   });
 
-  test("a failed switch enables the confirm button again", async () => {
-    switchTo.mockRejectedValue(new Error("HTTP 403"));
+  test("a 500 offers a retry and enables the confirm button again", async () => {
+    // An axios error, so only the status keeps it from the 403 branch.
+    switchTo.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 500 },
+    });
     const dialog = await openConfirm();
     const confirm = within(dialog).getByRole("button", {
       name: "Switch organisation",
