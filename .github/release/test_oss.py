@@ -2956,6 +2956,37 @@ class PendingPicksWorkflow(Workflow):
             self.forced(self.promote(FORCE="true", REASON="hotfix")), "hotfix"
         )
 
+    def test_promote_held_oss_fixes_after_oss_ga(self):
+        self.line("1.7", "v1.7.0-rc.1")  # no cloud GA yet: the cloud line is stabilizing
+        oss_work = self.repos["oss"][1]
+        r = self.promote("v1.7.0-rc.1")  # nothing held: passes
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        dev_git(
+            oss_work, "tag", "ee-v1.7.0", "origin/release/1.7"
+        )  # an earlier Promote's OSS step, then a failure
+        dev_git(oss_work, "push", "-q", "origin", "ee-v1.7.0")
+        dev_git(oss_work, "pull", "-q", "origin", "main")
+        dev_git(oss_work, "commit", "-q", "--allow-empty", "-m", "fix: z (#9)")
+        dev_git(oss_work, "push", "-q", "origin", "main")
+        dev_git(oss_work, "fetch", "-q", "origin")
+        dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "[FIX] x (#9)")
+        dev_git(self.cloud, "push", "-q", "origin", "main")
+        self.write(
+            "pulls.json",
+            json.dumps(
+                [{"number": 9, "title": "[FIX] x", "labels": [{"name": "fix/security"}]}]
+            ),
+        )
+        r = self.promote("v1.7.0-rc.1")
+        self.blocked(r, "::error::pending picks")
+        self.assertRegex(
+            r.stdout,
+            rf"::error::[0-9a-f]{{7}} \(security, PR {re.escape(oss.OSS)}#9\) held for release/1\.7",
+        )
+        self.assertNotRegex(
+            r.stdout, r"\(security, PR #9\)"
+        )  # the cloud line is still stabilizing: not checked
+
     def test_promote_held_fixes(self):
         self.line("1.7", "v1.7.0-rc.1", "v1.7.0")  # cloud GA: the line is stabilized
         dev_git(
