@@ -2,10 +2,11 @@
 queries however many profiles are asked about.
 
 A reference that makes the delete guard refuse the profile is
-``blocks_delete=True``. The guard refuses on two things, and both are covered
-here: a ``PROTECT``/``RESTRICT`` foreign key (Django raises ``ProtectedError``)
+``blocks_delete=True``. Covered here: a ``PROTECT``/``RESTRICT`` foreign key
 and, for adapters, a value in a workflow tool instance's ``metadata``
-(``AdapterInstanceViewSet._adapter_used_in_tool_instance``).
+(``AdapterInstanceViewSet._adapter_used_in_tool_instance``). The guard's
+refusal of the caller's own default adapter is per user and deliberately not
+reported as usage.
 
 Providers turn known relations into named, routable items. Any
 ``PROTECT``/``RESTRICT`` relation no provider claims is still reported, in the
@@ -110,7 +111,9 @@ class ProfileUsage:
         return UsedAs.NONE
 
 
-# A provider yields ``(profile_pk, reference)`` for the given profiles.
+# A provider yields ``(profile_pk, reference)`` for the given profiles. The
+# profiles carry only the viewset's ``usage_fields`` columns on the lists, so
+# a provider reads only those, or the list costs a query per profile.
 Provider = Callable[[Sequence[Model]], Iterable[tuple[Any, Reference]]]
 
 
@@ -255,6 +258,8 @@ def collect(
     index: dict[Any, ProfileUsage] = {profile.pk: ProfileUsage() for profile in profiles}
     if not profiles:
         return index
+    # Providers may yield a pk as a UUID or as its string.
+    by_key = {str(pk): usage for pk, usage in index.items()}
 
     sources: list[Iterable[tuple[Any, Reference]]] = [
         reg.provider(profiles) for reg in _providers[kind]
@@ -262,7 +267,9 @@ def collect(
     sources.append(_unclaimed_relation_refs(kind, profiles))
     for source in sources:
         for profile_pk, reference in source:
-            usage = index.get(profile_pk)
+            # A pk outside the profiles asked about is skipped: a provider
+            # matching on a row can report other adapters the row names.
+            usage = by_key.get(str(profile_pk))
             if usage is not None:
                 usage.add(reference)
 

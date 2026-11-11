@@ -25,7 +25,7 @@ Mounted under the organisation path: `/api/v1/unstract/{org_id}/`.
 ```json
 {
   "id": "6f1c…",
-  "used_in_count": 2,
+  "used_in_count": 1,
   "used_as": "source",
   "groups": {
     "workflows": [
@@ -61,7 +61,9 @@ Mounted under the organisation path: `/api/v1/unstract/{org_id}/`.
 - `type` says what the item is, so the frontend knows where `id` routes:
   `workflow`, `prompt_studio_project`, `api_deployment`, `pipeline`, or
   `prompt_studio_profile` (a Prompt Studio profile with no project, in
-  `other`). Cloud groups add their own values.
+  `other`). Cloud groups add their own values, and any other item in `other`
+  carries the referencing model's name, which does not route. The schema
+  publishes `type` as an open string for that reason.
 - `deployments` and `pipelines` are the API deployments and pipelines of the
   workflows listed under `workflows`. They are listed so the panel can show
   what would stop working, but they are **not** counted in `used_in_count`:
@@ -71,16 +73,21 @@ Mounted under the organisation path: `/api/v1/unstract/{org_id}/`.
   is allowed and clears it from the project.
 - `role` (connectors only) is `source`, `destination`, or `both` when one
   workflow reads from and writes to the same connector.
-- `used_as` (connectors only) sums up the roles: `source`, `destination`,
-  `both` or `none`.
+- `used_as` (connectors only) sums up the roles of the counted items:
+  `source`, `destination`, `both` or `none`. `none` means no source or
+  destination role, not unused: a connector referenced only from `other` is
+  used with `used_as: none`. Read `used_in_count` for used or not.
 - Within a group, items the caller can open come first, by name.
 
 **Who may call it.** Anyone who may see the profile: its owners, users and
 groups it is shared with, everyone when it is shared to the organisation,
 organisation admins and service accounts. Others, and other organisations,
-get **404**.
+get **404**. One exception: a friction-less adapter is listed for every member,
+but its usage follows the rule above, so a member who does not own it and has
+no share gets **403**, as for its `adapter_info`.
 
-**Items the caller cannot open** are counted and listed, with `"id": null`,
+**Items the caller cannot open** are listed, and counted like any other item,
+with `"id": null`,
 `"name": null` and `"accessible": false`, so a viewer learns how many things
 depend on the profile but not what they are called.
 
@@ -97,6 +104,10 @@ one of these:
 Both ignore case; any other value is ignored. They combine with every other
 list filter, including `failing` and `last_test_status`.
 
+The paged envelope schema declares `unused_count` (optional). The row keys are
+described by the two parameters rather than in the row schema, which is
+shared with the lists that do not carry them.
+
 `unused_count` is the number of profiles nothing uses, across all pages. Like
 `failing_count`, it applies every list filter except the ones about the count
 itself: it ignores `unused`, `failing` and `last_test_status`, so the banner
@@ -107,10 +118,8 @@ in a fixed number of queries however many profiles or rows there are.
 
 ## What counts as used
 
-A profile is used when something references it. The references are the same
-ones the delete guard refuses on, so a profile the guard refuses to delete is
-always reported as used, and one it allows is reported as unused (apart from
-Agentic Studio, below).
+A profile is used when something references it. The references are the ones
+the delete guard refuses on, with the exceptions listed under the table.
 
 | Reference | Group | Blocks delete |
 |---|---|---|
@@ -130,8 +139,10 @@ Agentic Studio, below).
 - Being someone's **default** adapter is not usage. The guard does refuse to
   delete the caller's own default adapter, but that is per user and shown in
   the list's Default column, not here.
-- The tool-instance scan reads every tool instance of the organisation, as the
-  delete guard does. It is one query per request.
+- The tool-instance check matches what the delete guard matches, in one query
+  per request. The database first narrows the organisation's tool instances
+  to those whose `metadata` text contains an adapter's id or name; only those
+  are read and walked.
 
 ## Adding references from another app
 
@@ -147,7 +158,10 @@ def my_refs(adapters):
 register_provider(ProfileKind.ADAPTER, my_refs, claims=["my_app.MyModel.llm"])
 ```
 
-Call it from the app's `AppConfig.ready()`. `claims` lists each
+Call it from the app's `AppConfig.ready()`. `adapter_pk` is the profile's pk,
+as a UUID or its string. On the lists the profiles carry only the viewset's
+`usage_fields` columns (`id` and `organization`, and `adapter_name` for
+adapters): read only those, or each profile costs a query. `claims` lists each
 `PROTECT`/`RESTRICT` foreign key the provider reports, so the `other` safety
 net does not report it twice. `MyModel.objects.for_user(user)`, when it
 exists, decides whether the caller may open an item; without it, items are

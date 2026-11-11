@@ -7,7 +7,10 @@ from typing import Any
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
-from drf_standardized_errors.openapi_serializers import ErrorResponse404Serializer
+from drf_standardized_errors.openapi_serializers import (
+    ErrorResponse403Serializer,
+    ErrorResponse404Serializer,
+)
 
 from resource_usage.constants import ListParam, ProfileKind
 from resource_usage.serializers import AdapterUsageSerializer, ConnectorUsageSerializer
@@ -36,15 +39,23 @@ def usage_schema(kind: ProfileKind) -> Callable[[Any], Any]:
         if kind == ProfileKind.CONNECTOR
         else AdapterUsageSerializer
     )
+    responses: dict[int, OpenApiResponse] = {
+        200: OpenApiResponse(serializer, description="What uses the profile."),
+        404: OpenApiResponse(
+            ErrorResponse404Serializer,
+            description=f"No such {kind} visible to the caller.",
+        ),
+    }
+    if kind == ProfileKind.ADAPTER:
+        responses[403] = OpenApiResponse(
+            ErrorResponse403Serializer,
+            description="A friction-less adapter the caller does not own: listed "
+            "for every member, but its usage is for owners, sharing recipients "
+            "and admins.",
+        )
     return extend_schema(
         operation_id=f"{kind}_usage",
         tags=["resource-usage"],
-        responses={
-            200: OpenApiResponse(serializer, description="What uses the profile."),
-            404: OpenApiResponse(
-                ErrorResponse404Serializer,
-                description=f"No such {kind} visible to the caller.",
-            ),
-        },
+        responses=responses,
         description=f"What references the {kind}. See resource_usage/README.md.",
     )

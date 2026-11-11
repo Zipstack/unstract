@@ -29,6 +29,7 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from resource_usage.adapters import prompt_studio_refs, string_leaves
 from resource_usage.constants import OTHER_GROUP, ProfileKind
+from resource_usage.serializers import usage_payload
 from resource_usage.references import (
     Reference,
     blocking_relations,
@@ -113,6 +114,10 @@ class AdapterGuardParityTests(UsageTestBase):
             "profile",
             "orphan-profile",
             "workflow-and-project",
+            "other-org-id",
+            "other-org-name",
+            'quoted "name" \\ here',
+            "naïve-llm",
         )}
         workflow = self.make_workflow("wf")
         self.make_tool_instance(workflow, {"llm": str(cases["by-id"].pk)})
@@ -127,6 +132,17 @@ class AdapterGuardParityTests(UsageTestBase):
         both = cases["workflow-and-project"]
         self.make_tool_instance(self.make_workflow("wf2"), {"llm": str(both.pk)})
         self.make_project("p3", challenge_llm=both)
+        # The same id and name in another organisation's tool instance: the
+        # guard matches within the adapter's organisation only.
+        foreign: Workflow = Workflow.objects.create(
+            workflow_name="foreign", organization=self.other_org, created_by=self.owner
+        )
+        self.make_tool_instance(
+            foreign, {"llm": str(cases["other-org-id"].pk), "x": "other-org-name"}
+        )
+        # Names that JSON escapes, or that are not ASCII, still match.
+        self.make_tool_instance(workflow, {"llm": 'quoted "name" \\ here'})
+        self.make_tool_instance(workflow, {"llm": "naïve-llm"})
         return cases
 
     def test_used_exactly_when_delete_is_refused(self, _ctx: Any) -> None:
@@ -142,7 +158,7 @@ class AdapterGuardParityTests(UsageTestBase):
             self.assertEqual(index[adapter.pk].blocks_delete, refused, name)
         self.assertEqual(
             [name for name, a in cases.items() if not index[a.pk].used_in_count],
-            ["unused"],
+            ["unused", "other-org-id", "other-org-name"],
         )
 
     def test_counts_by_group(self, _ctx: Any) -> None:
@@ -151,6 +167,14 @@ class AdapterGuardParityTests(UsageTestBase):
         self.assertEqual(index[cases["workflow-and-project"].pk].used_in_count, 2)
         # Two tool instances in one workflow count it once.
         self.assertEqual(index[cases["by-id"].pk].used_in_count, 1)
+
+    def test_profile_without_project_is_in_other(self, _ctx: Any) -> None:
+        cases = self._cases()
+        usage = collect(ProfileKind.ADAPTER, [cases["orphan-profile"]])
+        self.assertEqual(
+            [(r.group, r.item_type) for r in usage[cases["orphan-profile"].pk].counted],
+            [(OTHER_GROUP, "prompt_studio_profile")],
+        )
 
     def test_unclaimed_protect_relation_still_counts(self, _ctx: Any) -> None:
         """A PROTECT FK no provider knows is reported in ``other``."""
@@ -246,6 +270,18 @@ class ConnectorRoleTests(UsageTestBase):
         roles = {i["name"]: i["role"] for i in response.data["groups"]["workflows"]}
         self.assertEqual(roles, {"wf3": "source", "wf1": "destination"})
 
+    def test_derived_items_carry_the_workflow_role(self) -> None:
+        wf3 = Workflow.objects.get(workflow_name="wf3")
+        Pipeline.objects.create(
+            pipeline_name="nightly",
+            workflow=wf3,
+            organization=self.org,
+            created_by=self.owner,
+        )
+        data = self.usage(ConnectorInstanceViewSet, self.both_two_workflows).data
+        self.assertEqual([i["role"] for i in data["groups"]["pipelines"]], ["source"])
+        self.assertEqual(data["used_in_count"], 2)
+
     def test_used_exactly_when_delete_is_refused(self) -> None:
         index = collect(ProfileKind.CONNECTOR, self.connectors)
         for connector in self.connectors:
@@ -334,6 +370,49 @@ class UsageEndpointTests(UsageTestBase):
                     (item["id"], item["name"], item["accessible"]), (None, None, False)
                 )
 
+    def test_items_are_ordered_accessible_first_then_by_name(
+        self, _ctx: Any
+    ) -> None:
+        self.make_tool_instance(
+            self.make_workflow("apples"), {"llm": str(self.adapter.pk)}
+        )
+        usage = collect(ProfileKind.ADAPTER, [self.adapter])[self.adapter.pk]
+        # A model without ``for_user`` is never accessible.
+        usage.add(
+            Reference(
+                group="workflows",
+                item_type="workflow",
+                model=WorkflowEndpoint,
+                pk="00000000-0000-0000-0000-000000000001",
+                name="aardvark",
+            )
+        )
+        data = usage_payload(ProfileKind.ADAPTER, self.adapter, usage, self.owner)
+        self.assertEqual(
+            [i["name"] for i in data["groups"]["workflows"]],
+            ["apples", "Invoices", None],
+        )
+
+    def test_provider_may_yield_the_pk_as_a_string(self, _ctx: Any) -> None:
+        spare = self.make_adapter("spare")
+
+        def stringly(adapters: Any) -> Any:
+            for adapter in adapters:
+                yield str(adapter.pk), Reference(
+                    group="lookups",
+                    item_type="lookup",
+                    model=CustomTool,
+                    pk=self.project.pk,
+                    name="Lookup",
+                )
+
+        register_provider(ProfileKind.ADAPTER, stringly)
+        try:
+            usage = collect(ProfileKind.ADAPTER, [spare])
+        finally:
+            unregister_provider(ProfileKind.ADAPTER, stringly)
+        self.assertEqual(usage[spare.pk].used_in_count, 1)
+
     def test_other_org_gets_404(self, _ctx: Any) -> None:
         self.use_org(self.other_org)
         response = self.usage(AdapterInstanceViewSet, self.adapter)
@@ -411,6 +490,11 @@ class UsageListTests(UsageTestBase):
         # The count ignores the unused filter, like failing_count ignores failing.
         self.assertEqual(page["unused_count"], 1)
         self.assertEqual(page["count"], 1)
+        # ... and counts across all pages, not the page shown.
+        self.make_adapter("spare-2")
+        page = self._list(AdapterInstanceViewSet, "?page=1&page_size=1&with_usage=true")
+        self.assertEqual(len(page["results"]), 1)
+        self.assertEqual(page["unused_count"], 2)
         rows = self._list(ConnectorInstanceViewSet, "?unused=true")
         self.assertEqual([r["connector_name"] for r in rows], ["idle"])
 

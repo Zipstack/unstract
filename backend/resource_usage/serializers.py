@@ -25,13 +25,17 @@ class UsageItemSerializer(serializers.Serializer):
     name = serializers.CharField(
         allow_null=True, help_text="Display name; null if not accessible."
     )
-    type = serializers.ChoiceField(
-        choices=[item.value for item in ItemType],
-        help_text="What the item is. Cloud groups can add other values.",
+    # Open string: cloud groups add their own values, and an item in the
+    # ``other`` group may carry the referencing model's name.
+    type = serializers.CharField(
+        help_text="What the item is: "
+        + ", ".join(item.value for item in ItemType)
+        + ". Cloud groups add their own values, and an item in `other` may "
+        "carry the referencing model's name, which does not route.",
     )
     accessible = serializers.BooleanField(
         help_text="The caller may open the item. Items they can't open are "
-        "still listed and counted, without id or name."
+        "still listed, without id or name."
     )
     blocks_delete = serializers.BooleanField(
         help_text="This item is why deleting the profile is refused."

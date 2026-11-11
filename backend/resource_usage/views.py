@@ -28,7 +28,9 @@ class ProfileUsageMixin:
     connectors, ``used_as``) and a paged response with ``unused_count``.
     ``unused=true`` also lists only profiles nothing uses.
 
-    The viewset sets ``usage_kind`` and defines ``get_status_base_queryset``.
+    The viewset sets ``usage_kind``, lists in ``usage_fields`` every profile
+    column a usage provider reads, and defines ``get_status_base_queryset``,
+    which the list queryset must only narrow.
     """
 
     usage_kind: ProfileKind
@@ -52,7 +54,7 @@ class ProfileUsageMixin:
             base = self.filter_queryset(self.get_status_base_queryset())  # type: ignore[attr-defined]
             # Plain rows: the providers read only these columns, and skipping
             # the rest avoids decrypting every profile's stored settings.
-            # No ordering, as DISTINCT needs ordered columns selected.
+            # The index needs no ordering.
             profiles = list(
                 base.order_by()
                 .select_related(None)
@@ -82,7 +84,8 @@ class ProfileUsageMixin:
         # Rows carry the pk as a string; the index keys are UUIDs.
         by_pk = {str(pk): usage for pk, usage in index.items()}
         for row in rows:
-            usage = by_pk.get(str(row["id"]), ProfileUsage())
+            # Every row is in the index, as the list only narrows its base.
+            usage = by_pk[str(row["id"])]
             row[ListParam.USED_IN_COUNT] = usage.used_in_count
             if self.usage_kind == ProfileKind.CONNECTOR:
                 row[ListParam.USED_AS] = usage.used_as

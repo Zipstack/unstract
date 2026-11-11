@@ -99,7 +99,8 @@ it were absent.
 A list fetched with `page` or `page_size` adds `failing_count`, after
 `results`: the number of failing profiles across every page. It applies the
 request's other filters (search, adapter type, connector mode, ...) but not
-`failing` or `last_test_status`, so it stays the same while those change.
+`failing`, `last_test_status` or `unused` (see `resource_usage/README.md`), so
+it stays the same while those change.
 
 ```json
 {"count": 12, "next": "…?page=2", "previous": null, "results": [], "failing_count": 2}

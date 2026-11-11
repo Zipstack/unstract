@@ -14,8 +14,9 @@ class FailingCountPagination(OptionalPagination):
     """``OptionalPagination`` that adds ``failing_count`` to the paged envelope.
 
     Counted across all pages over the view's ``get_status_base_queryset()``:
-    every list filter except ``failing`` and ``last_test_status``, so the
-    count stays put while those change. A bare-array response is unchanged.
+    every list filter except ``failing``, ``last_test_status`` and ``unused``
+    (``resource_usage``), so the count stays put while those change. A
+    bare-array response is unchanged.
     """
 
     view: Any = None

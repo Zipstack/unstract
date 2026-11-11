@@ -4,7 +4,7 @@ from enum import StrEnum
 class UsageGroup(StrEnum):
     """Groups every usage response carries, even when empty.
 
-    The cloud backend may add further groups (see ``registry``).
+    The cloud backend may add further groups (see ``references.register_provider``).
     """
 
     WORKFLOWS = "workflows"

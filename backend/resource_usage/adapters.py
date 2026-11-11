@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Iterator, Sequence
 from typing import Any
 
-from django.db.models import Q
+from django.db.models import Q, TextField
+from django.db.models.functions import Cast
 
 from resource_usage.constants import OTHER_GROUP, ItemType, ProfileKind, UsageGroup
 from resource_usage.references import Reference, register_provider, relation_label
@@ -28,6 +30,11 @@ def string_leaves(value: Any) -> Iterator[str]:
             yield from string_leaves(item)
 
 
+def _json_escaped(value: str) -> str:
+    """``value`` as it appears inside a JSON string in Postgres's jsonb text."""
+    return json.dumps(value, ensure_ascii=False)[1:-1]
+
+
 def tool_instance_refs(adapters: Sequence[Any]) -> Iterable[tuple[Any, Reference]]:
     """Workflows whose tool instances name the adapter in ``metadata``.
 
@@ -42,10 +49,27 @@ def tool_instance_refs(adapters: Sequence[Any]) -> Iterable[tuple[Any, Reference
     for adapter in adapters:
         for needle in (str(adapter.pk), adapter.adapter_name):
             needles.setdefault((adapter.organization_id, needle), []).append(adapter.pk)
-    org_ids = {adapter.organization_id for adapter in adapters}
 
-    rows = ToolInstance.objects.filter(workflow__organization_id__in=org_ids).values_list(
-        "workflow_id", "workflow__workflow_name", "workflow__organization_id", "metadata"
+    if not needles:
+        return
+    # Fetch only tool instances whose metadata text contains a needle; the
+    # exact walk below then decides, as the guard does. A string sits in the
+    # JSON text escaped, so match its escaped form.
+    candidates = Q()
+    for org_id, needle in needles:
+        candidates |= Q(
+            workflow__organization_id=org_id,
+            metadata_text__contains=_json_escaped(needle),
+        )
+    rows = (
+        ToolInstance.objects.annotate(metadata_text=Cast("metadata", TextField()))
+        .filter(candidates)
+        .values_list(
+            "workflow_id",
+            "workflow__workflow_name",
+            "workflow__organization_id",
+            "metadata",
+        )
     )
     for workflow_id, workflow_name, org_id, metadata in rows:
         matched: set[Any] = set()

@@ -5,7 +5,6 @@ from typing import Any
 from account_v2.models import User
 from connection_check.filters import filter_by_test_status
 from connection_check.models import AdapterTestResult
-from connection_check.pagination import FailingCountPagination
 from connection_check.schema import LIST_FILTER_PARAMETERS, connection_test_schema
 from connection_check.serializers import ConnectionCheckResultSerializer
 from connection_check.services import run_and_record
@@ -33,6 +32,7 @@ from platform_audit.recorder import (
 from platform_audit.resources import record_resource_event, resource_ref
 from plugins import get_plugin
 from resource_usage.constants import ProfileKind
+from resource_usage.pagination import UsageCountPagination
 from resource_usage.schema import USAGE_LIST_PARAMETERS, usage_schema
 from resource_usage.views import ProfileUsageMixin
 from rest_framework import status
@@ -178,7 +178,7 @@ class AdapterInstanceViewSet(
     usage_kind = ProfileKind.ADAPTER
     usage_fields = ("id", "organization", "adapter_name")
     serializer_class = AdapterInstanceSerializer
-    pagination_class = FailingCountPagination
+    pagination_class = UsageCountPagination
     # `pk` tiebreaker keeps paging deterministic when modified_at collides.
     ordering = ["-modified_at", "pk"]
     ordering_fields = ["adapter_name", "created_at", "modified_at"]
@@ -219,7 +219,9 @@ class AdapterInstanceViewSet(
         return queryset
 
     def get_status_base_queryset(self) -> QuerySet:
-        """Visible adapters with every list filter except the test-status ones."""
+        """Visible adapters with every list filter except the test-status and
+        usage ones.
+        """
         # Avoid per-row queries for owner/co-owner + creator fields in list views
         queryset = (
             AdapterInstance.objects.for_user(self.request.user)
