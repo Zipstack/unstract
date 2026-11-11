@@ -23,35 +23,34 @@ export type CollapsibleTriggerProps = ComponentProps<
 export function CollapsibleTrigger({
   className,
   children,
-  asChild,
+  asChild = false,
   ...props
 }: CollapsibleTriggerProps): JSX.Element {
-  if (asChild) {
-    return (
-      <RadixCollapsible.Trigger
-        data-slot="collapsible-trigger"
-        asChild
-        className={className}
-        {...props}
-      >
-        {children}
-      </RadixCollapsible.Trigger>
-    );
-  }
   return (
     <RadixCollapsible.Trigger
       data-slot="collapsible-trigger"
-      className={cn(
-        "ui:group ui:inline-flex ui:h-8 ui:cursor-pointer ui:items-center ui:gap-1.5 ui:rounded-md ui:border-0 ui:bg-transparent ui:px-2.5 ui:font-sans ui:text-body-small ui:font-medium ui:text-foreground ui:outline-none ui:not-disabled:hover:bg-accent ui:focus-visible:focus-ring ui:disabled:cursor-not-allowed ui:disabled:opacity-50 ui:data-[state=open]:bg-accent",
-        className,
-      )}
+      asChild={asChild}
+      className={
+        asChild
+          ? className
+          : cn(
+              "ui:group ui:inline-flex ui:h-8 ui:cursor-pointer ui:items-center ui:gap-1.5 ui:rounded-md ui:border-0 ui:bg-transparent ui:px-2.5 ui:font-sans ui:text-body-small ui:font-medium ui:text-foreground ui:outline-none ui:not-disabled:hover:bg-accent ui:focus-visible:focus-ring ui:disabled:cursor-not-allowed ui:disabled:opacity-50 ui:data-[state=open]:bg-accent",
+              className,
+            )
+      }
       {...props}
     >
-      {children}
-      <ChevronDown
-        aria-hidden
-        className="ui:size-3 ui:shrink-0 ui:text-muted-foreground ui:transition-transform ui:motion-reduce:transition-none ui:group-data-[state=open]:rotate-180"
-      />
+      {asChild ? (
+        children
+      ) : (
+        <>
+          {children}
+          <ChevronDown
+            aria-hidden
+            className="ui:size-3 ui:shrink-0 ui:text-muted-foreground ui:transition-transform ui:motion-reduce:transition-none ui:group-data-[state=open]:rotate-180"
+          />
+        </>
+      )}
     </RadixCollapsible.Trigger>
   );
 }

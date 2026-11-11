@@ -218,7 +218,7 @@ describe("Checklist", () => {
       "not-started",
       "failed",
     ]);
-    expect(items[0]?.textContent).toContain("Source connector, done");
+    expect(items[0]?.textContent).toContain("Source connector, completed");
     expect(items[1]?.textContent).toContain(
       "Destination connector, in progress",
     );
@@ -300,6 +300,7 @@ describe("Pagination", () => {
     expect(rangeText(5, 10, 42)).toBe("Showing 41 to 42 of 42 entries");
     expect(rangeText(1, 10, 1)).toBe("Showing 1 to 1 of 1 entry");
     expect(rangeText(1, 10, 0)).toBe("No entries");
+    expect(rangeText(1, 0, 5)).toBe("5 entries");
   });
 
   it("disables Previous on the first page and Next on the last", async () => {
@@ -398,15 +399,68 @@ describe("Pagination", () => {
     expect(onPageSizeChange).toHaveBeenLastCalledWith(50);
   });
 
-  it("clamps an out-of-range page and disables the box with one page", () => {
+  it("clamps an out-of-range page, tells the parent, and disables the box with one page", () => {
+    const onPageChange = vi.fn();
     render(
-      <Pagination page={9} pageSize={10} total={0} onPageChange={vi.fn()} />,
+      <Pagination
+        page={9}
+        pageSize={10}
+        total={0}
+        onPageChange={onPageChange}
+      />,
     );
+    expect(onPageChange).toHaveBeenCalledExactlyOnceWith(1);
     const input = screen.getByRole("textbox", {
       name: "Page number, 1 to 1",
     }) as HTMLInputElement;
     expect(input.value).toBe("1");
     expect(input.disabled).toBe(true);
     expect(screen.getByText("No entries")).toBeTruthy();
+  });
+
+  it("keeps the first visible row in view when the page size changes", async () => {
+    const user = userEvent.setup();
+    const onPageChange = vi.fn();
+    const onPageSizeChange = vi.fn();
+    render(
+      <Pagination
+        page={4}
+        pageSize={10}
+        total={42}
+        onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
+      />,
+    );
+    // Rows 31-40 were showing; with 20 per page row 31 is on page 2.
+    await user.selectOptions(screen.getByRole("combobox"), "20");
+    expect(onPageSizeChange).toHaveBeenLastCalledWith(20);
+    expect(onPageChange).toHaveBeenLastCalledWith(2);
+  });
+
+  it("drops an uncommitted entry when the page changes from outside", async () => {
+    const user = userEvent.setup();
+    const onPageChange = vi.fn();
+    const { rerender } = render(
+      <Pagination
+        page={2}
+        pageSize={10}
+        total={42}
+        onPageChange={onPageChange}
+      />,
+    );
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    await user.clear(input);
+    await user.type(input, "4");
+    rerender(
+      <Pagination
+        page={1}
+        pageSize={10}
+        total={42}
+        onPageChange={onPageChange}
+      />,
+    );
+    expect(input.value).toBe("1");
+    await user.keyboard("{Enter}");
+    expect(onPageChange).not.toHaveBeenCalled();
   });
 });

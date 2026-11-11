@@ -75,10 +75,13 @@ export function AccordionContent({
   return (
     <RadixAccordion.Content
       data-slot="accordion-content"
-      className="ui:overflow-hidden ui:text-body-small ui:text-muted-foreground"
+      className={cn(
+        "ui:overflow-hidden ui:text-body-small ui:text-muted-foreground",
+        className,
+      )}
       {...props}
     >
-      <div className={cn("ui:px-4 ui:pb-4", className)}>{children}</div>
+      <div className="ui:px-4 ui:pb-4">{children}</div>
     </RadixAccordion.Content>
   );
 }

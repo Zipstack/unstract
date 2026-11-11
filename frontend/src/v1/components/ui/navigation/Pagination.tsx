@@ -1,6 +1,12 @@
 import { cn } from "@v1/lib/cn";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { type JSX, type KeyboardEvent, useId, useState } from "react";
+import {
+  type JSX,
+  type KeyboardEvent,
+  useEffect,
+  useId,
+  useState,
+} from "react";
 
 export const DEFAULT_PAGE_SIZES: readonly number[] = [10, 20, 50, 100];
 
@@ -36,6 +42,9 @@ export function rangeText(
   if (!(total > 0)) {
     return "No entries";
   }
+  if (!(pageSize > 0)) {
+    return `${total} ${total === 1 ? "entry" : "entries"}`;
+  }
   const first = Math.min((page - 1) * pageSize + 1, total);
   const last = Math.min(page * pageSize, total);
   return `Showing ${first} to ${last} of ${total} ${total === 1 ? "entry" : "entries"}`;
@@ -66,23 +75,46 @@ export function Pagination({
 }: PaginationProps): JSX.Element {
   const pages = pageCount(total, pageSize);
   const current = Math.min(Math.max(1, Math.trunc(page) || 1), pages);
-  const [draft, setDraft] = useState<string | null>(null);
+  // What the user is typing, and the page it was typed on: a page change from
+  // outside (a new search, a smaller total) drops an uncommitted entry.
+  const [draft, setDraft] = useState<{ text: string; on: number } | null>(null);
+  const typed = draft?.on === current ? draft.text : null;
   const sizeId = useId();
+
+  // A page past the end (the total shrank, or the page size grew) is shown as
+  // the last page; tell the parent, so the rows it loads match the footer.
+  useEffect(() => {
+    if (current !== page) {
+      onPageChange(current);
+    }
+  }, [current, page, onPageChange]);
 
   const go = (target: number): void => {
     const next = Math.min(Math.max(1, target), pages);
-    if (next !== current) {
+    if (next !== page) {
       onPageChange(next);
+    }
+  };
+
+  // Keep the first row on screen in view when the page size changes.
+  const changeSize = (size: number): void => {
+    onPageSizeChange?.(size);
+    if (size > 0) {
+      const first = (current - 1) * pageSize;
+      const next = Math.floor(first / size) + 1;
+      if (next !== page) {
+        onPageChange(next);
+      }
     }
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key === "Enter") {
       event.preventDefault();
-      const typed = Number.parseInt(draft ?? "", 10);
+      const target = Number.parseInt(typed ?? "", 10);
       setDraft(null);
-      if (Number.isFinite(typed)) {
-        go(typed);
+      if (Number.isFinite(target)) {
+        go(target);
       }
     } else if (event.key === "Escape") {
       setDraft(null);
@@ -108,7 +140,7 @@ export function Pagination({
           <select
             id={sizeId}
             value={pageSize}
-            onChange={(event) => onPageSizeChange(Number(event.target.value))}
+            onChange={(event) => changeSize(Number(event.target.value))}
             className={cn(CONTROL, "ui:cursor-pointer ui:px-2")}
           >
             {(pageSizeOptions.includes(pageSize)
@@ -138,8 +170,10 @@ export function Pagination({
             type="text"
             inputMode="numeric"
             aria-label={`Page number, 1 to ${pages}`}
-            value={draft ?? String(current)}
-            onChange={(event) => setDraft(event.target.value)}
+            value={typed ?? String(current)}
+            onChange={(event) =>
+              setDraft({ text: event.target.value, on: current })
+            }
             onKeyDown={onKeyDown}
             onBlur={() => setDraft(null)}
             disabled={pages <= 1}

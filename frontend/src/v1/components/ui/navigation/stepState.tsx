@@ -14,7 +14,7 @@ export type StepState = (typeof STEP_STATES)[number];
 
 /** Read to screen readers after the label, so a state is never colour alone. */
 export const STEP_STATE_TEXT: Record<StepState, string> = {
-  done: "done",
+  done: "completed",
   "in-progress": "in progress",
   "not-started": "not started",
   failed: "failed",

@@ -58,7 +58,7 @@ export function Stepper({
                 {step.label}
                 <span className="ui:sr-only">{`, ${STEP_STATE_TEXT[step.state]}`}</span>
               </span>
-              {step.value !== undefined && (
+              {step.value != null && (
                 <span className="ui:text-caption ui:text-muted-foreground">
                   {step.value}
                 </span>
