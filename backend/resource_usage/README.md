@@ -85,7 +85,8 @@ organisation admins and service accounts. Others, and other organisations,
 get **404**. One exception: a friction-less adapter is listed for every member,
 but its usage follows the rule above, so a member who is not an organisation
 admin, does not own it and has no share gets **403**, as for its
-`adapter_info`.
+`adapter_info`. Service accounts never see friction-less adapters, so they get
+**404** for one.
 
 **Items the caller cannot open** are listed, and counted like any other item,
 with `"id": null`,
@@ -115,7 +116,9 @@ itself: it ignores `unused`, `failing` and `last_test_status`, so the banner
 stays put while the user toggles them.
 
 The usage of every profile the list could show is worked out once per request,
-in a fixed number of queries however many profiles or rows there are.
+in a fixed number of queries however many profiles or rows there are. A
+profile created or shared with the caller while the request runs gets its
+usage from one more pass over just those rows.
 
 ## What counts as used
 
@@ -143,9 +146,9 @@ the delete guard refuses on, with the exceptions listed under the table.
   the list's Default column, not here.
 - The tool-instance check matches what the delete guard matches, in one query
   per request. The database first narrows the organisation's tool instances
-  to those whose `metadata` text contains an adapter's id or name (one text
-  conversion per row, matched against every name and id at once); only those
-  rows are sent back and walked.
+  to those whose `metadata` text contains an adapter's id or name as a whole
+  JSON string (one text conversion per row, matched against every name and id
+  at once); only those rows are sent back and walked.
 
 ## Adding references from another app
 
@@ -166,6 +169,6 @@ as a UUID or its string. On the lists the profiles carry only the viewset's
 `usage_fields` columns (`id` and `organization`, and `adapter_name` for
 adapters): read only those, or each profile costs a query. `claims` lists each
 `PROTECT`/`RESTRICT` foreign key the provider reports, so the `other` safety
-net does not report it twice. `MyModel.objects.for_user(user)`, when it
+net does not report it twice. `for_user(user)` on `MyModel`'s default manager, when it
 exists, decides whether the caller may open an item; without it, items are
 never accessible.

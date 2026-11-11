@@ -48,6 +48,7 @@ class ProfileUsageMixin:
     def _list_usage(self) -> dict[Any, ProfileUsage]:
         """Usage of every profile the list could show, worked out once per
         request: the rows, the ``unused`` filter and ``unused_count`` share it.
+        Rows that appear after it was read get theirs from ``_add_late_rows``.
         """
         cached: dict[Any, ProfileUsage] | None = getattr(self, "_usage_index", None)
         if cached is None:
@@ -87,8 +88,7 @@ class ProfileUsageMixin:
         by_pk = {str(pk): usage for pk, usage in index.items()}
         self._add_late_rows(by_pk, rows)
         for row in rows:
-            # Missing only if deleted since the rows were read, which the
-            # delete guard allows only for an unused profile.
+            # Missing only if deleted since the rows were read.
             usage = by_pk.get(str(row["id"])) or ProfileUsage()
             row[ListParam.USED_IN_COUNT] = usage.used_in_count
             if self.usage_kind == ProfileKind.CONNECTOR:

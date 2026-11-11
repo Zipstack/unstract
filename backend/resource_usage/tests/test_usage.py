@@ -178,6 +178,8 @@ class AdapterGuardParityTests(UsageTestBase):
             workflow_name="foreign", organization=self.other_org, created_by=self.owner
         )
         self.make_tool_instance(foreign, {"llm": str(adapter.pk), "org": "other"})
+        # A value that only contains the name is not a reference.
+        self.make_tool_instance(workflow, {"model": "unnamed-model"})
         with patch(
             "resource_usage.adapters.string_leaves", wraps=string_leaves
         ) as walk:
@@ -186,6 +188,7 @@ class AdapterGuardParityTests(UsageTestBase):
         walked = [call.args[0] for call in walk.call_args_list]
         self.assertNotIn({"llm": "something-else"}, walked)
         self.assertNotIn({"llm": str(adapter.pk), "org": "other"}, walked)
+        self.assertNotIn({"model": "unnamed-model"}, walked)
 
     def test_profile_without_project_is_in_other(self, _ctx: Any) -> None:
         cases = self._cases()
@@ -437,6 +440,13 @@ class UsageEndpointTests(UsageTestBase):
         response = self.usage(AdapterInstanceViewSet, self.adapter)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_frictionless_adapter_usage_is_for_owners(self, _ctx: Any) -> None:
+        adapter = self.make_adapter("free", is_friction_less=True)
+        response = self.usage(AdapterInstanceViewSet, adapter, self.member)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        response = self.usage(AdapterInstanceViewSet, adapter)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
     def test_unused_adapter(self, _ctx: Any) -> None:
         response = self.usage(AdapterInstanceViewSet, self.make_adapter("spare"))
         self.assertEqual(response.data["used_in_count"], 0)
@@ -550,6 +560,32 @@ class UsageListTests(UsageTestBase):
             rows = self._list(AdapterInstanceViewSet, "?with_usage=true")
         counts = {row["adapter_name"]: row["used_in_count"] for row in rows}
         self.assertEqual(counts, {"used": 1, "spare": 0, "late": 1})
+
+    def test_profile_added_then_deleted_mid_request_is_listed_unused(
+        self, _ctx: Any
+    ) -> None:
+        """A row gone before its late usage is read is listed with no usage."""
+        from resource_usage.views import ProfileUsageMixin
+
+        original_index = ProfileUsageMixin._list_usage
+        original_late = ProfileUsageMixin._add_late_rows
+
+        def then_create(view: Any) -> Any:
+            index = original_index(view)
+            self.make_adapter("late")
+            return index
+
+        def delete_first(view: Any, by_pk: Any, rows: Any) -> None:
+            AdapterInstance.objects.filter(adapter_name="late").delete()
+            original_late(view, by_pk, rows)
+
+        with (
+            patch.object(ProfileUsageMixin, "_list_usage", then_create),
+            patch.object(ProfileUsageMixin, "_add_late_rows", delete_first),
+        ):
+            rows = self._list(AdapterInstanceViewSet, "?with_usage=true")
+        counts = {row["adapter_name"]: row["used_in_count"] for row in rows}
+        self.assertEqual(counts, {"used": 1, "spare": 0, "late": 0})
 
     def test_other_values_change_nothing(self, _ctx: Any) -> None:
         for viewset in (AdapterInstanceViewSet, ConnectorInstanceViewSet):

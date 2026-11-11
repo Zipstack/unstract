@@ -76,7 +76,7 @@ def _accessible_pks(user: Any, refs: list[Reference]) -> set[tuple[type[Model], 
         by_model[ref.model].append(ref.pk)
     accessible: set[tuple[type[Model], str]] = set()
     for model, pks in by_model.items():
-        for_user = getattr(model.objects, "for_user", None)
+        for_user = getattr(model._default_manager, "for_user", None)
         if for_user is None:
             continue
         visible = for_user(user).filter(pk__in=pks).values_list("pk", flat=True)

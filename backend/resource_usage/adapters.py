@@ -74,12 +74,12 @@ def tool_instance_refs(adapters: Sequence[Any]) -> Iterable[tuple[Any, Reference
     if not needles:
         return
     org_ids = {key[0] for key in needles}
-    # Fetch only tool instances whose metadata text contains a needle; the
-    # exact walk below then decides, as the guard does. A string sits in the
-    # JSON text escaped, so match its escaped form. One cast per row, tested
-    # against every pattern at once.
+    # Fetch only tool instances whose metadata text contains a needle as a
+    # whole JSON string; the exact walk below then decides, as the guard
+    # does. A string sits in the JSON text quoted and escaped, so match that
+    # form. One cast per row, tested against every pattern at once.
     patterns = [
-        f"%{connection.ops.prep_for_like_query(_json_escaped(key[1]))}%"
+        f'%"{connection.ops.prep_for_like_query(_json_escaped(key[1]))}"%'
         for key in needles
     ]
     mentions_a_needle = _LikeAny(
