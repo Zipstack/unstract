@@ -30,6 +30,7 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
 
 _abort = ExecutionAbortView.as_view()
+_EXECUTION_MODEL = "workflow_manager.workflow_v2.models.execution"
 
 
 class AbortExecutionTests(StuckAbortTestBase):
@@ -438,8 +439,10 @@ class AbortExecutionTests(StuckAbortTestBase):
                 )
                 self._abort(self.owner, execution.id)
 
-                write(str(execution.pk))
+                with self.assertLogs(_EXECUTION_MODEL, "WARNING") as logs:
+                    write(str(execution.pk))
 
+                self.assertIn("error_saved=False", logs.output[0])
                 execution.refresh_from_db()
                 self.assertEqual(execution.status, ExecutionStatus.STOPPED.value)
                 self.assertEqual((execution.total_files, execution.failed_files), (0, 0))
@@ -470,6 +473,28 @@ class AbortExecutionTests(StuckAbortTestBase):
 
                 self.assertEqual(response.execution_status, stored)
                 self.assertEqual(self._status(execution), stored)
+
+    def test_a_failed_dispatch_without_a_stored_row_answers_error(self) -> None:
+        execution = self.execution(
+            self.deployment(), status=ExecutionStatus.PENDING, queue_message_id=None
+        )
+        with (
+            patch.object(
+                WorkflowHelper,
+                "_dispatch_orchestrator_task",
+                side_effect=RuntimeError("down"),
+            ),
+            patch.object(
+                WorkflowExecutionServiceHelper, "update_execution_err", return_value=None
+            ),
+        ):
+            response = WorkflowHelper.execute_workflow_async(
+                workflow_id=str(self.workflow.id),
+                execution_id=str(execution.id),
+                hash_values_of_files={},
+            )
+
+        self.assertEqual(response.execution_status, ExecutionStatus.ERROR.value)
 
     @staticmethod
     def _write_status(execution: WorkflowExecution, data: dict[str, Any]) -> Any:

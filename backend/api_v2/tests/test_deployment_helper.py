@@ -62,6 +62,9 @@ def test_staging_failure_marks_execution_error(collaborators) -> None:
         timeout=-1,
     )
 
+    collaborators["logger"].exception.assert_any_call(
+        "Failed to stage files for execution %s", "exec-123"
+    )
     # The PENDING row is marked ERROR with the surfaced reason.
     collaborators[
         "WorkflowExecutionServiceHelper"
@@ -92,13 +95,21 @@ def test_staging_failure_cleanup_survives_db_marking_error(collaborators) -> Non
     collaborators["DestinationConnector"].delete_api_storage_dir.assert_called_once()
 
 
-@pytest.mark.parametrize("stored", ["STOPPED", "ERROR"], ids=["aborted", "live"])
+@pytest.mark.parametrize(
+    ("marked", "answer"),
+    [
+        (MagicMock(status="STOPPED"), "STOPPED"),
+        (MagicMock(status="ERROR"), "ERROR"),
+        (None, "ERROR"),
+    ],
+    ids=["aborted", "live", "missing"],
+)
 def test_staging_failure_answers_the_stored_status(
-    collaborators: dict[str, MagicMock], stored: str
+    collaborators: dict[str, MagicMock], marked: MagicMock | None, answer: str
 ) -> None:
-    """The answer matches the stored status, which the abort keeps STOPPED."""
+    """The answer matches the stored status."""
     collaborators["WorkflowExecutionServiceHelper"].update_execution_err.return_value = (
-        MagicMock(status=stored)
+        marked
     )
 
     response = dh.DeploymentHelper.execute_workflow(
@@ -108,7 +119,9 @@ def test_staging_failure_answers_the_stored_status(
         timeout=-1,
     )
 
-    assert response["execution_status"] == stored
+    assert response["execution_status"] == answer
+    # Only the staging failure is logged, not a failed status write.
+    assert collaborators["logger"].exception.call_count == 1
 
 
 @pytest.fixture

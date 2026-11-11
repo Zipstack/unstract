@@ -14,6 +14,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from tenant_account_v2.tests import _make_user
 from utils.user_context import UserContext
 
+from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
 from workflow_manager.execution.tests import test_update_status_locking as locking
 from workflow_manager.execution.views import ExecutionAbortView
 from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -95,6 +96,18 @@ class AbortTransactionTests(TransactionTestCase):
         self.assertEqual(self._status(last), ExecutionStatus.STOPPED.value)
         self.assertEqual(PlatformAuditEvent.objects.count(), 2)
         self.assertEqual(report.call_count, 2)
+
+    def test_a_rolled_back_abort_leaves_the_stored_status_cached(self) -> None:
+        execution = self._execution()
+
+        with patch(f"{_ABORT}._stop_open_files", side_effect=RuntimeError("boom")):
+            outcomes = self._post(execution.id)
+
+        self.assertEqual(outcomes, {str(execution.id): ("failed", None)})
+        cached = ExecutionCacheUtils.get_execution(
+            workflow_id=str(self.workflow.id), execution_id=str(execution.id)
+        )
+        self.assertEqual(getattr(cached, "status", None), ExecutionStatus.EXECUTING)
 
     def test_a_failing_report_keeps_the_abort_and_its_audit_event(self) -> None:
         deployment = APIDeployment.objects.create(

@@ -21,6 +21,7 @@ from tenant_account_v2.sharing_helpers import resources_visible_via_memberships
 
 from workflow_manager.execution.entity import entity_annotation
 from workflow_manager.execution.enum import AbortOutcome
+from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
@@ -122,7 +123,33 @@ def _abort_or_fail(request: Any, execution_id: UUID, entity: str | None) -> Abor
         return _abort_one(request, execution_id, entity)
     except Exception:
         logger.exception("Failed to abort execution %s", execution_id)
+        _restore_cached_status(execution_id)
         return AbortResult(execution_id, AbortOutcome.FAILED, None)
+
+
+def _restore_cached_status(execution_id: UUID) -> None:
+    """Republish the stored status, so a rolled-back abort leaves no STOPPED cached."""
+    try:
+        with transaction.atomic():
+            # Locked, so a concurrent status write publishes after this one.
+            execution = (
+                WorkflowExecution.objects.select_for_update(no_key=True)
+                .filter(pk=execution_id)
+                .first()
+            )
+            if execution is None or not ExecutionCacheUtils.is_execution_exists(
+                workflow_id=execution.workflow_id, execution_id=execution.id
+            ):
+                return
+            ExecutionCacheUtils.update_status(
+                workflow_id=execution.workflow_id,
+                execution_id=execution.id,
+                status=execution.status,
+            )
+    except Exception:
+        logger.exception(
+            "Failed to restore the cached status of execution %s", execution_id
+        )
 
 
 def _abort_one(request: Any, execution_id: UUID, entity: str | None) -> AbortResult:
