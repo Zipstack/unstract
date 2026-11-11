@@ -148,7 +148,7 @@ class AdapterProcessor:
         try:
             model = adapter.metadata.get("model")
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Could not read metadata for adapter %s: %s", adapter.adapter_id, e
             )
             model = None
@@ -190,6 +190,21 @@ class AdapterProcessor:
             raise TestAdapterError(
                 e, adapter_name=adapter_metadata[AdapterKeys.ADAPTER_NAME]
             ) from e
+
+    @staticmethod
+    def test_saved_adapter(adapter: AdapterInstance) -> bool:
+        """Test a saved adapter with its stored metadata."""
+        if is_adapter_deprecated(adapter.adapter_id):
+            raise DeprecatedAdapter(get_deprecation_message(adapter.adapter_id))
+        # Stored metadata lacks the name and type that test_adapter reads.
+        adapter_metadata = {
+            **adapter.metadata,
+            AdapterKeys.ADAPTER_NAME: adapter.adapter_name,
+            AdapterKeys.ADAPTER_TYPE: adapter.adapter_type,
+        }
+        return AdapterProcessor.test_adapter(
+            adapter_id=adapter.adapter_id, adapter_metadata=adapter_metadata
+        )
 
     @staticmethod
     def update_adapter_metadata(adapter_metadata_b: Any, **kwargs) -> Any:

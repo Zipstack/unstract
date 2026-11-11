@@ -139,6 +139,16 @@ export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
   const env = loadEnv(mode, process.cwd(), "");
 
+  // The v1 route registry drops pages the build's distribution lacks. Fail
+  // the build on a value it would not recognise; the list mirrors
+  // DISTRIBUTIONS in src/v1/app/registry/types.ts.
+  const distribution = env.VITE_DISTRIBUTION?.trim().toLowerCase();
+  if (distribution && !["oss", "cloud", "onprem"].includes(distribution)) {
+    throw new Error(
+      `VITE_DISTRIBUTION=${env.VITE_DISTRIBUTION} is not one of oss, cloud, onprem`,
+    );
+  }
+
   return {
     plugins: [
       optionalPluginImports(),
@@ -184,6 +194,9 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "@": path.resolve(import.meta.dirname, "./src"),
+        // v1 frontend. Also in vitest.config.mjs and the tsconfigs. Only lint
+        // keeps v0 to the `@v1` entry; the alias itself resolves any path.
+        "@v1": path.resolve(import.meta.dirname, "./src/v1"),
       },
     },
 

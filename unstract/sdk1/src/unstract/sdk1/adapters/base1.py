@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 if TYPE_CHECKING:
     from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from unstract.sdk1.adapters.constants import AdapterDocs, Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
@@ -286,6 +286,9 @@ class BaseChatCompletionParameters(BaseModel):
     See https://docs.litellm.ai/docs/completion/input#input-params-1
     """
 
+    # Validation errors reach logs and stored results, so they omit the settings.
+    model_config = ConfigDict(hide_input_in_errors=True)
+
     model: str
     # The sampling temperature to be used, between 0 and 2.
     temperature: float | None = Field(default=0.1, ge=0, le=2)
@@ -309,6 +312,9 @@ class BaseChatCompletionParameters(BaseModel):
 
 class BaseEmbeddingParameters(BaseModel):
     """Base parameters for all SDK v1 embedding providers."""
+
+    # Validation errors reach logs and stored results, so they omit the settings.
+    model_config = ConfigDict(hide_input_in_errors=True)
 
     model: str
     timeout: float | int | None = 600
