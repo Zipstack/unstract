@@ -45,14 +45,23 @@ test.describe("harness: distribution tags", { tag: DIST.all }, () => {
 
   test("the config drops only tests tagged solely for other distributions", () => {
     // Playwright matches grep against the title with its tags appended.
-    const dropped = otherDistributionsGrep();
-    expect(dropped.test("cloud page @cloud")).toBe(true);
-    expect(dropped.test("on-prem page @onprem @cloud")).toBe(true);
-    expect(dropped.test("shared page @oss @cloud")).toBe(false);
-    expect(dropped.test("oss page @oss")).toBe(false);
+    const oss = otherDistributionsGrep("oss");
+    expect(oss.test("cloud page @cloud")).toBe(true);
+    expect(oss.test("on-prem page @onprem @cloud")).toBe(true);
+    expect(oss.test("shared page @oss @cloud")).toBe(false);
+    expect(oss.test("oss page @oss")).toBe(false);
     // Untagged and mistyped stay collected, so the gate can fail them.
-    expect(dropped.test("forgot the tag")).toBe(false);
-    expect(dropped.test("mistyped @OSS")).toBe(false);
-    expect(dropped.test("prefix only @ossx")).toBe(false);
+    expect(oss.test("forgot the tag")).toBe(false);
+    expect(oss.test("mistyped @OSS")).toBe(false);
+    expect(oss.test("prefix only @ossx")).toBe(false);
+
+    const cloud = otherDistributionsGrep("cloud");
+    expect(cloud.test("oss page @oss")).toBe(true);
+    expect(cloud.test("shared page @oss @cloud")).toBe(false);
+    expect(cloud.test("forgot the tag")).toBe(false);
+
+    const onprem = otherDistributionsGrep("onprem");
+    expect(onprem.test("shared page @oss @cloud")).toBe(true);
+    expect(onprem.test("everywhere @oss @cloud @onprem")).toBe(false);
   });
 });

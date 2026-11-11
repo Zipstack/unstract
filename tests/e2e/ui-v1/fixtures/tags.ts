@@ -83,8 +83,10 @@ export function tagVerdict(
  * do not run here either. A test with no distribution tag matches neither
  * lookahead, so it is still collected and the gate below fails it.
  */
-export function otherDistributionsGrep(): RegExp {
-  const current = TAG[currentDistribution()];
+export function otherDistributionsGrep(
+  distribution: Distribution = currentDistribution(),
+): RegExp {
+  const current = TAG[distribution];
   const others = KNOWN.filter((t) => t !== current).map((t) => t.slice(1));
   return new RegExp(
     String.raw`^(?!.*${current}\b)(?=.*@(${others.join("|")})\b)`,
