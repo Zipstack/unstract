@@ -445,23 +445,31 @@ class AbortExecutionTests(StuckAbortTestBase):
                 self.assertEqual((execution.total_files, execution.failed_files), (0, 0))
                 self.assertEqual(execution.error_message, ABORT_ERROR_MESSAGE)
 
-    def test_a_failed_dispatch_after_the_abort_answers_stopped(self) -> None:
-        execution = self.execution(
-            self.deployment(), status=ExecutionStatus.PENDING, queue_message_id=None
-        )
-        self._abort(self.owner, execution.id)
+    def test_a_failed_dispatch_answers_the_stored_status(self) -> None:
+        # An aborted run stays STOPPED; a live one is marked ERROR.
+        for aborted, stored in ((True, "STOPPED"), (False, "ERROR")):
+            with self.subTest(aborted=aborted):
+                execution = self.execution(
+                    self.deployment(),
+                    status=ExecutionStatus.PENDING,
+                    queue_message_id=None,
+                )
+                if aborted:
+                    self._abort(self.owner, execution.id)
 
-        with patch.object(
-            WorkflowHelper, "_dispatch_orchestrator_task", side_effect=RuntimeError("down")
-        ):
-            response = WorkflowHelper.execute_workflow_async(
-                workflow_id=str(self.workflow.id),
-                execution_id=str(execution.id),
-                hash_values_of_files={},
-            )
+                with patch.object(
+                    WorkflowHelper,
+                    "_dispatch_orchestrator_task",
+                    side_effect=RuntimeError("down"),
+                ):
+                    response = WorkflowHelper.execute_workflow_async(
+                        workflow_id=str(self.workflow.id),
+                        execution_id=str(execution.id),
+                        hash_values_of_files={},
+                    )
 
-        self.assertEqual(response.execution_status, ExecutionStatus.STOPPED.value)
-        self.assertEqual(self._status(execution), ExecutionStatus.STOPPED.value)
+                self.assertEqual(response.execution_status, stored)
+                self.assertEqual(self._status(execution), stored)
 
     @staticmethod
     def _write_status(execution: WorkflowExecution, data: dict[str, Any]) -> Any:

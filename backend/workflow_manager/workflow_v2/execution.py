@@ -377,7 +377,9 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self.publish_log("Trying to fetch results from cache")
 
     @staticmethod
-    def update_execution_err(execution_id: str, err_msg: str = "") -> WorkflowExecution:
+    def update_execution_err(
+        execution_id: str, err_msg: str = ""
+    ) -> WorkflowExecution | None:
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)
             # Route through the guarded model method instead of a direct save, so a
@@ -387,6 +389,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             return execution
         except WorkflowExecution.DoesNotExist:
             logger.error(f"execution doesn't exist {execution_id}")
+            return None
 
     @staticmethod
     def update_execution_completed(

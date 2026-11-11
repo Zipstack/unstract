@@ -92,12 +92,13 @@ def test_staging_failure_cleanup_survives_db_marking_error(collaborators) -> Non
     collaborators["DestinationConnector"].delete_api_storage_dir.assert_called_once()
 
 
-def test_staging_failure_after_an_abort_answers_stopped(
-    collaborators: dict[str, MagicMock],
+@pytest.mark.parametrize("stored", ["STOPPED", "ERROR"], ids=["aborted", "live"])
+def test_staging_failure_answers_the_stored_status(
+    collaborators: dict[str, MagicMock], stored: str
 ) -> None:
     """The answer matches the stored status, which the abort keeps STOPPED."""
     collaborators["WorkflowExecutionServiceHelper"].update_execution_err.return_value = (
-        MagicMock(status="STOPPED")
+        MagicMock(status=stored)
     )
 
     response = dh.DeploymentHelper.execute_workflow(
@@ -107,7 +108,7 @@ def test_staging_failure_after_an_abort_answers_stopped(
         timeout=-1,
     )
 
-    assert response["execution_status"] == "STOPPED"
+    assert response["execution_status"] == stored
 
 
 @pytest.fixture

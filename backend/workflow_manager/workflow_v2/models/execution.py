@@ -541,8 +541,7 @@ class WorkflowExecution(BaseModel):
                 ExecutionStatus(status), committed, error, increment_attempt
             )
             update_fields.extend(status_fields)
-        # A stopped run keeps the abort's message.
-        if error and committed != ExecutionStatus.STOPPED.value:
+        if error and self._saves_error(committed):
             self.error_message = error[:EXECUTION_ERROR_LENGTH]
             update_fields.append("error_message")
         if increment_attempt:
@@ -553,6 +552,11 @@ class WorkflowExecution(BaseModel):
             update_fields.append("modified_at")
             self.save(update_fields=update_fields)
         return should_release
+
+    @staticmethod
+    def _saves_error(committed: str) -> bool:
+        """A stopped run keeps the abort's message."""
+        return bool(committed != ExecutionStatus.STOPPED.value)
 
     def _apply_guarded_status(
         self,
@@ -565,7 +569,7 @@ class WorkflowExecution(BaseModel):
 
         Returns ``(update_fields, should_release_rate_limit)``. On a refused revert of
         a protected-terminal (COMPLETED/STOPPED) row, keeps ``self.status == committed``
-        and returns ``([], False)`` — the caller still applies error / increment.
+        and returns ``([], False)``.
         """
         if (
             committed in ExecutionStatus.protected_terminal_values()
@@ -573,12 +577,12 @@ class WorkflowExecution(BaseModel):
         ):
             logger.warning(
                 "update_execution: refusing to revert protected status '%s' with "
-                "'%s' for execution %s (stale-writer guard); error=%s "
-                "increment_attempt=%s still applied",
+                "'%s' for execution %s (stale-writer guard); error_saved=%s "
+                "increment_attempt=%s",
                 committed,
                 status.value,
                 self.id,
-                bool(error),
+                bool(error) and self._saves_error(committed),
                 increment_attempt,
             )
             self.status = committed  # keep self + post-save cache consistent with DB

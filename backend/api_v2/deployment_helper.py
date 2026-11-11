@@ -295,6 +295,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 use_file_history=use_file_history,
             )
         except Exception as error:
+            logger.exception("Failed to stage files for execution %s", execution_id)
             # Isolate the DB error-marking so cleanup still runs if it raises.
             stored_status = ExecutionStatus.ERROR.value
             try:
@@ -352,8 +353,6 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 workflow_id=str(workflow_id), execution_id=str(execution_id)
             )
             if execution is not None:
-                # Separate blocks: independent obligations, so a failure in one
-                # must not silence the other.
                 try:
                     # This response carries the results, so mark them consumed or a
                     # later GET /status serves them again.
