@@ -168,7 +168,40 @@ it("returns an uncontrolled field to its defaultValue when its form resets", asy
   await user.type(input, " edited");
   expect(input.value).toBe("draft edited");
   fireEvent.reset(input.form as HTMLFormElement);
-  expect(input.value).toBe("draft");
+  await vi.waitFor(() => expect(input.value).toBe("draft"));
+});
+
+it("keeps the text when the form cancels its reset", async () => {
+  const { user } = renderV1(
+    <form onReset={(event) => event.preventDefault()}>
+      <SearchField aria-label="Search" defaultValue="draft" />
+    </form>,
+  );
+  const input = screen.getByLabelText("Search") as HTMLInputElement;
+  await user.type(input, " edited");
+  fireEvent.reset(input.form as HTMLFormElement);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(input.value).toBe("draft edited");
+});
+
+it("keeps its own change handler when a caller spreads an onChange", async () => {
+  // The react-hook-form pattern: `<SearchField {...field} />`. onChange is not
+  // in the type, but a JSX spread is not checked for excess props.
+  const spread = { onChange: vi.fn() } as Partial<SearchFieldProps>;
+  const onValueChange = vi.fn();
+  const { user } = renderV1(
+    <SearchField
+      aria-label="Search"
+      onValueChange={onValueChange}
+      {...spread}
+    />,
+  );
+  const input = screen.getByLabelText("Search") as HTMLInputElement;
+  await user.type(input, "ab");
+  expect(input.value).toBe("ab");
+  expect(onValueChange.mock.calls).toEqual([["a"], ["ab"]]);
+  await user.keyboard("{Escape}");
+  expect(input.value).toBe("");
 });
 
 it("lets the caller's onKeyDown cancel the clear, and reports typing through onValueChange", async () => {

@@ -88,14 +88,26 @@ export function SearchField({
     canClear && current !== "" && !state.disabled && !state.readOnly;
 
   // A form reset restores the DOM value, not this state, so restore it here.
+  // A listener later in the dispatch (React's onReset) may cancel the reset,
+  // so wait for the dispatch to finish and check.
   useEffect(() => {
     const form = inputRef.current?.form;
     if (!form || value !== undefined) {
       return undefined;
     }
-    const onReset = () => setUncontrolled(defaultValue);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onReset = (event: Event) => {
+      timer = setTimeout(() => {
+        if (!event.defaultPrevented) {
+          setUncontrolled(defaultValue);
+        }
+      });
+    };
     form.addEventListener("reset", onReset);
-    return () => form.removeEventListener("reset", onReset);
+    return () => {
+      form.removeEventListener("reset", onReset);
+      clearTimeout(timer);
+    };
   }, [value, defaultValue]);
 
   const update = (next: string) => {
@@ -124,6 +136,9 @@ export function SearchField({
 
   return (
     <Input
+      // First, so a spread onChange (`{...field}`, `{...register()}`) cannot
+      // replace the handlers this field owns.
+      {...props}
       ref={composedRef}
       type="search"
       value={current}
@@ -152,7 +167,6 @@ export function SearchField({
         "ui:[&::-webkit-search-cancel-button]:appearance-none ui:[&::-webkit-search-decoration]:appearance-none",
         controlClassName,
       )}
-      {...props}
     />
   );
 }
