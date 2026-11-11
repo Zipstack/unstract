@@ -128,10 +128,12 @@ def _abort_or_fail(request: Any, execution_id: UUID, entity: str | None) -> Abor
 
 
 def _restore_cached_status(execution_id: UUID) -> None:
-    """Republish the stored status, so a rolled-back abort leaves no STOPPED cached."""
+    """Best effort: republish the stored status, since a rolled-back abort may have
+    cached STOPPED.
+    """
     try:
         with transaction.atomic():
-            # Locked, so a concurrent status write publishes after this one.
+            # Locked, so no status write lands between this read and the publish.
             execution = (
                 WorkflowExecution.objects.select_for_update(no_key=True)
                 .filter(pk=execution_id)
@@ -168,11 +170,12 @@ def _abort_one(request: Any, execution_id: UUID, entity: str | None) -> AbortRes
                 execution_id, AbortOutcome.ALREADY_FINISHED, execution.status
             )
         previous_status = execution.status
+        # Files and counts first, so STOPPED reaches the cache just before commit.
+        _stop_open_files(execution)
+        write_file_counts(execution)
         execution.update_execution(
             status=ExecutionStatus.STOPPED, error=ABORT_ERROR_MESSAGE, row_locked=True
         )
-        _stop_open_files(execution)
-        write_file_counts(execution)
         # After commit, so a rolled-back abort reports nothing.
         transaction.on_commit(lambda: _report_abort(execution), robust=True)
     _record_abort(request, execution, previous_status, entity)

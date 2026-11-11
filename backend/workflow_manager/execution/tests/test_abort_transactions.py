@@ -6,14 +6,16 @@ from unittest.mock import patch
 
 from account_v2.models import Organization
 from api_v2.models import APIDeployment
-from django.db import transaction
+from django.db import connection, transaction
 from django.test import TransactionTestCase
+from django.test.utils import CaptureQueriesContext
 from permissions.roles import ResourceRole
 from platform_audit.models import PlatformAuditEvent
 from rest_framework.test import APIRequestFactory, force_authenticate
 from tenant_account_v2.tests import _make_user
 from utils.user_context import UserContext
 
+from workflow_manager.execution.abort import _restore_cached_status
 from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
 from workflow_manager.execution.tests import test_update_status_locking as locking
 from workflow_manager.execution.views import ExecutionAbortView
@@ -97,17 +99,77 @@ class AbortTransactionTests(TransactionTestCase):
         self.assertEqual(PlatformAuditEvent.objects.count(), 2)
         self.assertEqual(report.call_count, 2)
 
-    def test_a_rolled_back_abort_leaves_the_stored_status_cached(self) -> None:
-        execution = self._execution()
-
-        with patch(f"{_ABORT}._stop_open_files", side_effect=RuntimeError("boom")):
-            outcomes = self._post(execution.id)
-
-        self.assertEqual(outcomes, {str(execution.id): ("failed", None)})
+    def _cached_status(self, execution: WorkflowExecution) -> Any:
         cached = ExecutionCacheUtils.get_execution(
             workflow_id=str(self.workflow.id), execution_id=str(execution.id)
         )
-        self.assertEqual(getattr(cached, "status", None), ExecutionStatus.EXECUTING)
+        return getattr(cached, "status", None)
+
+    def test_a_rolled_back_abort_leaves_the_stored_status_cached(self) -> None:
+        execution = self._execution()
+        update = WorkflowExecution.update_execution
+
+        def update_then_fail(row: WorkflowExecution, *args: Any, **kwargs: Any) -> None:
+            update(row, *args, **kwargs)
+            raise RuntimeError("boom")
+
+        with patch.object(WorkflowExecution, "update_execution", update_then_fail):
+            outcomes = self._post(execution.id)
+
+        self.assertEqual(outcomes, {str(execution.id): ("failed", None)})
+        self.assertEqual(self._status(execution), ExecutionStatus.EXECUTING.value)
+        self.assertEqual(self._cached_status(execution), ExecutionStatus.EXECUTING)
+
+    def test_a_failure_before_the_stop_never_caches_stopped(self) -> None:
+        execution = self._execution()
+
+        with (
+            patch(f"{_ABORT}.write_file_counts", side_effect=RuntimeError("boom")),
+            patch(f"{_ABORT}._restore_cached_status") as restore,
+        ):
+            self._post(execution.id)
+
+        restore.assert_called_once_with(execution.id)
+        self.assertEqual(self._cached_status(execution), ExecutionStatus.EXECUTING)
+
+    def test_a_failed_abort_adds_no_cache_entry(self) -> None:
+        execution = self._execution()
+        keys = {"workflow_id": str(self.workflow.id), "execution_id": str(execution.id)}
+        ExecutionCacheUtils.delete_execution(**keys)
+
+        with patch(f"{_ABORT}._stop_open_files", side_effect=RuntimeError("boom")):
+            self._post(execution.id)
+
+        self.assertFalse(ExecutionCacheUtils.is_execution_exists(**keys))
+
+    def test_a_failed_cache_restore_keeps_the_other_outcomes(self) -> None:
+        bad, good = self._execution(), self._execution()
+
+        def stop(execution: WorkflowExecution) -> None:
+            if execution.pk == bad.pk:
+                raise RuntimeError("boom")
+
+        with (
+            patch(f"{_ABORT}._stop_open_files", side_effect=stop),
+            patch(f"{_ABORT}.ExecutionCacheUtils") as cache,
+        ):
+            cache.update_status.side_effect = RuntimeError("redis down")
+            outcomes = self._post(bad.id, good.id)
+
+        cache.update_status.assert_called_once()
+        self.assertEqual(
+            outcomes,
+            {str(bad.id): ("failed", None), str(good.id): ("aborted", "STOPPED")},
+        )
+
+    def test_the_cache_restore_reads_the_row_under_its_lock(self) -> None:
+        execution = self._execution()
+
+        with CaptureQueriesContext(connection) as queries:
+            _restore_cached_status(execution.id)
+
+        sqls = [q["sql"].upper() for q in queries.captured_queries]
+        self.assertEqual(sum("FOR NO KEY UPDATE" in sql for sql in sqls), 1, sqls)
 
     def test_a_failing_report_keeps_the_abort_and_its_audit_event(self) -> None:
         deployment = APIDeployment.objects.create(
