@@ -409,7 +409,7 @@ class AbortExecutionTests(StuckAbortTestBase):
         # Scheduled and API-triggered pipeline runs have no queue_message_id.
         for queue_message_id in (1, None):
             for status in (ExecutionStatus.COMPLETED, ExecutionStatus.ERROR):
-                with self.subTest(queue_message_id=queue_message_id, status=status):
+                with self.subTest(queue_message_id=queue_message_id, status=status.value):
                     execution = self.execution(
                         self.pipeline(), queue_message_id=queue_message_id
                     )

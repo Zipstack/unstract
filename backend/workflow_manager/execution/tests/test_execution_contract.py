@@ -126,7 +126,7 @@ class InternalStatusActionTests(StuckAbortTestBase):
             ("not-a-uuid", self.org.organization_id),
         )
         for execution_id, organization_id in cases:
-            with self.subTest(execution_id=execution_id, org=organization_id):
+            with self.subTest(execution_id=str(execution_id), org=organization_id):
                 response = self._get(execution_id, organization_id)
                 self.assertEqual(response.status_code, 404)
 
