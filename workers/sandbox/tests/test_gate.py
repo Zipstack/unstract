@@ -964,6 +964,130 @@ class TestDeleteWithdrawsTheShadowingExemption:
         assert ok is True, f"{label}: gate refused legitimate code -- {reason}"
 
 
+class TestGlobalAndNonlocalTargetsDifferOnDeletion:
+    """`global` and `nonlocal` must NOT get the same answer, and one predicate
+    for both got the `nonlocal` half wrong.
+
+    `_target_is_function_local` asks whether a module-scope `del` of a name can
+    make a later read reach the builtin. The two declarations diverge there,
+    and both halves were verified by EXECUTION rather than by reading the
+    language reference:
+
+    * `global eval` -- the `for` target writes the MODULE binding, so the `del`
+      unbinds the global and the read returns the real builtin. Measured:
+      `<built-in function eval>`, `is` the builtin.
+    * `nonlocal vars` -- the target writes an ENCLOSING FUNCTION's cell, which
+      no module-level `del` can reach. Deleting that cell raises `NameError:
+      free variable 'eval' referenced before assignment in enclosing scope`; it
+      does NOT fall through to builtins.
+
+    So the conflated predicate was refuse-too-much in one direction only, and
+    the pair below pins both so a future simplification back to one predicate
+    fails rather than silently re-refusing valid work.
+    """
+
+    def test_a_nonlocal_target_survives_a_module_delete(self):
+        """Reported by greptile, verbatim: this returns `1` and must gate-pass.
+
+        It passed the gate before `_target_is_function_local` existed, and the
+        commit that added that function refused it with `disallowed name
+        'vars'` -- the module-deletion check won before the enclosing function
+        was considered. A refused script is a calculation that never runs.
+        """
+        code = (
+            "vars = 1\n"
+            "del vars\n"
+            "def outer():\n"
+            "    vars = 0\n"
+            "    def inner():\n"
+            "        nonlocal vars\n"
+            "        for vars in [1]:\n"
+            "            return vars\n"
+            "    return inner()\n"
+            "result = outer()\n"
+        )
+        namespace: dict = {}
+        exec(compile(code, "<fixture>", "exec"), namespace)  # noqa: S102
+        assert namespace["result"] == 1, "fixture must be valid, working Python"
+
+        ok, reason = check_code_safe(code)
+        assert ok is True, f"gate refused a valid nonlocal calculation -- {reason}"
+
+    def test_the_global_counterpart_is_still_refused(self):
+        """The other half of the pair -- swapping `nonlocal` for `global` turns
+        the same shape into a live route to the real builtin, so exempting
+        `nonlocal` must not exempt this.
+        """
+        code = (
+            "def g():\n"
+            "    global eval\n"
+            "    for eval in [1]:\n"
+            "        del eval\n"
+            "        f = eval\n"
+            "    return f\n"
+        )
+        ok, reason = check_code_safe(code)
+        assert ok is False, "the global route to the real builtin gate-passed"
+        assert reason == "safety gate: disallowed name 'eval'", reason
+
+
+def test_checking_a_large_function_scope_script_stays_roughly_linear():
+    """The FUNCTION-scope path, which neither sibling above covers -- and that
+    uncovered gap is how a 203x regression reached a pushed commit.
+
+    Both existing scaling tests put their reads in a loop at MODULE scope.
+    `_target_is_function_local` walks the parent chain from the binder, so in
+    that shape it reaches `ast.Module` immediately and never asks a function
+    about its declarations. Wrapping the identical loop in a `def` is what
+    reaches the expensive branch, so the suite stayed green at 175 passed while
+    the gate took 14s on a 41KB script.
+
+    The cost was `_declares_global` walking the whole function subtree once per
+    Load, uncached -- O(loads x function size). It is paid on the WORKER thread
+    inside `check_code_safe`, before any child exists, so neither the
+    wall-clock timeout nor `RLIMIT_CPU` bounds it, and the 40,946-byte fixture
+    is under `SANDBOX_MAX_CODE_BYTES` (65536) so the size cap does not either.
+    An accepted script simply holds a lane and delays later jobs.
+
+    Asserts SCALING, not elapsed time, for the reason the module-scope sibling
+    documents: CI runs this suite under `pytest-xdist`, where an absolute bound
+    is either useless locally or flaky there. Measured at n=500 -> n=2000, min
+    of two runs each, on the same machine back to back:
+
+        regressed (2202ceccb):  15.9x   (0.889s -> 14.186s)
+        memoised (current):      6.5x   (0.011s ->  0.075s)
+
+    The 11.0 threshold sits between them with room on both sides, matching the
+    sibling's bound.
+    """
+    import time
+
+    def best_of(n, repeats=2):
+        body = "\n".join(f"        a{i} = vars" for i in range(n))
+        code = "def transform(rows):\n    for vars in rows:\n" + body + "\n    return 0\n"
+        assert len(code.encode()) < 65536, "fixture must stay a submittable size"
+        times = []
+        for _ in range(repeats):
+            start = time.perf_counter()
+            ok, reason = check_code_safe(code)
+            times.append(time.perf_counter() - start)
+            assert ok is True, reason
+        return min(times)
+
+    small = best_of(500)
+    large = best_of(2000)  # 4x the statements
+
+    # Same degenerate-denominator guard as the sibling: a clock-granularity
+    # artefact on a very fast machine would otherwise yield a false failure.
+    assert small > 0.001, f"small case too fast to time reliably ({small:.6f}s)"
+
+    ratio = large / small
+    assert ratio < 11.0, (
+        f"gate checking scaled {ratio:.1f}x for a 4x larger function-scope "
+        "script; the scope-declaration lookup has gone quadratic again"
+    )
+
+
 class TestFrameAndMatchRoutesToBuiltins:
     """The four routes that gate-passed before `_rule_introspection_attribute`
     and `_rule_match_class_attribute` existed.

@@ -576,30 +576,83 @@ def _unconditional_module_bindings(module) -> dict[str, tuple[int, ast.stmt]]:
     return out
 
 
-def _declares_global(scope, name: str) -> bool:
-    """Does ``scope`` declare ``name`` ``global`` (or ``nonlocal``) in its own body?
+def _scope_declared_names(scope) -> tuple[frozenset[str], frozenset[str]]:
+    """``(global_names, nonlocal_names)`` declared in ``scope``'s OWN body.
 
-    Module-level, with one definition, because two uses need the same answer:
-    `_function_scope_binds` (a declared name is not a local, so the scope
-    shadows nothing) and `_target_is_function_local` below (a declared name's
-    `for`/`with`/`except` target writes the MODULE binding, so a `del` of it
-    unbinds the global). Keeping one copy is deliberate -- re-listing a
-    predicate is what left `sys` out of the class-pattern rule earlier in this
-    PR.
+    One collector with two accessors below, because the two call sites need
+    DIFFERENT answers and a single `global or nonlocal` predicate got one of
+    them wrong -- see `_declares_global`. Keeping the collection in one place
+    is deliberate: re-listing a predicate is what left `sys` out of the
+    class-pattern rule earlier in this PR.
 
-    Nested scopes are not descended into: a `global` in there is that scope's
-    business.
+    Memoised on the scope node. The uncached predicate walked the whole scope
+    subtree once per Load, which is quadratic in a function that reads a
+    loop-bound name repeatedly: a valid 41KB `transform` with 2,000 reads of
+    `vars` went from 0.072s to 14.647s on the commit that introduced
+    `_target_is_function_local`, a 203x regression measured on both commits.
+    The gate runs in the worker BEFORE the child's timeout starts, so a slow
+    accept holds a worker lane and delays later jobs -- the cost lands on
+    accepted scripts, not rejected ones. Reported by greptile.
+
+    Nested scopes are not descended into: a declaration in there is that
+    scope's business.
     """
+    cached = getattr(scope, "_gate_declared_names", None)
+    if cached is not None:
+        return cached
+
     nested = _FUNCTION_SCOPES + (ast.ClassDef,)
+    declared_global: set[str] = set()
+    declared_nonlocal: set[str] = set()
 
     def walk(n, top=False):
         if not top and isinstance(n, nested):
-            return False
-        if isinstance(n, (ast.Global, ast.Nonlocal)) and name in n.names:
-            return True
-        return any(walk(c) for c in ast.iter_child_nodes(n))
+            return
+        if isinstance(n, ast.Global):
+            declared_global.update(n.names)
+        elif isinstance(n, ast.Nonlocal):
+            declared_nonlocal.update(n.names)
+        for c in ast.iter_child_nodes(n):
+            walk(c)
 
-    return walk(scope, top=True)
+    walk(scope, top=True)
+    out = (frozenset(declared_global), frozenset(declared_nonlocal))
+    scope._gate_declared_names = out
+    return out
+
+
+def _declares_global_or_nonlocal(scope, name: str) -> bool:
+    """Is ``name`` declared `global` OR `nonlocal` in ``scope``'s own body?
+
+    Either declaration removes the name from this scope's LOCAL namespace for
+    the whole scope, which is the question `_function_scope_binds` asks: the
+    scope binds nothing locally, so it shadows nothing.
+    """
+    declared_global, declared_nonlocal = _scope_declared_names(scope)
+    return name in declared_global or name in declared_nonlocal
+
+
+def _declares_global(scope, name: str) -> bool:
+    """Is ``name`` declared `global` in ``scope``'s own body? `nonlocal` is NOT.
+
+    `_target_is_function_local` asks whether a module-scope `del` of the name
+    can make a later read reach the builtin, and the two declarations differ on
+    exactly that:
+
+    * `global vars` -- the target writes the MODULE binding, so a `del` unbinds
+      the global and the read falls through to builtins. Measured: the control
+      case returns the real `eval`.
+    * `nonlocal vars` -- the target writes an ENCLOSING FUNCTION's cell, which
+      no module-level `del` can reach. Deleting that cell raises
+      `NameError: free variable ... referenced before assignment`; it does NOT
+      fall through to builtins. Measured, both directions.
+
+    Conflating them refused a valid script -- module `del vars`, an outer
+    function binding `vars`, an inner `nonlocal vars` with
+    `for vars in [1]: return vars` -- which returns `1` and passed the previous
+    gate. Reported by greptile.
+    """
+    return name in _scope_declared_names(scope)[0]
 
 
 def _target_is_function_local(node, parents, name: str) -> bool:
@@ -620,6 +673,10 @@ def _target_is_function_local(node, parents, name: str) -> bool:
     That gate-passed on the commit that introduced the coarse check, and
     calling through `f` sidesteps `_rule_denylisted_call` as well. Reported by
     greptile.
+
+    `nonlocal` is deliberately NOT asked about here -- it writes an enclosing
+    function's cell, which a module `del` cannot reach, so such a target IS
+    function-local. `_declares_global` carries the measurement.
     """
     cur = parents.get(node)
     while cur is not None:
@@ -781,7 +838,21 @@ def _function_scope_binds(scope, name: str) -> bool:
     # Measured: `def f(): global eval; e = eval; eval = 1` gate-passed and
     # executed `__import__('os').getuid()` through the real builtin, because the
     # module global is unset at the read and falls through to builtins.
-    if _declares_global(scope, name):
+    #
+    # BOTH declarations count here, unlike in `_target_is_function_local`:
+    # `nonlocal` also empties the local namespace, so the scope shadows nothing.
+    #
+    # The `nonlocal` half is UNOBSERVABLE on any compilable script, and that is
+    # measured, not assumed: `nonlocal X` without an enclosing binding is a
+    # compile-time `SyntaxError: no binding for nonlocal 'X' found` (the gate
+    # refuses that shape anyway). So a `nonlocal` that compiles guarantees an
+    # enclosing function binds the name locally, and the fall-through below
+    # always finds that shadow and allows the read -- the same verdict
+    # global-only would give. Narrowing this to `_declares_global` is therefore
+    # an EQUIVALENT mutant, which is why no test pins it; the OR stays because
+    # it is the honest answer to "is this name a local of this scope", and it
+    # preserves the behaviour this predicate had before it was split.
+    if _declares_global_or_nonlocal(scope, name):
         return False
 
     # A walrus inside a COMPREHENSION binds in the enclosing scope, not in the
