@@ -1,5 +1,13 @@
 from django.conf import settings
 
+# The session engines that keep a `django_session` row per session. The cache-
+# backed one authenticates from a cached copy that can outlive the row, so a
+# session whose row is gone is treated as ended wherever it is authenticated.
+ROW_BACKED_SESSION_ENGINES = (
+    "django.contrib.sessions.backends.db",
+    "django.contrib.sessions.backends.cached_db",
+)
+
 
 class LoginConstant:
     INVITATION = "invitation"

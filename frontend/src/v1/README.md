@@ -108,6 +108,52 @@ is convention.
 - `CodeEditor` uses Monaco from its default CDN, as v0 does. Never call
   `loader.config()` in v1: the loader is shared with v0.
 
+## Version switch and route registry
+
+v0's router (`routes/Router.jsx`) wraps its routes in `VersionSwitch`, which
+renders v1 for a URL whose page is live in the registry (`app/registry/`) and
+v0 for everything else. v1 renders as its own tree (`app/V1App.tsx`), loaded
+only when a v1 page first renders.
+
+- **Declare** a page in `app/registry/entries.ts` (`PAGES`) with its v1 routes,
+  the v0 routes it replaces and the mapping both ways, and add its component
+  to `app/pages.ts`. Declared pages stay v0 for users.
+- **Register** it, in its go-live task only (D9), by adding its key to
+  `REGISTERED_PAGES`. Its v0 URLs then redirect to v1; reverting is that line.
+  v1 renders outside v0's `PersistentLogin` and `RequireAuth`, and its own
+  session and guards come with P0-T06: a page registered before that ships
+  with no session load, login redirect or org check.
+- `app/registry/validate.test.ts` fails CI on an invalid entry: overlapping
+  patterns across pages, a v1 route and a different v0 route of one page that
+  match the same URL (a page may keep its v0 URL), a route without a mapping
+  to the other version, a page without a component, or `toggle` on any page
+  but Human Review (UN11, D14) and its demo stand-in.
+- Human Review's old-version preference is per user, per browser, in
+  localStorage (`unstract.v1.oldVersion.<userId>`). `setOldVersion(on)` sets
+  it, and the switch then moves the user to the mapped screen without a
+  reload. `unstract.v1.lastUser` lets a reload apply it before the session
+  loads; on a shared browser that is the previous user's choice until the
+  session says otherwise.
+- Until the v1 session lands (P0-T06), the switch learns the user only from
+  v0's session, which v0 loads in `PersistentLogin`, a v0 route. A page load
+  that starts on a v1 URL never loads it, so the switch has only
+  `unstract.v1.lastUser`. With none (a fresh browser, or an E2E context
+  signed in by API), `setOldVersion` returns false and changes nothing; with
+  another person's, a choice made there is saved as theirs. Both last until a
+  v0 page loads in that tab. E2E round trips seed `unstract.v1.lastUser` or
+  open a v0 page first.
+- `VITE_V1_DEV_ROUTES=true` (the E2E image, or `.env` locally) registers the
+  demo pages (`/:orgName/v1-demo`, `/:orgName/v1-demo-review`, and their v0
+  stand-ins `/:orgName/v0-demo…`). It also renders declared pages as v1 before
+  they go live: set `localStorage["unstract.v1.preview"] = '["UN05"]'`, then
+  reload (it is read when the app loads).
+- `VITE_DISTRIBUTION` (`oss` by default, `cloud` or `onprem`) selects
+  the build's distribution; entries whose `distributions` omit it are ignored.
+  An unknown value fails `vite build`. P0-T07's plugin manifest (UN-4286)
+  reads the same variable. The cloud and on-prem image builds do not set it
+  yet, so every image builds as `oss`: until P0-T07 wires them, an entry that
+  lists fewer than all three distributions is not filtered correctly there.
+
 ## Folders and what each may import
 
 Every folder may import from itself. Test files (`*.test.ts(x)`,
@@ -115,7 +161,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 
 | Folder | Holds | May import from |
 | --- | --- | --- |
-| `index.ts` | Public entry; the version switch (UN-4271) will mount v1 through it | everything |
+| `index.ts` | Public entry: the version switch and its helpers | everything |
 | `app/` | Entry, providers, router, route registry | everything |
 | `components/ui/` | Core components | `lib/`, `styles/`, `assets/` |
 | `components/patterns/` | Composites built from core components | `components/ui/`, `lib/`, `services/`, `stores/`, `hooks/`, `assets/` |
@@ -148,9 +194,18 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | Script | Checks |
 | --- | --- |
 | `bun run typecheck:v1` | TypeScript-only files, styles only in `styles/`, allowed file types only, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
-| `bun run lint:v1` | Biome on `src/v1/`, then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, the single notification entry point, then the styling policy (S1 to S8 above), then the icon rules |
+| `bun run lint:v1` | Biome on `src/v1/` (warnings fail), then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, the single notification entry point, then the styling policy (S1 to S8 above), then the icon rules |
 | `bun run tokens:v1` | Regenerates `styles/tokens.css` from `styles/tokens.json` (via `styles/tokens.ts`; runs under bun, which imports the TypeScript source directly) |
-| `bun run test:v1` | v1 unit tests (`vitest.v1.config.mts`, then cloud plugins with `vitest.v1-plugins.config.mts`) with v1's own coverage threshold, then the guardrail fixtures in `test-fixtures/v1-boundary/` and `test-fixtures/v1-harness/`. The harness is documented in `test/README.md` |
+| `bun run test:v1` | v1 unit tests (`vitest.v1.config.mts`, then cloud plugins with `vitest.v1-plugins.config.mts`) with v1's own coverage threshold, then the guardrail fixtures in `test-fixtures/v1-boundary/`, `test-fixtures/v1-harness/` and `test-fixtures/v1-unit-gate/` (the coverage threshold fails a run, and CI runs the rig group's config). The harness is documented in `test/README.md` |
+| `bun run seam:v1` | Seam guard: v1 work changes v0 (`src/` outside v1, `public/`) only at the files in `scripts/v1-seam-allowlist.json`, compared with `origin/main` |
+| `bun run separation:v1` | No enterprise plugin code: no folder under `plugins/` is tracked in the public repository |
+| `bun run bundle:v1` | Production build, then no v1 module reaches a v0 module or antd through the imports Rollup resolved |
+
+In CI these run as separate `v1 · …` checks (`.github/workflows/ci-frontend-v1.yaml`
+and `ci-frontend-v1-seam.yaml`), apart from v0's checks. `lint:v1` and CI
+fail on any Biome warning under `src/v1/`, and the accessibility rules are
+errors there. A PR that is v1 work and needs a v0 change outside the seam
+carries the `v0-change` label, which turns the seam check into a report.
 
 Biome (`biome.json`) also reports the banned imports and the plain spellings of
 the v0 ↔ v1 boundary, so `biome ci` and editors flag them too: `@/`, `../`,
