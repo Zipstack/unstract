@@ -141,8 +141,8 @@ the delete guard refuses on, with the exceptions listed under the table.
 | Agentic Studio project LLMs and text extractor (cloud) | `agentic_studio_projects` | no |
 
 - The last row of the OSS references is the safety net: a foreign key added
-  later that blocks deletion is reported in `other` even before anyone gives it
-  a group.
+  later directly to the profile that blocks deletion is reported in `other`
+  even before anyone gives it a group.
 - Agentic Studio references are counted although they don't block deletion,
   so the "used by no workflow" banner never invites deleting an adapter a
   project still relies on.

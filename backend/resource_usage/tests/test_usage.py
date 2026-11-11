@@ -119,6 +119,8 @@ class AdapterGuardParityTests(UsageTestBase):
             "other-org-name",
             'quoted "name" \\ here',
             "naïve-llm",
+            "root-list",
+            "root-string",
         )}
         workflow = self.make_workflow("wf")
         self.make_tool_instance(workflow, {"llm": str(cases["by-id"].pk)})
@@ -127,6 +129,9 @@ class AdapterGuardParityTests(UsageTestBase):
         self.make_tool_instance(
             workflow, {"tool_settings": [{"x": str(cases["nested"].pk)}]}
         )
+        # Metadata whose root is not an object.
+        self.make_tool_instance(workflow, [str(cases["root-list"].pk)])
+        self.make_tool_instance(workflow, str(cases["root-string"].pk))
         self.make_project("p1", monitor_llm=cases["project-fk"])
         self.make_profile(self.make_project("p2"), cases["profile"])
         self.make_profile(None, cases["orphan-profile"])

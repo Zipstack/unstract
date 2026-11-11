@@ -10,8 +10,7 @@ reported as usage.
 
 Providers turn known relations into named, routable items. Any direct
 ``PROTECT``/``RESTRICT`` relation no provider claims is still reported, in the
-``other`` group, so a profile the guard refuses is never reported as unused
-(neither profile model has a PROTECT reached only through a CASCADE child).
+``other`` group, so a profile the guard refuses is never reported as unused.
 """
 
 from __future__ import annotations
@@ -158,11 +157,7 @@ _BLOCKING = (models.PROTECT, models.RESTRICT)
 
 
 def blocking_relations(profile_model: type[Model]) -> list[Any]:
-    """Every direct relation whose rows make deleting a profile raise.
-
-    A PROTECT reached through a CASCADE child is not covered; neither profile
-    model has one.
-    """
+    """Every direct relation whose rows make deleting a profile raise."""
     return [
         rel
         for rel in profile_model._meta.related_objects
