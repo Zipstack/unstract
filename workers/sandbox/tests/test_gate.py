@@ -684,7 +684,7 @@ def test_checking_a_large_script_stays_roughly_linear():
     )
 
 
-def test_checking_a_large_module_scope_script_stays_roughly_linear():
+def test_the_module_scope_binding_lookup_stays_linear(monkeypatch):
     """The MODULE-scope path, which the sibling above does not cover.
 
     That one wraps its reads in a `for` body, so the exemption resolves through
@@ -692,55 +692,65 @@ def test_checking_a_large_module_scope_script_stays_roughly_linear():
     `_unconditional_module_bindings`, which walked the entire module body once
     per Load -- O(loads x statements). The cost is paid on the WORKER thread
     inside `check_code_safe`, before any child exists, so neither the
-    wall-clock timeout nor `RLIMIT_CPU` bounds it, and 50.9 KB is under
+    wall-clock timeout nor `RLIMIT_CPU` bounds it, and the fixture is under
     `SANDBOX_MAX_CODE_BYTES` (65536) so the size cap does not either.
 
-    **This asserts SCALING, not elapsed time, and the first version of it was
-    wrong for exactly that reason.** It asserted `elapsed < 5.0` against a
-    locally measured 0.22s -- a 20x margin that looked ample and was not: CI
-    runs this suite under `pytest-xdist`, where every worker competes for the
-    same runner, and the same check took **8.76s** there. A 40x machine
-    difference makes any absolute bound either useless locally or flaky in CI.
+    **This asserted wall-clock through two revisions and both were wrong.**
+    First `elapsed < 5.0` against a locally measured 0.22s -- a 20x margin that
+    looked ample until CI, running this suite under `pytest-xdist` where every
+    worker competes for one runner, took **8.76s**. Then a ratio over a 4x
+    span, on the reasoning that both halves run back to back so machine speed
+    cancels. Machine speed does cancel; scheduler preemption does not. The
+    function-scope sibling below took that same ratio instrument to **11.5x**
+    in CI against a locally measured 6.5x and failed a correct implementation.
+    Measured directly: under 16-way CPU contention this shape's wall-clock
+    ratio wandered between 4.03x and 5.70x while the node-visit ratio stayed
+    identical to four decimal places.
 
-    A ratio over a 4x size span does not have that problem: both halves run
-    back to back on the same machine, so the machine's speed cancels. Measured
-    at n=500 -> n=2000, min of two runs each:
+    So this counts AST node visits, which are a property of the algorithm and
+    therefore identical on every machine under any load. Measured by counting
+    `ast.iter_child_nodes` calls, n=500 -> n=2000, with the memoisation present
+    and with it removed:
 
-        quadratic (before the memoisation):  ~16.0x   (0.42s -> 6.74s)
-        current:                              ~7.0x   (0.01s -> 0.07s)
+        no memo (the regression):  15.74x   (511,020 -> 8,044,020 visits)
+        memoised (current):         3.99x   ( 11,022 ->    44,022 visits)
 
-    The threshold sits between them with room on both sides. Per-doubling
-    ratios were ~2.9x current against ~4.0x quadratic, which is too narrow a
-    gap to hold up under noise -- hence the wider span.
+    3.99x against a 4x input is exactly linear, and the 8.0 threshold sits a
+    clean 2x from each side.
     """
-    import time
+    import ast
 
-    def best_of(n, repeats=2):
+    real_iter_child_nodes = ast.iter_child_nodes
+    visits = {"n": 0}
+
+    def counting_iter_child_nodes(node):
+        visits["n"] += 1
+        return real_iter_child_nodes(node)
+
+    # Patched on the `ast` module itself because `gate` calls it as
+    # `ast.iter_child_nodes`; monkeypatch restores it even if an assert below
+    # fails, which a bare assignment would not.
+    monkeypatch.setattr(ast, "iter_child_nodes", counting_iter_child_nodes)
+
+    def visits_for(n):
         body = "\n".join(f"a{i} = vars" for i in range(n))
         code = "vars = {}\n" + body + "\n"
         assert len(code.encode()) < 65536, "fixture must stay a submittable size"
-        times = []
-        for _ in range(repeats):
-            start = time.perf_counter()
-            ok, reason = check_code_safe(code)
-            times.append(time.perf_counter() - start)
-            assert ok is True, reason
-        return min(times)
+        visits["n"] = 0
+        ok, reason = check_code_safe(code)
+        assert ok is True, reason
+        return visits["n"]
 
-    small = best_of(500)
-    large = best_of(2000)  # 4x the statements
+    small = visits_for(500)
+    large = visits_for(2000)  # 4x the statements
 
-    # Guard against a degenerate denominator on a very fast machine: a clock
-    # granularity artefact would otherwise produce a huge ratio and a false
-    # failure. 1ms is far below the ~10ms this takes even post-fix.
-    assert small > 0.001, f"small case too fast to time reliably ({small:.6f}s)"
+    assert small > 0, "the counter never fired; is the patch target still right?"
 
     ratio = large / small
-    assert ratio < 11.0, (
-        f"gate checking scaled {ratio:.1f}x for a 4x larger module-scope script "
-        f"({small:.4f}s -> {large:.4f}s); quadratic is ~16x and the current "
-        "implementation is ~7x, so the module-binding lookup has likely gone "
-        "quadratic again"
+    assert ratio < 8.0, (
+        f"gate checking visited {ratio:.2f}x more AST nodes for a 4x larger "
+        f"module-scope script ({small} -> {large}); the module-binding "
+        "collector has gone quadratic again"
     )
 
 
@@ -1031,60 +1041,67 @@ class TestGlobalAndNonlocalTargetsDifferOnDeletion:
         assert reason == "safety gate: disallowed name 'eval'", reason
 
 
-def test_checking_a_large_function_scope_script_stays_roughly_linear():
+def test_the_function_scope_declaration_lookup_stays_linear(monkeypatch):
     """The FUNCTION-scope path, which neither sibling above covers -- and that
     uncovered gap is how a 203x regression reached a pushed commit.
 
-    Both existing scaling tests put their reads in a loop at MODULE scope.
+    Both sibling scaling tests put their reads at MODULE scope.
     `_target_is_function_local` walks the parent chain from the binder, so in
     that shape it reaches `ast.Module` immediately and never asks a function
     about its declarations. Wrapping the identical loop in a `def` is what
     reaches the expensive branch, so the suite stayed green at 175 passed while
-    the gate took 14s on a 41KB script.
+    the gate took 14.186s on a 41KB script against the parent's 0.072s.
 
     The cost was `_declares_global` walking the whole function subtree once per
-    Load, uncached -- O(loads x function size). It is paid on the WORKER thread
-    inside `check_code_safe`, before any child exists, so neither the
-    wall-clock timeout nor `RLIMIT_CPU` bounds it, and the 40,946-byte fixture
-    is under `SANDBOX_MAX_CODE_BYTES` (65536) so the size cap does not either.
-    An accepted script simply holds a lane and delays later jobs.
+    Load, uncached -- O(loads x function size), paid on the WORKER thread
+    before any child exists, so an accepted script simply holds a lane.
 
-    Asserts SCALING, not elapsed time, for the reason the module-scope sibling
-    documents: CI runs this suite under `pytest-xdist`, where an absolute bound
-    is either useless locally or flaky there. Measured at n=500 -> n=2000, min
-    of two runs each, on the same machine back to back:
+    **Counts AST node visits rather than elapsed time, and the first version of
+    this test is why.** It asserted a wall-clock ratio `< 11.0` against a
+    locally measured 6.5x; CI measured **11.5x** and failed the check on a
+    commit whose implementation was correct. The corridor here (6.5x good
+    against 15.9x bad) is too narrow to absorb scheduler preemption, which a
+    ratio does not cancel even though machine speed does. See the sibling
+    above for the full history of that instrument.
 
-        regressed (2202ceccb):  15.9x   (0.889s -> 14.186s)
-        memoised (current):      6.5x   (0.011s ->  0.075s)
+    Measured by counting `ast.iter_child_nodes` calls, n=500 -> n=2000:
 
-    The 11.0 threshold sits between them with room on both sides, matching the
-    sibling's bound.
+        regressed (2202ceccb):  15.88x   (1,263,033 -> 20,052,033 visits)
+        memoised (current):      3.99x   (   10,543 ->     42,043 visits)
     """
-    import time
+    import ast
 
-    def best_of(n, repeats=2):
+    real_iter_child_nodes = ast.iter_child_nodes
+    visits = {"n": 0}
+
+    def counting_iter_child_nodes(node):
+        visits["n"] += 1
+        return real_iter_child_nodes(node)
+
+    # Patched on the `ast` module itself because `gate` calls it as
+    # `ast.iter_child_nodes`; monkeypatch restores it even if an assert below
+    # fails, which a bare assignment would not.
+    monkeypatch.setattr(ast, "iter_child_nodes", counting_iter_child_nodes)
+
+    def visits_for(n):
         body = "\n".join(f"        a{i} = vars" for i in range(n))
         code = "def transform(rows):\n    for vars in rows:\n" + body + "\n    return 0\n"
         assert len(code.encode()) < 65536, "fixture must stay a submittable size"
-        times = []
-        for _ in range(repeats):
-            start = time.perf_counter()
-            ok, reason = check_code_safe(code)
-            times.append(time.perf_counter() - start)
-            assert ok is True, reason
-        return min(times)
+        visits["n"] = 0
+        ok, reason = check_code_safe(code)
+        assert ok is True, reason
+        return visits["n"]
 
-    small = best_of(500)
-    large = best_of(2000)  # 4x the statements
+    small = visits_for(500)
+    large = visits_for(2000)  # 4x the statements
 
-    # Same degenerate-denominator guard as the sibling: a clock-granularity
-    # artefact on a very fast machine would otherwise yield a false failure.
-    assert small > 0.001, f"small case too fast to time reliably ({small:.6f}s)"
+    assert small > 0, "the counter never fired; is the patch target still right?"
 
     ratio = large / small
-    assert ratio < 11.0, (
-        f"gate checking scaled {ratio:.1f}x for a 4x larger function-scope "
-        "script; the scope-declaration lookup has gone quadratic again"
+    assert ratio < 8.0, (
+        f"gate checking visited {ratio:.2f}x more AST nodes for a 4x larger "
+        f"function-scope script ({small} -> {large}); the scope-declaration "
+        "lookup has gone quadratic again"
     )
 
 
