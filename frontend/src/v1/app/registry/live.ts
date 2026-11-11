@@ -26,7 +26,7 @@ export const V1_DEV_ROUTES: boolean =
 export { PREVIEW_STORAGE_KEY };
 
 /**
- * The build's distribution from VITE_UNSTRACT_DISTRIBUTION: OSS when unset,
+ * The build's distribution from VITE_DISTRIBUTION: OSS when unset,
  * null when the value is not a distribution. vite.config.js fails the build
  * on such a value, so null is reached only by a build that skipped it.
  */
@@ -86,12 +86,12 @@ function browserStorage(): Storage | null {
 }
 
 function load(): LiveRegistry {
-  const raw = import.meta.env.VITE_UNSTRACT_DISTRIBUTION;
+  const raw = import.meta.env.VITE_DISTRIBUTION;
   let distribution = parseDistribution(raw);
   if (distribution === null) {
     // Never blank the app over it: v0 loads this module eagerly.
     console.error(
-      `VITE_UNSTRACT_DISTRIBUTION=${raw} is not one of ${DISTRIBUTIONS.join(", ")}; using oss`,
+      `VITE_DISTRIBUTION=${raw} is not one of ${DISTRIBUTIONS.join(", ")}; using oss`,
     );
     distribution = "oss";
   }

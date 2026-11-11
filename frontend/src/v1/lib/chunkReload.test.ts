@@ -37,7 +37,8 @@ describe("reloadOnce", () => {
     const reload = vi.fn();
     expect(reloadOnce(storage, reload, 100_000)).toBe(true);
     expect(reloadOnce(storage, reload, 105_000)).toBe(false);
-    expect(reloadOnce(storage, reload, 111_000)).toBe(true);
+    expect(reloadOnce(storage, reload, 110_000)).toBe(false); // exactly ten seconds
+    expect(reloadOnce(storage, reload, 110_001)).toBe(true);
     expect(reload).toHaveBeenCalledTimes(2);
   });
 

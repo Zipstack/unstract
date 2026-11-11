@@ -52,14 +52,16 @@ COPY ${BUILD_CONTEXT_PATH}/ .
 # VITE_V1_DEV_ROUTES: "true" only for the E2E image (ci-test.yaml); registers
 # the v1 demo pages that prove the version switch and honours the v1 preview
 # override. Release builds leave it empty.
-# VITE_UNSTRACT_DISTRIBUTION: oss (default when empty), cloud or onprem; the
-# v1 route registry ignores pages the distribution lacks.
+# VITE_DISTRIBUTION: oss (default when empty), cloud or onprem; the
+# v1 route registry ignores pages the distribution lacks. The same name as
+# P0-T07's plugin manifest (UN-4286). The cloud and on-prem builds do not set
+# it yet, so every image builds as oss until P0-T07 wires them.
 ARG VITE_V1_DEV_ROUTES=""
-ARG VITE_UNSTRACT_DISTRIBUTION=""
+ARG VITE_DISTRIBUTION=""
 
 # Build with Vite
 RUN VITE_V1_DEV_ROUTES="${VITE_V1_DEV_ROUTES}" \
-    VITE_UNSTRACT_DISTRIBUTION="${VITE_UNSTRACT_DISTRIBUTION}" \
+    VITE_DISTRIBUTION="${VITE_DISTRIBUTION}" \
     bun run build
 
 # Production stage

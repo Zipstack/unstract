@@ -120,11 +120,14 @@ only when a v1 page first renders.
   to `app/pages.ts`. Declared pages stay v0 for users.
 - **Register** it, in its go-live task only (D9), by adding its key to
   `REGISTERED_PAGES`. Its v0 URLs then redirect to v1; reverting is that line.
+  v1 renders outside v0's `PersistentLogin` and `RequireAuth`, and its own
+  session and guards come with P0-T06: a page registered before that ships
+  with no session load, login redirect or org check.
 - `app/registry/validate.test.ts` fails CI on an invalid entry: overlapping
-  patterns across pages, a v1 and a v0 route of one page that match the same
-  URL, a route without a mapping to the other version, a page without a
-  component, or `toggle`
-  on any page but Human Review (UN11, D14) and its demo stand-in.
+  patterns across pages, a v1 route and a different v0 route of one page that
+  match the same URL (a page may keep its v0 URL), a route without a mapping
+  to the other version, a page without a component, or `toggle` on any page
+  but Human Review (UN11, D14) and its demo stand-in.
 - Human Review's old-version preference is per user, per browser, in
   localStorage (`unstract.v1.oldVersion.<userId>`). `setOldVersion(on)` sets
   it, and the switch then moves the user to the mapped screen without a
@@ -144,9 +147,12 @@ only when a v1 page first renders.
   stand-ins `/:orgName/v0-demo…`). It also renders declared pages as v1 before
   they go live: set `localStorage["unstract.v1.preview"] = '["UN05"]'`, then
   reload (it is read when the app loads).
-- `VITE_UNSTRACT_DISTRIBUTION` (`oss` by default, `cloud` or `onprem`) selects
+- `VITE_DISTRIBUTION` (`oss` by default, `cloud` or `onprem`) selects
   the build's distribution; entries whose `distributions` omit it are ignored.
-  An unknown value fails `vite build`.
+  An unknown value fails `vite build`. P0-T07's plugin manifest (UN-4286)
+  reads the same variable. The cloud and on-prem image builds do not set it
+  yet, so every image builds as `oss`: until P0-T07 wires them, an entry that
+  lists fewer than all three distributions is not filtered correctly there.
 
 ## Folders and what each may import
 

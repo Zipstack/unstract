@@ -150,7 +150,8 @@ try {
 // Stand-ins for the v0 side of the v1 demo pages (UN-4271), which prove the
 // version switch; routed only in a build with VITE_V1_DEV_ROUTES=true. The
 // demo page is always live there, so V0DemoPage renders only if the switch
-// fails to redirect: that is what the E2E check would catch, not dead code.
+// fails to redirect: P0-T09's E2E specs (UN-4345, #2355) check for it, so it
+// is not dead code.
 function V0DemoPage() {
   return <h1 data-testid="v0-demo">v0 demo page</h1>;
 }
@@ -173,8 +174,8 @@ function Router() {
   const MainAppRoute = useMainAppRoutes();
   const userId = useSessionStore((state) => state.sessionDetails?.id);
   return (
-    // Renders v1 for a URL whose page is registered in the v1 route
-    // registry, and these v0 routes for everything else (UN-4271).
+    // Renders v1 for a URL whose page is live in the v1 route registry,
+    // and these v0 routes for everything else (UN-4271).
     <VersionSwitch userId={userId}>
       {/* v0-wide backstop (the v1 tree has its own, in VersionSwitch):
           catches shell-level chunk failures and errors on routes that don't

@@ -17,9 +17,10 @@ export type OldVersionState = {
   /** Follows the signed-in user. Signing out (null) keeps the last user. */
   setUser: (userId: string | null) => void;
   /**
-   * Sets the current user's choice and persists it. The version switch then
-   * moves the user to the equivalent screen, with no reload. False (and no
-   * change) while no user is known.
+   * Sets the current user's choice and saves it to localStorage. The version
+   * switch then moves the user to the equivalent screen, with no reload.
+   * True once the choice is set, even if storage refused the write: then it
+   * lasts for this session only. False (and no change) while no user is known.
    */
   setOldVersion: (on: boolean) => boolean;
 };
@@ -83,5 +84,3 @@ function browserStorage(): Storage | null {
 
 export const useOldVersionStore: UseBoundStore<StoreApi<OldVersionState>> =
   create<OldVersionState>()(oldVersionState(browserStorage()));
-
-export const selectOldVersion = (s: OldVersionState) => s.oldVersion;

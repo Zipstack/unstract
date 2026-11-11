@@ -44,17 +44,23 @@ function sessionStore(): Storage | null {
  * Keeps a v1 failure from unmounting the whole app. A stale chunk after a
  * deploy reloads the page once to fetch the new one (React caches a failed
  * lazy import, so nothing short of a reload retries it); anything else, or a
- * repeat failure, shows the fallback. Unstyled when the failed chunk is the
- * one carrying v1's styles.
+ * repeat failure, shows the fallback. Navigating to another URL clears it, as
+ * v0's backstop does with `resetKeys`.
  */
 class V1ErrorBoundary extends Component<
-  { children: ReactNode },
+  { children: ReactNode; resetKey: string },
   BoundaryState
 > {
   override state: BoundaryState = { failed: false };
 
   static getDerivedStateFromError(): BoundaryState {
     return { failed: true };
+  }
+
+  override componentDidUpdate(prev: Readonly<{ resetKey: string }>): void {
+    if (this.state.failed && prev.resetKey !== this.props.resetKey) {
+      this.setState({ failed: false });
+    }
   }
 
   override componentDidCatch(error: unknown): void {
@@ -78,9 +84,14 @@ class V1ErrorBoundary extends Component<
   }
 }
 
-function V1Root({ entry }: Readonly<{ entry: RegistryEntry }>): JSX.Element {
+function V1Root({
+  entry,
+  pathname,
+}: Readonly<{ entry: RegistryEntry; pathname: string }>): JSX.Element {
+  // Keyed by page so another page starts clean; within a page, a new
+  // pathname clears a failure without remounting the tree.
   return (
-    <V1ErrorBoundary key={entry.page}>
+    <V1ErrorBoundary key={entry.page} resetKey={pathname}>
       <Suspense fallback={null}>
         <V1App entry={entry} />
       </Suspense>
@@ -122,6 +133,6 @@ export function VersionSwitch({
     case "redirect":
       return <Navigate to={resolution.to} replace />;
     case "v1":
-      return <V1Root entry={resolution.entry} />;
+      return <V1Root entry={resolution.entry} pathname={location.pathname} />;
   }
 }

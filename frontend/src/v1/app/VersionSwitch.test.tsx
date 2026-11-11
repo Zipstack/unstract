@@ -18,6 +18,33 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VersionSwitch } from "./VersionSwitch";
 
+// Two test-only pages beside the real demo ones: one that fails to render on
+// its sub-route, and one whose chunk is gone after a deploy.
+vi.mock("./pages", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./pages")>();
+  const { lazy } = await import("react");
+  const { useLocation } = await import("react-router-dom");
+  function FlakyPage() {
+    if (useLocation().pathname.endsWith("/details")) {
+      throw new Error("render failed");
+    }
+    return <main data-testid="v1-flaky">flaky queue</main>;
+  }
+  return {
+    PAGE_COMPONENTS: {
+      ...real.PAGE_COMPONENTS,
+      "DEMO-FLAKY": lazy(async () => ({ default: FlakyPage })),
+      "DEMO-CHUNK": lazy(() =>
+        Promise.reject(
+          new TypeError(
+            "Failed to fetch dynamically imported module: /assets/gone.js",
+          ),
+        ),
+      ),
+    },
+  };
+});
+
 const demo = buildLiveRegistry({
   devRoutes: true,
   distribution: "oss",
@@ -55,10 +82,10 @@ function renderAt(
   {
     registry = demo,
     userId = "7",
-  }: { registry?: LiveRegistry; userId?: string | null } = {},
+  }: { registry?: LiveRegistry; userId?: string | number | null } = {},
 ) {
   const entries = Array.isArray(path) ? path : [path];
-  const view = (user: string | null) => (
+  const view = (user: string | number | null) => (
     <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
       <Where />
       <VersionSwitch registry={registry} userId={user}>
@@ -69,7 +96,7 @@ function renderAt(
   const result = render(view(userId));
   return {
     ...result,
-    setUser: (user: string | null) => result.rerender(view(user)),
+    setUser: (user: string | number | null) => result.rerender(view(user)),
   };
 }
 
@@ -78,6 +105,7 @@ const where = () => screen.getByTestId("where").textContent;
 beforeEach(() => {
   visited = [];
   window.localStorage.clear();
+  window.sessionStorage.clear();
   useOldVersionStore.setState({ userId: null, oldVersion: null, chosen: {} });
 });
 
@@ -117,7 +145,8 @@ describe("VersionSwitch", () => {
 
   it("Human Review round trip: old version maps to v0 and back, with no reload", async () => {
     const user = userEvent.setup();
-    renderAt("/acme/v1-demo-review/details");
+    // v0's session gives the id as a number.
+    renderAt("/acme/v1-demo-review/details", { userId: 7 });
     await user.click(
       await screen.findByRole("button", { name: "Switch to old version" }),
     );
@@ -185,7 +214,14 @@ describe("VersionSwitch", () => {
     expect(where()).toBe("/acme/v1-demo-review");
     expect(screen.getByTestId("v1-demo-review")).toBeTruthy();
     expect(setOldVersion(true)).toBe(false);
-    expect(window.localStorage.length).toBe(0);
+    expect(window.localStorage).toHaveLength(0);
+  });
+
+  it("treats an empty user id as signed out, keeping the last user's choice", () => {
+    window.localStorage.setItem(oldVersionStorageKey("7"), "true");
+    useOldVersionStore.setState({ userId: "7", oldVersion: true });
+    renderAt("/acme/v1-demo-review", { userId: "" });
+    expect(where()).toBe("/acme/v0-demo-review");
   });
 
   it("is per user: another user signing in never passes through the previous user's old version", async () => {
@@ -214,7 +250,6 @@ describe("VersionSwitch", () => {
     const log = vi.spyOn(console, "info").mockImplementation(() => undefined);
     expect(toast.success("After v1")).toBeUndefined();
     expect(log).toHaveBeenCalledWith("[v1 notify] After v1");
-    vi.restoreAllMocks();
   });
 
   it("contains a v1 failure in its own boundary instead of unmounting the app", async () => {
@@ -225,6 +260,39 @@ describe("VersionSwitch", () => {
     });
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
-    vi.restoreAllMocks();
+  });
+
+  it("clears a v1 failure when the user moves to another URL of the same page", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const flaky = { ...DEMO_PAGES[1], page: "DEMO-FLAKY" } as const;
+    renderAt("/acme/v1-demo-review/details", {
+      registry: { pages: [flaky], entries: [flaky] },
+    });
+    expect(await screen.findByRole("alert")).toBeTruthy();
+
+    act(() => {
+      navigate("/acme/v1-demo-review");
+    });
+    expect(await screen.findByTestId("v1-flaky")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("reloads once on a stale v1 chunk, and shows the fallback if it fails again", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const reload = vi
+      .spyOn(window.location, "reload")
+      .mockImplementation(() => undefined);
+    const gone = { ...DEMO_PAGES[0], page: "DEMO-CHUNK" } as const;
+    const registry = { pages: [gone], entries: [gone] };
+
+    const first = renderAt("/acme/v1-demo", { registry });
+    await screen.findByRole("alert");
+    expect(reload).toHaveBeenCalledTimes(1);
+
+    // The reloaded page fails again within ten seconds: no second reload.
+    first.unmount();
+    renderAt("/acme/v1-demo", { registry });
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });

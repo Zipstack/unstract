@@ -142,10 +142,10 @@ export default defineConfig(({ mode }) => {
   // The v1 route registry drops pages the build's distribution lacks. Fail
   // the build on a value it would not recognise; the list mirrors
   // DISTRIBUTIONS in src/v1/app/registry/types.ts.
-  const distribution = env.VITE_UNSTRACT_DISTRIBUTION?.trim().toLowerCase();
+  const distribution = env.VITE_DISTRIBUTION?.trim().toLowerCase();
   if (distribution && !["oss", "cloud", "onprem"].includes(distribution)) {
     throw new Error(
-      `VITE_UNSTRACT_DISTRIBUTION=${env.VITE_UNSTRACT_DISTRIBUTION} is not one of oss, cloud, onprem`,
+      `VITE_DISTRIBUTION=${env.VITE_DISTRIBUTION} is not one of oss, cloud, onprem`,
     );
   }
 

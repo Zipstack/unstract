@@ -1,9 +1,10 @@
 /*
  * The v1 tree: its own providers and routes, never inside a v0 layout or
- * guard. Loaded lazily by the version switch, so v1's code and styles reach
- * the browser only when a v1 page renders. The Toaster mounts here, once, so
- * `notify()` reaches the user on every v1 page. Session, guards (P0-T06) and
- * the shell (P2-T01) mount here.
+ * guard. Loaded lazily by the version switch, so v1's code reaches the
+ * browser only when a v1 page renders; its styles are in the global
+ * stylesheet (vite.config.js sets cssCodeSplit: false). The Toaster mounts
+ * here, once, so `notify()` reaches the user on every v1 page. Session,
+ * guards (P0-T06) and the shell (P2-T01) mount here.
  */
 
 import type { RegistryEntry } from "@v1/app/registry/types";

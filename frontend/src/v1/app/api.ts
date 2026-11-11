@@ -14,7 +14,9 @@ export const v1DevRoutesEnabled: boolean = V1_DEV_ROUTES;
 /**
  * Sets the signed-in user's old-version preference, which only Human Review
  * honours (D14). The version switch then moves the user to the equivalent
- * screen without a reload. False, and no change, while no user is known.
+ * screen without a reload. True once set; if storage refuses the write, the
+ * choice lasts for this session only. False, and no change, while no user is
+ * known.
  * For the switch controls on both versions of Human Review (P6-T07).
  */
 export function setOldVersion(on: boolean): boolean {
@@ -27,8 +29,11 @@ export function setOldVersion(on: boolean): boolean {
  * and the user chose the old version), else its mapped v0 URL. Params are raw
  * values and are encoded here. Null when the page is not declared, the
  * pattern is not one of its v1 routes, or a `:param` of the pattern is missing
- * or empty. Follows the last user known to this browser while a new user's
- * session loads.
+ * or empty. Reads the preference when called, so it does not re-render on
+ * its own. Before the session loads it uses the choice of the last user known
+ * to this browser, as the switch does. In the one render where a newly
+ * signed-in user is not yet synced to the store (a layout effect, before
+ * paint), it can still give the previous user's choice; the switch masks it.
  *
  *   resolveUrl("UN05", "/:orgName/workflows/:id", { orgName, id })
  */
