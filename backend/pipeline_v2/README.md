@@ -82,8 +82,9 @@ with no finished run has none and is left out by either bound.
   overlaps `by_status` rather than being one of its buckets.
 - `next_run_time` comes from `cron_string`. It is the time the list shows,
   written with `Z` where the list writes `+00:00`. It is `null` when the
-  pipeline has no schedule or its schedule can never fire (`0 0 31 2 *`). Such a
-  pipeline still has a `cron_string`, so `not_scheduled` does not count it.
+  pipeline has no schedule or its schedule can never fire (`0 0 31 2 *`). One
+  that can never fire still has a `cron_string`, so `not_scheduled` does not
+  count it.
 - The other fields are as for
   [API deployments](../api_v2/README.md#aggregate-response). `name` is the
   pipeline name.
