@@ -114,6 +114,89 @@ test("a folder without a manifest fails, but dotfiles are ignored", async () => 
   await assert.rejects(check(dir), /empty\/ has no manifest\.ts/);
 });
 
+test("a plugin route on a page OSS declares fails, naming OSS and the plugin", async () => {
+  // DEMO_PAGES in app/registry/entries.ts declares /:orgName/v1-demo.
+  const dir = plugins({
+    clash: manifest(
+      "clash",
+      ["cloud"],
+      `routes: [{ path: "/:orgName/v1-demo", load: () => import("./X") }],`,
+    ),
+  });
+  await assert.rejects(check(dir), /\/:orgName\/v1-demo.*\bOSS\b.*\bclash\b/);
+});
+
+test("the Vite plugin fails the build on a conflict", async () => {
+  const slot = `slots: { "shell.product-switcher": () => import("./X") },`;
+  const dir = plugins({
+    a: manifest("a", ["cloud"], slot),
+    b: manifest("b", ["cloud"], slot),
+  });
+  const { v1PluginMatrix } = await import("../vite.config.js");
+  await assert.rejects(
+    v1PluginMatrix({ dir, distribution: "cloud" }).buildStart(),
+    /shell\.product-switcher.*\ba\b.*\bb\b/,
+  );
+});
+
+test("the Vite plugin emits plugin-matrix.json naming the build's distribution", async () => {
+  const dir = plugins({ billing: manifest("billing", ["cloud"]) });
+  const { v1PluginMatrix } = await import("../vite.config.js");
+  const plugin = v1PluginMatrix({ dir, distribution: "cloud" });
+  await plugin.buildStart();
+  const emitted = [];
+  plugin.generateBundle.call({ emitFile: (file) => emitted.push(file) });
+  assert.equal(emitted.length, 1);
+  assert.equal(emitted[0].fileName, "plugin-matrix.json");
+  const matrix = JSON.parse(emitted[0].source);
+  assert.equal(matrix.distribution, "cloud");
+  assert.deepEqual(matrix.distributions.cloud, ["billing"]);
+});
+
+test("the Vite config runs the plugin matrix in every build", async () => {
+  const { default: config } = await import("../vite.config.js");
+  const names = config({ mode: "production" }).plugins.map((p) => p.name);
+  assert.ok(names.includes("v1-plugin-matrix"), names.join(", "));
+});
+
+test("vite build fails on a VITE_DISTRIBUTION it does not know", async () => {
+  const { default: config } = await import("../vite.config.js");
+  const saved = process.env.VITE_DISTRIBUTION;
+  process.env.VITE_DISTRIBUTION = "on-prem";
+  try {
+    assert.throws(() => config({ mode: "production" }), /on-prem/);
+  } finally {
+    if (saved === undefined) {
+      delete process.env.VITE_DISTRIBUTION;
+    } else {
+      process.env.VITE_DISTRIBUTION = saved;
+    }
+  }
+});
+
+test("both frontend image stages that run Vite take VITE_DISTRIBUTION", () => {
+  const dockerfile = fs.readFileSync(
+    path.join(
+      import.meta.dirname,
+      "../../docker/dockerfiles/frontend.Dockerfile",
+    ),
+    "utf8",
+  );
+  const stages = Object.fromEntries(
+    dockerfile
+      .split(/^FROM /m)
+      .slice(1)
+      .map((stage) => [stage.match(/ AS (\S+)/)?.[1], stage]),
+  );
+  for (const name of ["development", "builder"]) {
+    assert.match(stages[name], /^ARG VITE_DISTRIBUTION=/m, `${name} stage`);
+  }
+  assert.match(
+    stages.development,
+    /^ENV VITE_DISTRIBUTION=\$\{VITE_DISTRIBUTION\}/m,
+  );
+});
+
 const script = path.join(import.meta.dirname, "v1-plugins.mjs");
 const cli = (dir) =>
   spawnSync(process.execPath, [script, "--dir", dir], { encoding: "utf8" });
