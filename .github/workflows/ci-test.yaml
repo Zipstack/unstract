@@ -295,6 +295,13 @@ jobs:
         # No dependency lifecycle scripts: browsers are installed below.
         run: bun install --frozen-lockfile --ignore-scripts
 
+      - name: Lint and typecheck frontend-v1 E2E
+        working-directory: tests/e2e/ui-v1
+        # Playwright strips types without checking them, and neither the
+        # frontend lint workflow nor pre-commit covers tests/. The typecheck
+        # also holds the suite to the frontend registry types it imports.
+        run: bun run lint && bun run typecheck
+
       - name: Cache Playwright browsers
         id: ui-v1-browsers
         uses: actions/cache@v5

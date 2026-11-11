@@ -1,57 +1,158 @@
 /**
- * Self-test: the five-state helper drives and asserts every state, and a
- * failing state neither hangs on its held response nor passes silently.
- * Runs against the stand-in demo page, so it needs no platform and no
- * non-admin credentials (no-permission is a 403 interception).
+ * Self-test: the five-state helper drives and asserts every state, and each
+ * of its assertions fails when its state is wrong, without hanging on a held
+ * response. Runs against the state fixture (support/state-fixture.ts), so it
+ * needs no platform and no non-admin credentials (no-permission is a 403
+ * interception).
+ *
+ * Every negative case checks the failure names the locator and the matcher
+ * it expected, so a case passes only for the assertion it targets, not for
+ * an unrelated error inside the helper.
  */
 
+import type { Page } from "@playwright/test";
+import { STATE_TEST_IDS } from "../../contract/v1-ui.ts";
 import { DIST, expect, test } from "../../fixtures/index.ts";
 import { expectFiveStates, type Screen } from "../../helpers/index.ts";
 import {
-  DEMO_API,
-  DEMO_EMPTY,
-  DEMO_REST,
-  DEMO_REST_TEST_ID,
-  installDemoPage,
-  openDemoPage,
-} from "../../support/demo-page.ts";
+  FIXTURE_API,
+  FIXTURE_EMPTY,
+  FIXTURE_HEADING_TEST_ID,
+  FIXTURE_REST,
+  FIXTURE_REST_TEST_ID,
+  installStateFixture,
+  openStateFixture,
+} from "../../support/state-fixture.ts";
 
-function demoScreen(page: Parameters<typeof openDemoPage>[0]): Screen {
+const MISSING = "never-rendered";
+/** Short, so each negative case fails fast; the 5s expect default would also work. */
+const STATE_TIMEOUT = 1_000;
+
+function fixtureScreen(page: Page): Screen {
   return {
-    open: () => openDemoPage(page),
-    api: DEMO_API,
-    rest: (p) => p.getByTestId(DEMO_REST_TEST_ID),
-    restBody: DEMO_REST,
-    emptyBody: DEMO_EMPTY,
+    open: () => openStateFixture(page),
+    api: FIXTURE_API,
+    rest: (p) => p.getByTestId(FIXTURE_REST_TEST_ID),
+    restBody: FIXTURE_REST,
+    emptyBody: FIXTURE_EMPTY,
+    timeout: STATE_TIMEOUT,
   };
+}
+
+/** Runs the helper expecting it to fail; returns the failure text. */
+async function failure(page: Page, screen: Partial<Screen>): Promise<string> {
+  const error: unknown = await expectFiveStates(page, {
+    ...fixtureScreen(page),
+    ...screen,
+  }).then(
+    () => null,
+    (e: unknown) => e,
+  );
+  expect(
+    error,
+    "the helper passed a screen it should have failed",
+  ).toBeInstanceOf(Error);
+  return String((error as Error).message);
 }
 
 test.describe("harness: five states", { tag: DIST.all }, () => {
   test.beforeEach(async ({ page }) => {
-    await installDemoPage(page);
+    await installStateFixture(page);
   });
 
   test("drives rest, loading, empty, error and no-permission", async ({
     page,
   }) => {
-    await expectFiveStates(page, demoScreen(page));
+    await expectFiveStates(page, fixtureScreen(page));
   });
 
-  test("a state that never renders fails, and promptly", async ({ page }) => {
-    const started = Date.now();
-    const error = await expectFiveStates(page, {
-      ...demoScreen(page),
-      states: ["loading"],
-      // A skeleton id the page never renders.
-      locators: { loading: (p) => p.getByTestId("not-a-skeleton") },
-      timeout: 1_000,
-    }).catch((e: unknown) => e);
+  test("rest: a rest view that never renders fails", async ({ page }) => {
+    const message = await failure(page, {
+      states: ["rest"],
+      rest: (p) => p.getByTestId(MISSING),
+    });
+    expect(message).toContain(MISSING);
+    expect(message).toContain("toBeVisible");
+  });
 
-    expect(error).toBeInstanceOf(Error);
-    // The 1s state timeout was honoured, not the 5s expect default.
+  test("loading: a skeleton that never renders fails, and promptly", async ({
+    page,
+  }) => {
+    const started = Date.now();
+    const message = await failure(page, {
+      states: ["loading"],
+      locators: { loading: (p) => p.getByTestId(MISSING) },
+    });
+    expect(message).toContain(MISSING);
+    expect(message).toContain("toBeVisible");
+    // The per-state timeout was honoured, not the 5s expect default.
     expect(Date.now() - started).toBeLessThan(4_000);
     // The held response was released: the page went on to render rest.
-    await expect(page.getByTestId(DEMO_REST_TEST_ID)).toBeVisible();
+    await expect(page.getByTestId(FIXTURE_REST_TEST_ID)).toBeVisible();
+  });
+
+  test("loading: rest showing while the response is held fails", async ({
+    page,
+  }) => {
+    // The heading is always there, so "rest" is visible during loading too.
+    const message = await failure(page, {
+      states: ["loading"],
+      rest: (p) => p.getByTestId(FIXTURE_HEADING_TEST_ID),
+    });
+    expect(message).toContain(FIXTURE_HEADING_TEST_ID);
+    expect(message).toContain("toBeHidden");
+  });
+
+  test("loading: rest missing after the response is released fails", async ({
+    page,
+  }) => {
+    // Hidden while held (passes), then still absent once released.
+    const message = await failure(page, {
+      states: ["loading"],
+      rest: (p) => p.getByTestId(MISSING),
+    });
+    expect(message).toContain(MISSING);
+    expect(message).toContain("toBeVisible");
+  });
+
+  test("loading: a skeleton that stays after the response is released fails", async ({
+    page,
+  }) => {
+    const message = await failure(page, {
+      states: ["loading"],
+      locators: { loading: (p) => p.getByTestId(FIXTURE_HEADING_TEST_ID) },
+    });
+    expect(message).toContain(FIXTURE_HEADING_TEST_ID);
+    expect(message).toContain("toBeHidden");
+  });
+
+  test("empty: a wrong empty body is caught", async ({ page }) => {
+    const message = await failure(page, {
+      states: ["empty"],
+      emptyBody: FIXTURE_REST,
+    });
+    expect(message).toContain(STATE_TEST_IDS.empty);
+    expect(message).toContain("toBeVisible");
+  });
+
+  test("error: an error view that never renders fails", async ({ page }) => {
+    const message = await failure(page, {
+      states: ["error"],
+      locators: { error: (p) => p.getByTestId(MISSING) },
+    });
+    expect(message).toContain(MISSING);
+    expect(message).toContain("toBeVisible");
+  });
+
+  test("no-permission: a no-permission view that never renders fails", async ({
+    page,
+  }) => {
+    const message = await failure(page, {
+      states: ["noPermission"],
+      locators: { noPermission: (p) => p.getByTestId(MISSING) },
+    });
+    expect(message).toContain(MISSING);
+    expect(message).toContain("toBeVisible");
   });
 
   test("an open that waits for networkidle does not hang on the held response", async ({
@@ -59,10 +160,10 @@ test.describe("harness: five states", { tag: DIST.all }, () => {
   }) => {
     // The shape of `app.goto`, which page specs use as `open`.
     await expectFiveStates(page, {
-      ...demoScreen(page),
+      ...fixtureScreen(page),
       states: ["loading"],
       open: async () => {
-        await openDemoPage(page);
+        await openStateFixture(page);
         await page.waitForLoadState("networkidle");
       },
     });
@@ -71,21 +172,11 @@ test.describe("harness: five states", { tag: DIST.all }, () => {
   test("without restBody, rest falls through to the route behind it", async ({
     page,
   }) => {
-    // installDemoPage's API route stands in for the real API here.
+    // installStateFixture's API route stands in for the real API here.
     await expectFiveStates(page, {
-      ...demoScreen(page),
+      ...fixtureScreen(page),
       restBody: undefined,
       states: ["rest", "loading"],
     });
-  });
-
-  test("a wrong empty body is caught", async ({ page }) => {
-    const error = await expectFiveStates(page, {
-      ...demoScreen(page),
-      states: ["empty"],
-      emptyBody: DEMO_REST,
-      timeout: 1_000,
-    }).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(Error);
   });
 });
