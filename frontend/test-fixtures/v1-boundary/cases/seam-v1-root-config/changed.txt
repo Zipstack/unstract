@@ -1,0 +1,2 @@
+vitest.v1.config.mts
+src/pages/a.jsx
