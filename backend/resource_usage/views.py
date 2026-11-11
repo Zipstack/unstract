@@ -85,10 +85,11 @@ class ProfileUsageMixin:
         rows = response.data["results"] if paged else response.data
         # Rows carry the pk as a string; the index keys are UUIDs.
         by_pk = {str(pk): usage for pk, usage in index.items()}
+        self._add_late_rows(by_pk, rows)
         for row in rows:
-            # Every row is in the index: the list only narrows its base, and
-            # the index was read first.
-            usage = by_pk[str(row["id"])]
+            # Missing only if deleted since the rows were read, which the
+            # delete guard allows only for an unused profile.
+            usage = by_pk.get(str(row["id"])) or ProfileUsage()
             row[ListParam.USED_IN_COUNT] = usage.used_in_count
             if self.usage_kind == ProfileKind.CONNECTOR:
                 row[ListParam.USED_AS] = usage.used_as
@@ -97,6 +98,22 @@ class ProfileUsageMixin:
                 1 for usage in index.values() if not usage.used_in_count
             )
         return response
+
+    def _add_late_rows(
+        self, by_pk: dict[str, ProfileUsage], rows: list[dict[str, Any]]
+    ) -> None:
+        """Work out usage for rows the index lacks: profiles created or shared
+        with the caller after the index was read. Costs queries only then.
+        """
+        late = [row["id"] for row in rows if str(row["id"]) not in by_pk]
+        if not late:
+            return
+        # The rows were already read through the caller's queryset, so the
+        # profiles are fetched unscoped.
+        model = self.get_status_base_queryset().model  # type: ignore[attr-defined]
+        profiles = list(model._base_manager.filter(pk__in=late).only(*self.usage_fields))
+        for pk, usage in collect(self.usage_kind, profiles).items():
+            by_pk[str(pk)] = usage
 
     @action(detail=True, methods=["get"], url_path="usage")
     def usage(self, request: Request, pk: str | None = None) -> Response:

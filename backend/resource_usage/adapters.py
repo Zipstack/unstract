@@ -6,9 +6,10 @@ import json
 from collections.abc import Iterable, Iterator, Sequence
 from typing import Any
 
+from django.contrib.postgres.fields import ArrayField
 from django.db import connection
-from django.db.models import BooleanField, Q
-from django.db.models.expressions import RawSQL
+from django.db.models import BooleanField, Func, Q, TextField, Value
+from django.db.models.functions import Cast
 
 from resource_usage.constants import OTHER_GROUP, ItemType, ProfileKind, UsageGroup
 from resource_usage.references import Reference, register_provider, relation_label
@@ -36,6 +37,22 @@ def _json_escaped(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)[1:-1]
 
 
+class _LikeAny(Func):
+    """``<text> LIKE ANY (<patterns>)``: true when any pattern matches."""
+
+    arity = 2
+    output_field = BooleanField()
+
+    def as_sql(self, compiler: Any, connection: Any, **extra: Any) -> Any:
+        text, patterns = self.get_source_expressions()
+        text_sql, text_params = compiler.compile(text)
+        patterns_sql, patterns_params = compiler.compile(patterns)
+        return (
+            f"{text_sql} LIKE ANY ({patterns_sql})",
+            (*text_params, *patterns_params),
+        )
+
+
 def tool_instance_refs(adapters: Sequence[Any]) -> Iterable[tuple[Any, Reference]]:
     """Workflows whose tool instances name the adapter in ``metadata``.
 
@@ -53,20 +70,18 @@ def tool_instance_refs(adapters: Sequence[Any]) -> Iterable[tuple[Any, Reference
 
     if not needles:
         return
-    org_ids = {org_id for org_id, _ in needles}
+    org_ids = {key[0] for key in needles}
     # Fetch only tool instances whose metadata text contains a needle; the
     # exact walk below then decides, as the guard does. A string sits in the
     # JSON text escaped, so match its escaped form. One cast per row, tested
     # against every pattern at once.
     patterns = [
-        f"%{connection.ops.prep_for_like_query(_json_escaped(needle))}%"
-        for _, needle in needles
+        f"%{connection.ops.prep_for_like_query(_json_escaped(key[1]))}%"
+        for key in needles
     ]
-    table = connection.ops.quote_name(ToolInstance._meta.db_table)
-    mentions_a_needle = RawSQL(
-        f"{table}.{connection.ops.quote_name('metadata')}::text LIKE ANY(%s)",
-        (patterns,),
-        output_field=BooleanField(),
+    mentions_a_needle = _LikeAny(
+        Cast("metadata", TextField()),
+        Value(patterns, output_field=ArrayField(TextField())),
     )
     rows = (
         ToolInstance.objects.filter(workflow__organization_id__in=org_ids)

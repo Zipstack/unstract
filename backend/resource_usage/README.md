@@ -129,6 +129,7 @@ the delete guard refuses on, with the exceptions listed under the table.
 | Prompt Studio profile's LLM, embedding, vector DB or text extractor | `prompt_studio_projects` (the profile's project) | yes |
 | Connector on a workflow source or destination | `workflows`, with `role` | yes |
 | Any other `PROTECT` or `RESTRICT` foreign key to the profile | `other` | yes |
+| Lookup version LLM or text extractor (cloud) | `lookups` | yes |
 | Agentic Studio project LLMs and text extractor (cloud) | `agentic_studio_projects` | no |
 
 - The last row of the OSS references is the safety net: a foreign key added

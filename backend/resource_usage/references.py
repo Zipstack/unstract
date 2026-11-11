@@ -197,7 +197,8 @@ def _derived_refs(index: dict[Any, ProfileUsage]) -> None:
 
     workflow_refs: dict[str, list[tuple[ProfileUsage, Reference]]] = {}
     for usage in index.values():
-        for ref in list(usage.references.values()):
+        # A snapshot: ``usage.add`` below grows this dict.
+        for ref in tuple(usage.references.values()):
             if ref.model is Workflow:
                 workflow_refs.setdefault(str(ref.pk), []).append((usage, ref))
     if not workflow_refs:

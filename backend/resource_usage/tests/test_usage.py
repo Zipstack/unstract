@@ -173,6 +173,11 @@ class AdapterGuardParityTests(UsageTestBase):
         workflow = self.make_workflow("wf")
         self.make_tool_instance(workflow, {"llm": str(adapter.pk)})
         self.make_tool_instance(workflow, {"llm": "something-else"})
+        # Another organisation's tool instance naming the same id.
+        foreign: Workflow = Workflow.objects.create(
+            workflow_name="foreign", organization=self.other_org, created_by=self.owner
+        )
+        self.make_tool_instance(foreign, {"llm": str(adapter.pk), "org": "other"})
         with patch(
             "resource_usage.adapters.string_leaves", wraps=string_leaves
         ) as walk:
@@ -180,6 +185,7 @@ class AdapterGuardParityTests(UsageTestBase):
         self.assertEqual(usage[adapter.pk].used_in_count, 1)
         walked = [call.args[0] for call in walk.call_args_list]
         self.assertNotIn({"llm": "something-else"}, walked)
+        self.assertNotIn({"llm": str(adapter.pk), "org": "other"}, walked)
 
     def test_profile_without_project_is_in_other(self, _ctx: Any) -> None:
         cases = self._cases()
@@ -525,6 +531,25 @@ class UsageListTests(UsageTestBase):
         with patch.object(ProfileUsageMixin, "_list_usage", then_delete):
             rows = self._list(AdapterInstanceViewSet, "?with_usage=true")
         self.assertEqual([r["adapter_name"] for r in rows], ["used"])
+
+    def test_profile_added_between_usage_and_rows_gets_its_usage(
+        self, _ctx: Any
+    ) -> None:
+        """A profile created after usage was read is listed with its usage."""
+        from resource_usage.views import ProfileUsageMixin
+
+        original = ProfileUsageMixin._list_usage
+
+        def then_create(view: Any) -> Any:
+            index = original(view)
+            late = self.make_adapter("late")
+            self.make_tool_instance(self.make_workflow("wf3"), {"llm": str(late.pk)})
+            return index
+
+        with patch.object(ProfileUsageMixin, "_list_usage", then_create):
+            rows = self._list(AdapterInstanceViewSet, "?with_usage=true")
+        counts = {row["adapter_name"]: row["used_in_count"] for row in rows}
+        self.assertEqual(counts, {"used": 1, "spare": 0, "late": 1})
 
     def test_other_values_change_nothing(self, _ctx: Any) -> None:
         for viewset in (AdapterInstanceViewSet, ConnectorInstanceViewSet):
