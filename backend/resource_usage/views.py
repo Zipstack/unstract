@@ -32,6 +32,8 @@ class ProfileUsageMixin:
     """
 
     usage_kind: ProfileKind
+    # Profile columns the usage providers read.
+    usage_fields: tuple[str, ...] = ("id", "organization")
     request: Request
     action: str | None
 
@@ -48,8 +50,15 @@ class ProfileUsageMixin:
         cached: dict[Any, ProfileUsage] | None = getattr(self, "_usage_index", None)
         if cached is None:
             base = self.filter_queryset(self.get_status_base_queryset())  # type: ignore[attr-defined]
-            # Plain rows: the providers need pk, name and organisation only.
-            profiles = list(base.select_related(None).prefetch_related(None))
+            # Plain rows: the providers read only these columns, and skipping
+            # the rest avoids decrypting every profile's stored settings.
+            # No ordering, as DISTINCT needs ordered columns selected.
+            profiles = list(
+                base.order_by()
+                .select_related(None)
+                .prefetch_related(None)
+                .only(*self.usage_fields)
+            )
             cached = collect(self.usage_kind, profiles)
             self._usage_index = cached
         return cached

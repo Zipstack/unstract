@@ -176,6 +176,7 @@ class AdapterInstanceViewSet(
     ProfileUsageMixin, OwnerManagementMixin, ResourceShareManagementMixin, ModelViewSet
 ):
     usage_kind = ProfileKind.ADAPTER
+    usage_fields = ("id", "organization", "adapter_name")
     serializer_class = AdapterInstanceSerializer
     pagination_class = FailingCountPagination
     # `pk` tiebreaker keeps paging deterministic when modified_at collides.
