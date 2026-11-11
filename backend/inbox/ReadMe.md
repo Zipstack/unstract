@@ -2,7 +2,7 @@
 
 ## Inbox contract
 
-Each user has one inbox per organization. Paths are organization-scoped: `/api/v1/unstract/<org_id>/notifications/inbox/...`. The typed contract is the `@extend_schema` annotation on `inbox/views.py` (operation ids `inbox_list`, `inbox_read`, `inbox_read_all`). It is not part of the published deployment API spec. The item shape is provisional until it is agreed with the LLMWhisperer notifications.
+Each user has one inbox per organization. Paths are organization-scoped: `/api/v1/unstract/<org_id>/notifications/inbox/...`. The typed contract is the `@extend_schema` annotation on `inbox/views.py` (operation ids `inbox_list`, `inbox_read`, `inbox_read_all`). It is not part of the published deployment API spec. The LLMWhisperer portal's inbox (`portal/inbox/README.md` in llmwhisperer-portal) uses the same item shape and the same three endpoints, so one v1 notifications panel serves both products.
 
 | Method and path | Response |
 |---|---|
