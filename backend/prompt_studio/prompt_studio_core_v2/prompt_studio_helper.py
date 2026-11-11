@@ -1529,8 +1529,8 @@ class PromptStudioHelper:
                 str(llm.adapter_id), llm.metadata or {}
             )
         except SdkError as e:
-            # The error type only, no traceback: the adapter's validation
-            # error quotes the stored metadata, credentials included.
+            # The error type only, no traceback: adapter error text stays out of
+            # the log.
             logger.warning(
                 "Could not resolve image limits for the default profile's LLM "
                 "(%s); using the fixed page cap for the upload check",

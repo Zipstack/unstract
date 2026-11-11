@@ -84,8 +84,11 @@
     "typecheck": "tsc --noEmit",
     "tokens:v1": "bun scripts/build-v1-tokens.mjs",
     "typecheck:v1": "node scripts/check-v1.mjs --files && tsc -p src/v1/tsconfig.json",
-    "lint:v1": "biome lint src/v1/ && node scripts/check-v1.mjs --code && node scripts/check-v1-styles.mjs && node scripts/check-v1-icons.mjs",
-    "test:v1": "vitest run --config vitest.v1.config.mts --coverage && vitest run --config vitest.v1-plugins.config.mts --coverage && node --test test-fixtures/v1-boundary/boundary.fixtures.mjs test-fixtures/v1-harness/harness.fixtures.mjs"
+    "lint:v1": "biome lint --error-on-warnings src/v1/ && node scripts/check-v1.mjs --code && node scripts/check-v1-styles.mjs && node scripts/check-v1-icons.mjs",
+    "test:v1": "vitest run --config vitest.v1.config.mts --coverage && vitest run --config vitest.v1-plugins.config.mts --coverage && node --test test-fixtures/v1-boundary/boundary.fixtures.mjs test-fixtures/v1-harness/harness.fixtures.mjs test-fixtures/v1-unit-gate/unit-gate.fixtures.mjs",
+    "seam:v1": "node scripts/check-v1-seam.mjs --base origin/main",
+    "separation:v1": "node scripts/check-v1-separation.mjs",
+    "bundle:v1": "node scripts/check-v1-bundle.mjs"
   },
   "browserslist": {
     "production": [

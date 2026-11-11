@@ -75,7 +75,9 @@ const CASES = parseTable(`
   v1-feature-flag-sdk            | lint:v1         | -
   v1-icon-library-css            | lint:v1         | 'flag-icons/css/flag-icons.min.css' is not allowed
   v1-icon-library-scss-tilde     | lint:v1         | '@fortawesome/fontawesome-free/scss/fontawesome' is not allowed
-  v1-icon-library-css-escaped   | lint:v1         | '@fortawesome/fontawesome-free/css/all.min.css' is not allowed
+  # Biome's own warning stops lint:v1 first; check-v1-icons still catches it.
+  v1-icon-library-css-escaped    | lint:v1         | noUselessEscapeInString
+  v1-icon-library-css-escaped    | node scripts/check-v1-icons.mjs | '@fortawesome/fontawesome-free/css/all.min.css' is not allowed
   v1-lucide-subpath              | lint:v1         | not 'lucide-react/dynamic'
   v1-lucide-alias                | lint:v1         | Deprecated lucide-react alias 'Loader2'
   v1-lucide-alias-uncommon       | lint:v1         | import the canonical name 'CircleQuestionMark'
@@ -104,7 +106,9 @@ const CASES = parseTable(`
   v1-notify-radix-namespace      | lint:v1         | One notification entry point in v1
   v1-notify-dynamic              | lint:v1         | One notification entry point in v1
   v1-notify-radix-dynamic        | lint:v1         | One notification entry point in v1
-  v1-notify-radix-bracket        | lint:v1         | One notification entry point in v1
+  # Biome's own warning stops lint:v1 first; check-v1 still catches it.
+  v1-notify-radix-bracket        | lint:v1         | noDynamicNamespaceImportAccess
+  v1-notify-radix-bracket        | node scripts/check-v1.mjs --code | One notification entry point in v1
   v1-notify-radix-jsx            | lint:v1         | One notification entry point in v1
   v1-notify-radix-require        | lint:v1         | One notification entry point in v1
   v1-notify-radix-reexport       | lint:v1         | One notification entry point in v1
@@ -148,7 +152,10 @@ const CASES = parseTable(`
   v1-raw-pixel-arbitrary-separator | lint:v1       | No raw pixel value under v1
   v1-important-utility           | lint:v1         | No !important under v1
   v1-important-variant-utility   | lint:v1         | No !important under v1
-  v1-important-css               | lint:v1         | No !important under v1
+  # Biome now reports CSS !important first (warnings fail v1), so the styling
+  # policy's own CSS branch is run directly as well.
+  v1-important-css               | lint:v1         | noImportantStyles
+  v1-important-css               | node scripts/check-v1-styles.mjs | No !important under v1
   v1-css-import-from-page        | lint:v1         | CSS is imported only from app/ and styles/
   v1-styles-raw-colour           | lint:v1         | No raw colour under v1
   v1-styles-raw-colour-named     | lint:v1         | No raw colour under v1
@@ -163,6 +170,58 @@ const CASES = parseTable(`
   v1-cva-unprefixed-variant      | lint:v1         | No unprefixed Tailwind utility under v1
   v1-styles-policy-ok            | lint:v1         | -
   v1-plain-strings-ok            | lint:v1         | -
+  # Quality (P0-T10): accessibility rules, and every other warning, fail v1.
+  # Plain biome lint fails only on errors, so this proves the v1 override.
+  v1-a11y-button-type            | biome lint src/v1/ | useButtonType
+  v1-warning-is-error            | lint:v1         | noArrayIndexKey
+  # Purity (P0-T10): the antd shims are v0, so v1 cannot reach them.
+  v1-imports-v0-shim             | lint:v1         | v1 imports nothing outside src/v1
+  # Seam (P0-T10, check-v1-seam.mjs): v1 work changes v0 only at the seam.
+  seam-v1-only                   | node scripts/check-v1-seam.mjs --changed changed.txt | -
+  seam-v1-at-the-seam            | node scripts/check-v1-seam.mjs --changed changed.txt | -
+  seam-v0-fix-only               | node scripts/check-v1-seam.mjs --changed changed.txt | -
+  seam-v1-changes-v0-page        | node scripts/check-v1-seam.mjs --changed changed.txt | src/pages/LogsPage.jsx: changes v0 outside the seam
+  seam-v1-changes-public         | node scripts/check-v1-seam.mjs --changed changed.txt | public/favicon.ico: changes v0 outside the seam
+  seam-v1-tooling-changes-v0     | node scripts/check-v1-seam.mjs --changed changed.txt | antd-button.tsx: changes v0 outside the seam
+  seam-v1-changes-v0-page        | node scripts/check-v1-seam.mjs --changed changed.txt --override | -
+  # The allowlist globs: nested matches pass, near-misses do not.
+  seam-glob-nested               | node scripts/check-v1-seam.mjs --changed changed.txt | -
+  seam-glob-near-misses          | node scripts/check-v1-seam.mjs --changed changed.txt | frontend/src/routes.jsx: changes v0
+  seam-glob-near-misses          | node scripts/check-v1-seam.mjs --changed changed.txt | frontend/src/indexXcss: changes v0
+  seam-glob-near-misses          | node scripts/check-v1-seam.mjs --changed changed.txt | frontend/src/pages/src/App.jsx: changes v0
+  seam-glob-near-misses          | node scripts/check-v1-seam.mjs --changed changed.txt | frontend/src/routesX/a.jsx: changes v0
+  # A top-level v1 file (vitest.v1.config.mts) is v1 work.
+  seam-v1-root-config            | node scripts/check-v1-seam.mjs --changed changed.txt | frontend/src/pages/a.jsx: changes v0
+  # --base, as CI runs it: a real repository, root one level above frontend/.
+  seam-git-v1-changes-v0         | sh "$V1_FIXTURES/git-case.sh" node scripts/check-v1-seam.mjs --base base | frontend/src/pages/a.jsx: changes v0
+  seam-git-renames-v0            | sh "$V1_FIXTURES/git-case.sh" node scripts/check-v1-seam.mjs --base base | frontend/src/pages/a.jsx: changes v0
+  seam-git-deletes-v0            | sh "$V1_FIXTURES/git-case.sh" node scripts/check-v1-seam.mjs --base base | frontend/src/pages/a.jsx: changes v0
+  seam-git-non-ascii             | sh "$V1_FIXTURES/git-case.sh" node scripts/check-v1-seam.mjs --base base | frontend/src/pages/Überblick.jsx: changes v0
+  seam-git-changes-index-html    | sh "$V1_FIXTURES/git-case.sh" node scripts/check-v1-seam.mjs --base base | frontend/index.html: changes v0
+  seam-git-at-the-seam           | sh "$V1_FIXTURES/git-case.sh" node scripts/check-v1-seam.mjs --base base | -
+  # The allowlist comes from the base, so widening it in the PR does not help.
+  seam-git-widens-allowlist      | sh "$V1_FIXTURES/git-case.sh" node scripts/check-v1-seam.mjs --base base | frontend/src/pages/a.jsx: changes v0
+  seam-git-v1-changes-v0         | sh "$V1_FIXTURES/git-case.sh" node scripts/check-v1-seam.mjs --base nope | git diff against 'nope' failed
+  # Separation (P0-T10, check-v1-separation.mjs): no plugin code in OSS.
+  -                              | node scripts/check-v1-separation.mjs | -
+  v1-plugin-folder               | node scripts/check-v1-separation.mjs | src/v1/plugins/acme/: enterprise plugin code
+  # In git, as CI runs it: only tracked files count.
+  -                              | sh "$V1_FIXTURES/git-case.sh" node scripts/check-v1-separation.mjs | -
+  separation-git-overlay-ignored | sh "$V1_FIXTURES/git-case.sh" node scripts/check-v1-separation.mjs | -
+  separation-git-plugin-committed | sh "$V1_FIXTURES/git-case.sh" node scripts/check-v1-separation.mjs | src/v1/plugins/acme/: enterprise plugin code
+  separation-git-non-ascii-file  | sh "$V1_FIXTURES/git-case.sh" node scripts/check-v1-separation.mjs | -
+  # Bundle (P0-T10, check-v1-bundle.mjs): real builds, then a saved report.
+  bundle-v1-clean                | node scripts/check-v1-bundle.mjs | -
+  # A package v0 also uses is not v0 code, wherever Rollup places it.
+  bundle-v1-shares-package       | node scripts/check-v1-bundle.mjs | -
+  bundle-v1-pulls-v0             | node scripts/check-v1-bundle.mjs | reaches v0 module src/legacy.js
+  bundle-v1-dynamic-v0           | node scripts/check-v1-bundle.mjs | reaches v0 module src/legacy.js
+  # Through a CommonJS module, which Rollup reaches via a virtual \0 module.
+  bundle-v1-cjs-v0               | node scripts/check-v1-bundle.mjs | reaches v0 module src/legacy.cjs
+  # Mounted statically, so v1 is inlined into a v0 chunk and has none of its own.
+  bundle-v1-static-mount         | node scripts/check-v1-bundle.mjs | src/v1/lib/text.ts (v1) reaches v0 module src/legacy.js
+  # antd reached through a package, which only this guard can see.
+  bundle-v1-antd-report          | node scripts/check-v1-bundle.mjs --report report.json | reaches antd module /repo/frontend/node_modules/antd/es/button/index.js through /repo/frontend/node_modules/some-table/index.js
 `).map(([name, run, fails]) => ({
   name: name === "-" ? null : name,
   run: run.split(" + "),
@@ -183,8 +242,13 @@ function makeTree(caseName) {
   fs.cpSync(path.join(FRONTEND, "scripts"), path.join(dir, "scripts"), {
     recursive: true,
   });
+  // Without a local copy of the cloud overlay (ignored by design, D7), so a
+  // developer who has one gets the same results as CI.
+  const plugins = path.join(FRONTEND, "src", "v1", "plugins");
   fs.cpSync(path.join(FRONTEND, "src", "v1"), path.join(dir, "src", "v1"), {
     recursive: true,
+    filter: (src) =>
+      path.dirname(src) !== plugins || !fs.statSync(src).isDirectory(),
   });
   fs.symlinkSync(
     path.join(FRONTEND, "node_modules"),
@@ -228,6 +292,8 @@ function runAll(dir, run) {
       env: {
         ...process.env,
         NO_COLOR: "1",
+        // For steps that run git-case.sh, which is not copied into the tree.
+        V1_FIXTURES: import.meta.dirname,
         PATH: `${path.join(dir, "node_modules", ".bin")}${path.delimiter}${process.env.PATH}`,
       },
     });
@@ -306,6 +372,33 @@ test("cloud v1 plugins are git-ignored; the public manifest is not", () => {
   ];
   const ignored = gitIgnored([...cloud, "src/v1/plugins/manifest.ts"]);
   assert.deepEqual(sorted(ignored), sorted(cloud));
+});
+
+// The accessibility rules the v1 README and the PR promise as errors.
+const V1_A11Y_ERRORS = [
+  "noLabelWithoutControl",
+  "noNoninteractiveElementInteractions",
+  "noRedundantRoles",
+  "noStaticElementInteractions",
+  "useAriaPropsSupportedByRole",
+  "useButtonType",
+  "useFocusableInteractive",
+  "useGenericFontNames",
+  "useKeyWithClickEvents",
+  "useSemanticElements",
+  "useValidAnchor",
+];
+
+test("the accessibility rules are errors under src/v1", () => {
+  const biome = JSON.parse(
+    fs.readFileSync(path.join(FRONTEND, "biome.json"), "utf8"),
+  );
+  const v1 = biome.overrides.find((o) => o.includes?.includes("src/v1/**"));
+  assert.ok(v1, "biome.json has no src/v1/** override");
+  const a11y = v1.linter?.rules?.a11y ?? {};
+  for (const rule of V1_A11Y_ERRORS) {
+    assert.equal(a11y[rule], "error", `a11y/${rule} under src/v1`);
+  }
 });
 
 test("every case folder is listed", () => {
