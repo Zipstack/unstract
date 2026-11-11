@@ -96,6 +96,12 @@ is convention.
   `Spinner` sits only in buttons and running text. Errors on a screen are an
   `InlineAlert` above the content, with `onRetry`.
 
+## Charts
+
+- Line, area, bar, stacked bar and sparkline live in `components/ui/chart/`;
+  its README has the props, colour ramp, marker rule and text alternative.
+  Colours come from `--chart-1`…`--chart-5` and the semantic tokens only.
+
 ## Code and data
 
 - Code, JSON, diffs, Markdown, copy controls and code editors come from
