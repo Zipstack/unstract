@@ -7,6 +7,7 @@ from importlib import import_module
 from typing import Any
 
 import socketio
+from account_v2.constants import ROW_BACKED_SESSION_ENGINES
 from django.conf import settings
 from django.contrib.auth import (
     BACKEND_SESSION_KEY,
@@ -27,6 +28,10 @@ from utils.cors_origin import RegexOrigin
 logger = logging.getLogger(__name__)
 
 _SESSION_KEY_RE = re.compile(r"[a-z0-9]{32}")
+# Socket ids per signed-in session, so that ending a session can disconnect its
+# sockets on every worker: a worker can list only its own sockets.
+_SESSION_SOCKETS_PREFIX = "session_sockets:"
+_SOCKET_SESSION_PREFIX = "socket_session:"
 
 
 _cors_allowed_origins: list[Any] = list(settings.CORS_ALLOWED_ORIGINS)
@@ -85,12 +90,25 @@ def connect(sid: str, environ: Any, auth: Any) -> None:
     logger.info(f"[{os.getpid()}] Client with SID:{sid} connected")
     session_id = _get_user_session_id_from_cookies(sid, environ)
     if session_id:
+        # Fail closed: a socket that ending its session could not reach would
+        # keep receiving that session's and its user's events.
+        if not _track_session_socket(sid, session_id):
+            sio.disconnect(sid)
+            return
         sio.enter_room(sid, session_id)
         logger.info(f"Entered room {session_id} for socket {sid}")
         user_id = _get_user_id(sid, session_id)
         if user_id:
             # Per-user events, such as the inbox unread count.
-            sio.enter_room(sid, f"user:{user_id}")
+            user_room = f"user:{user_id}"
+            sio.enter_room(sid, user_room)
+            # Checked again after joining: a sign-out that commits between the
+            # check above and the join empties this room before the socket is in
+            # it. Either the socket joined first and that emptying evicts it, or
+            # it joined after and this check sees the session ended.
+            if _get_user_id(sid, session_id) != user_id:
+                logger.info(f"Session of socket {sid} ended while joining; left")
+                sio.leave_room(sid, user_room)
         else:
             logger.info(
                 f"No signed-in user for the session of socket {sid}; no user room"
@@ -102,6 +120,74 @@ def connect(sid: str, environ: Any, auth: Any) -> None:
 @sio.event
 def disconnect(sid: str) -> None:
     logger.info(f"[{os.getpid()}] Client with SID:{sid} disconnected")
+    _untrack_session_socket(sid)
+
+
+def _session_sockets_key(session_id: str) -> str:
+    return f"{_SESSION_SOCKETS_PREFIX}{session_id}"
+
+
+def _track_session_socket(sid: str, session_id: str) -> bool:
+    """Whether the socket was recorded against its session."""
+    try:
+        conn = _get_redis_conn()
+        key = _session_sockets_key(session_id)
+        conn.sadd(key, sid)
+        conn.expire(key, settings.SESSION_COOKIE_AGE)
+        conn.set(
+            f"{_SOCKET_SESSION_PREFIX}{sid}", session_id, ex=settings.SESSION_COOKIE_AGE
+        )
+        return True
+    except Exception:
+        logger.warning(
+            f"Could not track socket {sid} for its session; refusing it", exc_info=True
+        )
+        return False
+
+
+def _untrack_session_socket(sid: str) -> None:
+    try:
+        conn = _get_redis_conn()
+        reverse_key = f"{_SOCKET_SESSION_PREFIX}{sid}"
+        session_id = conn.get(reverse_key)
+        if session_id:
+            if isinstance(session_id, bytes):
+                session_id = session_id.decode()
+            conn.srem(_session_sockets_key(session_id), sid)
+            conn.delete(reverse_key)
+    except Exception:
+        logger.warning(f"Could not untrack socket {sid}", exc_info=True)
+
+
+def renew_session_sockets(session_id: str, ttl: int) -> None:
+    """Extend a live session's socket tracking by `ttl` seconds.
+
+    Tracking is given the session's lifetime at connect, but activity can extend
+    the session while its sockets stay connected. Renewed from each activity
+    refresh, the tracking cannot lapse while the session is in use, so ending
+    the session always finds its sockets.
+    """
+    conn = _get_redis_conn()
+    key = _session_sockets_key(session_id)
+    if not conn.expire(key, ttl):
+        return
+    for sid in conn.smembers(key):
+        sid = sid.decode() if isinstance(sid, bytes) else sid
+        conn.expire(f"{_SOCKET_SESSION_PREFIX}{sid}", ttl)
+
+
+def disconnect_session_sockets(session_id: str) -> None:
+    """Disconnect every socket of a session, on whichever worker holds it.
+
+    Sockets are authenticated only when they connect, so this is what stops an
+    ended session's sockets receiving events in any room, the per-user one
+    included.
+    """
+    conn = _get_redis_conn()
+    key = _session_sockets_key(session_id)
+    for sid in conn.smembers(key):
+        sio.disconnect(sid.decode() if isinstance(sid, bytes) else sid)
+    conn.delete(key)
 
 
 def _get_user_session_id_from_cookies(sid: str, environ: Any) -> str | None:
@@ -143,6 +229,11 @@ def _get_user_id(sid: str, session_id: str) -> str | None:
     returns the user (a deactivated user is refused), and the session hash still
     matches (a password change signs the session out). Unlike get_user, it never
     flushes or rotates the session, which the browser's cookie still names.
+
+    For the database-backed engines the session's row must also exist. The
+    cache-backed engine reads its cached copy, which can outlive a session that
+    was signed out, and that copy alone must not admit the socket to the user's
+    room. The HTTP side applies the same rule in `SessionTracker.touch()`.
     """
     # Socket handlers run outside Django's request cycle, which is what normally
     # closes stale connections.
@@ -155,6 +246,11 @@ def _get_user_id(sid: str, session_id: str) -> str | None:
         backend_path = store.get(BACKEND_SESSION_KEY)
         if user_id is None or backend_path not in settings.AUTHENTICATION_BACKENDS:
             return None
+        if settings.SESSION_ENGINE in ROW_BACKED_SESSION_ENGINES:
+            from django.contrib.sessions.models import Session
+
+            if not Session.objects.filter(session_key=session_id).exists():
+                return None
         user = load_backend(backend_path).get_user(user_id)
         if user is None:
             return None

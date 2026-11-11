@@ -63,6 +63,11 @@
   --color-header: var(--header);
   --color-header-foreground: var(--header-foreground);
   --color-scrim: var(--scrim);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
   /* Syntax and diff colours (P1-T16): ui:text-code-*, ui:bg-diff-*. */
   --color-code-key: var(--code-key);
   --color-code-string: var(--code-string);
