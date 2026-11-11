@@ -143,7 +143,8 @@ class ListRowsSeed(CoOwnerOrgTestMixin):
         return response
 
     def _hours_ago(self, timestamp: str) -> float:
-        return (self.now - datetime.fromisoformat(timestamp)) / timedelta(hours=1)
+        elapsed: timedelta = self.now - datetime.fromisoformat(timestamp)
+        return elapsed / timedelta(hours=1)
 
     def _list_with_and_without_the_filter_step(self, **params: Any) -> tuple[Any, Any]:
         """The list's body and SQL, then both with the viewset's filter step removed."""

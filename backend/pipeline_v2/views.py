@@ -67,7 +67,7 @@ PIPELINE_ROW_FIELDS = RowFields(
 
 def _pipeline_type_from(params: QueryDict) -> str | None:
     """The ``type`` param, ``None`` when blank; an unknown type is a 400."""
-    pipeline_type = params.get(PipelineConstants.TYPE)
+    pipeline_type: str | None = params.get(PipelineConstants.TYPE)
     if not pipeline_type:
         return None
     if pipeline_type not in Pipeline.PipelineType.values:

@@ -54,7 +54,7 @@ def list_filters_from(params: QueryDict) -> ListFilters:
 
 def workflow_filter_from(params: QueryDict) -> str | None:
     """The ``workflow`` param, ``None`` when blank; not a UUID is a 400."""
-    workflow = params.get("workflow")
+    workflow: str | None = params.get("workflow")
     if not workflow:
         return None
     try:
