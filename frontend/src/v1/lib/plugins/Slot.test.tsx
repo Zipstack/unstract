@@ -1,15 +1,30 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildRegistry } from "./registry";
-import { makeSlot } from "./Slot";
+import { makeSlot, SLOT_RETRY_MS } from "./Slot";
 import type { PluginManifest } from "./types";
 
 const fallback = <span>fallback</span>;
 
 function slotFor(manifests: PluginManifest[]) {
   const report = vi.fn();
-  const Slot = makeSlot(buildRegistry(manifests, "cloud"), report);
-  return { Slot, report };
+  const clock = { now: 0 };
+  const Slot = makeSlot(
+    buildRegistry(manifests, "cloud"),
+    report,
+    () => clock.now,
+  );
+  return { Slot, report, clock };
+}
+
+function flaky(load: () => Promise<unknown>) {
+  return slotFor([
+    {
+      id: "flaky",
+      distributions: ["cloud"],
+      slots: { "shell.product-switcher": load as never },
+    },
+  ]);
 }
 
 describe("Slot", () => {
@@ -103,40 +118,48 @@ describe("Slot", () => {
     );
   });
 
-  it("loads again on a later mount after a failed load", async () => {
+  it("loads again on a later mount once the retry delay has passed", async () => {
     const load = vi
       .fn()
       .mockRejectedValueOnce(new Error("chunk"))
       .mockResolvedValue({ default: () => <span>switcher</span> });
-    const { Slot, report } = slotFor([
-      {
-        id: "flaky",
-        distributions: ["cloud"],
-        slots: { "shell.product-switcher": load },
-      },
-    ]);
+    const { Slot, report, clock } = flaky(load);
     const first = render(
       <Slot id="shell.product-switcher" props={{}} fallback={fallback} />,
     );
     await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(1));
     first.unmount();
+    clock.now = SLOT_RETRY_MS;
     render(<Slot id="shell.product-switcher" props={{}} fallback={fallback} />);
     expect(await screen.findByText("switcher")).toBeInTheDocument();
     expect(load).toHaveBeenCalledTimes(2);
   });
 
-  it("recovers in place on the next render after a failed load", async () => {
+  it("neither fetches nor reports again on re-renders and remounts within the retry delay", async () => {
+    const load = vi.fn().mockRejectedValue(new Error("chunk"));
+    const { Slot, report, clock } = flaky(load);
+    const tree = () => (
+      <Slot id="shell.product-switcher" props={{}} fallback={fallback} />
+    );
+    const { rerender, unmount } = render(tree());
+    await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(1));
+    clock.now = SLOT_RETRY_MS - 1;
+    rerender(tree());
+    rerender(tree());
+    unmount();
+    render(tree());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.getByText("fallback")).toBeInTheDocument();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(report).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovers in place on a render after the retry delay", async () => {
     const load = vi
       .fn()
       .mockRejectedValueOnce(new Error("chunk"))
       .mockResolvedValue({ default: () => <span>switcher</span> });
-    const { Slot, report } = slotFor([
-      {
-        id: "flaky",
-        distributions: ["cloud"],
-        slots: { "shell.product-switcher": load },
-      },
-    ]);
+    const { Slot, report, clock } = flaky(load);
     // A fresh element each time, in the same position: React re-renders the
     // mounted slot and its boundary instead of mounting new ones.
     const tree = () => (
@@ -144,8 +167,41 @@ describe("Slot", () => {
     );
     const { rerender } = render(tree());
     await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(1));
+    clock.now = SLOT_RETRY_MS;
     rerender(tree());
     expect(await screen.findByText("switcher")).toBeInTheDocument();
     expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a slot that keeps failing once, until a load succeeds", async () => {
+    const load = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("chunk"))
+      .mockRejectedValueOnce(new Error("chunk"))
+      .mockResolvedValueOnce({
+        default: () => {
+          throw new Error("render");
+        },
+      });
+    const { Slot, report, clock } = flaky(load);
+    const tree = () => (
+      <Slot id="shell.product-switcher" props={{}} fallback={fallback} />
+    );
+    const { rerender } = render(tree());
+    await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(1));
+    clock.now = SLOT_RETRY_MS;
+    rerender(tree());
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(report).toHaveBeenCalledTimes(1);
+    // The third load succeeds, so the render error after it is new and reported.
+    clock.now = 2 * SLOT_RETRY_MS;
+    rerender(tree());
+    await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(2));
+    expect(report).toHaveBeenLastCalledWith(
+      "flaky",
+      "shell.product-switcher",
+      expect.objectContaining({ message: "render" }),
+    );
   });
 });

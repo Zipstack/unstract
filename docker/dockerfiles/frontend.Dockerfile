@@ -24,6 +24,12 @@ COPY ${BUILD_CONTEXT_PATH}/ /app/
 COPY ${BUILD_CONTEXT_PATH}/generate-runtime-config.sh /app/generate-runtime-config.sh
 RUN chmod +x /app/generate-runtime-config.sh
 
+# VITE_DISTRIBUTION: as in the builder stage below. The dev server reads it
+# from the environment when it starts, so the dev-live image of a cloud or
+# on-prem overlay needs it here too.
+ARG VITE_DISTRIBUTION=""
+ENV VITE_DISTRIBUTION=${VITE_DISTRIBUTION}
+
 # Set dev server to run on port 80 to match production nginx
 ENV PORT=80
 EXPOSE 80

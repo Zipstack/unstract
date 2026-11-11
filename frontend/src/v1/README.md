@@ -178,13 +178,13 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 
 ## Plugins
 
-`lib/plugins/` is the extension-point contract. Pages and the shell import `Slot` from `@v1/lib/plugins`; they never import a plugin. `plugins/index.ts` builds the registry from the manifests and exports `PluginSlot` and `pluginRoutes()`; `app/` passes `PluginSlot` to `PluginProvider` and the routes to the router. With no provider, every slot shows its fallback.
+`lib/plugins/` is the extension-point contract. Pages and the shell import `Slot` from `@v1/lib/plugins`; they never import a plugin. `plugins/index.ts` builds the registry from the manifests and exports `PluginSlot` and `pluginRoutes()`. Nothing renders them yet: the v1 shell (P2-T01) is to wrap the app in `PluginProvider` with `PluginSlot` and add `pluginRoutes()` to the v1 router. Until then, and with no provider, every slot shows its fallback.
 
 - `types.ts` names every slot and its props. Adding a slot is one line there.
 - A plugin is `plugins/<id>/manifest.ts` exporting `manifest` (`satisfies PluginManifest`), with `distributions` (`cloud`, `onprem`) and lazy `slots` and `routes`. The folder name is the id. A manifest may only `import type`: the build check loads it without bundling.
-- `<Slot id props fallback />` shows the fallback when no plugin fills the slot, silently. A filler that fails to load or render shows the fallback and is reported; each slot has its own error boundary.
-- `VITE_DISTRIBUTION` (`oss`, the default, `cloud` or `onprem`) picks the plugins the build offers. The frontend Dockerfile takes it as a build arg.
-- Every build runs `scripts/v1-plugins.mjs`. It fails on a slot filled twice or a route defined twice in any distribution, or a plugin with no distribution, and writes `plugin-matrix.json` to the build output. `node scripts/v1-plugins.mjs` prints the matrix.
+- `<Slot id props fallback />` shows the fallback when no plugin fills the slot, silently. A filler that fails to load or render shows the fallback, is logged and raises an error notification (one per slot, until a load succeeds); each slot has its own error boundary. After a failed load the slot waits 30 seconds (`SLOT_RETRY_MS`) before fetching the chunk again.
+- `VITE_DISTRIBUTION` (`oss`, the default, `cloud` or `onprem`) picks the plugins the build offers. The frontend Dockerfile takes it as a build arg in both the `development` and `builder` stages, and `vite build` fails on any other value.
+- Every build runs `scripts/v1-plugins.mjs`. It fails on a slot filled twice, a route defined twice (by two plugins, or by a plugin and a page in the v1 route registry, demo pages included) or a plugin with no distribution in any distribution, naming both owners. It writes `plugin-matrix.json` to the build output: the build's `distribution` and the plugins this build carries. The cloud overlay removes plugins outside the target distribution first, so the matrix of an OSS image is empty. `node scripts/v1-plugins.mjs` prints the matrix.
 - `plugin-matrix.json` lists, for `oss`, `cloud` and `onprem`, the plugin ids each build offers, and for every plugin its distributions, slots and routes. Release tooling reads it to see which plugins ship where.
 - The check also fails on a slot id or distribution the contract does not define, and on a `plugins/` folder with no `manifest.ts`.
 - v0's optional-plugin stub skips `src/v1`, so a missing module in v1 fails the build.

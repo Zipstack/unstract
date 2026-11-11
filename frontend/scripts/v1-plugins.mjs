@@ -4,8 +4,10 @@
  * the cloud overlay). Under Bun it imports the TypeScript directly; under Node
  * it transpiles with esbuild, loaded only then, because the cloud overlay runs
  * this with Bun before any dependency is installed. Runs the registry's
- * conflict checks for every distribution and returns the distribution matrix. vite.config.js runs it in every build and publishes
- * the matrix as plugin-matrix.json.
+ * conflict checks for every distribution, including plugin routes on pages
+ * the v1 route registry declares, and returns the distribution matrix.
+ * vite.config.js runs it in every build and publishes the matrix as
+ * plugin-matrix.json.
  *
  *   node scripts/v1-plugins.mjs [out.json] [--dir plugins]   check, print or write the matrix
  */
@@ -17,6 +19,11 @@ const DEFAULT_DIR = path.join(import.meta.dirname, "../src/v1/plugins");
 const REGISTRY = path.join(
   import.meta.dirname,
   "../src/v1/lib/plugins/registry.ts",
+);
+// The v1 route registry: pure data with type-only imports, loaded like a manifest.
+const ROUTE_ENTRIES = path.join(
+  import.meta.dirname,
+  "../src/v1/app/registry/entries.ts",
 );
 
 const dataUrl = (code) =>
@@ -96,8 +103,11 @@ export async function check(dir = DEFAULT_DIR) {
   }
   const manifests = await Promise.all(ids.map((id) => load(dir, id)));
   const { buildRegistry } = await loadRegistry();
+  const { PAGES, DEMO_PAGES } = await importManifest(ROUTE_ENTRIES);
+  // Demo pages count: an E2E build registers them.
+  const ossRoutes = [...PAGES, ...DEMO_PAGES].flatMap((p) => p.v1Routes);
   // Throws on any conflict in any distribution.
-  const offered = (d) => [...buildRegistry(manifests, d).plugins];
+  const offered = (d) => [...buildRegistry(manifests, d, ossRoutes).plugins];
   return {
     distributions: {
       oss: offered("oss"),

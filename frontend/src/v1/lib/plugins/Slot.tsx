@@ -64,35 +64,62 @@ class SlotBoundary extends Component<BoundaryProps, BoundaryState> {
 }
 
 /**
+ * How long a slot whose filler failed to load waits before fetching it again.
+ * Until then every render and mount shows the fallback without a request, so
+ * a chunk that is gone for good (a tab left open across a deploy) is not
+ * fetched on every re-render of its host.
+ */
+export const SLOT_RETRY_MS = 30_000;
+
+/**
  * The `<Slot>` component for one registry. Each slot gets its own error
  * boundary, so a plugin that fails to load or render shows that slot's
- * fallback and is reported, and every other slot keeps working.
+ * fallback and is reported, and every other slot keeps working. A slot is
+ * reported once until one of its loads succeeds.
  */
 export function makeSlot(
   registry: PluginRegistry,
   report: PluginErrorReporter,
+  now: () => number = Date.now,
 ): <K extends SlotId>(p: SlotComponentProps<K>) => ReactNode {
   const fillers = new Map<SlotId, ComponentType<never>>();
+  const failedAt = new Map<SlotId, number>();
+  const reported = new Set<SlotId>();
 
   function filler<K extends SlotId>(id: K): ComponentType<SlotProps[K]> | null {
     const entry = registry.slot(id);
     if (!entry) {
       return null;
     }
+    const failed = failedAt.get(id);
+    if (failed !== undefined && now() - failed >= SLOT_RETRY_MS) {
+      // React caches a rejected lazy promise, so a retry needs a new lazy.
+      fillers.delete(id);
+      failedAt.delete(id);
+    }
     if (!fillers.has(id)) {
-      // React caches a rejected lazy promise, so a failed load drops the
-      // filler and the next render imports the chunk again.
       const lazyFiller = lazy(() =>
-        entry.load().catch((err: unknown) => {
-          if (fillers.get(id) === lazyFiller) {
-            fillers.delete(id);
-          }
-          throw err;
-        }),
+        entry.load().then(
+          (mod) => {
+            reported.delete(id);
+            return mod;
+          },
+          (err: unknown) => {
+            failedAt.set(id, now());
+            throw err;
+          },
+        ),
       ) as ComponentType<never>;
       fillers.set(id, lazyFiller);
     }
     return fillers.get(id) as ComponentType<SlotProps[K]>;
+  }
+
+  function onError(owner: string, id: SlotId, error: unknown): void {
+    if (!reported.has(id)) {
+      reported.add(id);
+      report(owner, id, error);
+    }
   }
 
   return function Slot<K extends SlotId>({
@@ -109,7 +136,7 @@ export function makeSlot(
       <SlotBoundary
         resetKey={Filler}
         fallback={fallback}
-        onError={(e) => report(owner, id, e)}
+        onError={(e) => onError(owner, id, e)}
       >
         <Suspense fallback={fallback}>
           <Filler {...props} />
