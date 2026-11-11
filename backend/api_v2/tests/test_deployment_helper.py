@@ -92,6 +92,24 @@ def test_staging_failure_cleanup_survives_db_marking_error(collaborators) -> Non
     collaborators["DestinationConnector"].delete_api_storage_dir.assert_called_once()
 
 
+def test_staging_failure_after_an_abort_answers_stopped(
+    collaborators: dict[str, MagicMock],
+) -> None:
+    """The answer matches the stored status, which the abort keeps STOPPED."""
+    collaborators["WorkflowExecutionServiceHelper"].update_execution_err.return_value = (
+        MagicMock(status="STOPPED")
+    )
+
+    response = dh.DeploymentHelper.execute_workflow(
+        organization_name="org",
+        api=_api(),
+        file_objs=[],
+        timeout=-1,
+    )
+
+    assert response["execution_status"] == "STOPPED"
+
+
 @pytest.fixture
 def staging_rejects_everything():
     """Patch execute_workflow's collaborators; staging returns no dispatchable files."""
@@ -193,6 +211,27 @@ def test_all_files_rejected_acknowledges_and_notifies(
     mocks["PipelineUtils"].update_pipeline_status.assert_called_once_with(
         pipeline_id="pipe-1", workflow_execution=completed_row
     )
+
+
+def test_an_aborted_run_is_not_reported_again(
+    staging_rejects_everything: dict[str, MagicMock],
+) -> None:
+    """The abort already notified subscribers of a run it stopped."""
+    mocks = staging_rejects_everything
+    stopped_row = mocks[
+        "WorkflowExecutionServiceHelper"
+    ].update_execution_completed.return_value
+    stopped_row.status = "STOPPED"
+
+    response = dh.DeploymentHelper.execute_workflow(
+        organization_name="org",
+        api=_api(),
+        file_objs=[MagicMock()],
+        timeout=-1,
+    )
+
+    mocks["PipelineUtils"].update_pipeline_status.assert_not_called()
+    assert response["execution_status"] == "STOPPED"
 
 
 def test_notification_survives_a_failed_acknowledgement(

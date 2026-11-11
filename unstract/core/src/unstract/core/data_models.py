@@ -582,7 +582,7 @@ def _protected_terminal_values(cls) -> frozenset[str]:
 
 ExecutionStatus.protected_terminal_values = classmethod(_protected_terminal_values)
 
-# Reason the backend gives when it refuses a status write over a final status.
+# Reason the backend gives when it refuses a status write over a protected status.
 ALREADY_FINAL_REASON = "already_final"
 
 

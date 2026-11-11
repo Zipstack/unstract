@@ -27,6 +27,7 @@ from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
+from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
 
 _abort = ExecutionAbortView.as_view()
 
@@ -442,6 +443,25 @@ class AbortExecutionTests(StuckAbortTestBase):
                 execution.refresh_from_db()
                 self.assertEqual(execution.status, ExecutionStatus.STOPPED.value)
                 self.assertEqual((execution.total_files, execution.failed_files), (0, 0))
+                self.assertEqual(execution.error_message, ABORT_ERROR_MESSAGE)
+
+    def test_a_failed_dispatch_after_the_abort_answers_stopped(self) -> None:
+        execution = self.execution(
+            self.deployment(), status=ExecutionStatus.PENDING, queue_message_id=None
+        )
+        self._abort(self.owner, execution.id)
+
+        with patch.object(
+            WorkflowHelper, "_dispatch_orchestrator_task", side_effect=RuntimeError("down")
+        ):
+            response = WorkflowHelper.execute_workflow_async(
+                workflow_id=str(self.workflow.id),
+                execution_id=str(execution.id),
+                hash_values_of_files={},
+            )
+
+        self.assertEqual(response.execution_status, ExecutionStatus.STOPPED.value)
+        self.assertEqual(self._status(execution), ExecutionStatus.STOPPED.value)
 
     @staticmethod
     def _write_status(execution: WorkflowExecution, data: dict[str, Any]) -> Any:

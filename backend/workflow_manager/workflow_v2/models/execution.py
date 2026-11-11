@@ -435,7 +435,7 @@ class WorkflowExecution(BaseModel):
             # self.queue_message_id — unless the caller passes row_locked=True, i.e.
             # this instance was itself read under the lock (see the docstring): a PG row snapshotted before dispatch recorded its
             # handle, mis-routed to an unlocked legacy full save(), would write NULL
-            # back into queue_message_id and permanently disable every guard. Under
+            # back into queue_message_id and permanently drop the COMPLETED guard. Under
             # this lock a concurrent _record_dispatch_handle serializes after us.
             #
             # no_key=True takes FOR NO KEY UPDATE rather than FOR UPDATE. Status
@@ -527,7 +527,8 @@ class WorkflowExecution(BaseModel):
     ) -> bool:
         """Terminal-one-way guarded write for PG and STOPPED rows, inside the caller's
         row lock. Refuses a revert of a protected-terminal (COMPLETED/STOPPED) status
-        — ERROR stays correctable — while still applying error / increment_attempt.
+        — ERROR stays correctable — while still applying error / increment_attempt
+        (a STOPPED row keeps its error text).
         Field-scoped (``update_fields``) so a stale object can never clobber counters or
         the marker, and the post-save cache publishes the status actually persisted.
         Returns whether to release the rate-limit slot.
@@ -540,7 +541,8 @@ class WorkflowExecution(BaseModel):
                 ExecutionStatus(status), committed, error, increment_attempt
             )
             update_fields.extend(status_fields)
-        if error:
+        # A stopped run keeps the abort's message.
+        if error and committed != ExecutionStatus.STOPPED.value:
             self.error_message = error[:EXECUTION_ERROR_LENGTH]
             update_fields.append("error_message")
         if increment_attempt:

@@ -429,6 +429,111 @@ def test_a_run_with_no_files_leaves_a_stopped_pipeline_to_the_abort(
     assert api_client.update_pipeline_status.call_count == pipeline_writes
 
 
+def _run_with_no_files(reply: dict[str, Any]) -> tuple[Any, Any]:
+    from general import tasks as general_tasks
+
+    api_client = mock.Mock(organization_id="org-1")
+    api_client.update_workflow_execution_status.return_value = SimpleNamespace(
+        data=reply
+    )
+    source = mock.Mock()
+    source.list_files_from_source.return_value = ({}, 0)
+    workflow_logger = mock.Mock()
+    with ExitStack() as stack:
+        for name in ("create_organization_context", "WorkflowContextData"):
+            stack.enter_context(mock.patch.object(general_tasks, name))
+        stack.enter_context(
+            mock.patch.object(general_tasks, "WorkerSourceConnector", return_value=source)
+        )
+        stack.enter_context(
+            mock.patch.object(
+                general_tasks.WorkerWorkflowLogger,
+                "create_for_general_workflow",
+                return_value=workflow_logger,
+            )
+        )
+        general_tasks._execute_general_workflow(
+            api_client=api_client,
+            execution_context={"execution": {"id": "exec-1", "workflow_id": "wf-1"}},
+            file_batch_results=[],
+            pipeline_id="pipe-1",
+            execution_mode=None,
+            use_file_history=True,
+            scheduled=False,
+            schema_name="org-1",
+        )
+    return api_client, workflow_logger
+
+
+@pytest.mark.parametrize(
+    ("reply", "reported"), [(_REFUSAL, 0), (_UPDATED, 1)], ids=["stopped", "live"]
+)
+def test_a_stopped_run_with_no_files_reports_nothing(
+    reply: dict[str, Any], reported: int
+) -> None:
+    api_client, workflow_logger = _run_with_no_files(reply)
+
+    assert api_client.update_pipeline_status.call_count == reported
+    assert workflow_logger.publish_execution_complete.call_count == reported
+
+
+def _fail_orchestration(reply: dict[str, Any]) -> tuple[Any, Any]:
+    from general import tasks as general_tasks
+
+    task = general_tasks.async_execute_bin_general
+    run = task
+    while hasattr(run, "__wrapped__"):
+        run = run.__wrapped__
+    client = mock.Mock()
+    client.get_workflow_execution.return_value = SimpleNamespace(
+        success=False, error="boom"
+    )
+    error_client = mock.MagicMock()
+    error_client.__enter__.return_value = error_client
+    error_client.update_workflow_execution_status.return_value = SimpleNamespace(
+        data=reply
+    )
+    notify = mock.Mock()
+    last_attempt = SimpleNamespace(
+        request=SimpleNamespace(id="t-1", retries=task.max_retries),
+        max_retries=task.max_retries,
+    )
+    with ExitStack() as stack:
+        stack.enter_context(
+            mock.patch.dict(
+                run.__globals__,
+                {
+                    "_should_skip_duplicate_orchestration": lambda *_: False,
+                    "release_orchestration_claim": lambda _eid: None,
+                    "InternalAPIClient": lambda _config: error_client,
+                    "notify_execution_failure": notify,
+                },
+            )
+        )
+        stack.enter_context(
+            mock.patch.object(
+                general_tasks.WorkerExecutionContext,
+                "setup_execution_context",
+                return_value=(mock.Mock(), client),
+            )
+        )
+        with pytest.raises(Exception, match="boom"):
+            run(last_attempt, "org-1", "wf-1", "exec-1", {}, pipeline_id="pipe-1")
+    return error_client, notify
+
+
+@pytest.mark.parametrize(
+    ("reply", "reported"), [(_REFUSAL, 0), (_UPDATED, 1)], ids=["stopped", "live"]
+)
+def test_a_failed_orchestration_leaves_a_stopped_run_to_the_abort(
+    reply: dict[str, Any], reported: int
+) -> None:
+    error_client, notify = _fail_orchestration(reply)
+
+    assert error_client.update_pipeline_status.call_count == reported
+    assert notify.call_count == reported
+
+
 def _active_files(status: Any) -> tuple[set[str], Any]:
     api_client = mock.Mock()
     api_client.get_workflow_execution_status.side_effect = [status]

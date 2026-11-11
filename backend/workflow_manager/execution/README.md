@@ -151,7 +151,9 @@ Once that commits, it:
   and notifications to the abort.
 - A caller waiting on a synchronous API deployment `POST` gets 422 for an aborted
   run, the same as polling with `GET`. Both apply the same result filters.
-- Later status writes, from workers or the backend, cannot undo the abort.
+- Later status writes, from workers or the backend, cannot undo the abort or
+  replace its error. Code whose write is refused leaves the pipeline status and
+  notifications to the abort.
 
 ### Errors
 
