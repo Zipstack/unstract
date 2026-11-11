@@ -130,7 +130,7 @@ function Inputs() {
         <SecretField
           readOnly
           defaultValue="sk-test-1234567890"
-          onCopyResult={(result) => setCopy(result.status)}
+          onCopy={(result) => setCopy(result)}
         />
       </Field>
       <p
