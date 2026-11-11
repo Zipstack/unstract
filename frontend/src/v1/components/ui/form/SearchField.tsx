@@ -15,9 +15,11 @@ import { useFieldControl } from "./field-context";
 import { Input, type InputProps } from "./Input";
 import { isComposing } from "./keyboard";
 
+// No onChange: onValueChange is the one way to hear a change, so a controlled
+// field cannot be wired in a way that silently loses Clear and Escape.
 export type SearchFieldProps = Omit<
   InputProps,
-  "type" | "value" | "defaultValue" | "leading" | "trailing"
+  "type" | "value" | "defaultValue" | "onChange" | "leading" | "trailing"
 > &
   Readonly<{
     value?: string;
@@ -30,9 +32,9 @@ export type SearchFieldProps = Omit<
 /*
  * Escape clears the field when it has a value, and stops there; on an empty
  * field Escape bubbles so a dialog or menu can close. Radix layers see Escape
- * on the document in the capture phase, before this handler, so a dialog that
- * holds a SearchField skips dismissal for a target carrying
- * data-escape-clears by calling preventDefault in onEscapeKeyDown. The clear
+ * on the document in the capture phase, before this handler, so an overlay
+ * that holds a SearchField calls preventDefault in onEscapeKeyDown when
+ * `isEscapeClearTarget(event)` (keyboard.ts) is true. The clear
  * therefore ignores a preventDefault made before it; only a preventDefault
  * called from the caller's own onKeyDown cancels it.
  */
@@ -67,7 +69,6 @@ export function SearchField({
   value,
   defaultValue = "",
   onValueChange,
-  onChange,
   onKeyDown,
   clearLabel = "Clear search",
   disabled,
@@ -106,15 +107,17 @@ export function SearchField({
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     const callerCancelled = callerPreventsDefault(event, onKeyDown);
-    if (
-      callerCancelled ||
-      event.key !== "Escape" ||
-      !clearable ||
-      isComposing(event)
-    ) {
+    if (callerCancelled || event.key !== "Escape" || isComposing(event)) {
       return;
     }
-    event.preventDefault();
+    if (current !== "" && !state.disabled && !state.readOnly) {
+      // Chromium and WebKit clear a non-empty type="search" input on Escape
+      // themselves, bypassing `update`; only this component clears it.
+      event.preventDefault();
+    }
+    if (!clearable) {
+      return;
+    }
     event.stopPropagation();
     update("");
   };
@@ -128,7 +131,6 @@ export function SearchField({
       readOnly={readOnly}
       data-escape-clears={clearable ? "" : undefined}
       onChange={(event: ChangeEvent<HTMLInputElement>) => {
-        onChange?.(event);
         update(event.target.value);
       }}
       onKeyDown={handleKeyDown}
