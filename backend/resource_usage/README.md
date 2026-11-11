@@ -120,7 +120,10 @@ stays put while the user toggles them.
 The usage of every profile the list could show is worked out once per request,
 in a fixed number of queries however many profiles or rows there are. A
 profile created or shared with the caller while the request runs gets its
-usage from one more pass over just those rows.
+usage from one more pass over just those rows. The work grows with the
+organisation (its profiles and, for adapters, its workflow tool instances),
+not with the page size, since `unused_count` and `unused=true` need every
+profile.
 
 ## What counts as used
 
@@ -149,7 +152,7 @@ the delete guard refuses on, with the exceptions listed under the table.
 - The tool-instance check matches what the delete guard matches, in one query
   per request. The database first narrows the organisation's tool instances
   to those with a string value in `metadata` equal to an adapter's id or name
-  (an equality test Postgres hashes, so the cost does not grow with the
+  (an equality test Postgres 14+ can hash, so the cost barely grows with the
   number of adapters); only those rows are sent back and walked.
 
 ## Adding references from another app

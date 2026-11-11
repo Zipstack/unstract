@@ -33,8 +33,9 @@ class _HasStringLeafIn(Func):
     """True when any string anywhere in a JSON value equals one of ``needles``.
 
     Reads the JSON the way the delete guard walks it (object values and array
-    items, never keys) and compares by equality, which Postgres hashes for a
-    constant array, so the cost does not grow with the number of needles.
+    items, never keys) and compares by equality. Postgres 14+ can hash that
+    test for a constant array (psycopg2 sends the list inline), so the cost
+    barely grows with the number of needles.
     Renders ``EXISTS (SELECT 1 FROM jsonb_path_query(<json>, <strings>) AS
     leaf WHERE leaf #>> '{}' = ANY(<needles>))``: the joiner sits between the
     two arguments.
