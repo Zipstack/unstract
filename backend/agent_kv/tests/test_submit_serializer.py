@@ -14,6 +14,7 @@ driving those rules through `SubmitSerializer` would assert nothing about them.
 import io
 import json
 import os
+import struct
 import zipfile
 from unittest import mock
 
@@ -240,6 +241,42 @@ def test_an_xlsx_whose_content_types_member_is_not_first_still_passes():
     upload = SimpleUploadedFile("table.xlsx", _zip_bytes(members))
     s = SubmitSerializer(data=_data(file=upload))
     assert s.is_valid(), s.errors
+
+
+def _ooxml_shaped_zip_with_patched_headers(local_offset, central_offset, value):
+    """A zip naming the OOXML declaration members, with one header field set
+    in every local and central entry -- `zipfile` will not write these itself.
+    """
+    body = bytearray(
+        _zip_bytes([("[Content_Types].xml", b"<x/>"), ("_rels/.rels", b"<x/>")])
+    )
+    for signature, offset in (
+        (b"PK\x03\x04", local_offset),
+        (b"PK\x01\x02", central_offset),
+    ):
+        at = 0
+        while (at := body.find(signature, at)) != -1:
+            body[at + offset : at + offset + 2] = struct.pack("<H", value)
+            at += len(signature)
+    return bytes(body)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # General-purpose flag bit 0: `zipfile` raises RuntimeError on open.
+        pytest.param(_ooxml_shaped_zip_with_patched_headers(6, 8, 0x1), id="encrypted"),
+        # Compression method 99: `zipfile` raises NotImplementedError on open.
+        pytest.param(
+            _ooxml_shaped_zip_with_patched_headers(8, 10, 99), id="unknown-compression"
+        ),
+    ],
+)
+def test_an_unreadable_package_is_a_file_error_not_a_server_error(body):
+    upload = SimpleUploadedFile("table.xlsx", body)
+    s = SubmitSerializer(data=_data(file=upload))
+    assert not s.is_valid()
+    assert "does not match its '.xlsx' extension" in str(s.errors["file"])
 
 
 def test_a_large_upload_is_classified_from_its_temporary_file():

@@ -68,7 +68,13 @@ def _classify_path(path: str) -> str:
     """Classify a staged file, looking inside a zip when that is all we get."""
     mime_type = magic.from_file(path, mime=True)
     if mime_type == "application/zip":
-        return identify_zip_container(path) or mime_type
+        try:
+            return identify_zip_container(path) or mime_type
+        except (RuntimeError, NotImplementedError):
+            # `zipfile` raises these for an encrypted member or an unsupported
+            # compression method, which `identify_zip_container` does not
+            # catch. Such an archive is a zip we cannot see into, not a 500.
+            return mime_type
     return mime_type
 
 
