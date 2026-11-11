@@ -3,7 +3,7 @@
  * browser routes its name, and the two differ on cloud (`org_…` vs a slug).
  */
 
-import { routedOrganization } from "../../fixtures/auth.ts";
+import { routedOrganization, sessionUserId } from "../../fixtures/auth.ts";
 import { DIST, expect, test } from "../../fixtures/index.ts";
 
 const LISTED = { id: "org_2xKq9", name: "acme-listed" };
@@ -13,6 +13,14 @@ test.describe("harness: organisation id vs name", { tag: DIST.all }, () => {
     expect(
       routedOrganization(LISTED, { organization: { name: "acme" } }),
     ).toEqual({ id: "org_2xKq9", name: "acme" });
+  });
+
+  test("the user id is the set response's user.id, as the v0 session keeps it", () => {
+    expect(sessionUserId({ user: { id: 7 } })).toBe("7");
+    expect(sessionUserId({ user: { id: "u-1" } })).toBe("u-1");
+    for (const body of [null, {}, { user: {} }, { user: { id: null } }]) {
+      expect(sessionUserId(body)).toBeNull();
+    }
   });
 
   test("falls back to the listed name", () => {
@@ -30,6 +38,7 @@ test.describe("harness: organisation id vs name", { tag: DIST.all }, () => {
           mode: "oss",
           orgId: "org_2xKq9",
           orgName: "acme",
+          userId: "1",
           api: context.request,
           csrfHeaders: async () => ({}),
         });

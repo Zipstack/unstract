@@ -1,52 +1,45 @@
 /**
- * Repeats a check in Light, Dark and Unstract.
+ * Repeats a check in Light, Dark and Unstract on a v1 page.
  *
  *   await forEachTheme(page, async (theme) => {
  *     await app.goto("workflows");
  *     await expectAccessible(page, { label: theme });
  *   });
  *
- * How a theme is applied belongs to P0-T04, which has not landed. Until then
- * `defaultSetTheme` stands in: it sets `data-theme` and a same-named class on
- * <html>, now and on every later navigation. Pass `setTheme` to use another
- * mechanism, and switch the default here once P0-T04 publishes its own.
+ * `defaultSetTheme` stores the mode where the v1 theme store reads it
+ * (localStorage `unstract.v1.theme`, P0-T04). The store hydrates when the v1
+ * tree mounts, so the check must open (or reload) the page after it. After
+ * each check, the v1 root must carry the theme: a hook that did not take
+ * fails here instead of scanning one theme three times.
  */
 
-import { type Page, test } from "@playwright/test";
-import { THEME_ATTRIBUTE, THEMES, type Theme } from "../contract/v1-ui.ts";
+import { expect, type Page, test } from "@playwright/test";
+import {
+  THEME_ATTRIBUTE,
+  THEME_STORAGE_KEY,
+  THEMES,
+  type Theme,
+  V1_ROOT_SELECTOR,
+} from "../contract/v1-ui.ts";
 
 export type SetTheme = (page: Page, theme: Theme) => Promise<void>;
 
-function applyTheme([attribute, theme, all]: [
-  string,
-  Theme,
-  readonly Theme[],
-]): void {
+function storeTheme([key, theme]: [string, Theme]): void {
   // Serialised into the page, so it must not reference anything outside.
-  const apply = () => {
-    const root = document.documentElement;
-    root.setAttribute(attribute, theme);
-    root.classList.remove(...all);
-    root.classList.add(theme);
-  };
-  // As an init script this runs before the parser creates <html>.
-  if (document.documentElement) {
-    apply();
-  }
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", apply);
+  try {
+    localStorage.setItem(key, theme);
+  } catch {
+    // about:blank and opaque origins have no storage; the init script retries.
   }
 }
 
 export const defaultSetTheme: SetTheme = async (page, theme) => {
-  const args: [string, Theme, readonly Theme[]] = [
-    THEME_ATTRIBUTE,
-    theme,
-    THEMES,
-  ];
-  // Init scripts run in the order added, so the latest theme wins on reload.
-  await page.addInitScript(applyTheme, args);
-  await page.evaluate(applyTheme, args);
+  const args: [string, Theme] = [THEME_STORAGE_KEY, theme];
+  // Init scripts run in the order added, so the latest theme wins on load.
+  await page.addInitScript(storeTheme, args);
+  if (page.url() !== "about:blank") {
+    await page.evaluate(storeTheme, args);
+  }
 };
 
 export interface ThemeOptions {
@@ -63,6 +56,10 @@ export async function forEachTheme(
     const body = async () => {
       await setTheme(page, theme);
       await check(theme);
+      await expect(
+        page.locator(V1_ROOT_SELECTOR).first(),
+        `the v1 root did not render in "${theme}"; did the check open a v1 page after the theme was set?`,
+      ).toHaveAttribute(THEME_ATTRIBUTE, theme);
     };
     await test.step(`theme: ${theme}`, body); // NOSONAR: steps share one page, so they run in order
   }

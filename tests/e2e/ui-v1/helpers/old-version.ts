@@ -1,67 +1,93 @@
 /**
  * Human Review's old-version round trip (page 11 only, D14).
  *
- *   await expectOldVersionRoundTrip(page, "UN11", { orgName: app.orgName });
+ *   await expectOldVersionRoundTrip(page, "UN11", {
+ *     params: { orgName: app.orgName },
+ *     userId: session.userId,
+ *   });
  *
  * For each v1 review route: with the preference on, the v1 URL lands on its
  * mapped v0 route and v0 renders, and that holds across a reload; with it
  * off, the v0 URL lands back on the v1 route and v1 renders.
  *
- * The preference is browser storage with no backend call (P0-T03); where it
- * lives comes from contract/registry.ts. Any page without `toggle: true` is
- * refused, because no other page may honour the preference.
+ * The preference is per user, per browser, with no backend call (P0-T03):
+ * localStorage `unstract.v1.oldVersion.<userId>`. The version switch learns
+ * the user from the v0 session, or before it loads from
+ * `unstract.v1.lastUser`; a context signed in through the API has neither on
+ * its first load, so this seeds the last user too. Any page without
+ * `toggle: true` is refused, because no other page may honour it.
  */
 
 import { expect, type Page, test } from "@playwright/test";
 import {
   findEntry,
-  OLD_VERSION_PREFERENCE,
+  LAST_USER_STORAGE_KEY,
+  OLD_VERSION_ON,
+  oldVersionStorageKey,
   type PageKey,
 } from "../contract/registry.ts";
 import { APP_MOUNTED_SELECTOR, V1_ROOT_SELECTOR } from "../contract/v1-ui.ts";
 import { fillPattern, type RouteParams, routeRegex } from "./routes.ts";
 
-function writePreference([storage, key, value]: [
+function writePreference([lastUserKey, userId, key, value]: [
+  string,
   string,
   string,
   string | null,
 ]): void {
-  const store = storage === "sessionStorage" ? sessionStorage : localStorage;
-  if (value === null) {
-    store.removeItem(key);
-  } else {
-    store.setItem(key, value);
+  // Serialised into the page, so it must not reference anything outside.
+  try {
+    localStorage.setItem(lastUserKey, userId);
+    if (value === null) {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, value);
+    }
+  } catch {
+    // about:blank has an opaque origin; the init script writes it on load.
   }
 }
 
-/** Sets or clears the preference now and on every later navigation. */
+/** Sets or clears one user's preference now and on every later load. */
 export async function setOldVersionPreference(
   page: Page,
+  userId: string,
   on: boolean,
 ): Promise<void> {
-  const args: [string, string, string | null] = [
-    OLD_VERSION_PREFERENCE.storage,
-    OLD_VERSION_PREFERENCE.key,
-    on ? OLD_VERSION_PREFERENCE.on : null,
+  const args: [string, string, string, string | null] = [
+    LAST_USER_STORAGE_KEY,
+    userId,
+    oldVersionStorageKey(userId),
+    on ? OLD_VERSION_ON : null,
   ];
   // Init scripts run in order, so the latest call wins on later loads.
   await page.addInitScript(writePreference, args);
-  // about:blank has an opaque origin, where storage access throws.
   if (page.url() !== "about:blank") {
     await page.evaluate(writePreference, args);
   }
 }
 
+export interface RoundTripOptions {
+  /** Fills the `:name` segments of the page's routes. */
+  params: RouteParams;
+  /** The signed-in user (`session.userId`): the preference is theirs. */
+  userId: string;
+}
+
 export async function expectOldVersionRoundTrip(
   page: Page,
   pageKey: PageKey,
-  params: RouteParams,
+  { params, userId }: RoundTripOptions,
 ): Promise<void> {
   const entry = findEntry(pageKey);
   if (!entry.toggle) {
     throw new Error(
       `${pageKey} does not honour the old-version preference; the round trip is for Human Review (toggle: true) only`,
     );
+  }
+  const mappings = Object.entries(entry.toV0);
+  if (!mappings.length) {
+    throw new Error(`${pageKey} has no v1 -> v0 mappings in the registry`);
   }
   const v1Root = page.locator(V1_ROOT_SELECTOR);
   const expectV0Rendered = async () => {
@@ -71,12 +97,12 @@ export async function expectOldVersionRoundTrip(
     await expect(v1Root).toHaveCount(0);
   };
 
-  for (const [v1, v0] of Object.entries(entry.toV0)) {
+  for (const [v1, v0] of mappings) {
     const v1Url = fillPattern(v1, params);
     const v0Url = fillPattern(v0, params);
 
     const on = async () => {
-      await setOldVersionPreference(page, true);
+      await setOldVersionPreference(page, userId, true);
       await page.goto(v1Url, { waitUntil: "domcontentloaded" });
       await expect(page).toHaveURL(routeRegex(v0Url));
       await expectV0Rendered();
@@ -94,7 +120,7 @@ export async function expectOldVersionRoundTrip(
       throw new Error(`${pageKey}: ${v0} has no v1 mapping to return to`);
     }
     const off = async () => {
-      await setOldVersionPreference(page, false);
+      await setOldVersionPreference(page, userId, false);
       await page.goto(v0Url, { waitUntil: "domcontentloaded" });
       await expect(page).toHaveURL(routeRegex(fillPattern(back, params)));
       await expect(v1Root).toBeVisible();

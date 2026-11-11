@@ -7,8 +7,8 @@ rig group, so v1 results never mix with v0's (D10, constraint 12).
 ## Run
 
 ```bash
-# Through the rig (boots the platform, then runs e2e-smoke first)
-tox -e groups -- frontend-v1-e2e
+# Through the rig, as CI runs it (boots the platform, e2e-smoke first)
+tox -e e2e
 
 # Standalone against a running stack
 cd tests/e2e/ui-v1
@@ -24,16 +24,21 @@ bun run lint && bun run typecheck
 | `UNSTRACT_FRONTEND_URL`, `UNSTRACT_BACKEND_URL` | Stack under test (the rig exports both) |
 | `UNSTRACT_AUTH_MODE` | `oss` or `auth0`; detected automatically otherwise |
 | `UNSTRACT_ADMIN_USER` / `_PASSWORD` | The `admin` role (defaults to the seeded `unstract` user) |
-| `UNSTRACT_E2E_<ROLE>_USER` / `_PASSWORD` | Any other role, upper-cased with non-alphanumerics as `_` (`org-admin` reads `UNSTRACT_E2E_ORG_ADMIN_USER`); a test asking for a role without them skips |
+| `UNSTRACT_E2E_<ROLE>_USER` / `_PASSWORD` | Any other role, upper-cased with non-alphanumerics as `_` (`org-admin` reads `UNSTRACT_E2E_ORG_ADMIN_USER`); a test asking for a role without them skips, and fails under the rig, which seeds only the admin |
 | `UNSTRACT_E2E_ORG_ID` | The organisation to select; the first one by default |
-| `UNSTRACT_DISTRIBUTION` | `oss` (default), `cloud` or `onprem`: which tagged tests run |
+| `UNSTRACT_DISTRIBUTION` | `oss` (default), `cloud` or `onprem`: tests tagged for it run, others skip |
 | `UNSTRACT_E2E_A11Y_IMPACT` | Lowest axe impact that fails a scan; default `serious` |
 
 ## Writing a page spec
 
 One spec per page task, named by task id: `specs/P4-T01.spec.ts`. The P8-T01
-shared journeys go in `journeys/`. Every test carries a distribution tag;
-untagged tests never run.
+shared journeys go in `journeys/`. Every test carries a distribution tag: a
+test tagged for another distribution skips, and one with no distribution tag
+(or a mistyped one, `@OSS`) fails.
+
+The stack under test is the E2E image: built with `VITE_V1_DEV_ROUTES=true`
+(ci-test.yaml), which registers P0-T03's demo pages and honours the preview
+override. A release image ignores both.
 
 ```ts
 import { DIST, expect, test } from "../fixtures/index.ts";
@@ -72,37 +77,25 @@ test.describe("P4-T01 API Deployments", { tag: DIST.both }, () => {
 | `expectAccessible` | axe scan, WCAG 2.0/2.1 A+AA, fails at or above the impact level |
 | `forEachTheme` | Repeats a check in Light, Dark and Unstract |
 | `expectV0RedirectsToV1` | A v0 URL lands on the mapped v1 route |
-| `expectOldVersionRoundTrip` | Human Review (page 11) only: old-version preference on and off |
+| `expectOldVersionRoundTrip` | Human Review (page 11) only: old-version preference on and off, for `session.userId` |
 
-## Built ahead of P0-T03
+## Where the harness meets the frontend
 
-P0-T09 is blocked by P0-T03 (version switch and route registry), which had not
-landed when this harness was written. Every P0-T03 dependency goes through one
-adapter, `contract/registry.ts`, and every assumed DOM marker sits in
-`contract/v1-ui.ts`. To switch over when the blocking tasks land:
+- `contract/registry.ts` reads P0-T03's registry data from the frontend
+  (`src/v1/app/registry/{types,entries,validate}.ts`, `src/v1/lib/oldVersion.ts`),
+  which import nothing Vite-specific. `REGISTRY` is what the E2E image renders
+  as v1: registered pages plus the demo pages. The typecheck in CI holds the
+  harness to those types.
+- `contract/v1-ui.ts` holds the DOM markers: the v1 root
+  (`[data-ui-version="v1"]`, carrying `data-theme`), and the theme modes and
+  storage key from `src/v1/lib/theme.ts`.
+- `specs/P0-T09.demo.spec.ts` proves the switch on P0-T03's demo pages
+  (`/:orgName/v1-demo`, `/:orgName/v1-demo-review`). Those pages load no data,
+  so the five-state helper is proven on `support/state-fixture.ts`.
 
-1. **Registry** (P0-T03): in `contract/registry.ts`, replace the stub block
-   with a re-export of the frontend registry and set `REGISTRY_SOURCE` to
-   `"frontend"`. The redirect and old-version self-tests then run on their
-   own. The registry module has to be importable outside Vite (plain data,
-   relative imports, no `import.meta.env`, no aliases or asset imports), or
-   emitted as JSON.
-2. **Old-version preference key** (P0-T03): set `OLD_VERSION_PREFERENCE` to
-   the real storage key.
-3. **v1 preview of unregistered pages** (P0-T03): set `V1_PREVIEW` to the
-   dev/test-only override, and the key and route in
-   `specs/harness/preview.spec.ts`. A cookie override is written as
-   `encodeURIComponent(JSON.stringify(pageKeys))` (`previewValue` in
-   `fixtures/preview.ts`), so the app must URI-decode it before parsing;
-   storage overrides hold the plain JSON.
-4. **Demo route** (P0-T03): point part 2 of `specs/P0-T09.demo.spec.ts` at the
-   real development-only demo route, and delete `support/demo-page.ts`.
-5. **v1 root marker** (P0-T01/P0-T03): set `V1_ROOT_SELECTOR` in
-   `contract/v1-ui.ts` to the v1 tree root.
-6. **State components** (P1): set `STATE_TEST_IDS` to the core skeleton, empty,
-   error and no-permission components.
-7. **Themes** (P0-T04): swap `defaultSetTheme` in `helpers/themes.ts` for the
-   real theme mechanism.
-8. **a11y level** (P8-T02): confirm or change the default `serious`.
-9. **Gate**: drop `optional: true` from `frontend-v1-e2e` in
-   `tests/groups.yaml` once CI shows the group green.
+Still open:
+
+1. **State components** (P1): set `STATE_TEST_IDS` to the core skeleton, empty,
+   error and no-permission components, following the team's selector decision
+   for v1 tests.
+2. **a11y level** (P8-T02): confirm or change the default `serious`.

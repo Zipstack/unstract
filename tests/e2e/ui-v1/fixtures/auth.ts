@@ -16,12 +16,7 @@
  * the fallback.
  */
 
-import {
-  type APIRequestContext,
-  type BrowserContext,
-  test as base,
-  type Page,
-} from "@playwright/test";
+import type { APIRequestContext, BrowserContext, Page } from "@playwright/test";
 import {
   type AuthMode,
   BACKEND_URL,
@@ -30,12 +25,13 @@ import {
   ORG_ID,
   RIG_MANAGED,
 } from "./env.ts";
+import { test as base } from "./tags.ts";
 
 /**
  * A seeded user's role. `admin` is the stack's seeded user; any other role
  * needs UNSTRACT_E2E_<ROLE>_USER and UNSTRACT_E2E_<ROLE>_PASSWORD (see
- * `roleEnvKey`), and a test asking for a role with no credentials skips with
- * that reason.
+ * `roleEnvKey`). A test asking for a role with no credentials skips with
+ * that reason, and fails under the rig, which seeds only the admin.
  */
 export type Role = "admin" | (string & {});
 
@@ -79,6 +75,8 @@ export interface Session {
   orgId: string;
   /** For browser routes: the app's URLs carry the org's name, not its id. */
   orgName: string;
+  /** The signed-in user's id, as the v0 session holds it (per-user v1 preferences). */
+  userId: string;
   /** Shares cookies with the browser context, so API and UI are one user. */
   api: APIRequestContext;
   /** Headers a mutating API call needs (Django CSRF). */
@@ -115,6 +113,20 @@ export function routedOrganization(
   };
 }
 
+/**
+ * The signed-in user's id from the set response's `user`, which is what the
+ * v0 session stores (useSessionValid) and hands the version switch.
+ */
+export function sessionUserId(setBody: unknown): string | null {
+  const id = (setBody as { user?: { id?: unknown } } | null)?.user?.id;
+  return typeof id === "string" || typeof id === "number" ? String(id) : null;
+}
+
+interface SignedIn {
+  org: Organization;
+  userId: string;
+}
+
 async function listOrgs(
   context: BrowserContext,
 ): Promise<Organization[] | null> {
@@ -138,9 +150,7 @@ async function csrfHeaders(
 }
 
 /** Picks UNSTRACT_E2E_ORG_ID when the user belongs to it, else the first. */
-async function selectOrg(
-  context: BrowserContext,
-): Promise<Organization | null> {
+async function selectOrg(context: BrowserContext): Promise<SignedIn | null> {
   const orgs = await listOrgs(context);
   if (!orgs?.length) {
     return null;
@@ -158,13 +168,20 @@ async function selectOrg(
   if (!res.ok()) {
     return null;
   }
-  return routedOrganization(org, await res.json().catch(() => null));
+  const body: unknown = await res.json().catch(() => null);
+  const userId = sessionUserId(body);
+  if (!userId) {
+    throw new Error(
+      `POST /organization/${org.id}/set returned no user.id: ${JSON.stringify(body)}`,
+    );
+  }
+  return { org: routedOrganization(org, body), userId };
 }
 
 async function loginOss(
   context: BrowserContext,
   creds: Credentials,
-): Promise<Organization | null> {
+): Promise<SignedIn | null> {
   const login = await context.request
     .post(`${BACKEND_URL}/api/v1/login`, {
       form: { username: creds.username, password: creds.password },
@@ -201,7 +218,7 @@ async function loginAuth0(
   page: Page,
   context: BrowserContext,
   creds: Credentials,
-): Promise<Organization | null> {
+): Promise<SignedIn | null> {
   // `/` only renders the app's own login page. Its Login button navigates to
   // <app origin>/api/v1/login, and the backend builds the callback URL from
   // the Referer, so go there the same way.
@@ -258,15 +275,15 @@ async function authenticate(
   page: Page,
   context: BrowserContext,
   creds: Credentials,
-): Promise<{ org: Organization | null; mode: AuthMode }> {
+): Promise<{ signedIn: SignedIn | null; mode: AuthMode }> {
   const mode = configuredAuthMode();
   if (mode !== "auth0") {
-    const org = await loginOss(context, creds);
-    if (org || mode === "oss") {
-      return { org, mode: "oss" };
+    const signedIn = await loginOss(context, creds);
+    if (signedIn || mode === "oss") {
+      return { signedIn, mode: "oss" };
     }
   }
-  return { org: await loginAuth0(page, context, creds), mode: "auth0" };
+  return { signedIn: await loginAuth0(page, context, creds), mode: "auth0" };
 }
 
 interface AuthFixtures {
@@ -282,15 +299,18 @@ export const test = base.extend<AuthFixtures>({
   session: [
     async ({ page, context, role }, use) => {
       const creds = credentialsFor(role);
-      test.skip(
-        !creds,
-        `no credentials for role "${role}": set UNSTRACT_E2E_${roleEnvKey(role)}_USER and _PASSWORD`,
-      );
       if (!creds) {
+        const reason = `no credentials for role "${role}": set UNSTRACT_E2E_${roleEnvKey(role)}_USER and _PASSWORD`;
+        // The rig provisions only the admin user, so a role spec under it
+        // would skip on every run and still read green; a typo'd role too.
+        if (RIG_MANAGED) {
+          throw new Error(reason);
+        }
+        test.skip(true, reason);
         return;
       }
-      const { org, mode } = await authenticate(page, context, creds);
-      if (!org) {
+      const { signedIn, mode } = await authenticate(page, context, creds);
+      if (!signedIn) {
         const reason =
           `could not sign in as "${role}" against ${BACKEND_URL} (mode=${mode}). ` +
           "Set UNSTRACT_AUTH_MODE=oss|auth0 plus credentials, or let the rig " +
@@ -305,8 +325,9 @@ export const test = base.extend<AuthFixtures>({
       await use({
         role,
         mode,
-        orgId: org.id,
-        orgName: org.name,
+        orgId: signedIn.org.id,
+        orgName: signedIn.org.name,
+        userId: signedIn.userId,
         api: context.request,
         csrfHeaders: () => csrfHeaders(context),
       });

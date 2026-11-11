@@ -4,15 +4,15 @@
  *
  *   test.use({ v1Preview: ["UN13"] });
  *
- * The mechanism comes from contract/registry.ts (`V1_PREVIEW`). Until P0-T03
- * provides one, a test that asks for a preview skips with the reason, so a
- * non-final page task can write its spec now and it turns on by itself.
+ * The mechanism comes from contract/registry.ts (`V1_PREVIEW`): P0-T03's
+ * localStorage override, honoured only by a VITE_V1_DEV_ROUTES=true build
+ * (the E2E image). It is read once when the app loads, so it is written
+ * before the test's first navigation.
  */
 
 import type { BrowserContext, Page } from "@playwright/test";
 import {
   type PageKey,
-  PREVIEW_PENDING_REASON,
   type PreviewMechanism,
   V1_PREVIEW,
 } from "../contract/registry.ts";
@@ -41,11 +41,8 @@ export async function enableV1Preview(
   page: Page,
   context: BrowserContext,
   pages: readonly PageKey[],
-  mechanism: PreviewMechanism | null = V1_PREVIEW,
+  mechanism: PreviewMechanism = V1_PREVIEW,
 ): Promise<void> {
-  if (!mechanism) {
-    throw new Error(PREVIEW_PENDING_REASON);
-  }
   const value = previewValue(mechanism, pages);
   if (mechanism.kind === "cookie") {
     await context.addCookies([
@@ -69,7 +66,6 @@ export const test = seedTest.extend<PreviewFixtures>({
   applyV1Preview: [
     async ({ page, context, v1Preview }, use) => {
       if (v1Preview.length) {
-        test.skip(!V1_PREVIEW, PREVIEW_PENDING_REASON);
         await enableV1Preview(page, context, v1Preview);
       }
       await use(undefined);

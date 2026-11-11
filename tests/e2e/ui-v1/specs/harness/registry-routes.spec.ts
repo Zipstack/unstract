@@ -1,16 +1,17 @@
 /**
- * Self-tests for the P0-T03-dependent helpers.
+ * Self-tests for the registry-driven helpers.
  *
- * The pattern utilities are plain code and run now. The redirect and
- * old-version checks run once per registered page, so with the stub registry
- * they skip with the reason; they turn on by themselves when
- * contract/registry.ts points at the real registry.
+ * The pattern utilities are plain code. The registry checks guard against an
+ * empty or mis-shaped registry, which would otherwise generate no tests. Then
+ * every page the E2E image renders as v1 (registered pages plus P0-T03's
+ * demo pages) gets the redirect check, and every toggle page the old-version
+ * round trip, against the live platform.
  */
 
 import {
   REGISTRY,
-  REGISTRY_PENDING_REASON,
-  registryAvailable,
+  type RegistryEntry,
+  TOGGLE_PAGES,
 } from "../../contract/registry.ts";
 import {
   currentDistribution,
@@ -51,39 +52,69 @@ function orgOnly(patterns: readonly string[]): boolean {
   );
 }
 
-const registered = REGISTRY.filter((e) =>
+function mappedPatterns(map: Readonly<Record<string, string>>): string[] {
+  return [...Object.keys(map), ...Object.values(map)];
+}
+
+const live: readonly RegistryEntry[] = REGISTRY.filter((e) =>
   e.distributions.includes(currentDistribution()),
 );
 
-test.describe("harness: registry-driven checks", { tag: DIST.all }, () => {
-  test.skip(!registryAvailable(), REGISTRY_PENDING_REASON);
-
-  test("only Human Review honours the old-version preference (D14)", () => {
-    const toggles = REGISTRY.filter((e) => e.toggle).map((e) => e.page);
-    expect(toggles.every((p) => p === "UN11")).toBe(true);
+test.describe("harness: registry contents", { tag: DIST.all }, () => {
+  test("the E2E image has v1 pages to check, demo pages included", () => {
+    // Empty would make the loops below generate nothing and pass.
+    expect(live.length).toBeGreaterThan(0);
+    expect(live.map((e) => e.page)).toEqual(
+      expect.arrayContaining(["DEMO-PAGE", "DEMO-REVIEW"]),
+    );
   });
 
-  for (const entry of registered) {
-    const filled = orgOnly([
-      ...Object.keys(entry.toV1),
-      ...Object.values(entry.toV1),
-    ]);
+  test("exactly the toggle pages honour the old-version preference (D14)", () => {
+    const toggles = REGISTRY.filter((e) => e.toggle).map((e) => e.page);
+    const allowed = TOGGLE_PAGES.filter((key) =>
+      REGISTRY.some((e) => e.page === key),
+    );
+    expect(toggles.length).toBeGreaterThan(0);
+    expect([...toggles].sort()).toEqual([...allowed].sort());
+  });
+});
 
+test.describe("harness: registry-driven checks", { tag: DIST.all }, () => {
+  for (const entry of live) {
     test(`${entry.page}: v0 URLs redirect to v1`, async ({ page, app }) => {
-      test.skip(!filled, "routes need ids; the page spec covers them");
+      test.skip(
+        !orgOnly(mappedPatterns(entry.toV1)),
+        "routes need ids; the page spec covers them",
+      );
       await expectV0RedirectsToV1(page, entry.page, { orgName: app.orgName });
     });
 
     if (entry.toggle) {
-      test(`${entry.page}: old-version round trip`, async ({ page, app }) => {
+      test(`${entry.page}: old-version round trip`, async ({
+        page,
+        app,
+        session,
+      }) => {
         test.skip(
-          !orgOnly([...Object.keys(entry.toV0), ...Object.values(entry.toV0)]),
+          !orgOnly(mappedPatterns(entry.toV0)),
           "routes need ids; the page spec covers them",
         );
         await expectOldVersionRoundTrip(page, entry.page, {
-          orgName: app.orgName,
+          params: { orgName: app.orgName },
+          userId: session.userId,
         });
       });
     }
   }
+
+  test("the round trip refuses a page without the toggle", async ({ page }) => {
+    const plain = live.find((e) => !e.toggle);
+    expect(plain, "a non-toggle page to refuse").toBeDefined();
+    await expect(
+      expectOldVersionRoundTrip(page, plain?.page ?? "DEMO-PAGE", {
+        params: {},
+        userId: "0",
+      }),
+    ).rejects.toThrow("Human Review (toggle: true) only");
+  });
 });

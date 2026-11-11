@@ -1,31 +1,28 @@
 /**
- * P0-T09 demo: proves the harness end to end, through the rig, before any v1
- * page exists. Page specs are named the same way: `specs/<task id>.spec.ts`.
+ * P0-T09 demo: proves the harness end to end, through the rig. Page specs are
+ * named the same way: `specs/<task id>.spec.ts`.
  *
  * Part 1 runs on the live platform: login, org selection, seed through the
- * API, a page that renders the seeded row, teardown. The page is v0 (no v1
- * page exists yet), so its scan is report-only.
+ * API, a page that renders the seeded row, teardown. The page is v0, so its
+ * scan is report-only.
  *
- * Part 2 runs the five states, the enforcing scan and the theme matrix on
- * the STAND-IN demo page (support/demo-page.ts, a page.route stub), because
- * P0-T03's development-only demo route does not exist yet. It proves the
- * helpers, not the version switch.
+ * Part 2 runs on P0-T03's development-only demo pages, which the E2E image
+ * registers (VITE_V1_DEV_ROUTES=true): the version switch and its redirect,
+ * the theme matrix with an enforcing scan, and Human Review's old-version
+ * round trip on its stand-in. The demo pages load no data, so the five-state
+ * helper is proven by its self-tests (specs/harness/five-states.spec.ts).
  */
 
+import { V1_ROOT_SELECTOR } from "../contract/v1-ui.ts";
 import { DIST, expect, test } from "../fixtures/index.ts";
 import {
   expectAccessible,
-  expectFiveStates,
+  expectOldVersionRoundTrip,
+  expectV0RedirectsToV1,
   forEachTheme,
+  setOldVersionPreference,
 } from "../helpers/index.ts";
-import {
-  DEMO_API,
-  DEMO_EMPTY,
-  DEMO_REST,
-  DEMO_REST_TEST_ID,
-  installDemoPage,
-  openDemoPage,
-} from "../support/demo-page.ts";
+import { routeRegex } from "../helpers/routes.ts";
 
 test.describe("P0-T09 demo: live platform", { tag: DIST.both }, () => {
   test("a seeded user sees seeded data on a live page", async ({
@@ -49,30 +46,63 @@ test.describe("P0-T09 demo: live platform", { tag: DIST.both }, () => {
   });
 });
 
-test.describe(
-  "P0-T09 demo: stand-in for P0-T03 dev-only demo route (page.route stub)",
-  { tag: DIST.all },
-  () => {
-    test.beforeEach(async ({ page }) => {
-      await installDemoPage(page);
+test.describe("P0-T09 demo: P0-T03 demo pages", { tag: DIST.all }, () => {
+  test("the demo page renders as v1, and its v0 URL redirects to it", async ({
+    page,
+    app,
+  }) => {
+    await expectV0RedirectsToV1(page, "DEMO-PAGE", { orgName: app.orgName });
+    await expect(page.getByTestId("v1-demo")).toBeVisible();
+    await expect(page.getByTestId("v0-demo")).toHaveCount(0);
+  });
+
+  test("accessible in every theme", async ({ page, app }) => {
+    await forEachTheme(page, async (theme) => {
+      await app.goto("v1-demo");
+      await expect(page.getByTestId("v1-demo")).toBeVisible();
+      await expectAccessible(page, { label: theme });
+    });
+  });
+
+  test("Human Review's stand-in: old-version round trip", async ({
+    page,
+    app,
+    session,
+  }) => {
+    await expectOldVersionRoundTrip(page, "DEMO-REVIEW", {
+      params: { orgName: app.orgName },
+      userId: session.userId,
+    });
+  });
+
+  test("Human Review's stand-in: the in-page switch goes both ways without a reload", async ({
+    page,
+    app,
+    session,
+  }) => {
+    const org = encodeURIComponent(app.orgName);
+    // Starts at v1, with the user known before the v0 session loads.
+    await setOldVersionPreference(page, session.userId, false);
+    await app.goto("v1-demo-review/details");
+    await expect(page.getByTestId("v1-demo-review")).toBeVisible();
+    // A full reload would discard this marker.
+    await page.evaluate(() => {
+      (window as { e2eNoReload?: boolean }).e2eNoReload = true;
     });
 
-    test("five states", async ({ page }) => {
-      await expectFiveStates(page, {
-        open: () => openDemoPage(page),
-        api: DEMO_API,
-        rest: (p) => p.getByTestId(DEMO_REST_TEST_ID),
-        restBody: DEMO_REST,
-        emptyBody: DEMO_EMPTY,
-      });
-    });
+    await page.getByRole("button", { name: "Switch to old version" }).click();
+    // The v1-only sub-route maps back to the nearest v0 route.
+    await expect(page).toHaveURL(routeRegex(`/${org}/v0-demo-review`));
+    await expect(page.getByTestId("v0-demo-review")).toBeVisible();
+    await expect(page.locator(V1_ROOT_SELECTOR)).toHaveCount(0);
 
-    test("accessible in every theme", async ({ page }) => {
-      await forEachTheme(page, async (theme) => {
-        await openDemoPage(page);
-        await expect(page.getByTestId(DEMO_REST_TEST_ID)).toBeVisible();
-        await expectAccessible(page, { label: theme });
-      });
-    });
-  },
-);
+    await page.getByRole("button", { name: "Switch to new version" }).click();
+    await expect(page).toHaveURL(routeRegex(`/${org}/v1-demo-review`));
+    await expect(page.getByTestId("v1-demo-review")).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => (window as { e2eNoReload?: boolean }).e2eNoReload,
+      ),
+    ).toBe(true);
+  });
+});

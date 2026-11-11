@@ -1,92 +1,85 @@
 /**
- * The ONE place the harness learns about the v1 route registry (P0-T03).
+ * The ONE place the harness learns about the v1 route registry (P0-T03,
+ * UN-4271). The redirect, old-version and preview helpers read it only
+ * through this module.
  *
- * The redirect and old-version helpers read routes only through this module,
- * so wiring in the real registry is a change to this file alone.
- *
- * Built ahead of P0-T03: the types mirror its published contract table, and
- * `REGISTRY` is empty until the registry exists. When it lands, replace the
- * stub block below with a re-export of the frontend module, then set
- * `REGISTRY_SOURCE` to "frontend". That import only works if the registry
- * module is pure data with plain relative imports: Playwright transpiles TS
- * itself and applies neither Vite (`import.meta.env`, asset imports) nor the
- * frontend tsconfig path aliases. If it cannot be, have P0-T03 emit JSON and
- * read that here instead.
+ * It imports the frontend's own registry data, so the harness and the app
+ * cannot drift. Only modules the frontend keeps importable without Vite are
+ * read (registry/types.ts, registry/entries.ts, registry/validate.ts and
+ * lib/oldVersion.ts: no `import.meta.env`, no `@v1` alias, only relative
+ * imports). registry/live.ts reads `import.meta.env` when it loads, so this
+ * module rebuilds what it would compute for the E2E image instead.
  */
 
-export type Distribution = "oss" | "cloud" | "onprem";
+import {
+  DEMO_PAGES,
+  PAGES,
+  REGISTERED_PAGES,
+} from "../../../../frontend/src/v1/app/registry/entries.ts";
+import {
+  type PageKey,
+  PREVIEW_STORAGE_KEY,
+  type RegistryEntry,
+} from "../../../../frontend/src/v1/app/registry/types.ts";
 
-/** UN01 to UN20 (Document Studio), LW01 to LW07 (LLMWhisperer). */
-export type PageKey = `UN${string}` | `LW${string}`;
+export type {
+  Distribution,
+  PageKey,
+  RegistryEntry,
+} from "../../../../frontend/src/v1/app/registry/types.ts";
+export {
+  isPageKey,
+  TOGGLE_PAGES,
+} from "../../../../frontend/src/v1/app/registry/validate.ts";
+export {
+  LAST_USER_STORAGE_KEY,
+  OLD_VERSION_ON,
+  oldVersionStorageKey,
+} from "../../../../frontend/src/v1/lib/oldVersion.ts";
 
-/** Route patterns are React Router patterns, e.g. `/:orgName/workflows/:id`. */
-export interface RegistryEntry {
-  page: PageKey;
-  /** v1 route patterns, including v1-only sub-routes (tabs, stages). */
-  v1Routes: readonly string[];
-  /** v0 route patterns this page takes over. */
-  replaces: readonly string[];
-  /** v1 pattern -> v0 pattern; read only by Human Review's old-version mode. */
-  toV0: Readonly<Record<string, string>>;
-  /** v0 pattern -> v1 pattern it redirects to. */
-  toV1: Readonly<Record<string, string>>;
-  /** Honours the old-version preference. True for UN11 only (D14). */
-  toggle: boolean;
-  distributions: readonly Distribution[];
-  /** The go-live task that registers the page, e.g. "P4-T01". */
-  registeredBy: string;
+function isRegistered(entry: RegistryEntry): boolean {
+  return REGISTERED_PAGES.includes(entry.page);
 }
 
-export type RegistrySource = "stub" | "frontend";
-
-// ── stub: replace this block when P0-T03 lands ───────────────────────────────
-export const REGISTRY_SOURCE: RegistrySource = "stub";
-export const REGISTRY: readonly RegistryEntry[] = stubRegistry();
-function stubRegistry(): readonly RegistryEntry[] {
-  return [];
-}
 /**
- * Where the Human Review old-version preference lives. P0-T03 says per user,
- * per browser, no backend, so browser storage; the key itself is a
- * placeholder until P0-T03 names it.
+ * The pages the E2E image renders as v1: registered pages, plus the
+ * development-only demo pages, which VITE_V1_DEV_ROUTES=true (set for the
+ * E2E image in ci-test.yaml) makes live.
  */
-export const OLD_VERSION_PREFERENCE = {
-  storage: "localStorage",
-  key: "unstract.v1.humanReview.oldVersion",
-  on: "true",
-} as const;
-/**
- * How a test asks the app to render a page's v1 routes BEFORE it is
- * registered. Under D9 only a page's final task registers it, so every
- * earlier task's spec needs this. P0-T03 has not defined it yet; `null` makes
- * every spec that asks for a preview skip. Expected shape once it exists: a
- * dev/test-only storage key or cookie holding the page keys to preview,
- * honoured only in non-production builds. A cookie value is URI-encoded JSON
- * (`previewValue` in fixtures/preview.ts), so the app must decode it.
- */
-export const V1_PREVIEW: PreviewMechanism | null = null;
-// ── end stub ────────────────────────────────────────────────────────────────
+export const REGISTRY: readonly RegistryEntry[] = [
+  ...PAGES.filter(isRegistered),
+  ...DEMO_PAGES,
+];
 
+/**
+ * Declared but not yet registered (D9): these render as v1 only through the
+ * preview override (`test.use({ v1Preview: [...] })`).
+ */
+export const UNREGISTERED_PAGES: readonly RegistryEntry[] = PAGES.filter(
+  (entry) => !isRegistered(entry),
+);
+
+/** How a test asks the app to render pages before they are registered. */
 export type PreviewMechanism =
   | { kind: "localStorage" | "sessionStorage"; key: string }
   | { kind: "cookie"; name: string };
 
-export const PREVIEW_PENDING_REASON =
-  "P0-T03 has no dev/test override to render an unregistered v1 page: contract/registry.ts V1_PREVIEW=null";
+/**
+ * P0-T03's override: a JSON array of page keys in localStorage, read once
+ * when the app loads, honoured only with VITE_V1_DEV_ROUTES=true.
+ */
+export const V1_PREVIEW: PreviewMechanism = {
+  kind: "localStorage",
+  key: PREVIEW_STORAGE_KEY,
+};
 
-export const REGISTRY_PENDING_REASON =
-  "P0-T03 route registry not landed: contract/registry.ts REGISTRY_SOURCE=stub";
-
-export function registryAvailable(): boolean {
-  return REGISTRY_SOURCE !== "stub";
-}
-
+/** Any declared page, registered or previewable. */
 export function findEntry(page: PageKey): RegistryEntry {
-  const entry = REGISTRY.find((e) => e.page === page);
+  const entry = [...REGISTRY, ...UNREGISTERED_PAGES].find(
+    (e) => e.page === page,
+  );
   if (!entry) {
-    throw new Error(
-      `page ${page} is not in the route registry (source=${REGISTRY_SOURCE})`,
-    );
+    throw new Error(`page ${page} is not declared in the v1 route registry`);
   }
   return entry;
 }
