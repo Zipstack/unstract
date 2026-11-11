@@ -7,7 +7,8 @@ v1 P4-T01 to P4-T03). The pipeline equivalents are in
 
 This README and the `@extend_schema` annotations in `openapi_schema.py` are the
 contract. Changes to anything below are contract changes. The list is also in
-the published client spec (`specs/docstudio-oss.json`); the aggregate is not.
+the published client spec (`specs/docstudio-oss.json`), without the new
+filters; the aggregate is not.
 
 - [Endpoints](#endpoints)
 - [Filters](#filters)
@@ -45,7 +46,7 @@ by `status` or `failing`, call the aggregate without those two.
 | `workflow` | UUID | Deployments of this workflow. |
 | `api_name` | string | Exactly this `api_name`. |
 | `status` | `success`, `error`, `never_run`, `inactive` | New. See [Status rule](#status-rule). |
-| `owner` | user id | New. Owned or co-owned by this user. Not in the published client spec, which returns no user ids. |
+| `owner` | user id | New. Owned or co-owned by this user. |
 | `last_run_after` | ISO 8601 datetime | New. `last_run_time` at or after this. |
 | `last_run_before` | ISO 8601 datetime | New. `last_run_time` at or before this. |
 | `failing` | boolean | New. `true` keeps only failing rows. See [Failing rule](#failing-rule). |
