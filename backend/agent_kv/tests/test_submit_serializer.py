@@ -11,8 +11,10 @@ for any extractor and are exercised through that one.
 driving those rules through `SubmitSerializer` would assert nothing about them.
 """
 
+import io
 import json
 import os
+import zipfile
 from unittest import mock
 
 import django
@@ -24,7 +26,10 @@ if not apps.ready:
     django.setup()
 
 from django.conf import settings  # noqa: E402
-from django.core.files.uploadedfile import SimpleUploadedFile  # noqa: E402
+from django.core.files.uploadedfile import (  # noqa: E402
+    SimpleUploadedFile,
+    TemporaryUploadedFile,
+)
 from rest_framework import serializers  # noqa: E402
 
 from agent_kv.execution_serializers import (  # noqa: E402
@@ -176,6 +181,93 @@ def test_disallowed_extension_rejected():
     assert "file" in s.errors
 
 
+def _fixture_upload(fixture, name, content_type="application/octet-stream"):
+    with open(os.path.join(FIXTURES, fixture), "rb") as f:
+        return SimpleUploadedFile(name, f.read(), content_type=content_type)
+
+
+def _zip_bytes(members):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, data in members:
+            z.writestr(name, data)
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param(_zip_bytes([("payload.txt", b"hello")]), id="zip"),
+        pytest.param(b"MZ\x90\x00" + b"\x00" * 60 + b"PE\x00\x00", id="executable"),
+        pytest.param(b"<html><script>alert(1)</script></html>", id="html"),
+    ],
+)
+def test_content_that_is_not_a_pdf_is_rejected_despite_its_pdf_name(body):
+    """The extension and the declared content type are the caller's claim; a
+    file renamed `.pdf` must be refused on what its bytes are (CASA 5.2.1).
+    """
+    spoofed = SimpleUploadedFile("doc.pdf", body, content_type="application/pdf")
+    s = SubmitSerializer(data=_data(file=spoofed))
+    assert not s.is_valid()
+    assert "does not match its '.pdf' extension" in str(s.errors["file"])
+
+
+def test_a_pdf_renamed_to_a_spreadsheet_extension_is_rejected():
+    s = SubmitSerializer(data=_data(file=_pdf_upload(name="doc.xlsx")))
+    assert not s.is_valid()
+    assert "does not match its '.xlsx' extension" in str(s.errors["file"])
+
+
+@pytest.mark.parametrize(
+    "fixture,name",
+    [("table.xlsx", "table.xlsx"), ("table.xls", "table.xls")],
+)
+def test_real_spreadsheets_pass_the_content_check(fixture, name):
+    # `table.xls` reads as `application/CDFV2` from its first 8 KiB, like
+    # real-world workbooks do, so this also covers the path re-classification.
+    s = SubmitSerializer(data=_data(file=_fixture_upload(fixture, name)))
+    assert s.is_valid(), s.errors
+    assert s.validated_data["file"].tell() == 0
+
+
+def test_an_xlsx_whose_content_types_member_is_not_first_still_passes():
+    """Such a package reads as `application/zip` from a sample, so it is
+    identified from its declared main part instead.
+    """
+    with zipfile.ZipFile(os.path.join(FIXTURES, "table.xlsx")) as src:
+        members = [(n, src.read(n)) for n in src.namelist()]
+    members.sort(key=lambda m: m[0] == "[Content_Types].xml")
+    upload = SimpleUploadedFile("table.xlsx", _zip_bytes(members))
+    s = SubmitSerializer(data=_data(file=upload))
+    assert s.is_valid(), s.errors
+
+
+def test_a_large_upload_is_classified_from_its_temporary_file():
+    """Uploads over Django's memory limit arrive as temp files; the wrapper
+    re-classification reads that path rather than spilling a second copy.
+    """
+    with open(os.path.join(FIXTURES, "table.xls"), "rb") as f:
+        body = f.read()
+    upload = TemporaryUploadedFile(
+        "table.xls", "application/vnd.ms-excel", len(body), None
+    )
+    upload.write(body)
+    upload.seek(0)
+    try:
+        from agent_kv import execution_serializers
+
+        with mock.patch.object(
+            execution_serializers.magic,
+            "from_file",
+            wraps=execution_serializers.magic.from_file,
+        ) as from_file:
+            s = SubmitSerializer(data=_data(file=upload))
+            assert s.is_valid(), s.errors
+        from_file.assert_called_once_with(upload.temporary_file_path(), mime=True)
+    finally:
+        upload.close()
+
+
 def test_oversize_file_rejected():
     with mock.patch("agent_kv.execution_serializers.settings") as m:
         _defaults(m)
@@ -312,15 +404,17 @@ def test_page_range_validation():
 
 
 def test_unreadable_pdf_is_field_error_and_stream_is_rewound():
-    bad = SimpleUploadedFile("doc.pdf", b"not a pdf", content_type="application/pdf")
+    # A PDF header, so the content check passes and pdfplumber is what refuses.
+    body = b"%PDF-1.4\nnot a pdf"
+    bad = SimpleUploadedFile("doc.pdf", body, content_type="application/pdf")
     s = SubmitSerializer(data=_data(file=bad))
     assert not s.is_valid()
-    assert "file" in s.errors
+    assert "Unreadable PDF" in str(s.errors["file"])
     # The `finally: f.seek(0)` in validate() must run on the error path too,
     # so a downstream reader (e.g. the view persisting the upload) still sees
     # the whole stream from the start.
     assert bad.tell() == 0
-    assert bad.read() == b"not a pdf"
+    assert bad.read() == body
 
 
 # ---------------------------------------------------------------------------
