@@ -135,6 +135,22 @@ describe("useAppForm and FormField", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
+  it("moves focus to the first field a server error names, off the disabled Save", async () => {
+    const onSave = vi.fn(async () => ({
+      type: "validation_error",
+      errors: [
+        { code: "taken", detail: "That URL is taken", attr: "url" },
+        { code: "taken", detail: "That name is taken", attr: "name" },
+      ],
+    }));
+    render(<Sample onSave={onSave as never} />);
+    await userEvent.type(screen.getByLabelText("Name"), "b");
+    await userEvent.click(saveButton());
+    await screen.findByText("That URL is taken");
+    expect(saveButton().disabled).toBe(true);
+    expect(document.activeElement).toBe(screen.getByLabelText("URL"));
+  });
+
   it("clears a blur error as soon as the field is fixed", async () => {
     render(<Sample />);
     const name = screen.getByLabelText("Name");
@@ -178,10 +194,11 @@ describe("applyServerErrors", () => {
       type: "validation_error",
       errors: [{ code: "x", detail: "Bad key", attr: "rows.0.key" }],
     });
-    expect(setError).toHaveBeenCalledWith("rows.0.key", {
-      type: "server",
-      message: "Bad key",
-    });
+    expect(setError).toHaveBeenCalledWith(
+      "rows.0.key",
+      { type: "server", message: "Bad key" },
+      { shouldFocus: true },
+    );
   });
 
   it("puts every error of a non-validation response at form level", () => {

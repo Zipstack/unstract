@@ -74,7 +74,8 @@ function otherMessage(body: unknown): string | undefined {
 
 /**
  * Puts each server error under the field its `attr` names (a dotted attr such
- * as `rows.0.key` is a react-hook-form path), when that field is on screen.
+ * as `rows.0.key` is a react-hook-form path), when that field is on screen,
+ * and focuses the first such field.
  * Every other error (no attr, non_field_errors, an attr with no field shown, or
  * a non-validation response) joins one form-level message. A body of any other
  * shape, or one with nothing to show, still sets a form-level message.
@@ -102,12 +103,15 @@ export function applyServerErrors<T extends FieldValues>(
       formLevel.push(detail);
     }
   }
-  for (const [attr, details] of byField) {
-    form.setError(attr as Path<T>, {
-      type: "server",
-      message: details.join(" "),
-    });
-  }
+  // Focus the first field the server names (in its order): Save disables on
+  // a field error, so focus left on it would fall to the page body.
+  [...byField].forEach(([attr, details], index) => {
+    form.setError(
+      attr as Path<T>,
+      { type: "server", message: details.join(" ") },
+      { shouldFocus: index === 0 },
+    );
+  });
   if (byField.size === 0 && formLevel.length === 0) {
     formLevel.push(otherMessage(body) ?? FALLBACK);
   }
