@@ -210,9 +210,8 @@ class TestBuildExtractionImagePolicy:
 
 
 CANARY = "leak-canary"
-# Missing ``api_base``: pydantic's error quotes the whole input dict
-# (``input_value={'api_key': ...}``), so the raw SdkError text holds the key.
-AZURE_CFG_LEAKY = {
+# Missing ``api_base``, so the SDK raises a validation error for this config.
+AZURE_CFG_INVALID = {
     "adapter_id": "azureopenai|592d84b9-fe03-4102-a17e-6b391f32850b",
     "adapter_metadata": {"api_key": CANARY},
 }
@@ -226,12 +225,15 @@ class TestUnresolvedErrorsNeverQuoteMetadata:
         with patch.object(
             exec_limits.PlatformHelper,
             "get_adapter_config",
-            side_effect=_resolver({"llm-a": AZURE_CFG_LEAKY}),
+            side_effect=_resolver({"llm-a": AZURE_CFG_INVALID}),
         ):
             with pytest.raises(ExtractionError) as excinfo:
                 exec_limits.build_extraction_image_policy(MagicMock(), ["llm-a"])
         err = excinfo.value
         assert CANARY not in err.message
+        # The SDK leaves settings out of this text, so the canary alone can't
+        # catch the text itself being quoted.
+        assert "api_base" not in err.message
         assert "SdkError" in err.message
         assert "retrying will not help" in err.message
         assert err.code == 400
@@ -240,7 +242,9 @@ class TestUnresolvedErrorsNeverQuoteMetadata:
         assert err.__cause__ is None and err.__suppress_context__
         rendered = "".join(traceback.format_exception(type(err), err, err.__traceback__))
         assert CANARY not in rendered
+        assert "api_base" not in rendered
         assert CANARY not in caplog.text
+        assert "api_base" not in caplog.text
 
     def test_internal_error_is_not_blamed_on_the_adapter(
         self, caplog: pytest.LogCaptureFixture

@@ -8,6 +8,7 @@ import itertools
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -893,6 +894,8 @@ case "$*" in
     cat "{d}/$(echo "$4" | tr / _).json" 2>/dev/null || echo "[]";;
   *"/pulls"*) echo "$GH_TOKEN $*" >> {d}/gh.log; [ -e {d}/pullsfail ] && exit 1
     cat {d}/pulls.json 2>/dev/null || echo "[]";;
+  *"/actions/workflows/"*) echo "$GH_TOKEN $*" >> {d}/gh.log; [ -e {d}/runsfail ] && exit 1
+    wf=${{2#*/actions/workflows/}}; cat "{d}/runs-${{wf%%/*}}" 2>/dev/null;;
 esac
 true
 """)
@@ -1101,6 +1104,51 @@ class RetireWorkflow(Workflow):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("other/packages/backend/versions/sha256:rc1 is outside r", r.stdout)
         self.assertFalse(os.path.exists(os.path.join(self.d, "ar.log")))
+
+    def test_an_unfinished_run_refuses_before_any_change(self):
+        self.line("1.7", "v1.7.0-rc.1")
+        self.write("runs-take-rc-build.yaml", "https://example.test/runs/9\n")
+        origin = self.repos["cloud"][0]
+        tags = rm.git(origin, "tag", "-l")
+        for dry in ("true", "false"):
+            r = self.run_step(
+                inline("retire.yaml", "Derive and retire"),
+                ACTION=ABANDON,
+                LINE="1.7",
+                REASON="cut by mistake",
+                DRY_RUN=dry,
+                RELSTATE_AR_TOKEN="t",
+            )
+            self.assertEqual(r.returncode, dry == "false", r.stdout + r.stderr)
+            if dry == "true":
+                self.assertIn(
+                    "::warning::a real run would refuse while this run is unfinished: https://example.test/runs/9",
+                    r.stdout,
+                )
+        self.assertIn(
+            "::error::wait for these runs to finish, then run Retire again: https://example.test/runs/9",
+            r.stdout,
+        )
+        self.assertIn(
+            "cloud-token api repos/Zipstack/unstract-cloud/actions/workflows/promote.yaml/runs?per_page=100 "
+            '--jq .workflow_runs[] | select(.status != "completed") | .html_url',
+            self.read("gh.log"),
+        )
+        self.assertIn("release/1.7", rm.git(origin, "branch", "-l", "release/*"))
+        self.assertEqual(rm.git(origin, "tag", "-l"), tags)
+        self.assertFalse(os.path.exists(os.path.join(self.d, "ar.log")))
+
+    def test_a_failed_run_list_refuses(self):
+        self.line("1.7")
+        self.write("runsfail", "")
+        r = self.run_step(
+            inline("retire.yaml", "Derive and retire"),
+            ACTION=PAST_EOS,
+            LINE="",
+            DRY_RUN="true",
+        )
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("::error::could not list the cut.yaml runs", r.stdout)
 
     def kept_line(self, x_y, msg, **env):
         origin = self.repos["cloud"][0]
@@ -2735,6 +2783,8 @@ class PendingPicksWorkflow(Workflow):
     def test_promote_refuses_a_stable_tag_already_promoted(self):
         self.line("1.7", "v1.7.0-rc.1")
         self.reg("v1.7.0", "sha256:v1.7.0-rc.1")
+        dev_git(self.cloud, "tag", "v1.7.0", "v1.7.0-rc.1")
+        dev_git(self.cloud, "push", "-q", "origin", "v1.7.0")
         self.blocked(
             self.promote(),
             "::error::cloud/backend:v1.7.0 already exists (same digest: already promoted)",
@@ -2743,6 +2793,92 @@ class PendingPicksWorkflow(Workflow):
             "gh workflow run publish.yaml -f version=v1.7.0 -f cloud=true",
             self.read("summary"),
         )
+
+    def test_promote_resumes_a_stable_tag_whose_git_tag_was_deleted(self):
+        # The retag landed but the git tag is gone: Promote redoes the GA commit and tag.
+        self.line("1.7", "v1.7.0-rc.1")
+        self.reg("v1.7.0", "sha256:v1.7.0-rc.1")
+        r = self.promote()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(
+            "::notice::cloud/backend:v1.7.0 already has v1.7.0-rc.1's digest", r.stdout
+        )
+        self.assertIn("new_tag=true\n", self.read("output"))
+
+    def test_promote_after_the_line_moved(self):
+        # A backport merged during QA: the RC is still promoted (its GA commit stays off the line).
+        self.line("1.7", "v1.7.0-rc.1")
+        dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "fix during QA")
+        dev_git(self.cloud, "push", "-q", "origin", "HEAD:refs/heads/release/1.7")
+        r = self.promote()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("new_tag=true\n", self.read("output"))
+
+    @unittest.skipUnless(
+        os.path.exists(os.path.join(HERE, "..", "..", rm.CHART)), "the cloud repo's chart"
+    )
+    def test_promote_ga_commit_and_tag(self):
+        root = os.path.join(HERE, "..", "..")
+        for f in (rm.CHART, rm.VALUES):
+            os.makedirs(os.path.join(self.cloud, os.path.dirname(f)), exist_ok=True)
+            with (
+                open(os.path.join(root, f)) as src,
+                open(os.path.join(self.cloud, f), "w") as out,
+            ):
+                out.write(src.read())
+            dev_git(self.cloud, "add", f)
+        dev_git(self.cloud, "commit", "-q", "-m", "chart")
+        dev_git(self.cloud, "push", "-q", "origin", "main")
+        self.line("1.7", "v1.7.0-rc.1")
+        origin = self.repos["cloud"][0]
+        rc = rm.git(origin, "rev-parse", "v1.7.0-rc.1^{commit}")
+        tip = rm.git(origin, "rev-parse", "release/1.7")
+
+        def ga_step(**env):
+            return subprocess.run(
+                ["bash", "-e", "-c", step("promote.yaml", "GA commit and tag")],
+                cwd=self.cloud,
+                env={
+                    **os.environ,
+                    "GITHUB_OUTPUT": os.path.join(self.d, "ga"),
+                    "SHA": rc,
+                    "STABLE": "v1.7.0",
+                    "RC": "v1.7.0-rc.1",
+                    "TARGET": "cloud",
+                    **env,
+                },
+                capture_output=True,
+                text=True,
+            )
+
+        r = ga_step(OSS_TAG="ee-v1.7.0")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        ga = rm.git(origin, "rev-parse", "v1.7.0^{commit}")
+        self.assertEqual(self.read("ga"), f"ga={ga}\n")
+        self.assertTrue(rm.is_ga_bump(origin, ga, rc, "v1.7.0"))
+        self.assertEqual(
+            rm.git(origin, "rev-parse", "release/1.7"), tip
+        )  # never pushed to the line
+        self.assertIn(
+            "oss: ee-v1.7.0",
+            rm.git(origin, "tag", "-l", "--format=%(contents)", "v1.7.0"),
+        )
+        # A rerun finds the tag on the GA commit and does not tag again.
+        r = self.promote()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("new_tag=false\n", self.read("output"))
+        self.assertIn(f"ga={ga}\n", self.read("output"))
+        # The guard: a second anchor line the sed also rewrites is refused, and nothing is tagged.
+        dev_git(self.cloud, "checkout", "-q", "--detach", rc)
+        with open(os.path.join(self.cloud, rm.VALUES), "a") as fh:
+            fh.write("other: &UNSTRACT_APPS_VERSION v0\n")
+        dev_git(self.cloud, "commit", "-q", "-am", "second anchor")
+        r = ga_step(SHA=dev_git(self.cloud, "rev-parse", "HEAD"), STABLE="v1.7.9")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn(
+            "::error::HEAD is not the GA commit for v1.7.9", r.stderr + r.stdout
+        )
+        self.assertEqual(rm.git(origin, "tag", "-l", "v1.7.9"), "")
 
     def test_promote_refuses_a_stable_tag_at_another_digest(self):
         self.line("1.7", "v1.7.0-rc.1")
@@ -3501,7 +3637,9 @@ class InputSteps(unittest.TestCase):
         self.assertEqual(list(form), ["commits", "patch_released_lines", "lines"])
         self.assertIn("required: true", form["commits"])
         with open(os.path.join(HERE, "..", "workflows", "backport.yaml")) as fh:
-            self.assertNotIn("confirm_stabilized", fh.read())
+            text = fh.read()
+        for old in ("confirm_stabilized", "confirm-stabilized", "CONFIRM:"):
+            self.assertNotIn(old, text)
 
     def test_backport_run_name(self):
         dispatch = {"github.event_name": "workflow_dispatch", "inputs.commits": "#12 #13"}
@@ -4204,15 +4342,26 @@ elif a[:2] in (["release", "edit"], ["release", "create"]):
 class LintPrStep(unittest.TestCase):
     """The Classify PR step judges each PR against its own base."""
 
-    def classify(self, title, labels, base):
+    def classify(self, title, labels, base, gh_exit=0):
+        """labels: what the API returns now; the event payload's labels are a stale decoy."""
         with tempfile.TemporaryDirectory() as d:
+            with open(
+                os.path.join(d, "gh"), "w"
+            ) as fh:  # fake gh: the issue labels API, jq already applied
+                fh.write(
+                    f'#!/bin/sh\necho "$*" >> "{d}/calls"\necho \'{json.dumps(labels)}\'\nexit {gh_exit}\n'
+                )
+            os.chmod(os.path.join(d, "gh"), 0o755)
             r = subprocess.run(
                 ["bash", "-e", "-c", step("lint-pr.yaml", "Classify PR")],
                 cwd=os.path.join(HERE, "..", ".."),
                 env={
                     **os.environ,
+                    "PATH": f"{d}:{os.environ['PATH']}",
                     "TITLE": title,
-                    "LABELS": json.dumps(labels),
+                    "LABELS": json.dumps(["main-only", "fix/needs-backport"]),
+                    "GITHUB_REPOSITORY": "o/r",
+                    "PR": "7",
                     "BASE": base,
                     "GITHUB_STEP_SUMMARY": os.path.join(d, "summary"),
                     "GITHUB_OUTPUT": os.path.join(d, "output"),
@@ -4220,7 +4369,34 @@ class LintPrStep(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
+            with open(os.path.join(d, "calls")) as fh:
+                self.assertEqual(
+                    fh.read(),
+                    "api repos/o/r/issues/7/labels?per_page=100 --jq [.[].name]\n",
+                )
             return r.returncode, r.stdout
+
+    def test_the_newest_event_run_reports(self):
+        with open(os.path.join(HERE, "..", "workflows", "lint-pr.yaml")) as fh:
+            self.assertIn(
+                "\nconcurrency:\n  group: lint-pr-${{ github.event.pull_request.number }}\n"
+                "  cancel-in-progress: true\n",
+                fh.read(),
+            )
+
+    def test_a_failed_label_read_fails_the_step(self):
+        # A release base: there an empty label list would pass, so only the failed read can fail the step.
+        rc, out = self.classify("UN-1 [FIX] x", [], "release/0.186", gh_exit=1)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("could not read this PR's labels", out)
+        self.assertNotIn("class=", out)
+
+    def test_a_release_failure_omits_the_main_label_menu(self):
+        rc, out = self.classify("fix: x", [], "release/0.186")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("no recognised '[TYPE]'", out)
+        self.assertNotIn("A PR into main needs one backport label", out)
+        self.assertIn("Title: `[TYPE] text`", out)
 
     def test_a_main_pr_needs_a_backport_label(self):
         rc, out = self.classify("UN-1 [FIX] x", [], "main")
@@ -4255,6 +4431,150 @@ class LintPrStep(unittest.TestCase):
         self.assertEqual(rc, 1, out)
         self.assertIn("::error title=Lint PR::no recognised '[TYPE]'", out)
         self.assertIn("%0Ano backport label", out)
+
+
+class ReleaseBranchCiLabels(unittest.TestCase):
+    """Release-branch-only is read from the PR's live labels."""
+
+    WF = os.path.join(HERE, "..", "workflows", "release-branch-ci.yaml")
+
+    def test_each_label_reader_grants_the_read(self):
+        # A private repo answers 403 to the issue labels API for a PR without it.
+        for wf in ("release-branch-ci.yaml", "lint-pr.yaml"):
+            with open(os.path.join(HERE, "..", "workflows", wf)) as fh:
+                self.assertRegex(
+                    fh.read().split("\njobs:", 1)[0], r"\n  pull-requests: read", wf
+                )
+
+    def labels(self, answer, gh_exit=0):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "gh"), "w") as fh:  # fake gh: jq already applied
+                fh.write(
+                    f'#!/bin/sh\necho "$*" >> "{d}/calls"\necho {answer}\nexit {gh_exit}\n'
+                )
+            os.chmod(os.path.join(d, "gh"), 0o755)
+            r = subprocess.run(
+                ["bash", "-e", "-c", step("release-branch-ci.yaml", "Labels")],
+                env={
+                    **os.environ,
+                    "PATH": f"{d}:{os.environ['PATH']}",
+                    "GITHUB_REPOSITORY": "o/r",
+                    "PR": "7",
+                    "GITHUB_OUTPUT": os.path.join(d, "output"),
+                },
+                capture_output=True,
+                text=True,
+            )
+            with open(os.path.join(d, "calls")) as fh:
+                self.assertEqual(
+                    fh.read(),
+                    "api repos/o/r/issues/7/labels?per_page=100 "
+                    '--jq any(.[]; .name == "release-branch-only")\n',
+                )
+            out = os.path.join(d, "output")
+            return r.returncode, r.stdout, open(out).read() if os.path.exists(out) else ""
+
+    def test_the_live_label_reaches_both_steps(self):
+        self.assertEqual(self.labels("true"), (0, "", "rbo=true\n"))
+        self.assertEqual(self.labels("false"), (0, "", "rbo=false\n"))
+        with open(self.WF) as fh:
+            wf = fh.read()
+        self.assertEqual(
+            wf.count("RBO_LABEL: ${{ steps.labels.outputs.rbo == 'true' }}\n"), 2
+        )
+        self.assertNotIn("pull_request.labels", wf)
+
+    def test_a_failed_label_read_fails_the_step(self):
+        rc, out, written = self.labels("true", gh_exit=1)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("could not read this PR's labels", out)
+        self.assertEqual(written, "")
+
+    def test_the_newest_pr_event_run_reports(self):
+        with open(self.WF) as fh:
+            self.assertIn(
+                "\nconcurrency:\n  group: release-branch-ci-${{ github.event.pull_request.number || github.run_id }}\n"
+                "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n",
+                fh.read(),
+            )
+
+
+@unittest.skipUnless(
+    os.path.exists(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")),
+    "take-rc-build.yaml and promote.yaml are cloud-only",
+)
+@unittest.skipUnless(shutil.which("jq"), "needs jq")
+class NoRetireRunning(unittest.TestCase):
+    """Take RC build and Promote refuse while a real Retire run is unfinished."""
+
+    def run_check(self, wf, runs, gh_exit=0):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "runs.json"), "w") as fh:
+                json.dump({"workflow_runs": runs}, fh)
+            with open(
+                os.path.join(d, "gh"), "w"
+            ) as fh:  # fake gh: applies --jq to runs.json
+                fh.write(
+                    f'#!/bin/sh\n[ {gh_exit} = 0 ] || exit {gh_exit}\necho "$1 $2" >> "{d}/calls"\n'
+                    f'jq -r "$4" "{d}/runs.json"\n'
+                )
+            os.chmod(os.path.join(d, "gh"), 0o755)
+            r = subprocess.run(
+                ["bash", "-e", "-c", step(wf, "No Retire running")],
+                env={
+                    **os.environ,
+                    "PATH": f"{d}:{os.environ['PATH']}",
+                    "GITHUB_REPOSITORY": "o/r",
+                },
+                capture_output=True,
+                text=True,
+            )
+            calls = open(os.path.join(d, "calls")).read() if gh_exit == 0 else ""
+            return r.returncode, r.stdout, calls
+
+    # display_title is retire.yaml's run-name.
+    DRY = {
+        "status": "in_progress",
+        "display_title": "Abandon 1.7 (dry run)",
+        "html_url": "https://x/1",
+    }
+    DONE = {
+        "status": "completed",
+        "display_title": "Retire 1.6",
+        "html_url": "https://x/2",
+    }
+    REAL = {
+        "status": "queued",
+        "display_title": "Retire 1.7 (forced)",
+        "html_url": "https://x/3",
+    }
+
+    def test_a_real_retire_refuses_and_a_dry_one_does_not(self):
+        for wf in ("take-rc-build.yaml", "promote.yaml"):
+            rc, out, calls = self.run_check(wf, [self.DRY, self.DONE])
+            self.assertEqual(rc, 0, (wf, out))
+            self.assertEqual(
+                calls, "api repos/o/r/actions/workflows/retire.yaml/runs?per_page=100\n"
+            )
+            rc, out, _ = self.run_check(wf, [self.DRY, self.DONE, self.REAL])
+            self.assertEqual(rc, 1, (wf, out))
+            self.assertIn("a Retire run is unfinished", out)
+            self.assertIn("https://x/3", out)
+            self.assertNotIn("https://x/1", out)
+
+    def test_a_failed_run_list_refuses(self):
+        for wf in ("take-rc-build.yaml", "promote.yaml"):
+            rc, out, _ = self.run_check(wf, [], gh_exit=1)
+            self.assertEqual(rc, 1, (wf, out))
+            self.assertIn("could not list the Retire runs", out)
+
+    def test_each_caller_grants_the_read(self):
+        for wf in ("take-rc-build.yaml", "promote.yaml"):
+            with open(os.path.join(HERE, "..", "workflows", wf)) as fh:
+                self.assertRegex(fh.read().split("\njobs:", 1)[0], r"\n  actions: read")
+        with open(os.path.join(HERE, "..", "workflows", "cut.yaml")) as fh:
+            rc_job = fh.read().split("\n  rc:\n", 1)[1]
+        self.assertRegex(rc_job.split("uses:", 1)[0], r"\n      actions: read")
 
 
 if __name__ == "__main__":
