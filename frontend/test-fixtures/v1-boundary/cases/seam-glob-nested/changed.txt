@@ -1,0 +1,3 @@
+src/v1/lib/x.ts
+src/routes/settings/deep/Route.jsx
+src/index.css

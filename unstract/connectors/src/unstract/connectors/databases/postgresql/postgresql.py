@@ -1,10 +1,12 @@
 import datetime
+import logging
 import os
+import re
 from typing import Any
 
 import psycopg2
 from psycopg2 import sql as psycopg2_sql
-from psycopg2.extensions import connection
+from psycopg2.extensions import connection, parse_dsn
 
 from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.psycopg_handler import PsycoPgHandler
@@ -14,6 +16,15 @@ from unstract.connectors.databases.sql_safety import (
     validate_identifier,
 )
 from unstract.connectors.databases.unstract_db import UnstractDB
+from unstract.connectors.exceptions import ConnectorError
+
+logger = logging.getLogger(__name__)
+
+INVALID_URL_MESSAGE = "The connection URL is not valid."
+CONNECT_FAILED_MESSAGE = (
+    "Could not connect. If the user name or password has special characters, "
+    "percent-encode them."
+)
 
 
 class PostgreSQL(UnstractDB, PsycoPgHandler):
@@ -108,6 +119,56 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
         }
         return str(mapping.get(data_type, DatabaseTypeConstants.POSTGRES_TEXT))
 
+    @staticmethod
+    def _connect(conn_params: dict[str, Any]) -> connection:
+        """Open a connection, hiding libpq's error when it may echo a password."""
+        url = conn_params.get("dsn", "")
+        PostgreSQL._check_url(url)
+        try:
+            return psycopg2.connect(**conn_params)
+        except psycopg2.OperationalError as exc:
+            if PostgreSQL._password_may_be_misread(url):
+                # The error text may echo the password, so only its code is logged.
+                logger.warning("Connect failed, URL may be misread: %s", exc.pgcode)
+                raise ConnectorError(CONNECT_FAILED_MESSAGE) from None
+            raise
+
+    @staticmethod
+    def _check_url(url: str) -> None:
+        """Reject a URL libpq can't parse, with a fixed message."""
+        try:
+            parse_dsn(url)
+        except (psycopg2.ProgrammingError, UnicodeError) as exc:
+            # These echo the URL or its bytes, password included.
+            logger.warning("Connection URL could not be parsed: %s", type(exc).__name__)
+            raise ConnectorError(INVALID_URL_MESSAGE) from None
+
+    @staticmethod
+    def _password_may_be_misread(url: str) -> bool:
+        """Best-effort check that libpq read part of a password as another setting.
+
+        An unescaped ``@`` or ``/`` in it, or an ``@`` in a query value with no ``/``
+        before it, moves text into the host, port or database, and libpq's errors
+        echo those. With no ``@``, only a port that isn't a number from 1 to 65535
+        gives it away. Not caught: any other URL with no ``@``, or a keyword
+        inside a query password.
+        """
+        # libpq stops reading at a NUL.
+        rest = url.partition("\0")[0].partition("://")[2]
+        at_signs = rest.count("@")
+        if not at_signs:
+            ports = parse_dsn(url).get("port", "").split(",")
+            return not all(PostgreSQL._looks_like_port(port) for port in ports)
+        authority = re.split("[/?]", rest, maxsplit=1)[0]
+        return at_signs > 1 or at_signs != authority.count("@")
+
+    @staticmethod
+    def _looks_like_port(port: str) -> bool:
+        """Whether this reads as a port number; anything else may be a password."""
+        return not port or (
+            re.fullmatch("[0-9]{1,5}", port) is not None and 0 < int(port) <= 65535
+        )
+
     def get_engine(self) -> connection:
         """Returns a connection to the PostgreSQL database.
 
@@ -139,7 +200,7 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
                 }
             )
 
-        con = psycopg2.connect(**conn_params)
+        con = self._connect(conn_params)
 
         # Set schema explicitly only if schema is specified (avoids PgBouncer issues)
         if self.schema:

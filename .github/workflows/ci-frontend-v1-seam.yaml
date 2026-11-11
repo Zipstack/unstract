@@ -1,0 +1,43 @@
+name: Frontend v1 seam
+
+# Seam guard (P0-T10, UN-4363): until Phase 9, a PR that is frontend v1 work
+# may change v0 only at the files in frontend/scripts/v1-seam-allowlist.json.
+# A PR that touches no v1 file is v0 work and passes untouched.
+#
+# The `v0-change` label lets v1 work that genuinely needs a v0 change through;
+# the guard then lists the files instead of failing. Its own workflow, because
+# it re-runs on label changes and nothing else needs to.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  seam:
+    name: v1 · Seam
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          # The merge base with the PR's base branch must be reachable.
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      # Node built-ins only, so no install step.
+      - name: Run the seam guard
+        working-directory: frontend
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          OVERRIDE: ${{ contains(github.event.pull_request.labels.*.name, 'v0-change') && '--override' || '' }}
+        run: node scripts/check-v1-seam.mjs --base "origin/$BASE_REF" $OVERRIDE

@@ -1,0 +1,2 @@
+src/v1/assets/logo.svg
+public/favicon.ico

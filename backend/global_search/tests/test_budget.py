@@ -39,7 +39,7 @@ from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from global_search.oss_providers import OSS_PROVIDERS
-from global_search.tests.base import search
+from global_search.tests.base import ADAPTER_TYPES, search
 
 ROWS_PER_TYPE = 2_000
 USERS = 200
@@ -139,13 +139,15 @@ class SearchBudgetTests(TestCase):
             ),
             *AdapterInstance.objects.bulk_create(
                 AdapterInstance(
-                    adapter_name=_name("ad", i),
+                    adapter_name=_name(f"ad{kind}", i),
                     adapter_id="openai|seed",
-                    adapter_type="LLM",
+                    adapter_type=kind,
                     adapter_metadata={},
                     description=_name("d", i),
                     **common,
                 )
+                # Each adapter kind is its own search type.
+                for kind in ADAPTER_TYPES.values()
                 for i in n
             ),
             *ConnectorInstance.objects.bulk_create(

@@ -39,6 +39,7 @@ vi.mock("@monaco-editor/react", () => ({
     seen.push(props);
     // Reports a mount once the runtime "loads", as Monaco does.
     const loads = monaco.loads;
+    // biome-ignore lint/correctness/useExhaustiveDependencies: loads is read per render from a mutable mock, so the effect must re-run when a test flips it.
     useEffect(() => {
       if (loads) {
         props.onMount?.();
