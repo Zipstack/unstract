@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable, Iterator, Sequence
 from typing import Any
 
 from django.contrib.postgres.fields import ArrayField
-from django.db import connection
-from django.db.models import BooleanField, Func, Q, TextField, Value
-from django.db.models.functions import Cast
+from django.db.models import BooleanField, F, Func, Q, TextField, Value
 
 from resource_usage.constants import OTHER_GROUP, ItemType, ProfileKind, UsageGroup
 from resource_usage.references import Reference, register_provider, relation_label
@@ -32,28 +29,24 @@ def string_leaves(value: Any) -> Iterator[str]:
             yield from string_leaves(item)
 
 
-def _json_escaped(value: str) -> str:
-    """``value`` as it appears inside a JSON string in Postgres's jsonb text."""
-    return json.dumps(value, ensure_ascii=False)[1:-1]
+class _HasStringLeafIn(Func):
+    """True when any string anywhere in a JSON value equals one of ``needles``.
 
+    Reads the JSON the way the delete guard walks it (object values and array
+    items, never keys) and compares by equality, which Postgres hashes for a
+    constant array, so the cost does not grow with the number of needles.
+    Renders ``EXISTS (SELECT 1 FROM jsonb_path_query(<json>, <strings>) AS
+    leaf WHERE leaf #>> '{}' = ANY(<needles>))``: the joiner sits between the
+    two arguments.
+    """
 
-class _Any(Func):
-    """``ANY(<array>)``."""
-
-    function = "ANY"
-    arity = 1
-
-
-class _LikeAny(Func):
-    """``<text> LIKE ANY(<patterns>)``: true when any pattern matches."""
-
-    arg_joiner = " LIKE "
     arity = 2
     output_field = BooleanField()
-    template = "%(expressions)s"
-
-    def __init__(self, text: Any, patterns: Any) -> None:
-        super().__init__(text, _Any(patterns))
+    template = "EXISTS (SELECT 1 FROM jsonb_path_query(%(expressions)s))"
+    arg_joiner = (
+        ", 'strict $.** ? (@.type() == \"string\")') AS leaf"
+        " WHERE leaf #>> '{}' = ANY("
+    )
 
 
 def tool_instance_refs(adapters: Sequence[Any]) -> Iterable[tuple[Any, Reference]]:
@@ -74,20 +67,11 @@ def tool_instance_refs(adapters: Sequence[Any]) -> Iterable[tuple[Any, Reference
     if not needles:
         return
     org_ids = {key[0] for key in needles}
-    # Fetch only tool instances whose metadata text contains a needle as a
-    # whole JSON string; the exact walk below then decides, as the guard
-    # does. A string sits in the JSON text quoted and escaped, so match that
-    # form. One cast per row; Postgres then tries the patterns in turn, so
-    # the work is rows x patterns. Accepted: the delete guard's own walk
-    # costs the same, the rows are one organisation's, and the lists only
-    # run this when asked (``with_usage``/``unused``).
-    patterns = [
-        f'%"{connection.ops.prep_for_like_query(_json_escaped(key[1]))}"%'
-        for key in needles
-    ]
-    mentions_a_needle = _LikeAny(
-        Cast("metadata", TextField()),
-        Value(patterns, output_field=ArrayField(TextField())),
+    # Fetch only tool instances with a string equal to a needle; the walk
+    # below then attributes each row to its adapters.
+    mentions_a_needle = _HasStringLeafIn(
+        F("metadata"),
+        Value([key[1] for key in needles], output_field=ArrayField(TextField())),
     )
     rows = (
         ToolInstance.objects.filter(workflow__organization_id__in=org_ids)

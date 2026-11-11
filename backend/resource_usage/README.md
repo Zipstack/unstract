@@ -87,7 +87,8 @@ get **404**. One exception: a friction-less adapter is listed for every member,
 but its usage follows the rule above, so a member who is not an organisation
 admin, does not own it and has no share gets **403**, as for its
 `adapter_info`. Service accounts never see friction-less adapters, so they get
-**404** for one.
+**404** for one. The lists still show `used_in_count` for a friction-less
+adapter to everyone who sees it: the count, not what uses it.
 
 **Items the caller cannot open** are listed, and counted like any other item,
 with `"id": null`,
@@ -147,9 +148,9 @@ the delete guard refuses on, with the exceptions listed under the table.
   the list's Default column, not here.
 - The tool-instance check matches what the delete guard matches, in one query
   per request. The database first narrows the organisation's tool instances
-  to those whose `metadata` text contains an adapter's id or name as a whole
-  JSON string (one text conversion per row, then each name and id pattern in
-  turn); only those rows are sent back and walked.
+  to those with a string value in `metadata` equal to an adapter's id or name
+  (an equality test Postgres hashes, so the cost does not grow with the
+  number of adapters); only those rows are sent back and walked.
 
 ## Adding references from another app
 
