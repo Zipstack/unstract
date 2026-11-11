@@ -74,7 +74,7 @@ def _make_vector_db(
 
     local = QdrantClient(location=":memory:")
     # The adapter always passes url=; point its client constructor at the local backend.
-    with patch.object(qdrant_mod, "QdrantClient", lambda url=None, api_key=None: local):
+    with patch.object(qdrant_mod, "QdrantClient", return_value=local):
         adapter = qdrant_mod.Qdrant(
             {"collection_name": "unstract_test", "embedding_dimension": EMBED_DIM}
         )
