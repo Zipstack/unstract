@@ -17,7 +17,9 @@ import {
 const DISTRIBUTIONS: readonly Distribution[] = ["oss", "cloud", "onprem"];
 
 function currentDistribution(): Distribution {
-  const value = import.meta.env.VITE_DISTRIBUTION ?? "oss";
+  // Empty means oss: the frontend image passes the build arg through even when unset.
+  const value =
+    import.meta.env.VITE_DISTRIBUTION?.trim().toLowerCase() || "oss";
   if (!DISTRIBUTIONS.includes(value)) {
     throw new Error(
       `VITE_DISTRIBUTION must be one of ${DISTRIBUTIONS.join(", ")}; got ${value}`,

@@ -137,11 +137,16 @@ describe("signOutAndLeave", () => {
     expect(assign).toHaveBeenCalledWith("https://id.example.com/v2/logout");
   });
 
-  test("a failed POST resets analytics and falls back to the GET logout", async () => {
+  test("a failed POST resets analytics, logs, and falls back to the GET logout", async () => {
+    const logged = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
     reply = { status: 403, data: {} };
     await signOutAndLeave();
     expect(reset).toHaveBeenCalledTimes(1);
     expect(assign).toHaveBeenCalledWith("/api/v1/logout");
+    expect(logged).toHaveBeenCalledTimes(1);
+    logged.mockRestore();
   });
 
   test("a reply without a redirect URL falls back to the GET logout", async () => {

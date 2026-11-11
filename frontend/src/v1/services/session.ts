@@ -25,7 +25,9 @@ export async function signOutAndLeave(): Promise<void> {
   let destination: string;
   try {
     destination = await signOut();
-  } catch {
+  } catch (error) {
+    // Logged so a failing POST shows up: the backend drops GET logout once v0 goes.
+    console.error("Sign-out POST failed; falling back to GET", error);
     // The GET logout ends the session too and redirects itself (v0's path).
     destination = "/api/v1/logout";
   }

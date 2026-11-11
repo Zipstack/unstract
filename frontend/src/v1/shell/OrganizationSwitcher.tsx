@@ -1,4 +1,10 @@
 import {
+  InlineAlert,
+  Skeleton,
+  SkeletonAvatar,
+  SkeletonText,
+} from "@v1/components/ui/feedback";
+import {
   describeOrganization,
   initial,
   landingPath,
@@ -38,6 +44,23 @@ export interface CurrentOrganization {
   switchViaLogin?: boolean;
 }
 
+/**
+ * Where a 412 sends the user. A known cause carries `code` and `domain`, which
+ * v0's /error page explains (useSessionValid.js); signing in again would only
+ * fail the same way. An empty body goes back to sign-in.
+ */
+export function sessionEndedPath(body: unknown): string {
+  const { code, domain } = (body ?? {}) as { code?: unknown; domain?: unknown };
+  if (typeof code !== "string" || code === "") {
+    return SIGN_IN_PATH;
+  }
+  const query = new URLSearchParams({ code });
+  if (typeof domain === "string" && domain !== "") {
+    query.set("domain", domain);
+  }
+  return `/error?${query}`;
+}
+
 type ListState =
   | { status: "idle" | "loading" | "error" }
   | { status: "ready"; organizations: Organization[] };
@@ -60,9 +83,10 @@ function useOrganizationList() {
         }
         // 412: the backend logged the session out while building the list.
         if (axios.isAxiosError(error) && error.response?.status === 412) {
-          window.location.assign(SIGN_IN_PATH);
+          window.location.assign(sessionEndedPath(error.response.data));
           return;
         }
+        console.error("Could not load the organisations", error);
         setState({ status: "error" });
       },
     );
@@ -103,18 +127,24 @@ function ConfirmSwitch({
   to,
   viaLogin,
   onClose,
+  onAccessRemoved,
+  returnFocus,
 }: {
   from: Organization;
   to: Organization;
   viaLogin: boolean;
   onClose: () => void;
+  /** The backend refused with 403: the cached list is stale. */
+  onAccessRemoved: () => void;
+  /** The pill: the button that opened this dialog unmounted with the popover. */
+  returnFocus: () => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<"retry" | "removed">();
 
   async function confirm() {
     setBusy(true);
-    setFailed(false);
+    setFailed(undefined);
     if (viaLogin) {
       window.location.assign(organizationLoginUrl(to.id));
       return;
@@ -125,17 +155,35 @@ function ConfirmSwitch({
       window.location.assign(
         landingPath(window.location.pathname, from.name, to.name),
       );
-    } catch {
-      setFailed(true);
+    } catch (error) {
+      console.error("Could not switch organisation", error);
+      // 403: the user was removed from it after the list loaded; retrying cannot work.
+      if (axios.isAxiosError(error) && error.response?.status === 403) {
+        setFailed("removed");
+        onAccessRemoved();
+        return;
+      }
+      setFailed("retry");
       setBusy(false);
     }
   }
 
   return (
-    <AlertDialog.Root open onOpenChange={(open) => !open && !busy && onClose()}>
+    <AlertDialog.Root
+      open
+      onOpenChange={(open) =>
+        !open && (!busy || failed === "removed") && onClose()
+      }
+    >
       <AlertDialog.Portal container={getPortalContainer()}>
         <AlertDialog.Overlay className="ui:fixed ui:inset-0 ui:z-50 ui:bg-scrim" />
-        <AlertDialog.Content className="ui:fixed ui:top-1/2 ui:left-1/2 ui:z-50 ui:w-130 ui:max-w-[calc(100vw-var(--space-8))] ui:-translate-x-1/2 ui:-translate-y-1/2 ui:rounded-lg ui:border ui:border-border ui:bg-popover ui:shadow-lg">
+        <AlertDialog.Content
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            returnFocus();
+          }}
+          className="ui:fixed ui:top-1/2 ui:left-1/2 ui:z-50 ui:w-130 ui:max-w-[calc(100vw-var(--space-8))] ui:-translate-x-1/2 ui:-translate-y-1/2 ui:rounded-lg ui:border ui:border-border ui:bg-popover ui:shadow-xl"
+        >
           <div className="ui:flex ui:gap-3 ui:px-6 ui:pt-6 ui:pb-1">
             <span className="ui:flex ui:size-9 ui:shrink-0 ui:items-center ui:justify-center ui:rounded-lg ui:bg-primary-muted">
               <ArrowRightLeft
@@ -165,16 +213,18 @@ function ConfirmSwitch({
             <OrgLine org={{ ...to, region: undefined }} />
           </div>
           {failed && (
-            <p
-              role="alert"
-              className="ui:mx-6 ui:-mt-3 ui:mb-4 ui:text-body-small ui:text-destructive"
-            >
-              Could not switch. Try again.
-            </p>
+            <InlineAlert
+              className="ui:mx-6 ui:-mt-3 ui:mb-4"
+              title={
+                failed === "removed"
+                  ? `You no longer have access to ${to.display_name}.`
+                  : "Could not switch. Try again."
+              }
+            />
           )}
           <div className="ui:flex ui:justify-end ui:gap-2 ui:border-t ui:border-border ui:px-6 ui:py-5">
             <AlertDialog.Cancel
-              disabled={busy}
+              disabled={busy && failed !== "removed"}
               className={`${BUTTON} ui:h-9 ui:px-3.5`}
             >
               Cancel
@@ -209,6 +259,7 @@ export function OrganizationSwitcher({
   const { state, load } = useOrganizationList();
   const [query, setQuery] = useState("");
   const [target, setTarget] = useState<Organization>();
+  const pill = useRef<HTMLButtonElement>(null);
 
   const organizations = state.status === "ready" ? state.organizations : [];
   const shown = organizations.filter((org) =>
@@ -229,6 +280,7 @@ export function OrganizationSwitcher({
         }}
       >
         <Popover.Trigger
+          ref={pill}
           aria-label={`Organisation: ${current.displayName}`}
           className="ui:flex ui:h-9 ui:w-42.75 ui:items-center ui:gap-2 ui:rounded-lg ui:border ui:border-border ui:bg-card ui:px-2 ui:outline-none ui:focus-visible:focus-ring "
         >
@@ -248,7 +300,7 @@ export function OrganizationSwitcher({
             align="end"
             sideOffset={8}
             collisionPadding={8}
-            className="ui:z-50 ui:flex ui:max-h-(--radix-popover-content-available-height) ui:w-90 ui:flex-col ui:rounded-lg ui:border ui:border-border ui:bg-popover ui:p-1.5 ui:shadow-lg"
+            className="ui:z-50 ui:flex ui:max-h-(--radix-popover-content-available-height) ui:w-90 ui:flex-col ui:rounded-lg ui:border ui:border-border ui:bg-popover ui:p-1.5 ui:shadow-md"
           >
             <label className="ui:mb-1 ui:flex ui:h-9 ui:items-center ui:gap-2 ui:rounded-md ui:px-2.5 ui:text-muted-foreground">
               <Search aria-hidden className="ui:size-4" />
@@ -262,29 +314,26 @@ export function OrganizationSwitcher({
               />
             </label>
             {(state.status === "loading" || state.status === "idle") && (
-              <p
-                aria-live="polite"
-                className="ui:px-3 ui:py-4 ui:text-body-small ui:text-muted-foreground"
+              <Skeleton
+                label="Loading organisations"
+                className="ui:px-2.5 ui:py-2"
               >
-                Loading…
-              </p>
+                {[0, 1].map((row) => (
+                  <span
+                    key={row}
+                    className="ui:flex ui:items-center ui:gap-2.5"
+                  >
+                    <SkeletonAvatar className="ui:rounded-lg" />
+                    <SkeletonText lines={2} className="ui:flex-1" />
+                  </span>
+                ))}
+              </Skeleton>
             )}
             {state.status === "error" && (
-              <div
-                role="alert"
-                className="ui:flex ui:items-center ui:justify-between ui:gap-3 ui:px-3 ui:py-3"
-              >
-                <span className="ui:text-body-small ui:text-muted-foreground">
-                  Could not load your organisations.
-                </span>
-                <button
-                  type="button"
-                  className={`${BUTTON} ui:px-2.5`}
-                  onClick={load}
-                >
-                  Retry
-                </button>
-              </div>
+              <InlineAlert
+                title="Could not load your organisations."
+                onRetry={load}
+              />
             )}
             {state.status === "ready" && (
               <>
@@ -348,6 +397,8 @@ export function OrganizationSwitcher({
           to={target}
           viaLogin={current.switchViaLogin === true}
           onClose={() => setTarget(undefined)}
+          onAccessRemoved={load}
+          returnFocus={() => pill.current?.focus()}
         />
       )}
     </>

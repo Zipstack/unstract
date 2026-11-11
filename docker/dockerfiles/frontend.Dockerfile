@@ -46,14 +46,22 @@ RUN bun install --frozen-lockfile --ignore-scripts
 # Copy the rest of the application files
 COPY ${BUILD_CONTEXT_PATH}/ .
 
-# Which v1 plugins the build offers (oss, cloud or onprem); the cloud
-# workflows set it. Declared after install so a different value keeps the
-# dependency layer cached. See frontend/src/v1/README.md.
-ARG VITE_DISTRIBUTION=oss
-ENV VITE_DISTRIBUTION=${VITE_DISTRIBUTION}
+# Declared after the install layer so a different value (the E2E image sets
+# VITE_V1_DEV_ROUTES) does not invalidate the cached install it shares with
+# release builds.
+# VITE_V1_DEV_ROUTES: "true" only for the E2E image (ci-test.yaml); registers
+# the v1 demo pages that prove the version switch and honours the v1 preview
+# override. Release builds leave it empty.
+# VITE_DISTRIBUTION: oss (default when empty), cloud or onprem. It picks the
+# v1 plugins the build offers (P0-T07) and the pages the v1 route registry
+# keeps; the cloud workflows set it. See frontend/src/v1/README.md.
+ARG VITE_V1_DEV_ROUTES=""
+ARG VITE_DISTRIBUTION=""
 
 # Build with Vite
-RUN bun run build
+RUN VITE_V1_DEV_ROUTES="${VITE_V1_DEV_ROUTES}" \
+    VITE_DISTRIBUTION="${VITE_DISTRIBUTION}" \
+    bun run build
 
 # Production stage
 FROM nginx:1.29.1-alpine AS production
