@@ -6,8 +6,9 @@ import json
 from collections.abc import Iterable, Iterator, Sequence
 from typing import Any
 
-from django.db.models import Q, TextField
-from django.db.models.functions import Cast
+from django.db import connection
+from django.db.models import BooleanField, Q
+from django.db.models.expressions import RawSQL
 
 from resource_usage.constants import OTHER_GROUP, ItemType, ProfileKind, UsageGroup
 from resource_usage.references import Reference, register_provider, relation_label
@@ -52,18 +53,25 @@ def tool_instance_refs(adapters: Sequence[Any]) -> Iterable[tuple[Any, Reference
 
     if not needles:
         return
+    org_ids = {org_id for org_id, _ in needles}
     # Fetch only tool instances whose metadata text contains a needle; the
     # exact walk below then decides, as the guard does. A string sits in the
-    # JSON text escaped, so match its escaped form.
-    candidates = Q()
-    for org_id, needle in needles:
-        candidates |= Q(
-            workflow__organization_id=org_id,
-            metadata_text__contains=_json_escaped(needle),
-        )
+    # JSON text escaped, so match its escaped form. One cast per row, tested
+    # against every pattern at once.
+    patterns = [
+        f"%{connection.ops.prep_for_like_query(_json_escaped(needle))}%"
+        for _, needle in needles
+    ]
+    table = connection.ops.quote_name(ToolInstance._meta.db_table)
+    mentions_a_needle = RawSQL(
+        f"{table}.{connection.ops.quote_name('metadata')}::text LIKE ANY(%s)",
+        (patterns,),
+        output_field=BooleanField(),
+    )
     rows = (
-        ToolInstance.objects.annotate(metadata_text=Cast("metadata", TextField()))
-        .filter(candidates)
+        ToolInstance.objects.filter(workflow__organization_id__in=org_ids)
+        .alias(mentions_a_needle=mentions_a_needle)
+        .filter(mentions_a_needle=True)
         .values_list(
             "workflow_id",
             "workflow__workflow_name",

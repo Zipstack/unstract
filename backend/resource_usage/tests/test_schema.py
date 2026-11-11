@@ -28,10 +28,9 @@ class UsageSchemaTests(SimpleTestCase):
         params = {p["name"] for p in list_op["parameters"]}
         self.assertTrue({"with_usage", "unused", "failing", "page"} <= params)
         components = schema["components"]["schemas"]
-        # The paged envelope declares unused_count, as optional.
-        paged = next(
-            c for name, c in components.items() if name.startswith("Paginated")
-        )
+        # The list's paged envelope declares unused_count, as optional.
+        ref = list_op["responses"]["200"]["content"]["application/json"]["schema"]
+        paged = components[ref["$ref"].rsplit("/", 1)[-1]]
         self.assertIn("unused_count", paged["properties"])
         self.assertNotIn("unused_count", paged["required"])
         # ``type`` is an open string: cloud groups and ``other`` add values.

@@ -38,7 +38,7 @@ class FailingCountPagination(OptionalPagination):
         paged["properties"][ListParam.FAILING_COUNT] = {
             "type": "integer",
             "description": "Failing profiles across all pages, ignoring the "
-            "failing and last_test_status filters.",
+            "failing, last_test_status and unused filters.",
             "example": 2,
         }
         paged["required"].append(ListParam.FAILING_COUNT)

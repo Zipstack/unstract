@@ -168,6 +168,19 @@ class AdapterGuardParityTests(UsageTestBase):
         # Two tool instances in one workflow count it once.
         self.assertEqual(index[cases["by-id"].pk].used_in_count, 1)
 
+    def test_only_tool_instances_naming_an_adapter_are_walked(self, _ctx: Any) -> None:
+        adapter = self.make_adapter("named")
+        workflow = self.make_workflow("wf")
+        self.make_tool_instance(workflow, {"llm": str(adapter.pk)})
+        self.make_tool_instance(workflow, {"llm": "something-else"})
+        with patch(
+            "resource_usage.adapters.string_leaves", wraps=string_leaves
+        ) as walk:
+            usage = collect(ProfileKind.ADAPTER, [adapter])
+        self.assertEqual(usage[adapter.pk].used_in_count, 1)
+        walked = [call.args[0] for call in walk.call_args_list]
+        self.assertNotIn({"llm": "something-else"}, walked)
+
     def test_profile_without_project_is_in_other(self, _ctx: Any) -> None:
         cases = self._cases()
         usage = collect(ProfileKind.ADAPTER, [cases["orphan-profile"]])
@@ -497,6 +510,21 @@ class UsageListTests(UsageTestBase):
         self.assertEqual(page["unused_count"], 2)
         rows = self._list(ConnectorInstanceViewSet, "?unused=true")
         self.assertEqual([r["connector_name"] for r in rows], ["idle"])
+
+    def test_profile_gone_between_usage_and_rows_is_left_out(self, _ctx: Any) -> None:
+        """Usage is read before the rows, so a concurrent delete drops the row."""
+        from resource_usage.views import ProfileUsageMixin
+
+        original = ProfileUsageMixin._list_usage
+
+        def then_delete(view: Any) -> Any:
+            index = original(view)
+            AdapterInstance.objects.filter(pk=self.spare.pk).delete()
+            return index
+
+        with patch.object(ProfileUsageMixin, "_list_usage", then_delete):
+            rows = self._list(AdapterInstanceViewSet, "?with_usage=true")
+        self.assertEqual([r["adapter_name"] for r in rows], ["used"])
 
     def test_other_values_change_nothing(self, _ctx: Any) -> None:
         for viewset in (AdapterInstanceViewSet, ConnectorInstanceViewSet):

@@ -75,16 +75,19 @@ class ProfileUsageMixin:
         return queryset.filter(pk__in=unused)
 
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        response: Response = super().list(request, *args, **kwargs)  # type: ignore[misc]
         if not self.usage_requested():
-            return response
+            return super().list(request, *args, **kwargs)  # type: ignore[misc]
+        # Work out usage before reading the rows, so a profile deleted or
+        # unshared in between is missing from the rows, not from the index.
         index = self._list_usage()
+        response: Response = super().list(request, *args, **kwargs)  # type: ignore[misc]
         paged = isinstance(response.data, dict)
         rows = response.data["results"] if paged else response.data
         # Rows carry the pk as a string; the index keys are UUIDs.
         by_pk = {str(pk): usage for pk, usage in index.items()}
         for row in rows:
-            # Every row is in the index, as the list only narrows its base.
+            # Every row is in the index: the list only narrows its base, and
+            # the index was read first.
             usage = by_pk[str(row["id"])]
             row[ListParam.USED_IN_COUNT] = usage.used_in_count
             if self.usage_kind == ProfileKind.CONNECTOR:
