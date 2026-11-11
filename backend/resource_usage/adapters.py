@@ -37,20 +37,23 @@ def _json_escaped(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)[1:-1]
 
 
-class _LikeAny(Func):
-    """``<text> LIKE ANY (<patterns>)``: true when any pattern matches."""
+class _Any(Func):
+    """``ANY(<array>)``."""
 
+    function = "ANY"
+    arity = 1
+
+
+class _LikeAny(Func):
+    """``<text> LIKE ANY(<patterns>)``: true when any pattern matches."""
+
+    arg_joiner = " LIKE "
     arity = 2
     output_field = BooleanField()
+    template = "%(expressions)s"
 
-    def as_sql(self, compiler: Any, connection: Any, **extra: Any) -> Any:
-        text, patterns = self.get_source_expressions()
-        text_sql, text_params = compiler.compile(text)
-        patterns_sql, patterns_params = compiler.compile(patterns)
-        return (
-            f"{text_sql} LIKE ANY ({patterns_sql})",
-            (*text_params, *patterns_params),
-        )
+    def __init__(self, text: Any, patterns: Any) -> None:
+        super().__init__(text, _Any(patterns))
 
 
 def tool_instance_refs(adapters: Sequence[Any]) -> Iterable[tuple[Any, Reference]]:
