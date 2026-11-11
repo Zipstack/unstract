@@ -78,9 +78,27 @@ export function tagVerdict(
 }
 
 /**
- * Applies `tagVerdict` to every test, as an auto fixture rather than the
- * config's `grep`: `grep` drops a test before it is collected, so an
- * untagged one would vanish without a trace.
+ * The config's `grepInvert`: drops tests tagged only for other
+ * distributions before they are collected, so their beforeAll/afterAll hooks
+ * do not run here either. A test with no distribution tag matches neither
+ * lookahead, so it is still collected and the gate below fails it.
+ */
+export function otherDistributionsGrep(): RegExp {
+  const current = TAG[currentDistribution()];
+  const others = KNOWN.filter((t) => t !== current).map((t) => t.slice(1));
+  return new RegExp(
+    String.raw`^(?!.*${current}\b)(?=.*@(${others.join("|")})\b)`,
+  );
+}
+
+/** Annotation type the gate leaves on every test it let through. */
+export const GATE_ANNOTATION = "distribution";
+
+/**
+ * Applies `tagVerdict` to every collected test, as an auto fixture: the
+ * config cannot express "fail when untagged", and a `grep` would drop such a
+ * test without a trace. Tests for other distributions rarely reach it (see
+ * `otherDistributionsGrep`); if one does, it skips.
  */
 export const test = base.extend<{ distributionGate: undefined }>({
   distributionGate: [
@@ -93,6 +111,10 @@ export const test = base.extend<{ distributionGate: undefined }>({
       if (verdict.kind === "skip") {
         test.skip(true, verdict.reason);
       }
+      testInfo.annotations.push({
+        type: GATE_ANNOTATION,
+        description: currentDistribution(),
+      });
       await use(undefined);
     },
     { auto: true },

@@ -1,7 +1,10 @@
 import { dirname, join } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 import { FRONTEND_URL } from "./fixtures/env.ts";
-import { currentDistribution } from "./fixtures/tags.ts";
+import {
+  currentDistribution,
+  otherDistributionsGrep,
+} from "./fixtures/tags.ts";
 
 /**
  * Playwright config for the `frontend-v1-e2e` rig group: the v1 frontend's
@@ -14,8 +17,9 @@ import { currentDistribution } from "./fixtures/tags.ts";
  * Standalone against a running stack:
  *   UNSTRACT_FRONTEND_URL=http://localhost:3000 bunx playwright test
  *
- * Every test runs, skips or fails by its distribution tag against
- * UNSTRACT_DISTRIBUTION (default `oss`); see fixtures/tags.ts.
+ * Tests tagged for UNSTRACT_DISTRIBUTION (default `oss`) run, tests tagged
+ * only for another are not collected, and untagged ones fail; see
+ * fixtures/tags.ts.
  */
 
 /** The rig points JUnit at reports/<group>/junit.xml, the tree CI uploads. */
@@ -25,6 +29,9 @@ export default defineConfig({
   testDir: ".",
   // Page specs by task id, harness self-tests, and the P8-T01 journeys.
   testMatch: ["specs/**/*.spec.ts", "journeys/**/*.spec.ts"],
+  // Not collected: tests tagged only for another distribution. Untagged ones
+  // still are, and fail (fixtures/tags.ts).
+  grepInvert: otherDistributionsGrep(),
   /*
    * Screenshots, videos and axe results beside the group's junit.xml, so CI
    * uploads them with it; standalone runs keep Playwright's default.

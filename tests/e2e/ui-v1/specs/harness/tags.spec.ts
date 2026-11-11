@@ -4,8 +4,18 @@
  * so an untagged or mistyped test cannot drop out of every run unnoticed.
  */
 
-import { DIST, expect, TAG, test } from "../../fixtures/index.ts";
-import { tagVerdict } from "../../fixtures/tags.ts";
+import {
+  currentDistribution,
+  DIST,
+  expect,
+  TAG,
+  test,
+} from "../../fixtures/index.ts";
+import {
+  GATE_ANNOTATION,
+  otherDistributionsGrep,
+  tagVerdict,
+} from "../../fixtures/tags.ts";
 
 test.describe("harness: distribution tags", { tag: DIST.all }, () => {
   test("a test tagged for this distribution runs", () => {
@@ -25,6 +35,24 @@ test.describe("harness: distribution tags", { tag: DIST.all }, () => {
   });
 
   test("this test went through the gate", () => {
-    expect(test.info().tags).toEqual(expect.arrayContaining(DIST.all));
+    // Only the gate fixture leaves this annotation; the tags alone would be
+    // there without it.
+    expect(test.info().annotations).toContainEqual({
+      type: GATE_ANNOTATION,
+      description: currentDistribution(),
+    });
+  });
+
+  test("the config drops only tests tagged solely for other distributions", () => {
+    // Playwright matches grep against the title with its tags appended.
+    const dropped = otherDistributionsGrep();
+    expect(dropped.test("cloud page @cloud")).toBe(true);
+    expect(dropped.test("on-prem page @onprem @cloud")).toBe(true);
+    expect(dropped.test("shared page @oss @cloud")).toBe(false);
+    expect(dropped.test("oss page @oss")).toBe(false);
+    // Untagged and mistyped stay collected, so the gate can fail them.
+    expect(dropped.test("forgot the tag")).toBe(false);
+    expect(dropped.test("mistyped @OSS")).toBe(false);
+    expect(dropped.test("prefix only @ossx")).toBe(false);
   });
 });

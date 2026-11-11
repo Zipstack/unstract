@@ -26,15 +26,15 @@ bun run lint && bun run typecheck
 | `UNSTRACT_ADMIN_USER` / `_PASSWORD` | The `admin` role (defaults to the seeded `unstract` user) |
 | `UNSTRACT_E2E_<ROLE>_USER` / `_PASSWORD` | Any other role, upper-cased with non-alphanumerics as `_` (`org-admin` reads `UNSTRACT_E2E_ORG_ADMIN_USER`); a test asking for a role without them skips, and fails under the rig, which seeds only the admin |
 | `UNSTRACT_E2E_ORG_ID` | The organisation to select; the first one by default |
-| `UNSTRACT_DISTRIBUTION` | `oss` (default), `cloud` or `onprem`: tests tagged for it run, others skip |
+| `UNSTRACT_DISTRIBUTION` | `oss` (default), `cloud` or `onprem`: tests tagged for it run. Must match the image's `VITE_DISTRIBUTION` (unset builds as oss), which decides the pages it renders |
 | `UNSTRACT_E2E_A11Y_IMPACT` | Lowest axe impact that fails a scan; default `serious` |
 
 ## Writing a page spec
 
 One spec per page task, named by task id: `specs/P4-T01.spec.ts`. The P8-T01
 shared journeys go in `journeys/`. Every test carries a distribution tag: a
-test tagged for another distribution skips, and one with no distribution tag
-(or a mistyped one, `@OSS`) fails.
+test tagged only for another distribution is not collected (nor are its
+hooks), and one with no distribution tag (or a mistyped one, `@OSS`) fails.
 
 The stack under test is the E2E image: built with `VITE_V1_DEV_ROUTES=true`
 (ci-test.yaml), which registers P0-T03's demo pages and honours the preview

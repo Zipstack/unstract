@@ -12,12 +12,31 @@
 
 import type { BrowserContext, Page } from "@playwright/test";
 import {
+  findEntry,
   type PageKey,
   type PreviewMechanism,
+  shipsIn,
   V1_PREVIEW,
 } from "../contract/registry.ts";
 import { FRONTEND_URL } from "./env.ts";
 import { test as seedTest } from "./seed.ts";
+import { currentDistribution } from "./tags.ts";
+
+/**
+ * Refuses a page the app could not render here: one not declared in PAGES,
+ * or one this run's distribution does not ship, which the app's live
+ * registry drops even when previewed.
+ */
+export function assertPreviewable(pages: readonly PageKey[]): void {
+  const distribution = currentDistribution();
+  for (const key of pages) {
+    if (!shipsIn(findEntry(key), distribution)) {
+      throw new Error(
+        `v1Preview: ${key} does not ship in ${distribution}; tag the spec for its distributions instead`,
+      );
+    }
+  }
+}
 
 function writeStorage([storage, key, value]: [string, string, string]): void {
   const store = storage === "sessionStorage" ? sessionStorage : localStorage;
@@ -66,6 +85,7 @@ export const test = seedTest.extend<PreviewFixtures>({
   applyV1Preview: [
     async ({ page, context, v1Preview }, use) => {
       if (v1Preview.length) {
+        assertPreviewable(v1Preview);
         await enableV1Preview(page, context, v1Preview);
       }
       await use(undefined);

@@ -11,12 +11,18 @@
 import {
   isPageKey,
   type PageKey,
+  shipsIn,
   UNREGISTERED_PAGES,
   V1_PREVIEW,
 } from "../../contract/registry.ts";
 import { V1_ROOT_SELECTOR } from "../../contract/v1-ui.ts";
-import { DIST, expect, test } from "../../fixtures/index.ts";
-import { previewValue } from "../../fixtures/preview.ts";
+import {
+  currentDistribution,
+  DIST,
+  expect,
+  test,
+} from "../../fixtures/index.ts";
+import { assertPreviewable, previewValue } from "../../fixtures/preview.ts";
 import { fillPattern, paramNames } from "../../helpers/routes.ts";
 
 test.describe("harness: v1 preview value", { tag: DIST.all }, () => {
@@ -28,6 +34,13 @@ test.describe("harness: v1 preview value", { tag: DIST.all }, () => {
     expect((parsed as unknown[]).every(isPageKey)).toBe(true);
   });
 
+  test("v1Preview refuses a page the app could not render here", () => {
+    // Declared and shipped everywhere: accepted.
+    expect(() => assertPreviewable(["DEMO-PAGE"])).not.toThrow();
+    // A valid key nobody has declared: the app has no routes for it.
+    expect(() => assertPreviewable(["UN19"])).toThrow("not declared");
+  });
+
   test("a cookie holds a URI-encoded value", () => {
     const pages: PageKey[] = ["UN13", "UN14"];
     const cookie = previewValue({ kind: "cookie", name: "v1" }, pages);
@@ -36,6 +49,11 @@ test.describe("harness: v1 preview value", { tag: DIST.all }, () => {
     expect(JSON.parse(decodeURIComponent(cookie))).toEqual(pages);
   });
 });
+
+/** Previewable here: the app drops a page its build's distribution lacks. */
+const previewable = UNREGISTERED_PAGES.filter((e) =>
+  shipsIn(e, currentDistribution()),
+);
 
 /** The first v1 route the check can open with only the org filled in. */
 function openableRoute(routes: readonly string[]): string | undefined {
@@ -46,17 +64,17 @@ test.describe(
   "harness: v1 preview of an unregistered page",
   { tag: DIST.all },
   () => {
-    if (!UNREGISTERED_PAGES.length) {
+    if (!previewable.length) {
       // A visible skip, not an empty describe that reports nothing.
       test("the preview override renders an unregistered page", () => {
         test.skip(
           true,
-          "no page is declared in PAGES and unregistered yet; runs once the first page task declares one",
+          `no page is declared in PAGES, unregistered and shipped in ${currentDistribution()} yet; runs once a page task declares one`,
         );
       });
     }
 
-    for (const entry of UNREGISTERED_PAGES) {
+    for (const entry of previewable) {
       test.describe(entry.page, () => {
         test.use({ v1Preview: [entry.page] });
 

@@ -4,11 +4,16 @@
  * through this module.
  *
  * It imports the frontend's own registry data, so the harness and the app
- * cannot drift. Only modules the frontend keeps importable without Vite are
- * read (registry/types.ts, registry/entries.ts, registry/validate.ts and
- * lib/oldVersion.ts: no `import.meta.env`, no `@v1` alias, only relative
- * imports). registry/live.ts reads `import.meta.env` when it loads, so this
+ * cannot drift. registry/types.ts promises that types.ts, entries.ts and
+ * lib/oldVersion.ts stay importable without Vite (no `import.meta.env`, no
+ * `@v1` alias, only relative imports). This also reads registry/validate.ts
+ * (via patterns.ts) and, in v1-ui.ts, lib/theme.ts, which hold to the same
+ * today without promising it; if one stops, every run fails at load, not
+ * silently. registry/live.ts reads `import.meta.env` when it loads, so this
  * module rebuilds what it would compute for the E2E image instead.
+ *
+ * The harness's distribution (UNSTRACT_DISTRIBUTION) must match the image's
+ * (VITE_DISTRIBUTION; unset means oss): nothing can check that from here.
  */
 
 import {
@@ -17,6 +22,7 @@ import {
   REGISTERED_PAGES,
 } from "../../../../frontend/src/v1/app/registry/entries.ts";
 import {
+  type Distribution,
   type PageKey,
   PREVIEW_STORAGE_KEY,
   type RegistryEntry,
@@ -53,11 +59,20 @@ export const REGISTRY: readonly RegistryEntry[] = [
 
 /**
  * Declared but not yet registered (D9): these render as v1 only through the
- * preview override (`test.use({ v1Preview: [...] })`).
+ * preview override (`test.use({ v1Preview: [...] })`), and only in a build
+ * of a distribution they list (the app's activeEntries drops the rest).
  */
 export const UNREGISTERED_PAGES: readonly RegistryEntry[] = PAGES.filter(
   (entry) => !isRegistered(entry),
 );
+
+/** Whether `entry` can render as v1 in a build of `distribution`. */
+export function shipsIn(
+  entry: RegistryEntry,
+  distribution: Distribution,
+): boolean {
+  return entry.distributions.includes(distribution);
+}
 
 /** How a test asks the app to render pages before they are registered. */
 export type PreviewMechanism =
