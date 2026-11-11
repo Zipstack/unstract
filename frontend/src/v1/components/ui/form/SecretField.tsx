@@ -1,43 +1,48 @@
+import { type CopyResult, copyText } from "@v1/lib/code/clipboard";
 import { composeRefs } from "@v1/lib/merge-refs";
+import { toast } from "@v1/lib/notify";
 import { Copy, Eye, EyeOff } from "lucide-react";
 import { type JSX, useMemo, useRef, useState } from "react";
 import { FieldAction } from "./FieldAction";
 import { useFieldControl } from "./field-context";
 import { Input, type InputProps } from "./Input";
 
-export type CopyResult =
-  | Readonly<{ status: "copied" }>
-  | Readonly<{ status: "empty" }>
-  | Readonly<{ status: "failed"; error: unknown }>;
-
 export type SecretFieldProps = Omit<
   InputProps,
   "type" | "trailing" | "autoComplete" | "spellCheck" | "autoCapitalize"
 > &
   Readonly<{
-    /*
-     * The toast seam: the caller raises the confirmation (or the failure) on
-     * the toast contract. Required, so a failed copy is never silent. Replace
-     * with a direct toast call once the toast component exists.
-     */
-    onCopyResult: (result: CopyResult) => void;
+    /** Hears each copy's outcome; the field raises the toast itself. Not called for an empty field. */
+    onCopy?: (result: CopyResult) => void;
     revealLabel?: string;
     copyLabel?: string;
   }>;
 
-/** Reads the node, so a controlled and an uncontrolled field copy the same way. */
-async function copyValue(input: HTMLInputElement | null): Promise<CopyResult> {
+/**
+ * Copies the node's value, so a controlled and an uncontrolled field copy the
+ * same way, and confirms through the toast as CopyButton does.
+ */
+async function copyValue(
+  input: HTMLInputElement | null,
+): Promise<CopyResult | undefined> {
   const text = input?.value ?? "";
   if (text === "") {
-    return { status: "empty" };
+    toast.error("Nothing to copy");
+    return undefined;
   }
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch (error: unknown) {
-    // navigator.clipboard is undefined outside a secure context, or the write is refused.
-    return { status: "failed", error };
+  const outcome = await copyText(text);
+  if (outcome === "copied") {
+    toast.success("Copied to clipboard");
+  } else if (outcome === "unavailable") {
+    toast.error("Copy is not available", {
+      description: "This browser does not allow clipboard access here.",
+    });
+  } else {
+    toast.error("Could not copy", {
+      description: "Try again, or select the text and copy it.",
+    });
   }
-  return { status: "copied" };
+  return outcome;
 }
 
 /*
@@ -46,7 +51,7 @@ async function copyValue(input: HTMLInputElement | null): Promise<CopyResult> {
  * the usual way to show a key, and are disabled with the field.
  */
 export function SecretField({
-  onCopyResult,
+  onCopy,
   revealLabel = "Reveal",
   copyLabel = "Copy",
   disabled,
@@ -57,6 +62,8 @@ export function SecretField({
   const inputRef = useRef<HTMLInputElement>(null);
   const composedRef = useMemo(() => composeRefs(inputRef, ref), [ref]);
   const state = useFieldControl({ disabled });
+  // A disabled field disables Reveal too, so a shown value is masked again.
+  const shown = revealed && !state.disabled;
 
   return (
     <Input
@@ -66,17 +73,19 @@ export function SecretField({
         <>
           <FieldAction
             label={revealLabel}
-            aria-pressed={revealed}
+            aria-pressed={shown}
             disabled={state.disabled}
             onClick={() => setRevealed((shown) => !shown)}
           >
-            {revealed ? <EyeOff aria-hidden /> : <Eye aria-hidden />}
+            {shown ? <EyeOff aria-hidden /> : <Eye aria-hidden />}
           </FieldAction>
           <FieldAction
             label={copyLabel}
             disabled={state.disabled}
             onClick={() => {
-              void copyValue(inputRef.current).then(onCopyResult);
+              void copyValue(inputRef.current).then(
+                (outcome) => outcome && onCopy?.(outcome),
+              );
             }}
           >
             <Copy aria-hidden />
@@ -85,7 +94,7 @@ export function SecretField({
       }
       {...props}
       // After the spread, so a caller cannot turn masking or the privacy hints off.
-      type={revealed ? "text" : "password"}
+      type={shown ? "text" : "password"}
       autoComplete="new-password"
       spellCheck={false}
       autoCapitalize="off"

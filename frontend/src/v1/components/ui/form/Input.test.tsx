@@ -1,9 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import { renderV1 } from "@v1/test";
 import { expect, it } from "vitest";
 import { Input } from "./Input";
 
 it("renders adornments around the control in order", () => {
-  render(
+  renderV1(
     <Input
       aria-label="URL"
       leading={<svg data-testid="icon" />}
@@ -27,7 +28,7 @@ it("renders adornments around the control in order", () => {
 });
 
 it("is 32 tall and takes the single focus treatment from its frame", () => {
-  render(<Input aria-label="Name" />);
+  renderV1(<Input aria-label="Name" />);
   const frame = screen.getByLabelText("Name").parentElement as HTMLElement;
   expect(frame.dataset.slot).toBe("field-frame");
   expect(frame.className).toContain("ui:h-8");
@@ -41,13 +42,13 @@ it.each([
   ["disabled", { disabled: true }, "data-disabled"],
   ["read-only", { readOnly: true }, "data-readonly"],
 ])("marks the frame %s", (_, props, attribute) => {
-  render(<Input aria-label="Name" {...props} />);
+  renderV1(<Input aria-label="Name" {...props} />);
   const input = screen.getByLabelText("Name");
   expect(input.parentElement?.hasAttribute(attribute)).toBe(true);
 });
 
 it("sets aria-invalid only when invalid", () => {
-  const { rerender } = render(<Input aria-label="Name" />);
+  const { rerender } = renderV1(<Input aria-label="Name" />);
   expect(screen.getByLabelText("Name").hasAttribute("aria-invalid")).toBe(
     false,
   );

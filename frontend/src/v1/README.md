@@ -154,6 +154,20 @@ only when a v1 page first renders.
   yet, so every image builds as `oss`: until P0-T07 wires them, an entry that
   lists fewer than all three distributions is not filtered correctly there.
 
+## Text inputs
+
+- Text controls come from `components/ui/form/` (`Input`, `Textarea`,
+  `PromptTextarea`, `SearchField`, `SecretField`) inside a `Field`, which
+  ties the label, helper and error text to the control. A control the Field
+  cannot name with `<label for>` (a radiogroup) takes `labelId` from
+  `useFieldControl` as `aria-labelledby`. A trigger that is itself the frame
+  (a select) uses `fieldFrameVariants({ focus: "self" })`.
+- A control's own `invalid`, `disabled` and `readOnly` win over its Field's.
+- An overlay (Dialog, Popover, Menu) that can hold a `SearchField` must call
+  `event.preventDefault()` in `onEscapeKeyDown` when
+  `isEscapeClearTarget(event)` is true, so Escape clears the search before it
+  closes the overlay.
+
 ## Folders and what each may import
 
 Every folder may import from itself. Test files (`*.test.ts(x)`,

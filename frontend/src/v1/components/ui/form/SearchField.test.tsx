@@ -1,17 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { fireEvent, screen } from "@testing-library/react";
+import { renderV1 } from "@v1/test";
 import { Dialog } from "radix-ui";
 import { type KeyboardEvent, useState } from "react";
-import { afterEach, expect, it, vi } from "vitest";
+import { expect, it, onTestFinished, vi } from "vitest";
 import { Field } from "./Field";
+import { isEscapeClearTarget } from "./keyboard";
 import { SearchField, type SearchFieldProps } from "./SearchField";
-
-const cleanups: (() => void)[] = [];
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) {
-    cleanup();
-  }
-});
 
 /** Counts the Escapes that bubble up to the document. */
 function recordDocumentEscapes() {
@@ -22,24 +16,24 @@ function recordDocumentEscapes() {
     }
   };
   document.addEventListener("keydown", onKeyDown);
-  cleanups.push(() => document.removeEventListener("keydown", onKeyDown));
+  onTestFinished(() => document.removeEventListener("keydown", onKeyDown));
   return escapes;
 }
 
 /** Renders the field and records the Escapes that bubble up to the document. */
 function setup(props: SearchFieldProps = {}) {
   const parentEscape = recordDocumentEscapes();
-  render(<SearchField aria-label="Search" {...props} />);
+  const { user } = renderV1(<SearchField aria-label="Search" {...props} />);
   return {
+    user,
     parentEscape,
     input: screen.getByLabelText("Search") as HTMLInputElement,
   };
 }
 
 it("clears on Escape when it has a value, and keeps the Escape from bubbling", async () => {
-  const user = userEvent.setup();
   const onValueChange = vi.fn();
-  const { input, parentEscape } = setup({ onValueChange });
+  const { user, input, parentEscape } = setup({ onValueChange });
   await user.type(input, "invoice");
   await user.keyboard("{Escape}");
   expect(input.value).toBe("");
@@ -49,8 +43,7 @@ it("clears on Escape when it has a value, and keeps the Escape from bubbling", a
 });
 
 it("lets Escape bubble when the field is empty, so a dialog can close", async () => {
-  const user = userEvent.setup();
-  const { input, parentEscape } = setup();
+  const { user, input, parentEscape } = setup();
   await user.click(input);
   await user.keyboard("{Escape}");
   expect(parentEscape).toHaveBeenCalledOnce();
@@ -70,22 +63,20 @@ it("does not clear on an Escape that cancels an IME composition", () => {
 });
 
 it("marks the control while Escape would clear it", async () => {
-  const user = userEvent.setup();
-  const { input } = setup();
+  const { user, input } = setup();
   expect(input.hasAttribute("data-escape-clears")).toBe(false);
   await user.type(input, "a");
   expect(input.hasAttribute("data-escape-clears")).toBe(true);
 });
 
 it("clears a controlled field through onValueChange", async () => {
-  const user = userEvent.setup();
   function Controlled() {
     const [value, setValue] = useState("draft");
     return (
       <SearchField aria-label="Search" value={value} onValueChange={setValue} />
     );
   }
-  render(<Controlled />);
+  const { user } = renderV1(<Controlled />);
   const input = screen.getByLabelText("Search") as HTMLInputElement;
   await user.click(input);
   await user.keyboard("{Escape}");
@@ -93,8 +84,7 @@ it("clears a controlled field through onValueChange", async () => {
 });
 
 it("offers a named Clear button while it has a value, and refocuses the field", async () => {
-  const user = userEvent.setup();
-  const { input } = setup();
+  const { user, input } = setup();
   expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
   await user.type(input, "abc");
   await user.click(screen.getByRole("button", { name: "Clear search" }));
@@ -120,10 +110,7 @@ function SearchDialog({
       <Dialog.Portal>
         <Dialog.Content
           onEscapeKeyDown={(event) => {
-            if (
-              event.target instanceof Element &&
-              event.target.closest("[data-escape-clears]")
-            ) {
+            if (isEscapeClearTarget(event)) {
               event.preventDefault();
             }
           }}
@@ -138,9 +125,8 @@ function SearchDialog({
 }
 
 it("inside a Radix dialog, Escape clears a value without closing, then closes when empty", async () => {
-  const user = userEvent.setup();
   const onOpenChange = vi.fn();
-  render(<SearchDialog onOpenChange={onOpenChange} />);
+  const { user } = renderV1(<SearchDialog onOpenChange={onOpenChange} />);
   const input = screen.getByLabelText("Search") as HTMLInputElement;
   await user.type(input, "invoice");
 
@@ -154,9 +140,8 @@ it("inside a Radix dialog, Escape clears a value without closing, then closes wh
 });
 
 it("inside a Radix dialog, the caller's onKeyDown can still cancel the clear", async () => {
-  const user = userEvent.setup();
   const onOpenChange = vi.fn();
-  render(
+  const { user } = renderV1(
     <SearchDialog
       onOpenChange={onOpenChange}
       onKeyDown={(event) => {
@@ -174,8 +159,7 @@ it("inside a Radix dialog, the caller's onKeyDown can still cancel the clear", a
 });
 
 it("returns an uncontrolled field to its defaultValue when its form resets", async () => {
-  const user = userEvent.setup();
-  render(
+  const { user } = renderV1(
     <form>
       <SearchField aria-label="Search" defaultValue="draft" />
     </form>,
@@ -187,17 +171,16 @@ it("returns an uncontrolled field to its defaultValue when its form resets", asy
   expect(input.value).toBe("draft");
 });
 
-it("lets the caller's onKeyDown cancel the clear, and forwards onChange", async () => {
-  const user = userEvent.setup();
-  const onChange = vi.fn();
+it("lets the caller's onKeyDown cancel the clear, and reports typing through onValueChange", async () => {
+  const onValueChange = vi.fn();
   const onKeyDown = vi.fn((event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
     }
   });
-  const { input } = setup({ onChange, onKeyDown });
+  const { user, input } = setup({ onValueChange, onKeyDown });
   await user.type(input, "ab");
-  expect(onChange).toHaveBeenCalledTimes(2);
+  expect(onValueChange.mock.calls).toEqual([["a"], ["ab"]]);
   await user.keyboard("{Escape}");
   expect(onKeyDown).toHaveBeenLastCalledWith(
     expect.objectContaining({ key: "Escape" }),
@@ -206,9 +189,8 @@ it("lets the caller's onKeyDown cancel the clear, and forwards onChange", async 
 });
 
 it("calls onValueChange when a controlled field's Clear button is used", async () => {
-  const user = userEvent.setup();
   const onValueChange = vi.fn();
-  render(
+  const { user } = renderV1(
     <SearchField
       aria-label="Search"
       value="draft"
@@ -219,17 +201,28 @@ it("calls onValueChange when a controlled field's Clear button is used", async (
   expect(onValueChange).toHaveBeenCalledExactlyOnceWith("");
 });
 
-it("lets Escape through from a controlled field that has no onValueChange", () => {
+it("lets Escape through from a controlled field that has no onValueChange, without the native clear", () => {
   const parentEscape = recordDocumentEscapes();
-  render(
-    <SearchField
-      aria-label="Search"
-      value="fixed"
-      onChange={() => undefined}
-    />,
-  );
-  fireEvent.keyDown(screen.getByLabelText("Search"), { key: "Escape" });
+  renderV1(<SearchField aria-label="Search" value="fixed" />);
+  const notPrevented = fireEvent.keyDown(screen.getByLabelText("Search"), {
+    key: "Escape",
+  });
   expect(parentEscape).toHaveBeenCalledOnce();
+  // false: default prevented, so the browser's own search clear does not run.
+  expect(notPrevented).toBe(false);
+});
+
+it("takes no onChange, so a controlled field is wired through onValueChange", () => {
+  // @ts-expect-error onChange is not a SearchField prop.
+  const props: SearchFieldProps = { onChange: () => undefined };
+  expect(props).toBeDefined();
+});
+
+it("leaves the native Escape alone on an empty field", () => {
+  renderV1(<SearchField aria-label="Search" />);
+  expect(
+    fireEvent.keyDown(screen.getByLabelText("Search"), { key: "Escape" }),
+  ).toBe(true);
 });
 
 it.each([
@@ -237,7 +230,7 @@ it.each([
   ["read-only", { readOnly: true }],
 ])("does not clear inside a %s Field", (_, fieldProps) => {
   const parentEscape = recordDocumentEscapes();
-  render(
+  renderV1(
     <Field label="Search" {...fieldProps}>
       <SearchField defaultValue="q" />
     </Field>,

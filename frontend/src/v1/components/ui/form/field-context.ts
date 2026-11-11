@@ -2,6 +2,8 @@ import { createContext, useContext } from "react";
 
 export type FieldContextValue = Readonly<{
   controlId: string;
+  /** The label's id, for controls named by `aria-labelledby` (a radiogroup cannot use `<label for>`). */
+  labelId: string;
   /** Ids of the helper and error text that are rendered, space-separated. */
   describedBy: string | undefined;
   invalid: boolean;
@@ -26,6 +28,8 @@ export type FieldControlInput = Readonly<{
 
 export type FieldControlState = Readonly<{
   id: string | undefined;
+  /** The enclosing Field's label id; undefined outside a Field. */
+  labelId: string | undefined;
   "aria-describedby": string | undefined;
   "aria-invalid": true | undefined;
   invalid: boolean;
@@ -48,6 +52,7 @@ export function useFieldControl(props: FieldControlInput): FieldControlState {
   const invalid = props.invalid ?? field?.invalid ?? false;
   return {
     id: field?.controlId ?? props.id,
+    labelId: field?.labelId,
     "aria-describedby": joinIds(field?.describedBy, props["aria-describedby"]),
     "aria-invalid": invalid ? true : undefined,
     invalid,

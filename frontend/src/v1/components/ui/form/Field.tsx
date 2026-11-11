@@ -34,6 +34,7 @@ export function Field({
   const generatedId = useId();
   const controlId = id ?? `${generatedId}control`;
   // Derived from the control id, so a caller that passes `id` gets stable ids.
+  const labelId = `${controlId}-label`;
   const helperId = helperText ? `${controlId}-helper` : undefined;
   const errorId = error ? `${controlId}-error` : undefined;
   const isInvalid = invalid ?? Boolean(error);
@@ -41,18 +42,23 @@ export function Field({
   const context = useMemo<FieldContextValue>(
     () => ({
       controlId,
+      labelId,
       describedBy: [helperId, errorId].filter(Boolean).join(" ") || undefined,
       invalid: isInvalid,
       disabled,
       readOnly,
     }),
-    [controlId, helperId, errorId, isInvalid, disabled, readOnly],
+    [controlId, labelId, helperId, errorId, isInvalid, disabled, readOnly],
   );
 
   return (
     <FieldContext value={context}>
       <div data-slot="field" className={cn("ui:grid ui:gap-1.5", className)}>
-        <Label htmlFor={controlId} data-disabled={disabled ? "" : undefined}>
+        <Label
+          id={labelId}
+          htmlFor={controlId}
+          data-disabled={disabled ? "" : undefined}
+        >
           {label}
         </Label>
         {children}
