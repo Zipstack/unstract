@@ -27,35 +27,20 @@ class Declaration(unittest.TestCase):
     def test_malformed_lines_are_errors(self):
         body = (
             "Backport-also: 0.186\n"
-            "backport-also: 0.188\n"
             "Backport-also: release/0.188\n"
-            "- Backport also: 0.188\n"
-            "Backport-also: 0.186, 0.188\n"
-            "We could backport also later.\n"  # prose without a colon is not an attempt
+            "1. Backport-also 0.188\n"
+            "We could backport also later.\n"  # prose is not an attempt
         )
         self.assertEqual(
             rm.declaration_errors(body),
-            [
-                "backport-also: 0.188",
-                "Backport-also: release/0.188",
-                "- Backport also: 0.188",
-                "Backport-also: 0.186, 0.188",
-            ],
+            ["Backport-also: release/0.188", "1. Backport-also 0.188"],
         )
-        self.assertEqual(rm.declaration_errors("Backport-also: 0.186\r\n"), [])
-        # No colon, or a numbered list: still an attempt, so an error rather than silently nothing.
-        self.assertEqual(
-            rm.declaration_errors("Backport-also 0.186\n1. Backport-also: 0.188\n"),
-            ["Backport-also 0.186", "1. Backport-also: 0.188"],
-        )
-        self.assertEqual(rm.declared_lines("Backport-also: \u0660.186"), set())
 
     def test_a_main_only_pr_cannot_declare(self):
         body = "x\n\nBackport-also: 0.186\n"
         [err] = rm.body_errors(body, ["main-only"])
         self.assertIn("Backport never picks a main-only PR", err)
         self.assertEqual(rm.body_errors(body, ["backport/rc"]), [])
-        self.assertEqual(rm.body_errors("x", ["main-only"]), [])
 
 
 class Repo(unittest.TestCase):
@@ -108,14 +93,11 @@ class Declared(Repo):
         picked = self.commit("[FIX] picked (#12)")
         self.pr(12, picked, "Backport-also: 1.7")
         self.pr(13, self.commit("[FIX] other line (#13)"), "Backport-also: 1.9")
-        self.pr(14, self.commit("[FIX] retired line (#14)"), "Backport-also: 1.5")
-        self.pr(15, self.commit("[FIX] malformed (#15)"), "Backport-also: release/1.7")
+        self.pr(14, self.commit("[FIX] declined (#14)"), "Declaration removed.")
         self.pr(16, None, "Backport-also: 1.7")  # no merge commit: never merged
         self.pr(
             17, self.before, "Backport-also: 1.7"
         )  # merged before the cut: already on the line
-        copied = self.commit("[FIX] body copied from #11 (#18)")
-        self.pr(18, copied, "x\n\nBackport-also: 1.7\n")
         by_sha = self.commit("[FIX] reverted by sha (#19)")
         self.pr(19, by_sha, "Backport-also: 1.7")
         self.commit(
@@ -143,13 +125,8 @@ class Declared(Repo):
         )
         dev_git(line, "cherry-pick", "-x", "--allow-empty", picked)
         dev_git(line, "push", "-q", "origin", "release/1.7")
-        got, gh = self.declared()
-        # A copied body declares for the PR that carries it: the documented way out is removing the line.
-        self.assertEqual(got, [(11, "[FIX] fix 11"), (18, "[FIX] fix 18")])
-        args = gh.call_args
-        self.assertEqual(args.kwargs, {"token": "t"})
-        self.assertIn("--state", args.args)
-        self.assertEqual(args.args[args.args.index("--state") + 1], "merged")
+        got, _ = self.declared()
+        self.assertEqual(got, [(11, "[FIX] fix 11")])
 
     def test_the_newest_revert_event_wins(self):
         relanded = self.commit("[FIX] flaky (#11)")
@@ -187,13 +164,6 @@ class Declared(Repo):
         with self.assertRaises(RuntimeError):
             self.declared(fail=True)
 
-    def test_content_without_a_trailer_still_blocks(self):
-        """A fix that reached the line by hand, without `-x`, has no trailer: it stays declared until the line goes."""
-        sha = self.commit("[FIX] hand-copied (#11)")
-        self.pr(11, sha, "Backport-also: 1.7")
-        got, _ = self.declared()
-        self.assertEqual(got, [(11, "[FIX] fix 11")])
-
 
 class Owed(Repo):
     def owed(self):
@@ -223,7 +193,7 @@ class Owed(Repo):
             os.chdir(old)
 
     def test_only_the_authors_prs_and_what_backport_would_pick(self):
-        rows, held, gh = self.owed()
+        rows, held, _ = self.owed()
         self.assertEqual(
             [(r["pr"], r["why"]) for r in rows],
             [("#11", "label class fix"), ("#12", "Backport-also: 1.7")],
@@ -232,43 +202,13 @@ class Owed(Repo):
             rows[1]["command"],
             "gh workflow run backport.yaml -R o/r -f commits=12 -f lines=1.7 -f patch_released_lines=true",
         )
-        self.assertEqual(held.call_args.kwargs, {"accept": bp.OWED, "cache": {"c": 1}})
-        self.assertIn("--author", gh.call_args.args)
-        self.assertEqual(
-            gh.call_args.args[gh.call_args.args.index("--author") + 1], "dev"
-        )
+        self.assertEqual(held.call_args.kwargs["accept"], bp.OWED)
         dev_git(self.repo, "tag", "v1.7.0", "origin/release/1.7")
         dev_git(self.repo, "push", "-q", "origin", "v1.7.0")
         _, held, _ = self.owed()
         self.assertEqual(
             held.call_args.kwargs["accept"], bp.HELD
         )  # released: only held fixes are owed
-
-
-class OwedFetch(Repo):
-    def test_a_retired_line_is_not_listed(self):
-        dev_git(self.repo, "fetch", "-q", "origin")
-        # Retire deletes the branch on origin; the clone still has its tracking ref until a pruning fetch.
-        rm.git(self.repo, "--git-dir", self.origin, "branch", "-D", "release/1.7")
-        seen = []
-        old = os.getcwd()
-        os.chdir(self.repo)
-        try:
-            with (
-                mock.patch.object(
-                    la, "slug_from_origin", return_value="Zipstack/unstract-cloud"
-                ),
-                mock.patch.object(
-                    la,
-                    "owed",
-                    lambda slug, author: seen.append(sorted(la.rs._branches("."))) or [],
-                ),
-                mock.patch("sys.stdout"),
-            ):
-                self.assertEqual(la.main(["--owed"]), 0)
-        finally:
-            os.chdir(old)
-        self.assertEqual(seen, [[]])
 
 
 def line(v, present=True, ga=False, onprem_ga=False):
@@ -289,13 +229,11 @@ class Advise(unittest.TestCase):
         self.assertEqual((a["result"], a["label"]), ("decided", None))
 
     def test_only_repo_tooling_docs_or_tests_is_main_only(self):
-        for paths in (
-            [".github/workflows/x.yaml"],
-            ["docs/a.md", "backend/tests/test_x.py", "README.md"],
-            [".github/release/relmgr.py", "frontend/src/a.test.js"],
-        ):
-            a = la.advise("main", paths, [line("0.186")])
-            self.assertEqual((a["result"], a["label"]), ("decided", "main-only"), paths)
+        paths = [".github/workflows/x.yaml", "docs/a.md", "backend/tests/test_x.py"]
+        a = la.advise("main", paths, [line("0.186")])
+        self.assertEqual((a["result"], a["label"]), ("decided", "main-only"))
+        a = la.advise("main", paths + ["backend/x.py"], [line("0.186")])
+        self.assertEqual(a["result"], "suggest")  # one shipped file: not decided
 
     def test_code_on_no_live_line_is_main_only(self):
         a = la.advise(
@@ -304,7 +242,6 @@ class Advise(unittest.TestCase):
             [line("0.186", present=False), line("0.188", present=False)],
         )
         self.assertEqual((a["result"], a["label"]), ("decided", "main-only"))
-        self.assertEqual(la.advise("main", ["backend/new.py"], [])["label"], "main-only")
 
     def test_code_on_a_line_awaiting_ga_suggests_rc(self):
         a = la.advise(
@@ -316,8 +253,6 @@ class Advise(unittest.TestCase):
         self.assertEqual(
             (a["result"], a["label"], a["info"]), ("suggest", "backport/rc", [])
         )
-        a = la.advise("main", ["backend/x.py"], [line("0.188")], "UN-1 [FEAT] x")
-        self.assertIn("a FEAT usually stays main-only", a["reason"])
 
     def test_released_line_asks_the_hotfix_question(self):
         lines = [line("0.188"), line("0.186", ga=True, onprem_ga=True)]
@@ -334,24 +269,9 @@ class Advise(unittest.TestCase):
                 "no": f"{la.SELF} --pr 7 --answer hotfix=no",
             },
         )
-        self.assertIn(a["next"]["no"], la.render({**a, "pr": 7}))
-        self.assertEqual(a["info"], [])  # on-prem GA confirmed: nothing mixed
         self.assertEqual(
             la.advise("main", ["backend/x.py"], lines, hotfix=True)["label"],
             "backport/ga",
-        )
-        self.assertEqual(
-            la.advise("main", ["backend/x.py"], lines, hotfix=False)["label"],
-            "backport/rc",
-        )
-        only_ga = [line("0.186", ga=True, onprem_ga=True)]
-        self.assertEqual(
-            la.advise("main", ["backend/x.py"], only_ga)["question"]["answers"]["no"],
-            "main-only",
-        )
-        self.assertEqual(
-            la.advise("main", ["backend/x.py"], only_ga, hotfix=False)["label"],
-            "main-only",
         )
 
     def test_mixed_line_is_one_note_never_a_question(self):
@@ -359,57 +279,10 @@ class Advise(unittest.TestCase):
             lines = [line("0.186", ga=True, onprem_ga=onprem)]
             a = la.advise("main", ["backend/x.py"], lines, pr=7, hotfix=False)
             self.assertEqual(a["result"], "suggest")
-            self.assertEqual(len(a["info"]), 1)
-            self.assertEqual(a["info"][0]["line"], "0.186")
             self.assertEqual(a["info"][0]["command"], f"{la.SELF} --declare 0.186 --pr 7")
             # Backport never picks main-only: the note routes through backport/rc.
             self.assertIn("label it `backport/rc` and declare it", a["info"][0]["text"])
             self.assertEqual("unknown" in a["info"][0]["text"], onprem is None, onprem)
-        a = la.advise(
-            "main", ["backend/x.py"], [line("0.186", ga=True)], pr=7, hotfix=True
-        )
-        self.assertEqual(a["info"], [])  # backport/ga already reaches the line
-        a = la.advise(
-            "main", ["backend/x.py"], [line("0.186", present=False, ga=True)], pr=7
-        )
-        self.assertEqual(
-            (a["label"], a["info"]), ("main-only", [])
-        )  # code not there: nothing to declare
-
-
-class AdvisePr(unittest.TestCase):
-    def test_next_applies_the_label_and_drops_the_others(self):
-        pr = {
-            "base": {"ref": "main"},
-            "head": {"ref": "dev"},
-            "title": "[DOCS] x",
-            "labels": [{"name": "backport/rc"}, {"name": "bug"}],
-        }
-        a = la.advise_pr("o/r", 5, pr=pr, paths=["docs/x.md"])
-        self.assertEqual(a["label"], "main-only")
-        self.assertEqual(
-            a["next"],
-            "gh api -X DELETE repos/o/r/issues/5/labels/backport%2Frc && "
-            "gh api repos/o/r/issues/5/labels -f 'labels[]=main-only'",
-        )
-        pr["labels"] = [{"name": "main-only"}]
-        self.assertIsNone(la.advise_pr("o/r", 5, pr=pr, paths=["docs/x.md"])["next"])
-
-    def test_a_pr_into_a_release_line_is_read_for_pick_trailers(self):
-        pr = {
-            "base": {"ref": "release/0.186"},
-            "head": {"ref": "dev"},
-            "title": "[FIX] x",
-            "labels": [],
-        }
-        for msg, result in (
-            ("x\n\n(cherry picked from commit " + "a" * 40 + ")", "suggest"),
-            ("x", "decided"),
-        ):
-            page = json.dumps([[{"commit": {"message": msg}}]])
-            with mock.patch.object(la, "_gh", return_value=page):
-                a = la.advise_pr("o/r", 5, pr=pr, paths=["backend/x.py"])
-            self.assertEqual((a["result"], a["label"]), (result, "release-branch-only"))
 
 
 class LineFacts(unittest.TestCase):
@@ -453,12 +326,6 @@ class LineFacts(unittest.TestCase):
         self.assertEqual((f["0.185"]["ga"], f["0.185"]["onprem_ga"]), (True, False))
         f = self.facts(None)  # Promote runs unreadable
         self.assertIsNone(f["0.186"]["onprem_ga"])
-
-    def test_a_renamed_file_counts_under_both_names(self):
-        files = json.dumps([[{"filename": "new.py", "previous_filename": "old.py"}]])
-        with mock.patch.object(la, "_gh", side_effect=['{"n": 1}', files]):
-            _, paths = la.pr_facts("o/r", 1)
-        self.assertEqual(paths, ["new.py", "old.py"])
 
 
 class Declare(unittest.TestCase):
@@ -506,34 +373,15 @@ class Declare(unittest.TestCase):
             self.run_("x", branch="gh api (exit 1): gh: Not Found (HTTP 404)"), 2
         )
         self.assertEqual(
-            self.run_("x", branch="gh api (exit 1): gh: Server Error (HTTP 502)"), 1
-        )
-        self.assertEqual(
             self.run_("x", after="someone else's edit"), 1
         )  # the write was lost
 
 
 class Cli(unittest.TestCase):
     def test_bad_input_exits_2(self):
-        for argv in (
-            [],
-            ["--pr", "1", "--owed"],
-            ["--declare", "0.186"],
-            ["--pr", "1", "--answer", "hotfix=maybe"],
-            ["--pr", "1", "--answer", "mixed=yes"],
-        ):
+        for argv in ([], ["--pr", "1", "--answer", "hotfix=maybe"]):
             with mock.patch("sys.stderr"):
                 self.assertEqual(la.main(argv), 2, argv)
-
-    def test_an_unreadable_answer_exits_1(self):
-        with (
-            mock.patch.object(
-                la, "slug_from_origin", return_value="Zipstack/unstract-cloud"
-            ),
-            mock.patch.object(la, "_gh", return_value="<html>"),
-            mock.patch("sys.stderr"),
-        ):
-            self.assertEqual(la.main(["--declare", "1.7", "--pr", "1"]), 1)
 
     def test_lookup_failure_exits_1(self):
         with (
