@@ -3408,7 +3408,7 @@ class TakeRcVersion(Workflow):
         self.assertIn("\nnewest=release/1.8\n", self.read("output"))
 
     def test_a_failed_rc_chart_fails_the_summary(self):
-        def summary(chart):
+        def summary(chart, version="v1.7.1-rc.1"):
             out = os.path.join(self.d, "summary")
             with contextlib.suppress(FileNotFoundError):
                 os.remove(out)
@@ -3421,6 +3421,7 @@ class TakeRcVersion(Workflow):
                     "BUILD": "on-prem",
                     "RESULT": "success",
                     "CHART": chart,
+                    "CHART_VERSION": version,
                     "BRANCH": "release/1.7",
                     "NEWEST": "release/1.7",
                     "GITHUB_STEP_SUMMARY": out,
@@ -3434,6 +3435,10 @@ class TakeRcVersion(Workflow):
         self.assertEqual(code, 0)
         self.assertIn("On-prem RC chart `unstract-platform:v1.7.1-rc.1`: success", text)
         self.assertIn("QA tests", text)
+        # A chart bumped before the v came back is reported under the version it was pushed as.
+        self.assertIn(
+            "unstract-platform:1.7.1-rc.1`: success", summary("success", "1.7.1-rc.1")[1]
+        )
         code, text = summary("failure")
         self.assertEqual(code, 1)
         self.assertNotIn("QA tests", text)
