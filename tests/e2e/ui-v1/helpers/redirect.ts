@@ -7,27 +7,34 @@
  * Reads the mapping (`toV1`) from contract/registry.ts only. Params fill the
  * `:name` segments of both patterns; a mapping whose pattern needs a param
  * that was not given fails with that name, so pass every param the page uses.
+ * `only` narrows the check to some mappings; the ones it leaves must not be
+ * empty.
  */
 
 import { expect, type Page, test } from "@playwright/test";
-import { findEntry, type PageKey } from "../contract/registry.ts";
+import { currentDistribution } from "../contract/distribution.ts";
+import { findEntry, type PageKey, shipsIn } from "../contract/registry.ts";
 import { V1_ROOT_SELECTOR } from "../contract/v1-ui.ts";
-import { currentDistribution } from "../fixtures/tags.ts";
 import { fillPattern, type RouteParams, routeRegex } from "./routes.ts";
+
+export type MappingFilter = (from: string, to: string) => boolean;
 
 export async function expectV0RedirectsToV1(
   page: Page,
   pageKey: PageKey,
   params: RouteParams,
+  { only = () => true }: { only?: MappingFilter } = {},
 ): Promise<void> {
   const entry = findEntry(pageKey);
   const distribution = currentDistribution();
-  if (!entry.distributions.includes(distribution)) {
+  if (!shipsIn(entry, distribution)) {
     throw new Error(`${pageKey} is not registered for ${distribution}`);
   }
-  const mappings = Object.entries(entry.toV1);
+  const mappings = Object.entries(entry.toV1).filter(([v0, v1]) =>
+    only(v0, v1),
+  );
   if (!mappings.length) {
-    throw new Error(`${pageKey} has no v0 -> v1 mappings in the registry`);
+    throw new Error(`${pageKey} has no v0 -> v1 mappings to check`);
   }
   for (const [v0, v1] of mappings) {
     const body = async () => {

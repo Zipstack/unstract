@@ -13,10 +13,16 @@
  *          and let the app complete its own callback.
  *
  * UNSTRACT_AUTH_MODE pins the mode; otherwise OSS is tried first and auth0 is
- * the fallback.
+ * the fallback. A failed sign-in names the step that failed and why, for
+ * every mode it tried.
  */
 
-import type { APIRequestContext, BrowserContext, Page } from "@playwright/test";
+import type {
+  APIRequestContext,
+  APIResponse,
+  BrowserContext,
+  Page,
+} from "@playwright/test";
 import {
   type AuthMode,
   BACKEND_URL,
@@ -25,6 +31,7 @@ import {
   ORG_ID,
   RIG_MANAGED,
 } from "./env.ts";
+import { settle } from "./settle.ts";
 import { test as base } from "./tags.ts";
 
 /**
@@ -69,6 +76,11 @@ function credentialsFor(role: Role): Credentials | null {
 }
 
 export interface Session {
+  /**
+   * The role the test asked for. Not verified against the signed-in user:
+   * credentials set for a role sign in as whoever they belong to, so a role
+   * spec must check what it relies on.
+   */
   role: Role;
   mode: AuthMode;
   /** For API calls: `/api/v1/unstract/<orgId>/...`. */
@@ -127,17 +139,54 @@ interface SignedIn {
   userId: string;
 }
 
+/**
+ * A sign-in step's outcome. A failure keeps the step and why, so a failed
+ * login says where it stopped, as tests/e2e/conftest.py does.
+ */
+type Failure = { ok: false; step: string; detail: string };
+type Attempt<T> = { ok: true; value: T } | Failure;
+
+function failed(step: string, detail: string): Failure {
+  return { ok: false, step, detail };
+}
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** Resolves to the response, or to an Error when the request itself failed. */
+function settledResponse(
+  request: Promise<APIResponse>,
+): Promise<APIResponse | Error> {
+  return request.catch((err: unknown) => new Error(errorText(err)));
+}
+
+/** Status and the start of the body, for a failure message. No request data. */
+async function describeResponse(res: APIResponse): Promise<string> {
+  const body = await res.text().catch(() => "");
+  return `${res.status()} ${body.slice(0, 200)}`.trim();
+}
+
 async function listOrgs(
   context: BrowserContext,
-): Promise<Organization[] | null> {
-  const res = await context.request
-    .get(`${BACKEND_URL}/api/v1/organization`, { failOnStatusCode: false })
-    .catch(() => null);
-  if (!res?.ok()) {
-    return null;
+): Promise<Attempt<Organization[]>> {
+  const step = "GET /api/v1/organization";
+  const res = await settledResponse(
+    context.request.get(`${BACKEND_URL}/api/v1/organization`, {
+      failOnStatusCode: false,
+    }),
+  );
+  if (res instanceof Error) {
+    return failed(step, res.message);
+  }
+  if (!res.ok()) {
+    return failed(step, await describeResponse(res));
   }
   const body = (await res.json()) as { organizations?: Organization[] };
-  return body.organizations ?? [];
+  const orgs = body.organizations ?? [];
+  return orgs.length
+    ? { ok: true, value: orgs }
+    : failed(step, "the user has no organisations");
 }
 
 async function csrfHeaders(
@@ -150,48 +199,57 @@ async function csrfHeaders(
 }
 
 /** Picks UNSTRACT_E2E_ORG_ID when the user belongs to it, else the first. */
-async function selectOrg(context: BrowserContext): Promise<SignedIn | null> {
-  const orgs = await listOrgs(context);
-  if (!orgs?.length) {
-    return null;
+async function selectOrg(context: BrowserContext): Promise<Attempt<SignedIn>> {
+  const listed = await listOrgs(context);
+  if (!listed.ok) {
+    return listed;
   }
+  const orgs = listed.value;
   const org = ORG_ID ? orgs.find((o) => o.id === ORG_ID) : orgs[0];
   if (!org) {
     throw new Error(
       `UNSTRACT_E2E_ORG_ID=${ORG_ID} is not one of this user's organisations: ${orgs.map((o) => o.id).join(", ")}`,
     );
   }
-  const res = await context.request.post(
-    `${BACKEND_URL}/api/v1/organization/${org.id}/set`,
-    { headers: await csrfHeaders(context), failOnStatusCode: false },
+  const step = `POST /api/v1/organization/${org.id}/set`;
+  const res = await settledResponse(
+    context.request.post(`${BACKEND_URL}/api/v1/organization/${org.id}/set`, {
+      headers: await csrfHeaders(context),
+      failOnStatusCode: false,
+    }),
   );
+  if (res instanceof Error) {
+    return failed(step, res.message);
+  }
   if (!res.ok()) {
-    return null;
+    return failed(step, await describeResponse(res));
   }
   const body: unknown = await res.json().catch(() => null);
   const userId = sessionUserId(body);
   if (!userId) {
-    throw new Error(
-      `POST /organization/${org.id}/set returned no user.id: ${JSON.stringify(body)}`,
-    );
+    throw new Error(`${step} returned no user.id: ${JSON.stringify(body)}`);
   }
-  return { org: routedOrganization(org, body), userId };
+  return { ok: true, value: { org: routedOrganization(org, body), userId } };
 }
 
 async function loginOss(
   context: BrowserContext,
   creds: Credentials,
-): Promise<SignedIn | null> {
-  const login = await context.request
-    .post(`${BACKEND_URL}/api/v1/login`, {
+): Promise<Attempt<SignedIn>> {
+  const step = "POST /api/v1/login";
+  const login = await settledResponse(
+    context.request.post(`${BACKEND_URL}/api/v1/login`, {
       form: { username: creds.username, password: creds.password },
       maxRedirects: 0,
       failOnStatusCode: false,
-    })
-    .catch(() => null);
+    }),
+  );
+  if (login instanceof Error) {
+    return failed(step, login.message);
+  }
   // 200 is the login form re-rendering: bad credentials, or not an OSS stack.
-  if (login?.status() !== 302) {
-    return null;
+  if (login.status() !== 302) {
+    return failed(step, `expected 302, got ${login.status()}`);
   }
   return await selectOrg(context);
 }
@@ -206,11 +264,11 @@ const AUTH0_STEP_TIMEOUT_MS = 20_000;
  */
 const SESSION_TIMEOUT_MS = 120_000;
 
-/** Resolves true when `action` completes in time, false when it does not. */
-function settled(action: Promise<unknown>): Promise<boolean> {
+/** The error `action` threw, or null when it completed. */
+function caught(action: Promise<unknown>): Promise<string | null> {
   return action.then(
-    () => true,
-    () => false,
+    () => null,
+    (err: unknown) => errorText(err),
   );
 }
 
@@ -218,19 +276,19 @@ async function loginAuth0(
   page: Page,
   context: BrowserContext,
   creds: Credentials,
-): Promise<SignedIn | null> {
+): Promise<Attempt<SignedIn>> {
   // `/` only renders the app's own login page. Its Login button navigates to
   // <app origin>/api/v1/login, and the backend builds the callback URL from
   // the Referer, so go there the same way.
   const appOrigin = new URL(FRONTEND_URL).origin;
-  const opened = await settled(
+  const openError = await caught(
     page.goto("/api/v1/login", {
       referer: `${appOrigin}/`,
       waitUntil: "domcontentloaded",
     }),
   );
-  if (!opened) {
-    return null;
+  if (openError) {
+    return failed("open /api/v1/login", openError);
   }
   // Still on the app means the IdP had a session and skipped its form.
   if (new URL(page.url()).origin !== appOrigin) {
@@ -245,45 +303,72 @@ async function loginAuth0(
       .locator('button[type="submit"], button[name="action"]')
       .first();
     const timeout = AUTH0_STEP_TIMEOUT_MS;
-    if (!(await settled(user.fill(creds.username, { timeout })))) {
-      return null;
-    }
-    // Identifier-first tenants ask for the password on a second screen.
-    if (
-      !(await password.isVisible()) &&
-      !(await settled(submit.click({ timeout })))
-    ) {
-      return null;
-    }
-    const signedIn =
-      (await settled(password.fill(creds.password, { timeout }))) &&
-      (await settled(submit.click({ timeout }))) &&
-      // Wrong credentials, MFA or consent all leave the browser on the IdP.
-      (await settled(
-        page.waitForURL((url) => url.origin === appOrigin, { timeout }),
-      ));
-    if (!signedIn) {
-      return null;
+    const steps: [string, () => Promise<unknown>][] = [
+      ["fill the IdP username", () => user.fill(creds.username, { timeout })],
+      [
+        // Identifier-first tenants ask for the password on a second screen.
+        "continue to the IdP password screen",
+        async () => {
+          if (!(await password.isVisible())) {
+            await submit.click({ timeout });
+          }
+        },
+      ],
+      [
+        "fill the IdP password",
+        () => password.fill(creds.password, { timeout }),
+      ],
+      ["submit the IdP form", () => submit.click({ timeout })],
+      [
+        // Wrong credentials, MFA or consent all leave the browser on the IdP.
+        "return to the app from the IdP",
+        () => page.waitForURL((url) => url.origin === appOrigin, { timeout }),
+      ],
+    ];
+    for (const [step, run] of steps) {
+      const error = await caught(run()); // NOSONAR: sign-in steps run in order
+      if (error) {
+        return failed(step, `${error} (at ${page.url()})`);
+      }
     }
   }
   // The callback bounces through the app; the landing URL differs by tenant.
-  await page.waitForLoadState("networkidle").catch(() => null);
+  await settle(page);
   return await selectOrg(context);
 }
 
+function describeFailure(mode: AuthMode, failure: Failure): string {
+  return `${mode}: ${failure.step} failed: ${failure.detail}`;
+}
+
+/**
+ * Signs in by the configured mode. In auto mode OSS is tried first and auth0
+ * after; when both fail, both failures are reported, since an OSS stack also
+ * "fails" auth0 and the auth0 failure alone would point the wrong way.
+ */
 async function authenticate(
   page: Page,
   context: BrowserContext,
   creds: Credentials,
-): Promise<{ signedIn: SignedIn | null; mode: AuthMode }> {
+): Promise<{ signedIn: SignedIn | null; mode: AuthMode; failures: string[] }> {
   const mode = configuredAuthMode();
+  const failures: string[] = [];
   if (mode !== "auth0") {
-    const signedIn = await loginOss(context, creds);
-    if (signedIn || mode === "oss") {
-      return { signedIn, mode: "oss" };
+    const oss = await loginOss(context, creds);
+    if (oss.ok) {
+      return { signedIn: oss.value, mode: "oss", failures };
+    }
+    failures.push(describeFailure("oss", oss));
+    if (mode === "oss") {
+      return { signedIn: null, mode: "oss", failures };
     }
   }
-  return { signedIn: await loginAuth0(page, context, creds), mode: "auth0" };
+  const auth0 = await loginAuth0(page, context, creds);
+  if (auth0.ok) {
+    return { signedIn: auth0.value, mode: "auth0", failures: [] };
+  }
+  failures.push(describeFailure("auth0", auth0));
+  return { signedIn: null, mode: "auth0", failures };
 }
 
 interface AuthFixtures {
@@ -309,10 +394,14 @@ export const test = base.extend<AuthFixtures>({
         test.skip(true, reason);
         return;
       }
-      const { signedIn, mode } = await authenticate(page, context, creds);
+      const { signedIn, mode, failures } = await authenticate(
+        page,
+        context,
+        creds,
+      );
       if (!signedIn) {
         const reason =
-          `could not sign in as "${role}" against ${BACKEND_URL} (mode=${mode}). ` +
+          `could not sign in as "${role}" against ${BACKEND_URL} (UNSTRACT_AUTH_MODE=${configuredAuthMode()}):\n  ${failures.join("\n  ")}\n` +
           "Set UNSTRACT_AUTH_MODE=oss|auth0 plus credentials, or let the rig " +
           "boot a stack (`python -m tests.rig run frontend-v1-e2e`).";
         // Under the rig the stack is known to be up, so a failed login is a bug.
@@ -345,7 +434,7 @@ export const test = base.extend<AuthFixtures>({
           waitUntil: "domcontentloaded",
         });
         // The SPA renders after hydration; wait for it, not a fixed sleep.
-        await page.waitForLoadState("networkidle").catch(() => null);
+        await settle(page);
         return response;
       },
     });

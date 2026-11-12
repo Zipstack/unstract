@@ -1,4 +1,5 @@
 {
+  "//": "The strictness flags match frontend/src/v1/tsconfig.json. tsc also checks the frontend registry files this suite imports, and a stricter flag here would fail a frontend change that typecheck:v1 accepts.",
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
@@ -6,9 +7,10 @@
     "lib": ["ES2022", "DOM"],
     "types": ["node"],
     "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "verbatimModuleSyntax": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "skipLibCheck": true

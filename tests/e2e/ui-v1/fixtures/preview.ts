@@ -10,7 +10,8 @@
  * before the test's first navigation.
  */
 
-import type { BrowserContext, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { currentDistribution } from "../contract/distribution.ts";
 import {
   findEntry,
   type PageKey,
@@ -18,14 +19,12 @@ import {
   shipsIn,
   V1_PREVIEW,
 } from "../contract/registry.ts";
-import { FRONTEND_URL } from "./env.ts";
 import { test as seedTest } from "./seed.ts";
-import { currentDistribution } from "./tags.ts";
 
 /**
- * Refuses a page the app could not render here: one not declared in PAGES,
- * or one this run's distribution does not ship, which the app's live
- * registry drops even when previewed.
+ * Refuses a page the app could not render here: one the frontend does not
+ * declare (in PAGES or DEMO_PAGES), or one this run's distribution does not
+ * ship, which the app's live registry drops even when previewed.
  */
 export function assertPreviewable(pages: readonly PageKey[]): void {
   const distribution = currentDistribution();
@@ -38,38 +37,22 @@ export function assertPreviewable(pages: readonly PageKey[]): void {
   }
 }
 
-function writeStorage([storage, key, value]: [string, string, string]): void {
-  const store = storage === "sessionStorage" ? sessionStorage : localStorage;
-  store.setItem(key, value);
+function writeStorage([key, value]: [string, string]): void {
+  localStorage.setItem(key, value);
 }
 
-/**
- * The stored value for `pages`. A cookie-value can't hold JSON's quotes or
- * commas (RFC 6265), so the cookie kind is URI-encoded; the app decodes it.
- */
-export function previewValue(
-  mechanism: PreviewMechanism,
-  pages: readonly PageKey[],
-): string {
-  const json = JSON.stringify(pages);
-  return mechanism.kind === "cookie" ? encodeURIComponent(json) : json;
+/** The stored value for `pages`: the JSON array readPreviewPages parses. */
+export function previewValue(pages: readonly PageKey[]): string {
+  return JSON.stringify(pages);
 }
 
 /** Applies the preview override for `pages` to this page's later loads. */
 export async function enableV1Preview(
   page: Page,
-  context: BrowserContext,
   pages: readonly PageKey[],
   mechanism: PreviewMechanism = V1_PREVIEW,
 ): Promise<void> {
-  const value = previewValue(mechanism, pages);
-  if (mechanism.kind === "cookie") {
-    await context.addCookies([
-      { name: mechanism.name, value, url: FRONTEND_URL },
-    ]);
-    return;
-  }
-  const args: [string, string, string] = [mechanism.kind, mechanism.key, value];
+  const args: [string, string] = [mechanism.key, previewValue(pages)];
   await page.addInitScript(writeStorage, args);
 }
 
@@ -83,10 +66,10 @@ interface PreviewFixtures {
 export const test = seedTest.extend<PreviewFixtures>({
   v1Preview: [[], { option: true }],
   applyV1Preview: [
-    async ({ page, context, v1Preview }, use) => {
+    async ({ page, v1Preview }, use) => {
       if (v1Preview.length) {
         assertPreviewable(v1Preview);
-        await enableV1Preview(page, context, v1Preview);
+        await enableV1Preview(page, v1Preview);
       }
       await use(undefined);
     },

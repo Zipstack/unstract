@@ -60,6 +60,10 @@ export async function forEachTheme(
   check: (theme: Theme) => Promise<void>,
   { themes = THEMES, setTheme = defaultSetTheme }: ThemeOptions = {},
 ): Promise<void> {
+  if (!themes.length) {
+    // An empty list would pass having checked nothing.
+    throw new Error("forEachTheme: `themes` is empty");
+  }
   for (const theme of themes) {
     const body = async () => {
       await setTheme(page, theme);

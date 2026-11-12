@@ -195,7 +195,12 @@ export async function expectFiveStates(
   page: Page,
   screen: Screen,
 ): Promise<void> {
-  for (const state of screen.states ?? ALL_STATES) {
+  const states = screen.states ?? ALL_STATES;
+  if (!states.length) {
+    // An empty list would pass having checked nothing.
+    throw new Error("expectFiveStates: `states` is empty");
+  }
+  for (const state of states) {
     await test.step(`state: ${state}`, () => driveState(page, screen, state)); // NOSONAR: steps share one page, so they run in order
   }
 }

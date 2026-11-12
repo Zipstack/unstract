@@ -66,6 +66,12 @@ test.describe("harness: five states", { tag: DIST.all }, () => {
     await expectFiveStates(page, fixtureScreen(page));
   });
 
+  test("an empty state list is refused, not passed", async ({ page }) => {
+    await expect(
+      expectFiveStates(page, { ...fixtureScreen(page), states: [] }),
+    ).rejects.toThrow("`states` is empty");
+  });
+
   test("rest: a rest view that never renders fails", async ({ page }) => {
     const message = await failure(page, {
       states: ["rest"],
@@ -75,10 +81,9 @@ test.describe("harness: five states", { tag: DIST.all }, () => {
     expect(message).toContain("toBeVisible");
   });
 
-  test("loading: a skeleton that never renders fails, and promptly", async ({
+  test("loading: a skeleton that never renders fails, on the state timeout", async ({
     page,
   }) => {
-    const started = Date.now();
     const message = await failure(page, {
       states: ["loading"],
       locators: { loading: (p) => p.getByTestId(MISSING) },
@@ -86,7 +91,7 @@ test.describe("harness: five states", { tag: DIST.all }, () => {
     expect(message).toContain(MISSING);
     expect(message).toContain("toBeVisible");
     // The per-state timeout was honoured, not the 5s expect default.
-    expect(Date.now() - started).toBeLessThan(4_000);
+    expect(message).toMatch(new RegExp(`Timeout:\\s+${STATE_TIMEOUT}ms`));
     // The held response was released: the page went on to render rest.
     await expect(page.getByTestId(FIXTURE_REST_TEST_ID)).toBeVisible();
   });

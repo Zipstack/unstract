@@ -8,22 +8,19 @@
  * round trip, against the live platform.
  */
 
-import {
-  REGISTRY,
-  type RegistryEntry,
-  TOGGLE_PAGES,
-} from "../../contract/registry.ts";
-import {
-  currentDistribution,
-  DIST,
-  expect,
-  test,
-} from "../../fixtures/index.ts";
+import { REGISTRY, TOGGLE_PAGES } from "../../contract/registry.ts";
+import { DIST, expect, test } from "../../fixtures/index.ts";
 import {
   expectOldVersionRoundTrip,
   expectV0RedirectsToV1,
 } from "../../helpers/index.ts";
-import { fillPattern, paramNames, routeRegex } from "../../helpers/routes.ts";
+import {
+  fillable,
+  fillPattern,
+  paramNames,
+  type RouteParams,
+  routeRegex,
+} from "../../helpers/routes.ts";
 
 test.describe("harness: route patterns", { tag: DIST.all }, () => {
   test("fills params and matches the filled URL", () => {
@@ -44,41 +41,58 @@ test.describe("harness: route patterns", { tag: DIST.all }, () => {
     );
   });
 
-  test("a final splat fills like the frontend's fillPattern", () => {
+  test("a final splat fills as the frontend's fillPattern does", () => {
     const pattern = "/:orgName/old/*";
     // Slashes kept, each segment encoded.
     expect(fillPattern(pattern, { orgName: "acme", "*": "a b/details" })).toBe(
       "/acme/old/a%20b/details",
     );
-    // Omitted: an empty rest, which routeRegex matches with or without "/".
-    const bare = fillPattern(pattern, { orgName: "acme" });
-    expect(bare).toBe("/acme/old/");
-    expect(routeRegex(bare).test("http://x.io/acme/old")).toBe(true);
-    // A `*` elsewhere is not a splat.
-    expect(fillPattern("/:orgName/a*b", { orgName: "o" })).toBe("/o/a*b");
+    // Omitted: no rest and no trailing slash (generatePath gives the same).
+    expect(fillPattern(pattern, { orgName: "acme" })).toBe("/acme/old");
+    // paramNames is the frontend's own, splat included.
+    expect(paramNames(pattern)).toEqual(["orgName", "*"]);
   });
 });
 
-/** Patterns this generic check can fill: only the org segment. */
-function orgOnly(patterns: readonly string[]): boolean {
-  return patterns.every((p) =>
-    paramNames(p).every((name) => name === "orgName"),
+/**
+ * The generic checks fill only the org. A page's mappings that need more
+ * (ids) are left to its own spec, and when none can be filled the test skips
+ * naming the params, so the gap shows in the report.
+ */
+function orgFillable(params: RouteParams) {
+  return (from: string, to: string) =>
+    fillable(from, params) && fillable(to, params);
+}
+
+function missingParams(
+  map: Readonly<Record<string, string>>,
+  params: RouteParams,
+): string[] {
+  const names = Object.entries(map).flatMap(([from, to]) => [
+    ...paramNames(from),
+    ...paramNames(to),
+  ]);
+  return [...new Set(names)].filter(
+    (name) => name !== "*" && params[name] === undefined,
   );
 }
 
-function mappedPatterns(map: Readonly<Record<string, string>>): string[] {
-  return [...Object.keys(map), ...Object.values(map)];
+function skipUnlessFillable(
+  map: Readonly<Record<string, string>>,
+  params: RouteParams,
+): void {
+  const only = orgFillable(params);
+  test.skip(
+    !Object.entries(map).some(([from, to]) => only(from, to)),
+    `every mapping needs ${missingParams(map, params).join(", ")}; the page's own spec must check it with those params`,
+  );
 }
-
-const live: readonly RegistryEntry[] = REGISTRY.filter((e) =>
-  e.distributions.includes(currentDistribution()),
-);
 
 test.describe("harness: registry contents", { tag: DIST.all }, () => {
   test("the E2E image has v1 pages to check, demo pages included", () => {
     // Empty would make the loops below generate nothing and pass.
-    expect(live.length).toBeGreaterThan(0);
-    expect(live.map((e) => e.page)).toEqual(
+    expect(REGISTRY.length).toBeGreaterThan(0);
+    expect(REGISTRY.map((e) => e.page)).toEqual(
       expect.arrayContaining(["DEMO-PAGE", "DEMO-REVIEW"]),
     );
   });
@@ -94,13 +108,13 @@ test.describe("harness: registry contents", { tag: DIST.all }, () => {
 });
 
 test.describe("harness: registry-driven checks", { tag: DIST.all }, () => {
-  for (const entry of live) {
+  for (const entry of REGISTRY) {
     test(`${entry.page}: v0 URLs redirect to v1`, async ({ page, app }) => {
-      test.skip(
-        !orgOnly(mappedPatterns(entry.toV1)),
-        "routes need ids; the page spec covers them",
-      );
-      await expectV0RedirectsToV1(page, entry.page, { orgName: app.orgName });
+      const params = { orgName: app.orgName };
+      skipUnlessFillable(entry.toV1, params);
+      await expectV0RedirectsToV1(page, entry.page, params, {
+        only: orgFillable(params),
+      });
     });
 
     if (entry.toggle) {
@@ -109,26 +123,25 @@ test.describe("harness: registry-driven checks", { tag: DIST.all }, () => {
         app,
         session,
       }) => {
-        test.skip(
-          !orgOnly(mappedPatterns(entry.toV0)),
-          "routes need ids; the page spec covers them",
-        );
+        const params = { orgName: app.orgName };
+        skipUnlessFillable(entry.toV0, params);
         await expectOldVersionRoundTrip(page, entry.page, {
-          params: { orgName: app.orgName },
+          params,
           userId: session.userId,
+          only: orgFillable(params),
         });
       });
     }
   }
 
   test("the round trip refuses a page without the toggle", async ({ page }) => {
-    const plain = live.find((e) => !e.toggle);
+    const plain = REGISTRY.find((e) => !e.toggle);
     expect(plain, "a non-toggle page to refuse").toBeDefined();
     await expect(
       expectOldVersionRoundTrip(page, plain?.page ?? "DEMO-PAGE", {
         params: {},
         userId: "0",
       }),
-    ).rejects.toThrow("Human Review (toggle: true) only");
+    ).rejects.toThrow("for toggle pages");
   });
 });

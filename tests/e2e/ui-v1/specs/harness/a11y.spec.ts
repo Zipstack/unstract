@@ -1,7 +1,7 @@
 /** Self-test: the accessibility helper passes clean pages and fails dirty ones. */
 
 import { DIST, expect, test } from "../../fixtures/index.ts";
-import { A11yViolationError } from "../../helpers/a11y.ts";
+import { A11yViolationError, parseImpact } from "../../helpers/a11y.ts";
 import { expectAccessible } from "../../helpers/index.ts";
 
 const CLEAN = `<!doctype html><html lang="en"><head><title>clean</title></head>
@@ -29,6 +29,16 @@ test.describe("harness: accessibility scan", { tag: DIST.all }, () => {
     expect(error).toBeInstanceOf(A11yViolationError);
     expect(String(error)).toContain("image-alt");
     expect(String(error)).toContain("button-name");
+  });
+
+  test("the impact level from the env: default, known values, and errors", () => {
+    expect(parseImpact(undefined)).toBe("serious");
+    expect(parseImpact("")).toBe("serious");
+    expect(parseImpact(" Critical ")).toBe("critical");
+    // A typo, or a key every object has, must not quietly change the level.
+    expect(() => parseImpact("high")).toThrow("UNSTRACT_E2E_A11Y_IMPACT");
+    expect(() => parseImpact("constructor")).toThrow("not one of");
+    expect(() => parseImpact("__proto__")).toThrow("not one of");
   });
 
   test("violations below the level pass, at the level fail", async ({

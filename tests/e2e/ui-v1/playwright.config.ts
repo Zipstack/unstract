@@ -45,6 +45,12 @@ export default defineConfig({
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
+  /*
+   * A test that passes only on its retry fails the run: JUnit would count it
+   * as a plain pass, and an intermittent state check would never surface.
+   * The retry stays, for its failure artefacts.
+   */
+  failOnFlakyTests: Boolean(process.env.CI),
   metadata: { distribution: currentDistribution() },
   /*
    * JUnit so the rig's `parse_junit` reads this group like every other. The

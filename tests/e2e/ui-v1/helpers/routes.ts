@@ -1,20 +1,23 @@
 /** Route-pattern utilities shared by the redirect and old-version helpers. */
 
+import { paramNames } from "../contract/registry.ts";
+
+export { paramNames };
+
 export type RouteParams = Readonly<Record<string, string>>;
 
-const PARAM = /:([A-Za-z_]\w*)\??/g;
-
-export function paramNames(pattern: string): string[] {
-  return [...pattern.matchAll(PARAM)].map((m) => m[1] as string);
-}
+/** A `:name` segment; the registry allows no optional (`:id?`) ones. */
+const PARAM = /:([A-Za-z_]\w*)/g;
 
 /** A final splat segment, which the registry allows (patterns.ts). */
 const SPLAT = "/*";
 
 /**
- * `/:orgName/workflows/:id` + params -> `/org_1/workflows/42`. A final `*`
- * takes `params["*"]` the way the frontend's fillPattern does: its slashes
- * kept, each segment encoded, and empty when omitted.
+ * `/:orgName/workflows/:id` + params -> `/org_1/workflows/42`, as the
+ * frontend's fillPattern (registry/resolve.ts, which imports react-router, so
+ * it can't be imported here) fills it: each value encoded, and a final `*`
+ * taking `params["*"]` with its slashes kept and each segment encoded. An
+ * omitted splat leaves no trailing slash.
  */
 export function fillPattern(pattern: string, params: RouteParams): string {
   const hasSplat = pattern.endsWith(SPLAT);
@@ -28,11 +31,18 @@ export function fillPattern(pattern: string, params: RouteParams): string {
       return encodeURIComponent(value);
     },
   );
-  if (!hasSplat) {
+  const splat = hasSplat ? (params["*"] ?? "") : "";
+  if (!splat) {
     return filled;
   }
-  const splat = params["*"] ?? "";
   return `${filled}/${splat.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+/** Whether `params` fills every param `pattern` needs (a splat is optional). */
+export function fillable(pattern: string, params: RouteParams): boolean {
+  return paramNames(pattern).every(
+    (name) => name === "*" || params[name] !== undefined,
+  );
 }
 
 function escapeRegex(text: string): string {

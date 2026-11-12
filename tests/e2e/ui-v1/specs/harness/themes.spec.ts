@@ -65,6 +65,12 @@ test.describe("harness: theme matrix", { tag: DIST.all }, () => {
     expect(String(error)).toContain('did not render in "dark"');
   });
 
+  test("an empty theme list is refused, not passed", async ({ page }) => {
+    await expect(
+      forEachTheme(page, async () => {}, { themes: [] }),
+    ).rejects.toThrow("`themes` is empty");
+  });
+
   test("a pluggable setTheme replaces the default", async ({ page }) => {
     await installStateFixture(page);
     const calls: Theme[] = [];

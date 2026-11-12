@@ -42,8 +42,21 @@ export interface A11yOptions {
 }
 
 function defaultImpact(): Impact {
-  const raw = process.env.UNSTRACT_E2E_A11Y_IMPACT?.toLowerCase();
-  return raw && raw in RANK ? (raw as Impact) : "serious";
+  return parseImpact(process.env.UNSTRACT_E2E_A11Y_IMPACT);
+}
+
+/** An UNSTRACT_E2E_A11Y_IMPACT value, or `serious` if empty; an unknown value is an error, not ignored. */
+export function parseImpact(raw: string | undefined): Impact {
+  const value = raw?.trim().toLowerCase();
+  if (!value) {
+    return "serious";
+  }
+  if (!Object.hasOwn(RANK, value)) {
+    throw new Error(
+      `UNSTRACT_E2E_A11Y_IMPACT=${raw} is not one of ${Object.keys(RANK).join(", ")}`,
+    );
+  }
+  return value as Impact;
 }
 
 export class A11yViolationError extends Error {

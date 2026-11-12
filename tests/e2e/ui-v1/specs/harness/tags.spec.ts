@@ -33,8 +33,17 @@ test.describe("harness: distribution tags", { tag: DIST.all }, () => {
     expect(tagVerdict(["@OSS"], "oss").kind).toBe("fail");
     expect(tagVerdict(["@os", "@slow"], "oss").kind).toBe("fail");
   });
+});
 
-  test("this test went through the gate", () => {
+/*
+ * Deliberately untagged, and expected to fail: the gate fixture must reject it
+ * before the body runs. If the gate stopped failing untagged tests, this would
+ * pass, and an expected failure that passes is reported as a failure.
+ */
+test.fail("an untagged test is failed by the gate fixture", () => {});
+
+test.describe("harness: distribution tags (gate)", { tag: DIST.all }, () => {
+  test("the gate annotation names this run's distribution", () => {
     // Only the gate fixture leaves this annotation; the tags alone would be
     // there without it.
     expect(test.info().annotations).toContainEqual({

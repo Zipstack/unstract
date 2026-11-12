@@ -11,6 +11,11 @@
  * the theme matrix with an enforcing scan, and Human Review's old-version
  * round trip on its stand-in. The demo pages load no data, so the five-state
  * helper is proven by its self-tests (specs/harness/five-states.spec.ts).
+ *
+ * The redirect and the round trip also run in specs/harness/
+ * registry-routes.spec.ts, once per registered page. They stay here too, at
+ * the cost of two browser flows, because this file is the worked example a
+ * page spec is copied from.
  */
 
 import { V1_ROOT_SELECTOR } from "../contract/v1-ui.ts";

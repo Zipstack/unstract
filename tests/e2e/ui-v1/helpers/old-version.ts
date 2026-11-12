@@ -1,5 +1,6 @@
 /**
- * Human Review's old-version round trip (page 11 only, D14).
+ * The old-version round trip for toggle pages: Human Review (page 11, D14)
+ * and its demo stand-in.
  *
  *   await expectOldVersionRoundTrip(page, "UN11", {
  *     params: { orgName: app.orgName },
@@ -28,6 +29,8 @@ import {
   type PageKey,
 } from "../contract/registry.ts";
 import { APP_MOUNTED_SELECTOR, V1_ROOT_SELECTOR } from "../contract/v1-ui.ts";
+import { settle } from "../fixtures/settle.ts";
+import type { MappingFilter } from "./redirect.ts";
 import { fillPattern, type RouteParams, routeRegex } from "./routes.ts";
 
 function writePreference([key, value]: [string, string | null]): void {
@@ -93,28 +96,32 @@ export interface RoundTripOptions {
   params: RouteParams;
   /** The signed-in user (`session.userId`): the preference is theirs. */
   userId: string;
+  /** Narrows the check to some v1 -> v0 mappings; must leave at least one. */
+  only?: MappingFilter;
 }
 
 export async function expectOldVersionRoundTrip(
   page: Page,
   pageKey: PageKey,
-  { params, userId }: RoundTripOptions,
+  { params, userId, only = () => true }: RoundTripOptions,
 ): Promise<void> {
   const entry = findEntry(pageKey);
   if (!entry.toggle) {
     throw new Error(
-      `${pageKey} does not honour the old-version preference; the round trip is for Human Review (toggle: true) only`,
+      `${pageKey} does not honour the old-version preference; the round trip is for toggle pages (Human Review and its demo stand-in) only`,
     );
   }
-  const mappings = Object.entries(entry.toV0);
+  const mappings = Object.entries(entry.toV0).filter(([v1, v0]) =>
+    only(v1, v0),
+  );
   if (!mappings.length) {
-    throw new Error(`${pageKey} has no v1 -> v0 mappings in the registry`);
+    throw new Error(`${pageKey} has no v1 -> v0 mappings to check`);
   }
   const v1Root = page.locator(V1_ROOT_SELECTOR);
   const expectV0Rendered = async () => {
     // Before the SPA mounts there is no v1 root either; wait until it has.
     await expect(page.locator(APP_MOUNTED_SELECTOR).first()).toBeVisible();
-    await page.waitForLoadState("networkidle").catch(() => null);
+    await settle(page);
     await expect(v1Root).toHaveCount(0);
   };
 
