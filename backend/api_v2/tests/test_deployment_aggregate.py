@@ -11,7 +11,6 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
-import jsonschema
 from django.conf import settings
 from django.db import connection
 from django.test import TestCase, override_settings
@@ -19,9 +18,8 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import resolve, reverse
 from platform_api.models import PlatformApiKey
 from platform_api.services import create_api_user_for_key
-from workflow_manager.workflow_v2.failing_streaks import FAILING_STREAK_RUNS
-from workflow_manager.workflow_v2.list_aggregates import FAILING_LIST_CAP
 from workflow_manager.workflow_v2.tests.list_rows import (
+    AggregateRouteChecks,
     COMPLETED,
     ERROR,
     FIVE_ERRORS,
@@ -41,7 +39,8 @@ CONTRACT = json.loads(
 )
 
 
-class DeploymentAggregateTests(ListRowsSeed, TestCase):
+class DeploymentAggregateTests(AggregateRouteChecks, ListRowsSeed, TestCase):
+    contract = CONTRACT
     view = APIDeploymentViewSet
     url = URL
 
@@ -118,27 +117,6 @@ class DeploymentAggregateTests(ListRowsSeed, TestCase):
         self.assertEqual(self._hours_ago(row["last_success"]), 10)
         self.assertEqual(self._hours_ago(row["failing_since"]), 9)
         self.assertEqual(self._hours_ago(row["last_failure"]), 5)
-
-    def test_the_response_matches_the_contract(self) -> None:
-        self.assertIn("date-time", jsonschema.FormatChecker().checkers)
-        cases: list[dict[str, Any]] = [{}, {"search": "no such row"}]
-        for params in cases:
-            with self.subTest(**params):
-                jsonschema.validate(
-                    self._aggregate(**params),
-                    CONTRACT,
-                    format_checker=jsonschema.FormatChecker(),
-                )
-
-    def test_the_contract_limits_match_the_code(self) -> None:
-        self.assertEqual(CONTRACT["properties"]["failing"]["maxItems"], FAILING_LIST_CAP)
-        row = CONTRACT["$defs"]["failingRow"]["properties"]
-        self.assertEqual(row["failures_in_a_row"]["minimum"], FAILING_STREAK_RUNS)
-
-    def test_detail_routes_ignore_the_list_filters(self) -> None:
-        for params in ({"status": "error"}, {"status": "bogus"}, {"failing": "true"}):
-            with self.subTest(**params):
-                self.assertEqual(self._retrieve(self.ok, **params).status_code, 200)
 
     def test_each_list_filter_selects_its_rows(self) -> None:
         cases = {

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from unittest import mock
 
+import jsonschema
 from account_v2.models import Organization, User
 from api_v2.models import APIDeployment
 from django.db import connection
@@ -19,6 +20,8 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from utils.user_context import UserContext
 
 from unstract.core.data_models import ExecutionStatus
+from workflow_manager.workflow_v2.failing_streaks import FAILING_STREAK_RUNS
+from workflow_manager.workflow_v2.list_aggregates import FAILING_LIST_CAP
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
@@ -183,3 +186,31 @@ class ListRowsSeed(CoOwnerOrgTestMixin):
 def _ok(response: Response) -> Any:
     assert response.status_code == 200, response.data
     return response.data
+
+
+class AggregateRouteChecks:
+    """Tests both aggregate routes share; ``contract`` is the response's JSON Schema."""
+
+    contract: dict[str, Any] = {}
+
+    def test_the_response_matches_the_contract(self: Any) -> None:
+        self.assertIn("date-time", jsonschema.FormatChecker().checkers)
+        cases: list[dict[str, Any]] = [{}, {"search": "no such row"}]
+        for params in cases:
+            with self.subTest(**params):
+                jsonschema.validate(
+                    self._aggregate(**params),
+                    self.contract,
+                    format_checker=jsonschema.FormatChecker(),
+                )
+
+    def test_the_contract_limits_match_the_code(self: Any) -> None:
+        failing = self.contract["properties"]["failing"]
+        self.assertEqual(failing["maxItems"], FAILING_LIST_CAP)
+        row = self.contract["$defs"]["failingRow"]["properties"]
+        self.assertEqual(row["failures_in_a_row"]["minimum"], FAILING_STREAK_RUNS)
+
+    def test_detail_routes_ignore_the_list_filters(self: Any) -> None:
+        for params in ({"status": "error"}, {"status": "bogus"}, {"failing": "true"}):
+            with self.subTest(**params):
+                self.assertEqual(self._retrieve(self.ok, **params).status_code, 200)
