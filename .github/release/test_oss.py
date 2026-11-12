@@ -4545,7 +4545,7 @@ esac
         rc, out = self.classify("fix: x", [], "release/0.186")
         self.assertEqual(rc, 1, out)
         self.assertIn("no recognised '[TYPE]'", out)
-        self.assertNotIn("A PR into main needs one backport label", out)
+        self.assertNotIn("A PR into main needs", out)
         self.assertIn("Title: `[TYPE] text`", out)
 
     def test_a_main_pr_needs_a_backport_label(self):

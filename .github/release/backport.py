@@ -1446,7 +1446,7 @@ def _dispatch_commit(slug, targets, sha, confirm, listed, awaiting, named_pr=Non
         print(f"::error::{sha[:7]}: no PR found, so it cannot be classed")
         return [(sha, pr, "error", "-", "failed: no PR found", "-")]
     if cls is None:
-        route = f"swap {pr}'s main-only label for backport/rc or backport/ga and rerun"
+        route = f"swap {pr}'s main-only label for a backport label and rerun"
         return [(sha, pr, "none", "-", f"skipped: not a fix; {route}", "-")]
     branches, held_picks = _dispatch_targets(targets, sha, cls, pr, confirm, listed)
     awaiting += held_picks
@@ -1475,7 +1475,7 @@ def _dispatch_commit(slug, targets, sha, confirm, listed, awaiting, named_pr=Non
                         pr,
                         cls,
                         t["branch"],
-                        "failed: stabilized; a plain fix needs lines",
+                        "failed: stabilized; a backport/rc fix needs lines",
                         "-",
                     )
                 )

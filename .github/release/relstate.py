@@ -536,7 +536,7 @@ def _set_states(rows, now):
         row["enabled"] = sorted(row["targets"])
         # No enabled target (cut, nothing built yet) is stabilizing: every line builds cloud by default.
         # The line's first GA, for any target, ends its auto-picks: a target with no GA yet then counts as stabilized,
-        # so it takes plain fixes only by a named Backport. Its own state stays stabilizing: it keeps its target
+        # so it takes backport/rc fixes only by a named Backport. Its own state stays stabilizing: it keeps its target
         # supported and blocks that target's Promote on newer lines; Retire needs force for it only when it is late.
         any_ga = any(tt["ga"] for tt in row["targets"].values())
         row["state"] = _line_state(
