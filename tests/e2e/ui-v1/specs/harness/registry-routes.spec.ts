@@ -43,6 +43,20 @@ test.describe("harness: route patterns", { tag: DIST.all }, () => {
       ":id",
     );
   });
+
+  test("a final splat fills like the frontend's fillPattern", () => {
+    const pattern = "/:orgName/old/*";
+    // Slashes kept, each segment encoded.
+    expect(fillPattern(pattern, { orgName: "acme", "*": "a b/details" })).toBe(
+      "/acme/old/a%20b/details",
+    );
+    // Omitted: an empty rest, which routeRegex matches with or without "/".
+    const bare = fillPattern(pattern, { orgName: "acme" });
+    expect(bare).toBe("/acme/old/");
+    expect(routeRegex(bare).test("http://x.io/acme/old")).toBe(true);
+    // A `*` elsewhere is not a splat.
+    expect(fillPattern("/:orgName/a*b", { orgName: "o" })).toBe("/o/a*b");
+  });
 });
 
 /** Patterns this generic check can fill: only the org segment. */

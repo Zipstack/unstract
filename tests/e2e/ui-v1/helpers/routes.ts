@@ -8,15 +8,29 @@ export function paramNames(pattern: string): string[] {
   return [...pattern.matchAll(PARAM)].map((m) => m[1] as string);
 }
 
-/** `/:orgName/workflows/:id` + params -> `/org_1/workflows/42`. */
+/** A final splat segment, which the registry allows (patterns.ts). */
+const SPLAT = /\/\*$/;
+
+/**
+ * `/:orgName/workflows/:id` + params -> `/org_1/workflows/42`. A final `*`
+ * takes `params["*"]` the way the frontend's fillPattern does: its slashes
+ * kept, each segment encoded, and empty when omitted.
+ */
 export function fillPattern(pattern: string, params: RouteParams): string {
-  return pattern.replace(PARAM, (_, name: string) => {
-    const value = params[name];
-    if (value === undefined) {
-      throw new Error(`route ${pattern} needs a value for :${name}`);
-    }
-    return encodeURIComponent(value);
-  });
+  const filled = pattern
+    .replace(SPLAT, "")
+    .replace(PARAM, (_, name: string) => {
+      const value = params[name];
+      if (value === undefined) {
+        throw new Error(`route ${pattern} needs a value for :${name}`);
+      }
+      return encodeURIComponent(value);
+    });
+  if (!SPLAT.test(pattern)) {
+    return filled;
+  }
+  const splat = params["*"] ?? "";
+  return `${filled}/${splat.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 function escapeRegex(text: string): string {
