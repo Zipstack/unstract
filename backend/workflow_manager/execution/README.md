@@ -27,7 +27,10 @@ Everything here is additive. The existing list, detail and log endpoints keep
 their paths, parameters, response fields and permissions. Without `stuck`, or
 with `stuck=false`, the list response is the same as before. Aborted runs are the
 one new case the existing endpoints see; see
-[How the work stops](#how-the-work-stops).
+[How the work stops](#how-the-work-stops). For them the API deployment endpoints
+make an accepted exception to the additive rule: a synchronous `POST` answers 422,
+and `GET` applies the caller's result filters. Only aborted runs reach this, so
+callers that never abort see no change.
 
 ## What counts as stuck
 
