@@ -116,6 +116,15 @@ const CASES = parseTable(`
   # Outside the feedback folder, a static named radix-ui import without Toast is fine.
   v1-notify-radix-named-ok       | lint:v1         | -
   v1-notify-feedback-ok          | lint:v1         | -
+  # One way to call the backend: URLs and the HTTP client only in services/.
+  v1-backend-url-string          | lint:v1         | Backend URLs appear only in services/
+  v1-backend-url-template        | lint:v1         | Backend URLs appear only in services/
+  v1-backend-url-deployment      | lint:v1         | Backend URLs appear only in services/
+  v1-http-client-axios           | lint:v1         | Only services/ imports the HTTP client
+  v1-http-client-module          | lint:v1         | Only services/ imports the HTTP client
+  v1-http-client-dynamic         | lint:v1         | Only services/ imports the HTTP client
+  v1-backend-url-services-ok     | typecheck:v1 + lint:v1 | -
+  v1-backend-url-test-ok         | lint:v1         | -
   v1-explicit-any                | lint:v1         | noExplicitAny
   # The v1 override must add to the shared rules, not replace them.
   v1-base-rules-still-apply      | lint:v1         | noDoubleEquals

@@ -551,6 +551,40 @@ function* notifyEntryPoints(ast, specs) {
   }
 }
 
+// P0-T05: backend URLs and the HTTP client only in services/; tests may name URLs for mocks.
+const BACKEND_URL_HOMES = new Set(["services", "test"]);
+// v1 calls the backend on its own origin, so its URLs are root-relative.
+const BACKEND_URL = /^\/(api|deployment)\//;
+const HTTP_CLIENT = /^(axios(\/|$)|@v1\/services\/http(\.ts)?$)/;
+const BACKEND_URL_MSG =
+  "Backend URLs appear only in services/; call a typed service function instead.";
+const HTTP_CLIENT_MSG =
+  "Only services/ imports the HTTP client (axios, @v1/services/http); call a typed service function instead.";
+
+/* The text a string or template starts with, or undefined for other nodes. */
+function literalStart(node) {
+  if (node.type === "StringLiteral") {
+    return node.value;
+  }
+  return node.type === "TemplateLiteral"
+    ? node.quasis[0].value.cooked
+    : undefined;
+}
+
+/* HTTP-client imports and backend URL literals, as { index, msg }. */
+function* backendCalls(ast, specs) {
+  for (const arg of specs) {
+    if (HTTP_CLIENT.test(arg.spec ?? "")) {
+      yield { index: arg.index, msg: HTTP_CLIENT_MSG };
+    }
+  }
+  for (const node of nodes(ast.program)) {
+    if (BACKEND_URL.test(literalStart(node) ?? "")) {
+      yield { index: node.start, msg: BACKEND_URL_MSG };
+    }
+  }
+}
+
 /* PropTypes and antd `ant-` class names, as { index, msg }. */
 function* bannedUses(ast, src) {
   for (const node of nodes(ast.program)) {
@@ -880,6 +914,11 @@ for (const rel of walk(ROOT)) {
   }
   if (!rel.startsWith(NOTIFY_HOME)) {
     for (const { index, msg } of notifyEntryPoints(parsed.ast, specs)) {
+      report(rel, lineAt(src, index), msg);
+    }
+  }
+  if (!isTestFile && !BACKEND_URL_HOMES.has(folder)) {
+    for (const { index, msg } of backendCalls(parsed.ast, specs)) {
       report(rel, lineAt(src, index), msg);
     }
   }

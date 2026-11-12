@@ -114,6 +114,18 @@ is convention.
 - `CodeEditor` uses Monaco from its default CDN, as v0 does. Never call
   `loader.config()` in v1: the loader is shared with v0.
 
+## Data layer
+
+- Server state goes through TanStack Query with the typed functions in
+  `services/`; `services/README.md` has the contract. `V1App` mounts the one
+  QueryClient (`app/query.ts`), which reports every failure.
+- Render a read with `QueryView` (`components/patterns/`): skeleton, inline
+  error with Retry, then the data. Forms map field errors with
+  `mapFieldErrors()` from `@v1/services/errors`.
+- `lint:v1` rejects a string or template starting `/api/` or `/deployment/`,
+  and any import of axios or `@v1/services/http`, outside `services/`,
+  `test/` and test files.
+
 ## Version switch and route registry
 
 v0's router (`routes/Router.jsx`) wraps its routes in `VersionSwitch`, which
@@ -173,7 +185,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | `components/patterns/` | Composites built from core components | `components/ui/`, `lib/`, `services/`, `stores/`, `hooks/`, `assets/` |
 | `shell/` | Top bar, rail, context bar, tab bar | `components/ui/`, `components/patterns/`, `services/`, `stores/`, `hooks/`, `lib/`, `assets/` |
 | `pages/<page>/` | One folder per target page | `components/ui/`, `components/patterns/`, `shell/`, `services/`, `stores/`, `hooks/`, `lib/`, `styles/`, `assets/`, `plugins/` — not other pages, `app/`, `test/` or the entry |
-| `services/` | Typed service modules; the only place a URL appears | `lib/` |
+| `services/` | Typed service modules and the HTTP client; the only place a backend URL appears (see `services/README.md`) | `lib/` |
 | `stores/` | Zustand stores | `lib/` |
 | `hooks/` | Shared hooks | `lib/` |
 | `lib/` | Pure helpers | — |
@@ -187,7 +199,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | Script | Checks |
 | --- | --- |
 | `bun run typecheck:v1` | TypeScript-only files, styles only in `styles/`, allowed file types only, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
-| `bun run lint:v1` | Biome on `src/v1/` (warnings fail), then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, the single notification entry point, then the styling policy (S1 to S8 above), then the icon rules |
+| `bun run lint:v1` | Biome on `src/v1/` (warnings fail), then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, the single notification entry point, backend URLs and the HTTP client only in `services/`, then the styling policy (S1 to S8 above), then the icon rules |
 | `bun run tokens:v1` | Regenerates `styles/tokens.css` from `styles/tokens.json` (via `styles/tokens.ts`; runs under bun, which imports the TypeScript source directly) |
 | `bun run test:v1` | v1 unit tests (`vitest.v1.config.mts`, then cloud plugins with `vitest.v1-plugins.config.mts`) with v1's own coverage threshold, then the guardrail fixtures in `test-fixtures/v1-boundary/`, `test-fixtures/v1-harness/` and `test-fixtures/v1-unit-gate/` (the coverage threshold fails a run, and CI runs the rig group's config). The harness is documented in `test/README.md` |
 | `bun run seam:v1` | Seam guard: v1 work changes v0 (`src/` outside v1, `public/`) only at the files in `scripts/v1-seam-allowlist.json`, compared with `origin/main` |

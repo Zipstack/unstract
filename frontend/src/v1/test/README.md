@@ -60,7 +60,8 @@ await user.click(screen.getByRole("button", { name: "Add" }));
 - `user`: a `userEvent.setup()` instance. Pass `userEventOptions`, for example
   `{ advanceTimers: vi.advanceTimersByTime }` with fake timers.
 - `queryClient`: a fresh client per render, with no retries, no refetch on
-  focus and no garbage collection mid-test. Pass `queryClient` to share one.
+  focus and no garbage collection mid-test. Pass `queryClient` to share one,
+  or `createQueryClient()` from `@v1/app/query` for the app's retry policy.
 - `portal`: the `#v1-portal` container, themed like the root.
 - `theme`: what the test rendered with.
 
@@ -80,7 +81,7 @@ the app's own provider once its task has landed, and a stand-in until then:
 
 | Slot | Today | Replace with, when it lands |
 | --- | --- | --- |
-| query | stand-in: `QueryClientProvider` over `createTestQueryClient()` | the data layer's provider (P0-T05, UN-4313) |
+| query | **real**: the app's `createQueryClient()` (P0-T05, UN-4313) with test defaults, so failures are reported as in the app | — |
 | router | stand-in: `MemoryRouter` (+ `Routes` when `path` is set) | the app router in memory mode, with the route registry (P0-T03, UN-4271) |
 | theme | **real**: `app/theme/ThemeProvider` (P0-T04, #2399) | — |
 | session | none: no v1 code reads a session | the session store or provider, when it lands. Add `session` to `ProviderContext` and `RenderV1Options` with it |
