@@ -193,20 +193,19 @@ class Declared(Repo):
 
 
 class Owed(Repo):
-    def owed(self):
+    def owed(self, run_log=None):
         dev_git(self.repo, "fetch", "-q", "origin", "--tags")
 
-        def run_log(*a, **k):
+        def default_log(*a, **k):
             print(
                 "held: 26 main commit(s) since the cut of release/1.7, 1 fix_class lookup(s)"
             )
-            print("::warning::PR listing failed, classing commit by commit: HTTP 403")
             return [
                 ("a" * 40, "fix", "#11", "mine"),
                 ("b" * 40, "fix", "#99", "theirs"),
             ]
 
-        held = mock.Mock(side_effect=run_log)
+        held = mock.Mock(side_effect=run_log or default_log)
         mine = json.dumps([{"number": 11}, {"number": 12}])
         old = os.getcwd()
         os.chdir(self.repo)
@@ -259,7 +258,23 @@ class Owed(Repo):
                 self.owed()
             self.assertEqual(out.getvalue(), "")
             self.assertEqual("held: 26 main commit(s)" in err.getvalue(), shown, env)
-            self.assertIn("::warning::PR listing failed", err.getvalue(), env)
+
+    def test_backports_warnings_show_even_when_it_fails(self):
+        def fail(*a, **k):
+            print("::warning::PR listing failed, classing commit by commit: HTTP 403")
+            print("  second line of gh's stderr")
+            raise RuntimeError("HTTP 403")
+
+        err = io.StringIO()
+        with (
+            mock.patch.dict(os.environ),
+            contextlib.redirect_stderr(err),
+        ):
+            os.environ.pop("GITHUB_ACTIONS", None)
+            with self.assertRaisesRegex(RuntimeError, "HTTP 403"):
+                self.owed(fail)
+        self.assertIn("::warning::PR listing failed", err.getvalue())
+        self.assertIn("second line of gh's stderr", err.getvalue())
 
 
 def line(v, present=True, ga=False, onprem_ga=False):

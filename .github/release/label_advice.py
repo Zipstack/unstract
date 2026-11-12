@@ -388,19 +388,21 @@ def owed(slug, author):
         )
         accept = bp.HELD if released else bp.OWED  # what Backport picks there on its own
         cmd = f"gh workflow run backport.yaml -R {slug} -f commits={{}} -f lines={line} -f patch_released_lines=true"
-        # Backport's run log: a developer reading the answer cannot act on it, but can on a warning.
+        # Backport's `held:` count: a developer reading the answer cannot act on it, but can on a warning.
         log = sys.stderr if os.environ.get("GITHUB_ACTIONS") else io.StringIO()
-        with contextlib.redirect_stdout(log):
-            held = bp.held(
-                slug, ".", branch, accept=accept, cache=bp.pr_classes(slug, since)
-            )
-            decl = bp.declared(slug, ".", branch)
-        if log is not sys.stderr:
-            sys.stderr.writelines(
-                x
-                for x in log.getvalue().splitlines(True)
-                if x.startswith(("::warning::", "::error::"))
-            )
+        try:
+            with contextlib.redirect_stdout(log):
+                held = bp.held(
+                    slug, ".", branch, accept=accept, cache=bp.pr_classes(slug, since)
+                )
+                decl = bp.declared(slug, ".", branch)
+        finally:
+            if log is not sys.stderr:
+                sys.stderr.writelines(
+                    x
+                    for x in log.getvalue().splitlines(True)
+                    if not x.startswith("held: ")
+                )
         for _, cls, pr, title in held:
             if pr in mine:
                 rows.append(
