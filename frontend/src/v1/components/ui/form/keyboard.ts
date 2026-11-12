@@ -16,8 +16,9 @@ export function isComposing(event: KeyboardEvent): boolean {
  * in the capture phase, before the field does, so the overlay must ask.
  */
 export function isEscapeClearTarget(event: Event): boolean {
-  return (
-    event.target instanceof Element &&
-    event.target.closest("[data-escape-clears]") !== null
-  );
+  const field =
+    event.target instanceof Element
+      ? event.target.closest("[data-escape-clears]")
+      : null;
+  return field instanceof HTMLInputElement && field.value !== "";
 }

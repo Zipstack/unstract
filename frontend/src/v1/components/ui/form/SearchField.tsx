@@ -197,7 +197,11 @@ export function SearchField({
       {...(domOwned ? { defaultValue } : { value: current })}
       disabled={disabled}
       readOnly={readOnly}
-      data-escape-clears={clearable ? "" : undefined}
+      // Marks a field Escape can clear; isEscapeClearTarget reads the live
+      // value, which a form library may have written without a render.
+      data-escape-clears={
+        canClear && !state.disabled && !state.readOnly ? "" : undefined
+      }
       onChange={(event: ChangeEvent<HTMLInputElement>) => {
         update(event.target.value);
         spreadOnChange?.(event);
