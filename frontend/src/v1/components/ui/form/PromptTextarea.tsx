@@ -1,5 +1,5 @@
 import { cn } from "@v1/lib/cn";
-import { composeRefs } from "@v1/lib/merge-refs";
+import { mergeRefs } from "@v1/lib/merge-refs";
 import {
   type JSX,
   type KeyboardEvent,
@@ -14,7 +14,7 @@ import { Textarea, type TextareaProps } from "./Textarea";
 
 export type PromptTextareaProps = Omit<TextareaProps, "onSubmit"> &
   Readonly<{
-    /** Called with the text on Enter. Without it, Enter inserts a line break as in a Textarea. */
+    /** Called with the text on Enter; Enter on an empty or whitespace-only box does nothing. Without it, Enter inserts a line break as in a Textarea. */
     onSubmit?: (value: string) => void;
   }>;
 
@@ -58,7 +58,7 @@ export function PromptTextarea({
 }: PromptTextareaProps): JSX.Element {
   const state = useFieldControl({ readOnly });
   const innerRef = useRef<HTMLTextAreaElement>(null);
-  const textareaRef = useMemo(() => composeRefs(innerRef, ref), [ref]);
+  const textareaRef = useMemo(() => mergeRefs(innerRef, ref), [ref]);
 
   // A controlled value can change without an input event (cleared after submit).
   // biome-ignore lint/correctness/useExhaustiveDependencies: value is the trigger, read through the ref.
@@ -120,7 +120,10 @@ export function PromptTextarea({
       return;
     }
     event.preventDefault();
-    onSubmit(event.currentTarget.value);
+    const text = event.currentTarget.value;
+    if (text.trim() !== "") {
+      onSubmit(text);
+    }
   };
 
   return (
@@ -129,6 +132,8 @@ export function PromptTextarea({
       value={value}
       readOnly={readOnly}
       onKeyDown={handleKeyDown}
+      // Touch keyboards have no Shift+Enter; the label tells the user Enter sends.
+      enterKeyHint={onSubmit ? "send" : undefined}
       onInput={(event) => {
         onInput?.(event);
         fitToContent(event.currentTarget);

@@ -122,6 +122,10 @@ is convention.
   cannot name with `<label for>` (a radiogroup) takes `labelId` from
   `useFieldControl` as `aria-labelledby`. A trigger that is itself the frame
   (a select) uses `fieldFrameVariants({ focus: "self" })`.
+- A Field holds one form control. Every control under it that reads the
+  Field's context takes the same id and description, and a control that does
+  not read it (a native `<select>`) is left unlabelled. Give a min/max pair a
+  Field each.
 - A control's own `invalid`, `disabled` and `readOnly` win over its Field's.
 - An overlay (Dialog, Popover, Menu) that can hold a `SearchField` must call
   `event.preventDefault()` in `onEscapeKeyDown` when

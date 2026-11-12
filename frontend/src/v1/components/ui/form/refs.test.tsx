@@ -6,7 +6,7 @@ import { PromptTextarea } from "./PromptTextarea";
 import { SearchField } from "./SearchField";
 import { SecretField } from "./SecretField";
 
-// These three keep their own ref to the node, so the caller's ref goes through composeRefs.
+// These three keep their own ref to the node, so the caller's ref goes through mergeRefs.
 const COMPOSED: [string, (ref: Ref<never>) => JSX.Element][] = [
   ["PromptTextarea", (ref) => <PromptTextarea aria-label="C" ref={ref} />],
   ["SearchField", (ref) => <SearchField aria-label="C" ref={ref} />],

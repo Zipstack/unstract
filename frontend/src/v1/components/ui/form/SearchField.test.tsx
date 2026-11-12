@@ -1,8 +1,8 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { renderV1 } from "@v1/test";
 import { Dialog } from "radix-ui";
 import { type ChangeEvent, type KeyboardEvent, useState } from "react";
-import { useForm } from "react-hook-form";
+import { type UseFormReturn, useForm } from "react-hook-form";
 import { expect, it, onTestFinished, vi } from "vitest";
 import { Field } from "./Field";
 import { isEscapeClearTarget } from "./keyboard";
@@ -159,17 +159,24 @@ it("inside a Radix dialog, the caller's onKeyDown can still cancel the clear", a
   expect(onOpenChange).not.toHaveBeenCalled();
 });
 
-it("returns an uncontrolled field to its defaultValue when its form resets", async () => {
+it("returns an uncontrolled field to its defaultValue when its form resets, and reports it", async () => {
+  const onValueChange = vi.fn();
   const { user } = renderV1(
     <form>
-      <SearchField aria-label="Search" defaultValue="draft" />
+      <SearchField
+        aria-label="Search"
+        defaultValue="draft"
+        onValueChange={onValueChange}
+      />
     </form>,
   );
   const input = screen.getByLabelText("Search") as HTMLInputElement;
   await user.type(input, " edited");
   expect(input.value).toBe("draft edited");
+  onValueChange.mockClear();
   fireEvent.reset(input.form as HTMLFormElement);
   await vi.waitFor(() => expect(input.value).toBe("draft"));
+  expect(onValueChange).toHaveBeenCalledExactlyOnceWith("draft");
 });
 
 it("keeps the text when the form cancels its reset", async () => {
@@ -243,6 +250,68 @@ it("reports typing and clearing to react-hook-form through a register() spread",
   expect(watched.textContent).toBe("ab");
   await user.click(screen.getByRole("button", { name: "Clear search" }));
   expect(watched.textContent).toBe("");
+});
+
+/** A react-hook-form form with a register() spread, and a button that re-renders it. */
+function renderRegisteredForm() {
+  const form: { current?: UseFormReturn<{ q: string }> } = {};
+  function Form() {
+    form.current = useForm({ defaultValues: { q: "seed" } });
+    const [, setRenders] = useState(0);
+    return (
+      <>
+        <SearchField aria-label="Search" {...form.current.register("q")} />
+        <button type="button" onClick={() => setRenders((n) => n + 1)}>
+          Re-render
+        </button>
+      </>
+    );
+  }
+  const { user } = renderV1(<Form />);
+  return {
+    user,
+    form: () => form.current as UseFormReturn<{ q: string }>,
+    input: screen.getByLabelText("Search") as HTMLInputElement,
+    rerender: () =>
+      user.click(screen.getByRole("button", { name: "Re-render" })),
+  };
+}
+
+it("shows react-hook-form's defaultValues through a register() spread", () => {
+  const { input } = renderRegisteredForm();
+  expect(input.value).toBe("seed");
+  expect(screen.getByRole("button", { name: "Clear search" })).toBeTruthy();
+});
+
+it("keeps a value set by react-hook-form's setValue across a parent re-render", async () => {
+  const { form, input, rerender } = renderRegisteredForm();
+  act(() => form().setValue("q", "set"));
+  await rerender();
+  expect(input.value).toBe("set");
+  expect(form().getValues("q")).toBe("set");
+});
+
+it("clears a value written to the DOM on Escape, before any re-render", async () => {
+  const parentEscape = recordDocumentEscapes();
+  const { user, form, input } = renderRegisteredForm();
+  await user.clear(input);
+  // What setValue does, without the re-render it may or may not cause.
+  input.value = "set";
+  await user.keyboard("{Escape}");
+  expect(input.value).toBe("");
+  expect(form().getValues("q")).toBe("");
+  expect(parentEscape).not.toHaveBeenCalled();
+});
+
+it("shows the value react-hook-form's reset restores", async () => {
+  const { user, form, input } = renderRegisteredForm();
+  await user.type(input, " typed");
+  expect(form().getValues("q")).toBe("seed typed");
+  act(() => form().reset());
+  expect(input.value).toBe("seed");
+  act(() => form().reset({ q: "next" }));
+  expect(input.value).toBe("next");
+  expect(screen.getByRole("button", { name: "Clear search" })).toBeTruthy();
 });
 
 it("lets the caller's onKeyDown cancel the clear, and reports typing through onValueChange", async () => {

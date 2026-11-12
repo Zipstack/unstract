@@ -18,8 +18,11 @@ function setRef<T>(ref: Ref<T> | undefined, node: T | null): Cleanup | null {
  * node and also forwards the caller's ref. It returns a cleanup, so React 19
  * calls that instead of the callback with null: a ref that returned its own
  * cleanup gets it run, every other ref is set to null.
+ *
+ * Radix has the same helper, but only under `radix-ui/internal`, which is not
+ * a public API and can change in any release, so v1 keeps its own copy.
  */
-export function composeRefs<T>(
+export function mergeRefs<T>(
   ...refs: readonly (Ref<T> | undefined)[]
 ): RefCallback<T> {
   return (node) => {

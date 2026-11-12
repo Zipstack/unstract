@@ -58,7 +58,7 @@ it.each(
 
 it.each(
   CONTROLS,
-)("takes a %s's own state props over an empty frame", (_, make) => {
+)("marks a standalone %s from its own state props", (_, make) => {
   const { rerender } = renderV1(make({ "aria-label": "C" }));
   const control = () => screen.getByLabelText("C") as HTMLInputElement;
   expect(control().hasAttribute("aria-invalid")).toBe(false);

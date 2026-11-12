@@ -1,11 +1,11 @@
 import { createRef } from "react";
 import { expect, it, vi } from "vitest";
-import { composeRefs } from "./merge-refs";
+import { mergeRefs } from "./merge-refs";
 
 it("sets object refs and calls callback refs, skipping missing ones", () => {
   const objectRef = createRef<string>();
   const callbackRef = vi.fn();
-  const ref = composeRefs<string>(objectRef, undefined, callbackRef, null);
+  const ref = mergeRefs<string>(objectRef, undefined, callbackRef, null);
   ref("node");
   expect(objectRef.current).toBe("node");
   expect(callbackRef).toHaveBeenCalledWith("node");
@@ -16,7 +16,7 @@ it("runs a ref's own cleanup on detach, and nulls the refs that have none", () =
   const plainCallback = vi.fn();
   const ownCleanup = vi.fn();
   const cleanupRef = vi.fn(() => ownCleanup);
-  const detach = composeRefs<string>(
+  const detach = mergeRefs<string>(
     objectRef,
     plainCallback,
     cleanupRef,
