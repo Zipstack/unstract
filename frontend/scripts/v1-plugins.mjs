@@ -4,23 +4,29 @@
  * the cloud overlay). Under Bun it imports the TypeScript directly; under Node
  * it transpiles with esbuild, loaded only then, because the cloud overlay runs
  * this with Bun before any dependency is installed. Runs the registry's
- * conflict checks for every distribution, including plugin routes on pages
- * the v1 route registry declares, and returns the distribution matrix.
+ * shape and conflict checks for every distribution, including plugin routes
+ * on pages the v1 route registry declares and route paths its pattern rule
+ * rejects, and returns the distribution matrix.
  * vite.config.js runs it in every build and publishes the matrix as
  * plugin-matrix.json.
  *
  *   node scripts/v1-plugins.mjs [out.json] [--dir plugins]   check, print or write the matrix
+ *
+ * V1_PLUGINS_DIR replaces the default plugins folder (the fixtures use it).
  */
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const DEFAULT_DIR = path.join(import.meta.dirname, "../src/v1/plugins");
+const DEFAULT_DIR = process.env.V1_PLUGINS_DIR
+  ? path.resolve(process.env.V1_PLUGINS_DIR)
+  : path.join(import.meta.dirname, "../src/v1/plugins");
 const SRC = path.join(import.meta.dirname, "../src/v1");
 const REGISTRY = path.join(SRC, "lib/plugins/registry.ts");
-// The v1 route registry's pages, and its overlap rule for route patterns.
+// The v1 route registry's pages, its pattern rules and its distributions.
 const ROUTE_ENTRIES = path.join(SRC, "app/registry/entries.ts");
 const ROUTE_PATTERNS = path.join(SRC, "app/registry/patterns.ts");
+const ROUTE_TYPES = path.join(SRC, "app/registry/types.ts");
 
 const dataUrl = (code) =>
   `data:text/javascript;base64,${Buffer.from(code).toString("base64")}`;
@@ -45,30 +51,42 @@ function loadSource(file) {
     .then((r) => import(dataUrl(r.outputFiles[0].text)));
 }
 
-async function importManifest(file) {
+/** A function that imports a manifest; under Node it loads esbuild first. */
+async function manifestImporter() {
   if (BUN) {
-    return import(pathToFileURL(file).href);
+    return (file) => import(pathToFileURL(file).href);
   }
   const { transform } = await import("esbuild");
-  const { code } = await transform(fs.readFileSync(file, "utf8"), {
-    loader: "ts",
-    format: "esm",
-    sourcefile: file,
-  });
-  return import(dataUrl(code));
+  return async (file) => {
+    const { code } = await transform(fs.readFileSync(file, "utf8"), {
+      loader: "ts",
+      format: "esm",
+      sourcefile: file,
+    });
+    return import(dataUrl(code));
+  };
 }
 
-async function load(dir, id) {
+// Node from a data: URL, Node from a file, Bun, esbuild.
+const UNRESOLVED =
+  /ERR_UNSUPPORTED_RESOLVE_REQUEST|ERR_MODULE_NOT_FOUND|Cannot find module|Could not resolve/;
+
+const unresolved = (err) =>
+  UNRESOLVED.test(`${err?.code ?? ""} ${err?.message ?? ""}`);
+
+async function load(importManifest, dir, id) {
   const file = path.join(dir, id, "manifest.ts");
   const rel = `${id}/manifest.ts`;
   let mod;
   try {
     mod = await importManifest(file);
   } catch (err) {
-    throw new Error(
-      `${rel} could not be loaded (${err.message}). A manifest may only ` +
-        '`import type`; load components with `() => import("./X")`.',
-    );
+    const hint = unresolved(err)
+      ? ' A manifest may only `import type`; load components with `() => import("./X")`.'
+      : "";
+    throw new Error(`${rel} could not be loaded (${err?.message}).${hint}`, {
+      cause: err,
+    });
   }
   const { manifest } = mod;
   if (!manifest) {
@@ -95,25 +113,31 @@ export async function check(dir = DEFAULT_DIR) {
       throw new Error(`${id}/ has no manifest.ts`);
     }
   }
-  const manifests = await Promise.all(ids.map((id) => load(dir, id)));
-  const [{ buildRegistry }, { PAGES, DEMO_PAGES }, { patternsOverlap }] =
-    await Promise.all([
-      loadSource(REGISTRY),
-      loadSource(ROUTE_ENTRIES),
-      loadSource(ROUTE_PATTERNS),
-    ]);
-  // Demo pages count: an E2E build registers them.
-  const ossRoutes = [...PAGES, ...DEMO_PAGES].flatMap((p) => p.v1Routes);
+  const importManifest = await manifestImporter();
+  const manifests = await Promise.all(
+    ids.map((id) => load(importManifest, dir, id)),
+  );
+  const [
+    { buildRegistry },
+    { PAGES, DEMO_PAGES },
+    { patternProblem, patternsOverlap },
+    { DISTRIBUTIONS },
+  ] = await Promise.all([
+    loadSource(REGISTRY),
+    loadSource(ROUTE_ENTRIES),
+    loadSource(ROUTE_PATTERNS),
+    loadSource(ROUTE_TYPES),
+  ]);
+  const rules = {
+    // Demo pages count: an E2E build registers them.
+    ossRoutes: [...PAGES, ...DEMO_PAGES].flatMap((p) => p.v1Routes),
+    overlaps: patternsOverlap,
+    patternProblem,
+  };
   // Throws on any conflict in any distribution.
-  const offered = (d) => [
-    ...buildRegistry(manifests, d, ossRoutes, patternsOverlap).plugins,
-  ];
+  const offered = (d) => [...buildRegistry(manifests, d, rules).plugins];
   return {
-    distributions: {
-      oss: offered("oss"),
-      cloud: offered("cloud"),
-      onprem: offered("onprem"),
-    },
+    distributions: Object.fromEntries(DISTRIBUTIONS.map((d) => [d, offered(d)])),
     plugins: manifests.map((m) => ({
       id: m.id,
       distributions: [...m.distributions],
@@ -147,6 +171,9 @@ if (isMain) {
     })
     .catch((err) => {
       console.error(`v1-plugins: ${err.message}`);
+      if (err.cause) {
+        console.error(err.cause);
+      }
       process.exit(1);
     });
 }
