@@ -7,6 +7,7 @@
  * the plugin routes to the v1 router.
  */
 import { DEMO_PAGES, PAGES } from "@v1/app/registry/entries";
+import { patternsOverlap } from "@v1/app/registry/patterns";
 import { notify } from "@v1/lib/notify";
 import {
   buildRegistry,
@@ -47,7 +48,7 @@ export function pluginRegistry(
   list: readonly PluginManifest[],
   distribution: Distribution,
 ): PluginRegistry {
-  return buildRegistry(list, distribution, OSS_ROUTES);
+  return buildRegistry(list, distribution, OSS_ROUTES, patternsOverlap);
 }
 
 export const registry = pluginRegistry(manifests, currentDistribution());

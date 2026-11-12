@@ -114,16 +114,35 @@ test("a folder without a manifest fails, but dotfiles are ignored", async () => 
   await assert.rejects(check(dir), /empty\/ has no manifest\.ts/);
 });
 
-test("a plugin route on a page OSS declares fails, naming OSS and the plugin", async () => {
-  // DEMO_PAGES in app/registry/entries.ts declares /:orgName/v1-demo.
+// DEMO_PAGES in app/registry/entries.ts declares /:orgName/v1-demo. A route
+// the router would match for the same URLs clashes too.
+for (const route of [
+  "/:orgName/v1-demo",
+  "/:org/v1-demo",
+  "/:orgName/V1-Demo",
+  "/:orgName/*",
+]) {
+  test(`a plugin route ${route} on a page OSS declares fails, naming OSS and the plugin`, async () => {
+    const dir = plugins({
+      clash: manifest(
+        "clash",
+        ["cloud"],
+        `routes: [{ path: "${route}", load: () => import("./X") }],`,
+      ),
+    });
+    await assert.rejects(check(dir), /\/:orgName\/v1-demo.*\bOSS\b.*\bclash\b/);
+  });
+}
+
+test("a plugin route that only shares a prefix with an OSS page passes", async () => {
   const dir = plugins({
-    clash: manifest(
-      "clash",
+    near: manifest(
+      "near",
       ["cloud"],
-      `routes: [{ path: "/:orgName/v1-demo", load: () => import("./X") }],`,
+      `routes: [{ path: "/:orgName/v1-demo-x", load: () => import("./X") }],`,
     ),
   });
-  await assert.rejects(check(dir), /\/:orgName\/v1-demo.*\bOSS\b.*\bclash\b/);
+  assert.deepEqual((await check(dir)).distributions.cloud, ["near"]);
 });
 
 test("the Vite plugin fails the build on a conflict", async () => {

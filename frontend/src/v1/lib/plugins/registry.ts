@@ -54,14 +54,21 @@ function assertDeclared(manifests: readonly PluginManifest[]): void {
   }
 }
 
+/** True when some URL matches both route patterns. */
+export type RouteOverlap = (a: string, b: string) => boolean;
+
+const samePath: RouteOverlap = (a, b) => a === b;
+
 function collect(
   manifests: readonly PluginManifest[],
   ossRoutes: readonly string[],
+  overlaps: RouteOverlap,
 ): { slots: Map<SlotId, SlotEntry<SlotId>>; routes: RouteEntry[] } {
   const slots = new Map<SlotId, SlotEntry<SlotId>>();
-  const routeOwners = new Map<string, string>(
-    ossRoutes.map((path) => [path, "OSS"]),
-  );
+  const owned: [path: string, owner: string][] = ossRoutes.map((path) => [
+    path,
+    "OSS",
+  ]);
   const routes: RouteEntry[] = [];
   for (const m of manifests) {
     for (const [id, load] of Object.entries(m.slots ?? {})) {
@@ -78,13 +85,16 @@ function collect(
       });
     }
     for (const route of m.routes ?? []) {
-      const taken = routeOwners.get(route.path);
+      const taken = owned.find(([path]) => overlaps(path, route.path));
       if (taken) {
+        const [path, owner] = taken;
+        const what =
+          path === route.path ? route.path : `${route.path} (overlaps ${path})`;
         throw new PluginConflictError(
-          `route ${route.path} is defined by both ${taken} and ${m.id}`,
+          `route ${what} is defined by both ${owner} and ${m.id}`,
         );
       }
-      routeOwners.set(route.path, m.id);
+      owned.push([route.path, m.id]);
       routes.push({ ...route, owner: m.id });
     }
   }
@@ -96,11 +106,16 @@ function collect(
  * PluginConflictError when any distribution would have a slot filled twice,
  * a route defined twice, a plugin that declares nowhere to ship, or a
  * manifest naming a slot or distribution that does not exist.
+ *
+ * Two routes clash when `overlaps` says some URL matches both. The default
+ * compares paths exactly; the app passes the route registry's
+ * `patternsOverlap` (lib/ cannot import app/), so params, case and splats count.
  */
 export function buildRegistry(
   manifests: readonly PluginManifest[],
   distribution: Distribution,
   ossRoutes: readonly string[] = [],
+  overlaps: RouteOverlap = samePath,
 ): PluginRegistry {
   assertDeclared(manifests);
   const inDistribution = (d: Distribution) =>
@@ -108,10 +123,10 @@ export function buildRegistry(
       (m.distributions as readonly Distribution[]).includes(d),
     );
   for (const d of PLUGIN_DISTRIBUTIONS) {
-    collect(inDistribution(d), ossRoutes);
+    collect(inDistribution(d), ossRoutes, overlaps);
   }
   const offered = inDistribution(distribution);
-  const { slots, routes } = collect(offered, ossRoutes);
+  const { slots, routes } = collect(offered, ossRoutes, overlaps);
   return {
     distribution,
     plugins: offered.map((m) => m.id),

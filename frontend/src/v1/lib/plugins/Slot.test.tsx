@@ -204,4 +204,27 @@ describe("Slot", () => {
       expect.objectContaining({ message: "render" }),
     );
   });
+
+  it("reports a render error on every mount that hits it", async () => {
+    const { Slot, report } = flaky(() =>
+      Promise.resolve({
+        default: () => {
+          throw new Error("render");
+        },
+      }),
+    );
+    const tree = () => (
+      <Slot id="shell.product-switcher" props={{}} fallback={fallback} />
+    );
+    const first = render(tree());
+    await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(1));
+    first.unmount();
+    render(tree());
+    await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(2));
+    expect(report).toHaveBeenLastCalledWith(
+      "flaky",
+      "shell.product-switcher",
+      expect.objectContaining({ message: "render" }),
+    );
+  });
 });

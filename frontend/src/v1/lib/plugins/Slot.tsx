@@ -74,8 +74,9 @@ export const SLOT_RETRY_MS = 30_000;
 /**
  * The `<Slot>` component for one registry. Each slot gets its own error
  * boundary, so a plugin that fails to load or render shows that slot's
- * fallback and is reported, and every other slot keeps working. A slot is
- * reported once until one of its loads succeeds.
+ * fallback and is reported, and every other slot keeps working. A failed
+ * load is reported once until a load of that slot succeeds; a render error
+ * is reported each time a boundary catches one.
  */
 export function makeSlot(
   registry: PluginRegistry,
@@ -116,10 +117,14 @@ export function makeSlot(
   }
 
   function onError(owner: string, id: SlotId, error: unknown): void {
-    if (!reported.has(id)) {
+    // failedAt is set before React rethrows a rejected load, so it marks a load failure.
+    if (failedAt.has(id)) {
+      if (reported.has(id)) {
+        return;
+      }
       reported.add(id);
-      report(owner, id, error);
     }
+    report(owner, id, error);
   }
 
   return function Slot<K extends SlotId>({

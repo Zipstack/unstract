@@ -62,6 +62,21 @@ describe("buildRegistry", () => {
     );
   });
 
+  it("fails on overlapping routes when given an overlap rule, naming both paths", () => {
+    const prefix = (a: string, b: string) =>
+      a.startsWith(b.replace("*", "")) || b.startsWith(a.replace("*", ""));
+    const other = {
+      ...billing,
+      id: "other",
+      slots: {},
+      routes: [{ path: "/billing/*", load }],
+    };
+    expect(() => buildRegistry([billing, other], "cloud", [], prefix)).toThrow(
+      /\/billing\/\* \(overlaps \/billing\).*billing.*other/,
+    );
+    expect(() => buildRegistry([billing, other], "cloud")).not.toThrow();
+  });
+
   it("checks conflicts in every distribution, not only the current one", () => {
     const twin = { ...billing, id: "twin", routes: [] };
     expect(() => buildRegistry([billing, twin], "oss")).toThrow(
