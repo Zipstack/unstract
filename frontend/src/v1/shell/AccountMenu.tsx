@@ -1,18 +1,16 @@
+import { ACTION_ICONS, SHELL_ICONS } from "@v1/lib/icons";
 import { initial, initials } from "@v1/lib/organizations";
 import { Slot } from "@v1/lib/plugins";
 import { getPortalContainer } from "@v1/lib/portal";
 import { signOutAndLeave } from "@v1/services/session";
-import {
-  ChevronDown,
-  CircleQuestionMark,
-  CircleUserRound,
-  ExternalLink,
-  LogOut,
-} from "lucide-react";
+import { CircleQuestionMark, CircleUserRound } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 import type { ReactNode } from "react";
 
 const HELP_URL = "https://docs.unstract.com";
+const MenuIcon = SHELL_ICONS.accountMenu;
+const ExternalIcon = ACTION_ICONS.openExternal;
+const SignOutIcon = SHELL_ICONS.signOut;
 
 // Frame NEW09 (1638:44719). Colours are the design's token names.
 const ITEM =
@@ -55,7 +53,7 @@ export function AccountMenu({ user, profileHref }: AccountMenuProps) {
         <span className="ui:flex ui:size-8 ui:items-center ui:justify-center ui:rounded-md ui:bg-primary ui:text-body-small ui:font-semibold ui:text-primary-foreground">
           {initial(label)}
         </span>
-        <ChevronDown
+        <MenuIcon
           aria-hidden
           className="ui:size-3.25 ui:text-muted-foreground"
         />
@@ -93,7 +91,7 @@ export function AccountMenu({ user, profileHref }: AccountMenuProps) {
               Help & docs{" "}
               <span className="ui:sr-only">(opens in a new tab)</span>
             </span>
-            <ExternalLink
+            <ExternalIcon
               aria-hidden
               className="ui:size-4 ui:text-muted-foreground"
             />
@@ -103,7 +101,7 @@ export function AccountMenu({ user, profileHref }: AccountMenuProps) {
             className={ITEM}
             onSelect={() => void signOutAndLeave()}
           >
-            <LogOut aria-hidden className={ICON} />
+            <SignOutIcon aria-hidden className={ICON} />
             Sign out
           </DropdownMenu.Item>
         </DropdownMenu.Content>

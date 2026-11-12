@@ -4,6 +4,7 @@ import {
   SkeletonAvatar,
   SkeletonText,
 } from "@v1/components/ui/feedback";
+import { ACTION_ICONS, SHELL_ICONS } from "@v1/lib/icons";
 import {
   describeOrganization,
   initial,
@@ -14,16 +15,11 @@ import { getPortalContainer } from "@v1/lib/portal";
 import {
   listOrganizations,
   type Organization,
+  OrganizationError,
   organizationLoginUrl,
   switchOrganization,
 } from "@v1/services/organizations";
-import axios from "axios";
-import {
-  ArrowRightLeft,
-  ChevronRight,
-  ChevronsUpDown,
-  Search,
-} from "lucide-react";
+import { ArrowRightLeft } from "lucide-react";
 import { AlertDialog, Popover } from "radix-ui";
 import { useCallback, useRef, useState } from "react";
 
@@ -32,6 +28,9 @@ import { useCallback, useRef, useState } from "react";
 // which have no tokens yet. Rotate again once the tokens include an avatar palette.
 const AVATAR_COLOUR = "ui:bg-primary-muted ui:text-primary";
 const SIGN_IN_PATH = "/landing";
+const PillIcon = SHELL_ICONS.orgSwitcher;
+const SearchIcon = SHELL_ICONS.search;
+const NextIcon = ACTION_ICONS.next;
 const BUTTON =
   "ui:inline-flex ui:h-8 ui:items-center ui:gap-1.5 ui:rounded-lg ui:border ui:border-border ui:bg-card ui:text-body ui:font-medium ui:text-foreground ui:hover:bg-muted ui:disabled:opacity-50";
 
@@ -45,9 +44,10 @@ export interface CurrentOrganization {
 }
 
 /**
- * Where a 412 sends the user. A known cause carries `code` and `domain`, which
- * v0's /error page explains (useSessionValid.js); signing in again would only
- * fail the same way. An empty body goes back to sign-in.
+ * Where an ended session sends the user. A known cause carries `code` and
+ * `domain`, which v0's /error page explains (useSessionValid.js); signing in
+ * again would only fail the same way. An empty body goes back to sign-in.
+ * These are app routes, not API URLs, so they live here and not in services/.
  */
 export function sessionEndedPath(body: unknown): string {
   const { code, domain } = (body ?? {}) as { code?: unknown; domain?: unknown };
@@ -81,9 +81,11 @@ function useOrganizationList() {
         if (request !== latest.current) {
           return;
         }
-        // 412: the backend logged the session out while building the list.
-        if (axios.isAxiosError(error) && error.response?.status === 412) {
-          window.location.assign(sessionEndedPath(error.response.data));
+        if (
+          error instanceof OrganizationError &&
+          error.kind === "session-ended"
+        ) {
+          window.location.assign(sessionEndedPath(error.body));
           return;
         }
         console.error("Could not load the organisations", error);
@@ -134,7 +136,7 @@ function ConfirmSwitch({
   to: Organization;
   viaLogin: boolean;
   onClose: () => void;
-  /** The backend refused with 403: the cached list is stale. */
+  /** The user lost access to `to`: the cached list is stale. */
   onAccessRemoved: () => void;
   /** The pill: the button that opened this dialog unmounted with the popover. */
   returnFocus: () => void;
@@ -157,8 +159,11 @@ function ConfirmSwitch({
       );
     } catch (error) {
       console.error("Could not switch organisation", error);
-      // 403: the user was removed from it after the list loaded; retrying cannot work.
-      if (axios.isAxiosError(error) && error.response?.status === 403) {
+      // Retrying cannot work once the user is out of the organisation.
+      if (
+        error instanceof OrganizationError &&
+        error.kind === "access-removed"
+      ) {
         setFailed("removed");
         onAccessRemoved();
         return;
@@ -205,7 +210,7 @@ function ConfirmSwitch({
           <div className="ui:mx-6 ui:mb-6 ui:flex ui:items-center ui:gap-3 ui:rounded-lg ui:bg-muted ui:px-4 ui:py-3.5">
             <OrgAvatar name={from.display_name} size="sm" />
             <OrgLine org={{ ...from, region: undefined }} />
-            <ChevronRight
+            <NextIcon
               aria-hidden
               className="ui:size-4.5 ui:text-muted-foreground"
             />
@@ -270,7 +275,11 @@ export function OrganizationSwitcher({
   const shown = organizations.filter((org) =>
     org.display_name.toLowerCase().includes(query.trim().toLowerCase()),
   );
-  const count = organizations.length;
+  // The current organisation can be missing from the list; it still counts.
+  const count =
+    organizations.length +
+    (organizations.some((o) => o.id === current.id) ? 0 : 1);
+  const nothingToSwitchTo = organizations.every((o) => o.id === current.id);
 
   return (
     <>
@@ -295,7 +304,7 @@ export function OrganizationSwitcher({
           <span className="ui:flex-1 ui:truncate ui:text-left ui:text-body-small ui:font-medium ui:text-foreground">
             {current.displayName}
           </span>
-          <ChevronsUpDown
+          <PillIcon
             aria-hidden
             className="ui:size-3.5 ui:text-muted-foreground"
           />
@@ -308,7 +317,7 @@ export function OrganizationSwitcher({
             className="ui:z-50 ui:flex ui:max-h-(--radix-popover-content-available-height) ui:w-90 ui:flex-col ui:rounded-lg ui:border ui:border-border ui:bg-popover ui:p-1.5 ui:shadow-md"
           >
             <label className="ui:mb-1 ui:flex ui:h-9 ui:items-center ui:gap-2 ui:rounded-md ui:px-2.5 ui:text-muted-foreground">
-              <Search aria-hidden className="ui:size-4" />
+              <SearchIcon aria-hidden className="ui:size-4" />
               <input
                 type="search"
                 aria-label="Find an organisation"
@@ -343,9 +352,11 @@ export function OrganizationSwitcher({
             {state.status === "ready" && (
               <>
                 {shown.length === 0 ? (
-                  <p className="ui:px-3 ui:py-4 ui:text-body-small ui:text-muted-foreground">
-                    No organisations match
-                  </p>
+                  query.trim() !== "" && (
+                    <p className="ui:px-3 ui:py-4 ui:text-body-small ui:text-muted-foreground">
+                      No organisations match
+                    </p>
+                  )
                 ) : (
                   <p className="ui:px-1.5 ui:pt-1 ui:pb-2 ui:text-overline ui:uppercase ui:text-muted-foreground">
                     You belong to {count} organisation{count === 1 ? "" : "s"}
@@ -393,7 +404,7 @@ export function OrganizationSwitcher({
                     );
                   })}
                 </ul>
-                {count === 1 && (
+                {nothingToSwitchTo && (
                   <p className="ui:px-3 ui:pt-1.5 ui:text-caption ui:text-muted-foreground">
                     Nothing to switch to.
                   </p>

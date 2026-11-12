@@ -50,11 +50,12 @@ describe("AccountMenu", () => {
     expect(
       screen.getByRole("menuitem", { name: /Help & docs/ }),
     ).toHaveAttribute("href", "https://docs.unstract.com");
-    expect(
-      screen.getByRole("menuitem", {
-        name: "Help & docs (opens in a new tab)",
-      }),
-    ).toBeInTheDocument();
+    // The sr-only text promises a new tab, so the link must open one.
+    const help = screen.getByRole("menuitem", {
+      name: "Help & docs (opens in a new tab)",
+    });
+    expect(help).toHaveAttribute("target", "_blank");
+    expect(help).toHaveAttribute("rel", "noreferrer");
     expect(
       screen.getByRole("menuitem", { name: "Sign out" }),
     ).toBeInTheDocument();

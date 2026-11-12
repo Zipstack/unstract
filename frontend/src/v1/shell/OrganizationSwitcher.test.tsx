@@ -1,6 +1,9 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Organization } from "@v1/services/organizations";
+import {
+  type Organization,
+  OrganizationError,
+} from "@v1/services/organizations";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   type CurrentOrganization,
@@ -239,10 +242,7 @@ describe("OrganizationSwitcher", () => {
     list
       .mockResolvedValueOnce([zipstack, personal])
       .mockReturnValueOnce(new Promise(() => undefined));
-    switchTo.mockRejectedValue({
-      isAxiosError: true,
-      response: { status: 403 },
-    });
+    switchTo.mockRejectedValue(new OrganizationError("access-removed"));
     await open();
     await userEvent.click(
       await screen.findByRole("button", {
@@ -321,11 +321,7 @@ describe("OrganizationSwitcher", () => {
   });
 
   test("a 500 offers a retry and enables the confirm button again", async () => {
-    // An axios error, so only the status keeps it from the 403 branch.
-    switchTo.mockRejectedValue({
-      isAxiosError: true,
-      response: { status: 500 },
-    });
+    switchTo.mockRejectedValue(new Error("HTTP 500"));
     const dialog = await openConfirm();
     const confirm = within(dialog).getByRole("button", {
       name: "Switch organisation",
@@ -339,10 +335,12 @@ describe("OrganizationSwitcher", () => {
   });
 
   test("a 412 with a known cause goes to the error page that explains it", async () => {
-    list.mockRejectedValue({
-      isAxiosError: true,
-      response: { status: 412, data: { code: "INS", domain: "acme.com" } },
-    });
+    list.mockRejectedValue(
+      new OrganizationError("session-ended", {
+        code: "INS",
+        domain: "acme.com",
+      }),
+    );
     await open();
     await waitFor(() =>
       expect(assign).toHaveBeenCalledWith("/error?code=INS&domain=acme.com"),
@@ -360,7 +358,7 @@ describe("OrganizationSwitcher", () => {
   });
 
   test("a 412 with an empty body means the session is gone: go to sign-in", async () => {
-    list.mockRejectedValue({ isAxiosError: true, response: { status: 412 } });
+    list.mockRejectedValue(new OrganizationError("session-ended"));
     await open();
     await waitFor(() => expect(assign).toHaveBeenCalledWith("/landing"));
     expect(
@@ -379,6 +377,43 @@ describe("OrganizationSwitcher", () => {
     expect(screen.getByText("No organisations match")).toBeInTheDocument();
     expect(screen.queryByText(/you belong to/i)).not.toBeInTheDocument();
     expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+  });
+
+  test("the current organisation missing from a list of one other: a Switch row, no 'Nothing to switch to.'", async () => {
+    list.mockResolvedValue([personal]);
+    await open();
+    expect(
+      await screen.findByRole("button", {
+        name: "Switch to Tanushree’s organisation",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Nothing to switch to.")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/^you belong to 2 organisations$/i),
+    ).toBeInTheDocument();
+  });
+
+  test("an empty list with no query: nothing to switch to, no 'No organisations match'", async () => {
+    list.mockResolvedValue([]);
+    await open();
+    expect(
+      await screen.findByText("Nothing to switch to."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("No organisations match"),
+    ).not.toBeInTheDocument();
+  });
+
+  test("a reply that fails the shape check shows the load error with retry", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    list.mockRejectedValue(
+      new Error("Organization list reply carried no organizations"),
+    );
+    await open();
+    expect(
+      await screen.findByText("Could not load your organisations."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 
   test("the confirm dialog takes the from side from the current organisation, listed or not", async () => {

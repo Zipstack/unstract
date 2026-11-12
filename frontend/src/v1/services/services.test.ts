@@ -1,8 +1,13 @@
 import { http } from "@v1/lib/http";
-import type { AxiosRequestConfig, InternalAxiosRequestConfig } from "axios";
+import {
+  AxiosError,
+  type AxiosRequestConfig,
+  type InternalAxiosRequestConfig,
+} from "axios";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   listOrganizations,
+  OrganizationError,
   organizationLoginUrl,
   switchOrganization,
 } from "./organizations";
@@ -22,7 +27,13 @@ beforeEach(() => {
     sent.push(config);
     const response = { ...reply, statusText: "", headers: {}, config };
     if (reply.status >= 400) {
-      throw Object.assign(new Error(`HTTP ${reply.status}`), { response });
+      throw new AxiosError(
+        `HTTP ${reply.status}`,
+        undefined,
+        config,
+        undefined,
+        response,
+      );
     }
     return response;
   };
@@ -81,6 +92,47 @@ describe("organizations", () => {
   test("a failed request rejects instead of resolving empty", async () => {
     reply = { status: 500, data: {} };
     await expect(listOrganizations()).rejects.toThrow("HTTP 500");
+  });
+
+  test.each([
+    {},
+    { organizations: null },
+    "<html>",
+  ])("a 200 without an organizations array rejects: %j", async (body) => {
+    reply.data = body;
+    await expect(listOrganizations()).rejects.toThrow(
+      "Organization list reply carried no organizations",
+    );
+  });
+
+  test("a 412 on the list is a session-ended error carrying the body", async () => {
+    reply = { status: 412, data: { code: "INS" } };
+    const error = await listOrganizations().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(OrganizationError);
+    expect(error).toMatchObject({
+      kind: "session-ended",
+      body: { code: "INS" },
+    });
+  });
+
+  test("a 403 on the list is not given a meaning", async () => {
+    reply = { status: 403, data: {} };
+    const error = await listOrganizations().catch((e: unknown) => e);
+    expect(error).not.toBeInstanceOf(OrganizationError);
+  });
+
+  test("a 403 on set is an access-removed error", async () => {
+    reply = { status: 403, data: {} };
+    await expect(switchOrganization("org_1")).rejects.toMatchObject({
+      kind: "access-removed",
+    });
+  });
+
+  test.each([412, 500])("a %i on set is thrown as is", async (status) => {
+    reply = { status, data: {} };
+    const error = await switchOrganization("org_1").catch((e: unknown) => e);
+    expect(error).not.toBeInstanceOf(OrganizationError);
+    expect(error).toMatchObject({ message: `HTTP ${status}` });
   });
 });
 

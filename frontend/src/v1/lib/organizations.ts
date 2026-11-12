@@ -23,6 +23,7 @@ export interface OrganizationDetails {
 /**
  * "Admin · 40 members · US". The list leaves a field out when this deployment
  * cannot answer for it (OSS has no regions), so a missing part is skipped.
+ * v1 shows the region code as the backend sends it, with no label mapping.
  */
 export function describeOrganization({
   role,

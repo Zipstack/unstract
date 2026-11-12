@@ -105,5 +105,8 @@ describe("landingPath", () => {
     expect(landingPath("/landing", "zipstack", "tanushree")).toBe(
       "/tanushree/dashboard",
     );
+    expect(landingPath("/otherorg/workflows", "zipstack", "tanushree")).toBe(
+      "/tanushree/dashboard",
+    );
   });
 });
