@@ -5,7 +5,7 @@ from datetime import timedelta
 from api_v2.models import APIDeployment
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
-from django.db.models import Q, QuerySet, Sum
+from django.db.models import ExpressionWrapper, Q, QuerySet, Sum
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
 from tenant_account_v2.organization_member_service import OrganizationMemberService
@@ -641,6 +641,15 @@ class WorkflowExecution(BaseModel):
         super().save(*args, **kwargs)
         self._handle_execution_cache()
 
+    @staticmethod
+    def partial_success() -> Q:
+        """A COMPLETED run where some files failed and some succeeded."""
+        return Q(
+            status=ExecutionStatus.COMPLETED.value,
+            successful_files__gt=0,
+            failed_files__gt=0,
+        )
+
     @classmethod
     def get_last_run_statuses(cls, pipeline_id: uuid.UUID, limit: int = 5) -> list[dict]:
         """Fetch the last N execution statuses for a pipeline.
@@ -656,9 +665,14 @@ class WorkflowExecution(BaseModel):
             List of dicts with execution_id, status, timestamp, and file counts.
             Ordered oldest to newest (for left-to-right timeline display).
         """
-        executions = cls.objects.filter(pipeline_id=pipeline_id).order_by("-created_at")[
-            :limit
-        ]
+        partial = ExpressionWrapper(
+            cls.partial_success(), output_field=models.BooleanField()
+        )
+        executions = (
+            cls.objects.filter(pipeline_id=pipeline_id)
+            .annotate(is_partial=partial)
+            .order_by("-created_at")[:limit]
+        )
 
         result = []
         for e in executions:
@@ -666,9 +680,7 @@ class WorkflowExecution(BaseModel):
             failed = e.failed_files or 0
 
             # Compute display_status: PARTIAL_SUCCESS if completed with mixed results
-            display_status = e.status
-            if e.status == "COMPLETED" and failed > 0 and successful > 0:
-                display_status = "PARTIAL_SUCCESS"
+            display_status = "PARTIAL_SUCCESS" if e.is_partial else e.status
 
             result.append(
                 {
