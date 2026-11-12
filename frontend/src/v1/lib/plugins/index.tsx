@@ -1,9 +1,8 @@
 /*
- * v1's extension-point contract. Shell and pages render `<Slot>` from here;
- * they never import a plugin. The registry itself is built in
- * `@v1/plugins` (the only folder that may see plugin manifests). The v1 shell
- * (P2-T01) is to hand it down through `PluginProvider`; nothing does yet. With
- * no provider, as in OSS tests, every slot shows its fallback.
+ * v1's extension-point contract. Shell and pages render `<Slot>` from here.
+ * The registry itself is built in `@v1/plugins`. The v1 shell (P2-T01) is to
+ * hand it down through `PluginProvider`; nothing does yet. With no provider,
+ * as in OSS tests, every slot shows its fallback.
  */
 import { createContext, type ReactNode, useContext } from "react";
 import type { makeSlot, SlotComponentProps } from "./Slot";
@@ -11,9 +10,12 @@ import type { SlotId } from "./types";
 
 export {
   buildRegistry,
+  type PatternProblem,
   PluginConflictError,
   type PluginRegistry,
   type RouteEntry,
+  type RouteOverlap,
+  type RouteRules,
 } from "./registry";
 export {
   makeSlot,

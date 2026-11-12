@@ -29,35 +29,82 @@ export interface PluginRegistry {
   slot<K extends SlotId>(id: K): SlotEntry<K> | undefined;
 }
 
-function assertDeclared(manifests: readonly PluginManifest[]): void {
-  const seen = new Set<string>();
-  for (const m of manifests) {
-    if (seen.has(m.id)) {
-      throw new PluginConflictError(`plugin id ${m.id} is used twice`);
+/** True when some URL matches both route patterns. */
+export type RouteOverlap = (a: string, b: string) => boolean;
+
+/** Why a route pattern is not accepted, or null. */
+export type PatternProblem = (pattern: string) => string | null;
+
+/** How plugin routes are checked; the app passes the route registry's rules. */
+export interface RouteRules {
+  /** Route patterns of OSS pages; a plugin route may not overlap one. */
+  ossRoutes?: readonly string[];
+  /** Default: two paths overlap only when they are equal. */
+  overlaps?: RouteOverlap;
+  /** Default: a path must start with `/`. */
+  patternProblem?: PatternProblem;
+}
+
+const samePath: RouteOverlap = (a, b) => a === b;
+
+const absolute: PatternProblem = (pattern) =>
+  pattern.startsWith("/") ? null : "must start with /";
+
+function fail(message: string): never {
+  throw new PluginConflictError(message);
+}
+
+/*
+ * tsc never sees a manifest the cloud overlay copies in, so its shape is
+ * checked here at run time.
+ */
+function assertShape(m: PluginManifest, patternProblem: PatternProblem): void {
+  for (const [id, load] of Object.entries(m.slots ?? {})) {
+    if (!(SLOT_IDS as readonly string[]).includes(id)) {
+      fail(`${m.id} fills unknown slot ${id}`);
     }
-    seen.add(m.id);
-    if (m.distributions.length === 0) {
-      throw new PluginConflictError(`${m.id} declares no distributions`);
+    if (typeof load !== "function") {
+      fail(
+        `${m.id} fills slot ${id} with ${typeof load}, not a loader function`,
+      );
     }
-    for (const d of m.distributions as readonly string[]) {
-      if (!(PLUGIN_DISTRIBUTIONS as readonly string[]).includes(d)) {
-        throw new PluginConflictError(
-          `${m.id} declares unknown distribution ${d}`,
-        );
-      }
+  }
+  for (const [i, route] of (m.routes ?? []).entries()) {
+    const path: unknown = route?.path;
+    if (typeof path !== "string") {
+      fail(`${m.id} route ${i} has no string path`);
     }
-    for (const id of Object.keys(m.slots ?? {})) {
-      if (!(SLOT_IDS as readonly string[]).includes(id)) {
-        throw new PluginConflictError(`${m.id} fills unknown slot ${id}`);
-      }
+    if (typeof route.load !== "function") {
+      fail(`${m.id} route ${path} has no load function`);
+    }
+    const problem = patternProblem(path);
+    if (problem) {
+      fail(`${m.id} route ${path} is not accepted: ${problem}`);
     }
   }
 }
 
-/** True when some URL matches both route patterns. */
-export type RouteOverlap = (a: string, b: string) => boolean;
-
-const samePath: RouteOverlap = (a, b) => a === b;
+function assertDeclared(
+  manifests: readonly PluginManifest[],
+  patternProblem: PatternProblem,
+): void {
+  const seen = new Set<string>();
+  for (const m of manifests) {
+    if (seen.has(m.id)) {
+      fail(`plugin id ${m.id} is used twice`);
+    }
+    seen.add(m.id);
+    if (m.distributions.length === 0) {
+      fail(`${m.id} declares no distributions`);
+    }
+    for (const d of m.distributions as readonly string[]) {
+      if (!(PLUGIN_DISTRIBUTIONS as readonly string[]).includes(d)) {
+        fail(`${m.id} declares unknown distribution ${d}`);
+      }
+    }
+    assertShape(m, patternProblem);
+  }
+}
 
 function collect(
   manifests: readonly PluginManifest[],
@@ -104,20 +151,25 @@ function collect(
 /**
  * The plugins, slots and routes one distribution offers. Throws
  * PluginConflictError when any distribution would have a slot filled twice,
- * a route defined twice, a plugin that declares nowhere to ship, or a
- * manifest naming a slot or distribution that does not exist.
+ * a route defined twice, a plugin that declares nowhere to ship, a manifest
+ * naming a slot or distribution that does not exist, a slot or route whose
+ * loader is not a function, or a route path `patternProblem` rejects.
  *
- * Two routes clash when `overlaps` says some URL matches both. The default
- * compares paths exactly; the app passes the route registry's
- * `patternsOverlap` (lib/ cannot import app/), so params, case and splats count.
+ * Two routes clash when `overlaps` says some URL matches both. The app passes
+ * the route registry's `patternsOverlap` and `patternProblem` (lib/ cannot
+ * import app/), so params, case and splats count, and only patterns that
+ * check can stay exact are let in.
  */
 export function buildRegistry(
   manifests: readonly PluginManifest[],
   distribution: Distribution,
-  ossRoutes: readonly string[] = [],
-  overlaps: RouteOverlap = samePath,
+  {
+    ossRoutes = [],
+    overlaps = samePath,
+    patternProblem = absolute,
+  }: RouteRules = {},
 ): PluginRegistry {
-  assertDeclared(manifests);
+  assertDeclared(manifests, patternProblem);
   const inDistribution = (d: Distribution) =>
     manifests.filter((m) =>
       (m.distributions as readonly Distribution[]).includes(d),

@@ -4,11 +4,24 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { check } from "./v1-plugins.mjs";
 
+const temps = [];
+after(() => {
+  for (const dir of temps) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function tempDir(prefix) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  temps.push(dir);
+  return dir;
+}
+
 function plugins(manifests) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "v1-plugins-"));
+  const dir = tempDir("v1-plugins-");
   for (const [id, body] of Object.entries(manifests)) {
     fs.mkdirSync(path.join(dir, id));
     fs.writeFileSync(path.join(dir, id, "manifest.ts"), body);
@@ -59,7 +72,8 @@ test("the matrix lists each plugin per distribution", async () => {
 });
 
 test("no plugins directory gives an empty matrix", async () => {
-  assert.deepEqual(await check(path.join(os.tmpdir(), "v1-plugins-none")), {
+  const none = path.join(tempDir("v1-plugins-"), "none");
+  assert.deepEqual(await check(none), {
     distributions: { oss: [], cloud: [], onprem: [] },
     plugins: [],
   });
@@ -88,6 +102,47 @@ test("a manifest with a runtime import fails with a clear message", async () => 
   });
   await assert.rejects(check(dir), /bad\/manifest\.ts.*import type/);
 });
+
+test("a manifest with a syntax error fails with its cause and no import hint", async () => {
+  const dir = plugins({ broken: "export const manifest = {\n" });
+  await assert.rejects(check(dir), (err) => {
+    assert.match(err.message, /broken\/manifest\.ts could not be loaded/);
+    assert.doesNotMatch(err.message, /import type/);
+    assert.ok(err.cause, "keeps the original error as its cause");
+    return true;
+  });
+});
+
+test("a manifest whose slot or route is not a loader fails, naming the plugin", async () => {
+  for (const [extra, why] of [
+    [
+      `slots: { "shell.product-switcher": undefined },`,
+      /odd fills slot shell\.product-switcher with undefined/,
+    ],
+    [`routes: [{ path: "/odd", load: "./Odd" }],`, /odd route \/odd has no load/],
+    [`routes: [{ load: () => import("./X") }],`, /odd route 0 has no string path/],
+  ]) {
+    const dir = plugins({ odd: manifest("odd", ["cloud"], extra) });
+    await assert.rejects(check(dir), why);
+  }
+});
+
+for (const [route, why] of [
+  ["/:orgName/v1-demo/:id?", /segment ':id\?'/],
+  ["billing", /must start with \//],
+]) {
+  test(`a plugin route ${route} the route registry's pattern rule refuses fails`, async () => {
+    const dir = plugins({
+      odd: manifest(
+        "odd",
+        ["cloud"],
+        `routes: [{ path: "${route}", load: () => import("./X") }],`,
+      ),
+    });
+    await assert.rejects(check(dir), /odd route .* is not accepted/);
+    await assert.rejects(check(dir), why);
+  });
+}
 
 test("a slot id the contract does not define fails, naming the plugin", async () => {
   const dir = plugins({
@@ -172,6 +227,24 @@ test("the Vite plugin emits plugin-matrix.json naming the build's distribution",
   assert.deepEqual(matrix.distributions.cloud, ["billing"]);
 });
 
+test("the Vite config accepts every distribution the route registry declares", async () => {
+  const { distributions } = await check(tempDir("v1-plugins-"));
+  const { default: config } = await import("../vite.config.js");
+  const saved = process.env.VITE_DISTRIBUTION;
+  try {
+    for (const d of Object.keys(distributions)) {
+      process.env.VITE_DISTRIBUTION = d;
+      assert.doesNotThrow(() => config({ mode: "production" }), d);
+    }
+  } finally {
+    if (saved === undefined) {
+      delete process.env.VITE_DISTRIBUTION;
+    } else {
+      process.env.VITE_DISTRIBUTION = saved;
+    }
+  }
+});
+
 test("the Vite config runs the plugin matrix in every build", async () => {
   const { default: config } = await import("../vite.config.js");
   const names = config({ mode: "production" }).plugins.map((p) => p.name);
@@ -238,15 +311,28 @@ test("the CLI exits 0 and prints the matrix on a clean directory", () => {
   assert.deepEqual(JSON.parse(result.stdout).distributions.cloud, ["billing"]);
 });
 
+test("the CLI prints the cause of a manifest that fails to load", () => {
+  const result = cli(plugins({ broken: "export const manifest = {\n" }));
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /broken\/manifest\.ts could not be loaded/);
+  // The cause follows the message, with its stack.
+  assert.match(result.stderr, /^\s+at /m);
+});
+
 test("the CLI writes the matrix to the file argument, with or without --dir", () => {
-  const out = path.join(
-    fs.mkdtempSync(path.join(os.tmpdir(), "v1-out-")),
-    "m.json",
-  );
-  const bare = spawnSync(process.execPath, [script, out], { encoding: "utf8" });
+  const out = path.join(tempDir("v1-out-"), "m.json");
+  // Without --dir it reads V1_PLUGINS_DIR, not the repository's plugins/.
+  const bare = spawnSync(process.execPath, [script, out], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      V1_PLUGINS_DIR: plugins({ switcher: manifest("switcher", ["onprem"]) }),
+    },
+  });
   assert.equal(bare.status, 0, bare.stderr);
   assert.equal(bare.stdout, "");
-  assert.ok(JSON.parse(fs.readFileSync(out, "utf8")).distributions);
+  const fromEnv = JSON.parse(fs.readFileSync(out, "utf8"));
+  assert.deepEqual(fromEnv.distributions.onprem, ["switcher"]);
 
   const dir = plugins({ billing: manifest("billing", ["cloud"]) });
   const before = spawnSync(process.execPath, [script, out, "--dir", dir], {

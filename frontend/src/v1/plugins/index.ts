@@ -1,13 +1,14 @@
 /*
  * Builds the plugin registry from the manifests the cloud overlay copies in
  * as `plugins/<id>/manifest.ts`. An absent plugin has no manifest, so its
- * slots show their fallbacks; every import error left is a real failure and
- * is reported. Nothing renders `PluginSlot` or `pluginRoutes()` yet: the v1
+ * slots show their fallbacks; a filler that fails to load or render is
+ * reported. Nothing renders `PluginSlot` or `pluginRoutes()` yet: the v1
  * shell (P2-T01) wraps the app in `PluginProvider` with `PluginSlot` and adds
  * the plugin routes to the v1 router.
  */
 import { DEMO_PAGES, PAGES } from "@v1/app/registry/entries";
-import { patternsOverlap } from "@v1/app/registry/patterns";
+import { patternProblem, patternsOverlap } from "@v1/app/registry/patterns";
+import { DISTRIBUTIONS } from "@v1/app/registry/types";
 import { notify } from "@v1/lib/notify";
 import {
   buildRegistry,
@@ -19,18 +20,17 @@ import {
   type RouteEntry,
 } from "@v1/lib/plugins";
 
-const DISTRIBUTIONS: readonly Distribution[] = ["oss", "cloud", "onprem"];
-
 function currentDistribution(): Distribution {
   // Empty means oss: the frontend image passes the build arg through even when unset.
   const value =
     import.meta.env.VITE_DISTRIBUTION?.trim().toLowerCase() || "oss";
-  if (!DISTRIBUTIONS.includes(value)) {
+  const distribution = DISTRIBUTIONS.find((d) => d === value);
+  if (!distribution) {
     throw new Error(
       `VITE_DISTRIBUTION must be one of ${DISTRIBUTIONS.join(", ")}; got ${value}`,
     );
   }
-  return value;
+  return distribution;
 }
 
 const manifests = Object.values(
@@ -43,12 +43,19 @@ const manifests = Object.values(
 // Demo pages count: an E2E build registers them.
 const OSS_ROUTES = [...PAGES, ...DEMO_PAGES].flatMap((page) => page.v1Routes);
 
-/** The registry for these manifests; a plugin route on an OSS page throws. */
+/**
+ * The registry for these manifests. A plugin route on an OSS page, or one the
+ * route registry's pattern rule rejects, throws.
+ */
 export function pluginRegistry(
   list: readonly PluginManifest[],
   distribution: Distribution,
 ): PluginRegistry {
-  return buildRegistry(list, distribution, OSS_ROUTES, patternsOverlap);
+  return buildRegistry(list, distribution, {
+    ossRoutes: OSS_ROUTES,
+    overlaps: patternsOverlap,
+    patternProblem,
+  });
 }
 
 export const registry = pluginRegistry(manifests, currentDistribution());

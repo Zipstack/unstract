@@ -43,6 +43,23 @@ it.each([
   ).toThrow(/\/:orgName\/v1-demo.*\bOSS\b.*\bclash\b/);
 });
 
+it.each([
+  ["/:orgName/v1-demo/:id?", /segment ':id\?'/],
+  ["billing", /must start with \//],
+])("rejects a plugin route %s the route registry's pattern rule refuses", async (path, why) => {
+  vi.resetModules();
+  const { pluginRegistry } = await import("@v1/plugins");
+  const manifest = {
+    id: "odd",
+    distributions: ["cloud"] as const,
+    routes: [{ path, load: async () => ({ default: () => null }) }],
+  };
+  expect(() => pluginRegistry([manifest], "cloud")).toThrow(
+    /odd route .* is not accepted/,
+  );
+  expect(() => pluginRegistry([manifest], "cloud")).toThrow(why);
+});
+
 it("logs a plugin failure and raises one error notification per slot", async () => {
   vi.resetModules();
   const { reportPluginError } = await import("@v1/plugins");
