@@ -335,6 +335,31 @@ it("tells an overlay Escape will clear a value written to the DOM, before any re
   expect(escapeClears(input)).toBe(true);
 });
 
+it("drops a stale Clear button once focus returns after setValue empties the field", async () => {
+  const { user, form, input } = renderRegisteredForm();
+  act(() => form().setValue("q", ""));
+  await user.click(input);
+  expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+  expect(escapeClears(input)).toBe(false);
+});
+
+it("shows Clear once focus returns after setValue fills an empty field", async () => {
+  const { user, form, input } = renderRegisteredForm();
+  await user.clear(input);
+  act(() => input.blur());
+  act(() => form().setValue("q", "set"));
+  await user.click(input);
+  expect(screen.getByRole("button", { name: "Clear search" })).toBeTruthy();
+});
+
+it("hides a stale Clear button when it is pressed on a field setValue emptied", async () => {
+  const { user, form } = renderRegisteredForm();
+  act(() => form().setValue("q", ""));
+  await user.click(screen.getByRole("button", { name: "Clear search" }));
+  expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+  expect(form().getValues("q")).toBe("");
+});
+
 it("shows the value react-hook-form's reset restores", async () => {
   const { user, form, input } = renderRegisteredForm();
   await user.type(input, " typed");
