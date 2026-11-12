@@ -480,6 +480,17 @@ class UsageEndpointTests(UsageTestBase):
             ["apples", "Invoices", None],
         )
 
+    def test_a_row_naming_another_adapter_is_skipped(self, _ctx: Any) -> None:
+        """A project row also carries adapters nobody asked about."""
+        other = self.make_adapter("other")
+        project = self.make_project("Both", monitor_llm=self.adapter, challenge_llm=other)
+        index = collect(ProfileKind.ADAPTER, [other])
+        self.assertEqual(list(index), [other.pk])
+        self.assertEqual([ref.pk for ref in index[other.pk].counted], [project.pk])
+        response = self.usage(AdapterInstanceViewSet, other)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["used_in_count"], 1)
+
     def test_provider_may_yield_the_pk_as_a_string(self, _ctx: Any) -> None:
         spare = self.make_adapter("spare")
 
