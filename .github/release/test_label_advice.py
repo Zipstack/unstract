@@ -259,6 +259,30 @@ class Owed(Repo):
             self.assertEqual(out.getvalue(), "")
             self.assertEqual("held: 26 main commit(s)" in err.getvalue(), shown, env)
 
+    def test_the_cli_fetches_origin_before_reading_it(self):
+        dev_git(
+            self.repo, "update-ref", "-d", "refs/remotes/origin/release/1.7"
+        )  # a stale clone
+        held = mock.Mock(return_value=[])
+        old = os.getcwd()
+        os.chdir(self.repo)
+        try:
+            with (
+                mock.patch.object(
+                    la, "slug_from_origin", return_value="o/unstract-cloud"
+                ),
+                mock.patch.object(bp, "held", held),
+                mock.patch.object(bp, "pr_classes", return_value={}),
+                mock.patch.object(bp, "declared", return_value=[]),
+                mock.patch.object(la, "_gh", return_value=json.dumps([{"number": 11}])),
+                mock.patch("sys.stdout"),
+            ):
+                self.assertEqual(la.main(["--owed", "--author", "dev"]), 0)
+        finally:
+            os.chdir(old)
+        held.assert_called_once()
+        self.assertEqual(held.call_args.args[2], "release/1.7")
+
     def test_backports_warnings_show_even_when_it_fails(self):
         def fail(*a, **k):
             print("::warning::PR listing failed, classing commit by commit: HTTP 403")

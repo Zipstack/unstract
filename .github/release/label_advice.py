@@ -349,7 +349,7 @@ def declare(slug, n, value):
 
 
 def owed(slug, author):
-    """[{line, pr, title, why, command}] for author's merged PRs that a live line still owes (needs origin fetched)."""
+    """[{line, pr, title, why, command}] for author's merged PRs that a live line still owes, from local origin refs: main() fetches them first."""
     login = author or _gh("api", "user", "--jq", ".login")
     rows = []
     for branch, ref in sorted(rs._branches(".").items()):
