@@ -17,24 +17,28 @@ class _StringLeavesIn(Func):
 
     Reads the JSON the way the delete guard walks it
     (``AdapterInstanceViewSet._adapter_used_in_tool_instance``): object values
-    and array items, never keys, compared by equality. Postgres 14+ can hash
-    that test for a constant array (psycopg2 sends the list inline), so the
-    cost barely grows with the number of needles. Only the matched strings are
-    sent back, not the whole ``metadata``.
-    Renders ``ARRAY(SELECT DISTINCT leaf #>> '{}' FROM jsonb_path_query(<json>,
-    <strings>) AS leaf WHERE leaf #>> '{}' = ANY(<needles>))``: the joiner sits
-    between the two arguments.
+    and array items, never keys, compared by equality. Postgres can hash that
+    test for a constant array (psycopg2 sends the list inline), so the cost
+    barely grows with the number of needles. Only the matched strings are sent
+    back, not the whole JSON value.
     """
 
     arity = 2
     output_field = ArrayField(TextField())
-    template = (
-        "ARRAY(SELECT DISTINCT leaf #>> '{}' FROM jsonb_path_query(%(expressions)s))"
-    )
-    arg_joiner = (
-        ", 'strict $.** ? (@.type() == \"string\")') AS leaf"
-        " WHERE leaf #>> '{}' = ANY("
-    )
+
+    def as_sql(
+        self, compiler: Any, connection: Any, **extra_context: Any
+    ) -> tuple[str, tuple[Any, ...]]:
+        json_value, needles = self.get_source_expressions()
+        json_sql, json_params = compiler.compile(json_value)
+        needles_sql, needles_params = compiler.compile(needles)
+        sql = (
+            "ARRAY(SELECT DISTINCT leaf #>> '{}'"
+            f" FROM jsonb_path_query({json_sql},"
+            " 'strict $.** ? (@.type() == \"string\")') AS leaf"
+            f" WHERE leaf #>> '{{}}' = ANY({needles_sql}))"
+        )
+        return sql, (*json_params, *needles_params)
 
 
 def tool_instance_refs(adapters: Sequence[Any]) -> Iterable[tuple[Any, Reference]]:

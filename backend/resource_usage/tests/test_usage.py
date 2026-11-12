@@ -1,4 +1,4 @@
-"""Where adapters and connectors are used (PB-T11, UN-4328).
+"""Where adapters and connectors are used.
 
 README.md ("What counts as used") states the rule and its exceptions. The
 parity tests check it against the real ``destroy``.
@@ -518,7 +518,7 @@ class UsageEndpointTests(UsageTestBase):
         self.assertTrue(all(not items for items in response.data["groups"].values()))
 
     def test_non_blocking_provider_counts_but_does_not_block(self, _ctx: Any) -> None:
-        """How the cloud backend adds Agentic Studio projects (SET_NULL FKs)."""
+        """A reference whose FK is SET_NULL, as another app may register."""
         spare = self.make_adapter("spare")
 
         def agentic(adapters: Any) -> Any:

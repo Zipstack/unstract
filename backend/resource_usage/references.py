@@ -85,9 +85,8 @@ class ProfileUsage:
 
     @property
     def counted(self) -> list[Reference]:
-        # Non-blocking references (Agentic Studio projects, whose FKs are
-        # SET_NULL) are counted too: deleting the profile would still break
-        # them, so the profile is not reported as unused.
+        # Non-blocking references are counted too: deleting the profile
+        # would still break what holds them, so it is not reported as unused.
         return [ref for ref in self.references.values() if ref.direct]
 
     @property
