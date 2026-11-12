@@ -128,7 +128,7 @@ class Declared(Repo):
         got, _ = self.declared()
         self.assertEqual(got, [(11, "[FIX] fix 11")])
 
-    def test_the_newest_revert_event_wins(self):
+    def test_a_revert_counts_unless_itself_reverted(self):
         relanded = self.commit("[FIX] flaky (#11)")
         self.pr(11, relanded, "Backport-also: 1.7", "[FIX] flaky")
         self.commit('Revert "[FIX] flaky" (#12)')
@@ -138,6 +138,15 @@ class Declared(Repo):
         self.pr(14, back, "Backport-also: 1.7", "[FIX] back")
         rev = self.commit(f'Revert "[FIX] back" (#15)\n\nThis reverts commit {back}.')
         self.commit(f'Revert "Revert "[FIX] back"" (#16)\n\nThis reverts commit {rev}.')
+        twice = self.commit("[FIX] twice (#18)")
+        self.pr(18, twice, "Backport-also: 1.7", "[FIX] twice")
+        rev = self.commit(f'Revert "[FIX] twice" (#19)\n\nThis reverts commit {twice}.')
+        self.commit(f'Revert "Revert "[FIX] twice"" (#20)\n\nThis reverts commit {rev}.')
+        self.commit(f'Revert "[FIX] twice" (#21)\n\nThis reverts commit {twice}.')
+        same = self.commit("[FIX] same title (#22)")
+        self.pr(22, same, "Backport-also: 1.7", "[FIX] same title")
+        other = self.commit("[FIX] same title (#23)")
+        self.commit(f'Revert "[FIX] same title" (#24)\n\nThis reverts commit {other}.')
         # A revert that reaches main off its first-parent line (a merge-back) does not undo a main fix.
         side = self.commit("[FIX] kept (#17)")
         self.pr(17, side, "Backport-also: 1.7", "[FIX] kept")
@@ -149,8 +158,19 @@ class Declared(Repo):
         dev_git(self.repo, "merge", "-q", "--no-ff", "-m", "merge back", "side")
         got, _ = self.declared()
         self.assertEqual(
-            got, [(13, "[FIX] flaky"), (14, "[FIX] back"), (17, "[FIX] kept")]
+            got,
+            [
+                (13, "[FIX] flaky"),
+                (14, "[FIX] back"),
+                (22, "[FIX] same title"),
+                (17, "[FIX] kept"),
+            ],
         )
+
+    def test_a_commit_missing_from_the_fetched_main_fails_closed(self):
+        self.pr(11, "f" * 40, "Backport-also: 1.7")
+        with self.assertRaisesRegex(RuntimeError, "not in the fetched main"):
+            self.declared()
 
     def test_search_starts_a_day_before_the_cut(self):
         """GitHub reads `merged:>=D` as UTC; a cut at 02:49 +0530 is the previous UTC day."""

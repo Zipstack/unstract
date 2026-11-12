@@ -554,6 +554,18 @@ def declared(slug, repo, branch, token=None):
     order = [(h.strip(), subj, body) for h, subj, body in order]
     at = {h: i for i, (h, _, _) in enumerate(order)}
     done = _trailers(repo, base, remote)
+    for p in mine:
+        c = p["mergeCommit"]["oid"]
+        if (
+            c not in at
+            and rm.git(
+                repo, "merge-base", "--is-ancestor", c, base, check=False
+            ).returncode
+        ):
+            # Merged after the fetch (or not yet fetched): fail closed rather than skip it.
+            raise RuntimeError(
+                f"#{p['number']}'s merge commit {c[:9]} is not in the fetched main; retry"
+            )
     return [
         (p["number"], p["title"])
         for p in mine
@@ -564,18 +576,22 @@ def declared(slug, repo, branch, token=None):
 
 
 def _undone(order, i, title):
-    """Whether main's first-parent commit i is reverted by a later one that is not itself reverted: the newest
-    event wins, so a re-land or a revert of the revert keeps the fix. A revert names the commit (a squash lists
-    it under "* "), or GitHub's revert PR title quotes the PR's title.
+    """Whether main's first-parent commit i is reverted by a later one that is not itself reverted, so a revert
+    of the revert keeps the fix. A revert names the commit (a squash lists it under "* "); only one that names
+    none is matched by GitHub's revert PR title, since two PRs can share a title.
     """
     sha = order[i][0]
     for j in range(i + 1, len(order)):
-        h, subj, body = order[j]
+        _, subj, body = order[j]
+        named = REVERTS_ANY_RE.findall(body)
         m = rm.REVERT_RE.match(subj)
-        if any(sha.startswith(t) for t in REVERTS_ANY_RE.findall(body)) or (
-            m and m[1].strip() == title.strip()
-        ):
-            return not _undone(order, j, PR_SUFFIX_RE.sub("", subj))
+        hit = (
+            any(sha.startswith(t) for t in named)
+            if named
+            else m and m[1].strip() == title.strip()
+        )
+        if hit and not _undone(order, j, PR_SUFFIX_RE.sub("", subj)):
+            return True
     return False
 
 
