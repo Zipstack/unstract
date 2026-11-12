@@ -351,7 +351,6 @@ def ci_commits(
     return rows, where
 
 
-# Backport label -> class.
 BACKPORT_LABELS = {"backport/rc": "rc", "backport/ga": "ga"}
 MAIN_ONLY = "main-only"
 
