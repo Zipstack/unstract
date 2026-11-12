@@ -29,11 +29,16 @@ class Declaration(unittest.TestCase):
             "Backport-also: 0.186\n"
             "Backport-also: release/0.188\n"
             "1. Backport-also 0.188\n"
+            "+ Backport-also: 0.186\n"
             "We could backport also later.\n"  # prose is not an attempt
         )
         self.assertEqual(
             rm.declaration_errors(body),
-            ["Backport-also: release/0.188", "1. Backport-also 0.188"],
+            [
+                "Backport-also: release/0.188",
+                "1. Backport-also 0.188",
+                "+ Backport-also: 0.186",
+            ],
         )
 
     def test_a_main_only_pr_cannot_declare(self):

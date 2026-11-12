@@ -31,7 +31,7 @@ LINE_RE = re.compile(r"[0-9]+\.[0-9]+")
 # list markers, is malformed.
 DECLARE_RE = re.compile(r"^Backport-also: ([0-9]+\.[0-9]+)[ \t]*$", re.M)
 _DECLARE_ANY_RE = re.compile(
-    r"^[ \t>*-]*(?:[0-9]+[.)][ \t]*)?backport[ \t_-]*also\b.*$", re.I | re.M
+    r"^[ \t>*+-]*(?:[0-9]+[.)][ \t]*)?backport[ \t_-]*also\b.*$", re.I | re.M
 )
 
 
