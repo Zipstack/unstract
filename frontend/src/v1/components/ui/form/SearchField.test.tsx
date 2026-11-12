@@ -1,7 +1,8 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { renderV1 } from "@v1/test";
 import { Dialog } from "radix-ui";
-import { type KeyboardEvent, useState } from "react";
+import { type ChangeEvent, type KeyboardEvent, useState } from "react";
+import { useForm } from "react-hook-form";
 import { expect, it, onTestFinished, vi } from "vitest";
 import { Field } from "./Field";
 import { isEscapeClearTarget } from "./keyboard";
@@ -204,6 +205,46 @@ it("keeps its own change handler when a caller spreads an onChange", async () =>
   expect(input.value).toBe("");
 });
 
+it("types, clears and escapes through a spread { value, onChange } with no onValueChange", async () => {
+  // `<SearchField {...field} />` from useController.
+  function Controlled() {
+    const [value, setValue] = useState("");
+    const field = {
+      value,
+      onChange: (event: ChangeEvent<HTMLInputElement>) =>
+        setValue(event.target.value),
+    } as Partial<SearchFieldProps>;
+    return <SearchField aria-label="Search" {...field} />;
+  }
+  const { user } = renderV1(<Controlled />);
+  const input = screen.getByLabelText("Search") as HTMLInputElement;
+  await user.type(input, "ab");
+  expect(input.value).toBe("ab");
+  await user.click(screen.getByRole("button", { name: "Clear search" }));
+  expect(input.value).toBe("");
+  await user.type(input, "cd");
+  await user.keyboard("{Escape}");
+  expect(input.value).toBe("");
+});
+
+it("reports typing and clearing to react-hook-form through a register() spread", async () => {
+  function Form() {
+    const { register, watch } = useForm({ defaultValues: { q: "" } });
+    return (
+      <>
+        <SearchField aria-label="Search" {...register("q")} />
+        <output aria-label="Watched">{watch("q")}</output>
+      </>
+    );
+  }
+  const { user } = renderV1(<Form />);
+  const watched = screen.getByLabelText("Watched");
+  await user.type(screen.getByLabelText("Search"), "ab");
+  expect(watched.textContent).toBe("ab");
+  await user.click(screen.getByRole("button", { name: "Clear search" }));
+  expect(watched.textContent).toBe("");
+});
+
 it("lets the caller's onKeyDown cancel the clear, and reports typing through onValueChange", async () => {
   const onValueChange = vi.fn();
   const onKeyDown = vi.fn((event: KeyboardEvent<HTMLInputElement>) => {
@@ -245,7 +286,7 @@ it("lets Escape through from a controlled field that has no onValueChange, witho
   expect(notPrevented).toBe(false);
 });
 
-it("takes no onChange, so a controlled field is wired through onValueChange", () => {
+it("leaves onChange out of the type, so onValueChange is the documented API", () => {
   // @ts-expect-error onChange is not a SearchField prop.
   const props: SearchFieldProps = { onChange: () => undefined };
   expect(props).toBeDefined();
