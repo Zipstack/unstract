@@ -1012,7 +1012,7 @@ class Scenario(unittest.TestCase):
         self.commit(
             "fix after the bump", "release/1.5"
         )  # chart still at the version, tip is a normal commit
-        self.assertFalse(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.1"))
+        self.assertFalse(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.3"))
         self.chart(
             "1.5.0-rc.2", "release/1.5", "release: chart 1.5.0-rc.2"
         )  # right subject, not the bot
