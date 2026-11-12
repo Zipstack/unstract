@@ -502,6 +502,7 @@ def _trailers(repo, base, remote):
 
 
 REVERTS_ANY_RE = re.compile(r"^(?:\* )?This reverts commit ([0-9a-f]{7,40})", re.M)
+PR_SUFFIX_RE = re.compile(r" \(#\d+\)$")
 
 
 def declared(slug, repo, branch, token=None):
@@ -512,7 +513,7 @@ def declared(slug, repo, branch, token=None):
     line = branch.removeprefix("release/")
     remote = f"origin/{branch}"
     base = rm.git(repo, "merge-base", MAIN, remote)
-    since = rm.git(repo, "log", "-1", "--format=%cs", base)
+    since = search_since(repo, base)
     # Known limit: search stops at 1000 results; a PR past it is missed (no block), never wrongly blocked.
     prs = json.loads(
         gh(
@@ -538,26 +539,52 @@ def declared(slug, repo, branch, token=None):
     ]
     if not mine:
         return []
-    commits = set(
-        rm.git(repo, "log", "--first-parent", "--format=%H", f"{base}..{MAIN}").split()
-    )
-    # A revert names the commit (a squash lists it under "* "), or GitHub's revert PR title quotes the PR's title.
-    reverted = set(
-        REVERTS_ANY_RE.findall(rm.git(repo, "log", "--format=%B", f"{base}..{MAIN}"))
-    )
-    reverted_titles = {
-        m[1].strip()
-        for s in rm.git(repo, "log", "--format=%s", f"{base}..{MAIN}").splitlines()
-        if (m := rm.REVERT_RE.match(s))
-    }
-    done = _trailers(repo, base, remote) | reverted
+    order = [
+        c.split("\x1f")
+        for c in rm.git(
+            repo,
+            "log",
+            "--first-parent",
+            "--reverse",
+            "--format=%H%x1f%s%x1f%B%x1e",
+            f"{base}..{MAIN}",
+        ).split("\x1e")
+        if c.strip()
+    ]
+    order = [(h.strip(), subj, body) for h, subj, body in order]
+    at = {h: i for i, (h, _, _) in enumerate(order)}
+    done = _trailers(repo, base, remote)
     return [
         (p["number"], p["title"])
         for p in mine
-        if (c := p["mergeCommit"]["oid"]) in commits
+        if (c := p["mergeCommit"]["oid"]) in at
         and not any(c.startswith(t) for t in done)
-        and p["title"].strip() not in reverted_titles
+        and not _undone(order, at[c], p["title"])
     ]
+
+
+def _undone(order, i, title):
+    """Whether main's first-parent commit i is reverted by a later one that is not itself reverted: the newest
+    event wins, so a re-land or a revert of the revert keeps the fix. A revert names the commit (a squash lists
+    it under "* "), or GitHub's revert PR title quotes the PR's title.
+    """
+    sha = order[i][0]
+    for j in range(i + 1, len(order)):
+        h, subj, body = order[j]
+        m = rm.REVERT_RE.match(subj)
+        if any(sha.startswith(t) for t in REVERTS_ANY_RE.findall(body)) or (
+            m and m[1].strip() == title.strip()
+        ):
+            return not _undone(order, j, PR_SUFFIX_RE.sub("", subj))
+    return False
+
+
+def search_since(repo, base):
+    """The date to pass GitHub's `merged:>=` for PRs merged after base: a day early, since GitHub reads the date
+    as UTC and main's commits carry +0530. Callers keep only commits after base, so the margin costs nothing.
+    """
+    at = datetime.datetime.fromisoformat(rm.git(repo, "log", "-1", "--format=%cI", base))
+    return (at - datetime.timedelta(days=1)).date().isoformat()
 
 
 def backport_head(branch, sha):

@@ -4424,7 +4424,9 @@ elif a[:2] in (["release", "edit"], ["release", "create"]):
 class LintPrStep(unittest.TestCase):
     """The Classify PR step judges each PR against its own base."""
 
-    def classify(self, title, labels, base, gh_exit=0, body="", files=(), files_exit=0):
+    def classify(
+        self, title, labels, base, gh_exit=0, body="", files=(), files_exit=0, root=None
+    ):
         """labels: what the API returns now; the event payload's labels are a stale decoy. files: the PR's files,
         in the pulls files API's shape; the advice reads them and the PR itself.
         """
@@ -4444,6 +4446,7 @@ echo "$*" >> "{d}/calls"
 case "$*" in
   *"/issues/7/labels"*) cat "{d}/labels"; exit {gh_exit};;
   *"/pulls/7/files"*) cat "{d}/files"; exit {files_exit};;
+  *"/pulls/7/commits"*) echo '[[{{"commit": {{"message": "x"}}}}]]';;
   *"/pulls/7") cat "{d}/pr";;
   *"/branches?per_page=100 --jq .[].name") echo release/0.186;;
   *"/git/trees/release/0.186?recursive=1") echo '{{"truncated": false, "tree": [{{"path": "backend/x.py"}}]}}';;
@@ -4453,7 +4456,7 @@ esac
             os.chmod(os.path.join(d, "gh"), 0o755)
             r = subprocess.run(
                 ["bash", "-e", "-c", step("lint-pr.yaml", "Classify PR")],
-                cwd=os.path.join(HERE, "..", ".."),
+                cwd=root or os.path.join(HERE, "..", ".."),
                 env={
                     **os.environ,
                     "PATH": f"{d}:{os.environ['PATH']}",
@@ -4493,6 +4496,17 @@ esac
         self.assertEqual(rc, 0, out)
         self.assertIn("::warning title=Lint PR::the advice is `release-branch-only`", out)
 
+    def test_a_relmgr_without_the_body_check_still_classifies(self):
+        """The step runs main's relmgr, which may predate body_errors."""
+        with tempfile.TemporaryDirectory() as root:
+            shutil.copytree(HERE, os.path.join(root, ".github", "release"))
+            with open(os.path.join(root, ".github", "release", "relmgr.py"), "a") as fh:
+                fh.write("\ndel body_errors\n")
+            self.assertEqual(
+                self.classify("UN-1 [FIX] x", ["main-only"], "main", root=root),
+                (0, "class=none\n"),
+            )
+
     def test_a_suggestion_is_never_checked(self):
         # The code is on release/0.186, so the advice only suggests backport/rc: main-only is the author's call.
         rc, out = self.classify(
@@ -4519,11 +4533,17 @@ esac
             "`Backport-also: X.Y`",
             out,
         )
-        self.assertEqual(
-            self.classify(
-                "UN-1 [FIX] x", ["main-only"], "main", body="Backport-also: 0.186\r\n"
-            ),
-            (0, "class=none\n"),
+        rc, out = self.classify(
+            "UN-1 [FIX] x", ["backport/rc"], "main", body="Backport-also: 0.186\r\n"
+        )
+        self.assertEqual(rc, 0, out)
+        # Backport never picks a main-only PR, so a declaration there could never be met.
+        rc, out = self.classify(
+            "UN-1 [FIX] x", ["main-only"], "main", body="Backport-also: 0.186\r\n"
+        )
+        self.assertEqual(rc, 1, out)
+        self.assertIn(
+            "::error title=Lint PR::`main-only` with a `Backport-also` line", out
         )
 
     def test_a_missing_label_prints_the_advice(self):

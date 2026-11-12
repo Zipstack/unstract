@@ -6,9 +6,9 @@ Usage (from a clone of this repo, with gh logged in):
   label_advice.py --declare X.Y --pr N                               add `Backport-also: X.Y` to the PR body
   label_advice.py --owed [--author LOGIN] [--json]                   what your merged PRs still owe release lines
 
-Results: `decided` (no judgement left; Lint PR warns on a different label), `suggest` (a default the author may
-override) and `ask` (one question; re-run with --answer). Exit 0 with advice, 1 when GitHub or git fails, 2 on bad
-input.
+Results: `decided` (no judgement left; Lint PR warns on a different label; `label` is null for a Backport pick
+PR, whose labels belong to the bot), `suggest` (a default the author may override) and `ask` (one question; `next`
+holds the command to re-run for each answer). Exit 0 with advice, 1 when GitHub or git fails, 2 on bad input.
 """
 
 import argparse
@@ -26,21 +26,24 @@ RC, GA, RBO = "backport/rc", "backport/ga", "release-branch-only"
 MAIN_ONLY = rm.MAIN_ONLY
 SELF = "python3 .github/release/label_advice.py"
 CLOUD = "Zipstack/unstract-cloud"  # on-prem is promoted there, for both repos' lines
-# Paths that never ship in a release image: docs, tests and repo tooling.
+# Paths that never ship in a release image: docs, tests and repo tooling. A PR touching only these
+# is decided main-only by design, though a release line may want a test or CI fix: the developer
+# labels it backport/rc instead, which Lint PR only warns on.
 NONCODE = re.compile(
     r"\.(md|mdx|rst)$|^docs/|(^|/)tests?/|(^|/)test_[^/]*\.py$|_test\.py$|\.(test|spec)\.[jt]sx?$"
     r"|(^|/)__tests__/|(^|/)unittests/|^\.github/|^\.pre-commit-config\.yaml$"
 )
-PROMOTE_RE = re.compile(r"Promote v(\d+\.\d+)\.\d+-rc\.\d+ · ([^(]*)")
+PROMOTE_RE = re.compile(r"Promote v?(\d+\.\d+)\.\d+-rc\.\d+ · ([^(]*)")
 
 
 class Usage(Exception):
     pass
 
 
-def advise(base, paths, lines, title="", hotfix=None, pr=None, head=""):
+def advise(base, paths, lines, title="", hotfix=None, pr=None, head="", picks=False):
     """Pure core. lines: [{"line", "present", "ga", "onprem_ga"}] for the live release lines; present = some
-    changed code path exists at the line's tip; ga = the line has a stable tag; onprem_ga = on-prem confirmed GA.
+    changed code path exists at the line's tip; ga = the line has a stable tag; onprem_ga = on-prem confirmed GA
+    (None: unknown). picks: a commit of a PR into a release line carries a `cherry picked from` trailer.
     """
     out = {
         "result": "decided",
@@ -52,6 +55,14 @@ def advise(base, paths, lines, title="", hotfix=None, pr=None, head=""):
     }
     if base.startswith("release/") and rm.is_backport(head):
         return {**out, "reason": "a Backport pick PR: its labels belong to the bot"}
+    if base.startswith("release/") and picks:
+        return {
+            **out,
+            "result": "suggest",
+            "label": RBO,
+            "reason": f"a cherry-pick into {base}: {RBO} only if the change is not on main; a fix from main is "
+            "Backport's to pick",
+        }
     if base.startswith("release/"):
         return {**out, "label": RBO, "reason": f"a change made only on {base}"}
     if not code(paths):
@@ -81,7 +92,9 @@ def advise(base, paths, lines, title="", hotfix=None, pr=None, head=""):
                 "answers": {"yes": GA, "no": no},
             },
             "info": _info(live, pr),
-            "next": f"{SELF} {_target(pr)} --answer hotfix=yes|no",
+            "next": {
+                a: f"{SELF} {_target(pr)} --answer hotfix={a}" for a in ("yes", "no")
+            },
         }
     if ga and hotfix:
         return {
@@ -115,12 +128,20 @@ def _target(pr):
 
 
 def _info(live, pr):
-    """A line GA for cloud and not yet for on-prem: the label cannot route a fix to on-prem alone, a declaration can."""
+    """A line GA for cloud and not yet for on-prem: the label cannot route a fix to on-prem alone, a declaration can.
+    It needs backport/rc (or backport/ga): Backport never picks a main-only PR.
+    """
     return [
         {
             "line": l["line"],
-            "text": f"release/{l['line']} is GA, but not confirmed GA for on-prem: if on-prem needs this fix there, "
-            f"declare it (adds `Backport-also: {l['line']}` to the PR body; the line's on-prem RC builds wait for it)",
+            "text": f"release/{l['line']} is GA, but "
+            + (
+                "on-prem GA is unknown (Promote runs unreadable)"
+                if l["onprem_ga"] is None
+                else "not confirmed GA for on-prem"
+            )
+            + f": if on-prem needs this fix there, label it `{RC}` and declare it (adds `Backport-also: "
+            f"{l['line']}` to the PR body; the line's on-prem RC builds wait for it)",
             "command": f"{SELF} --declare {l['line']} {_target(pr)}"
             if isinstance(pr, int)
             else None,
@@ -174,7 +195,7 @@ def has_ga(slug, line):
 
 
 def onprem_ga_lines():
-    """Lines with a successful on-prem Promote; empty when the runs cannot be read (every GA line then gets the note)."""
+    """Lines with a successful on-prem Promote; None when the runs cannot be read (the note then says unknown)."""
     try:
         runs = json.loads(
             _gh(
@@ -194,10 +215,10 @@ def onprem_ga_lines():
         )
     except RuntimeError as e:
         print(
-            f"note: could not read {CLOUD} Promote runs ({e}); on-prem GA unconfirmed",
+            f"note: could not read {CLOUD} Promote runs ({e}); on-prem GA unknown",
             file=sys.stderr,
         )
-        return set()
+        return None
     return {
         m[1]
         for r in runs
@@ -206,7 +227,7 @@ def onprem_ga_lines():
 
 
 def line_facts(slug, paths, need_ga=True):
-    onprem = None
+    onprem, read = None, False
     out = []
     for line in live_lines(slug):
         files = tree(slug, line)
@@ -214,14 +235,14 @@ def line_facts(slug, paths, need_ga=True):
             p in files for p in code(paths)
         )  # truncated: assume present
         ga = present and need_ga and has_ga(slug, line)
-        if ga and onprem is None:
-            onprem = onprem_ga_lines()
+        if ga and not read:
+            onprem, read = onprem_ga_lines(), True
         out.append(
             {
                 "line": line,
                 "present": present,
                 "ga": ga,
-                "onprem_ga": ga and line in onprem,
+                "onprem_ga": ga and (None if onprem is None else line in onprem),
             }
         )
     return out
@@ -254,7 +275,19 @@ def advise_pr(slug, n, hotfix=None, pr=None, paths=None, need_ga=True):
         if code(paths) and not base.startswith("release/")
         else []
     )
-    adv = advise(base, paths, lines, pr["title"], hotfix, n, pr["head"]["ref"])
+    picks = base.startswith("release/") and any(
+        "(cherry picked from commit " in c["commit"]["message"]
+        for page in json.loads(
+            _gh(
+                "api",
+                "--paginate",
+                "--slurp",
+                f"repos/{slug}/pulls/{n}/commits?per_page=100",
+            )
+        )
+        for c in page
+    )
+    adv = advise(base, paths, lines, pr["title"], hotfix, n, pr["head"]["ref"], picks)
     have = {l["name"] for l in pr.get("labels", [])}
     if adv["label"] and adv["result"] != "ask" and adv["label"] not in have:
         others = sorted(have & {MAIN_ONLY, RBO, *rm.BACKPORT_LABELS})
@@ -283,11 +316,18 @@ def declare(slug, n, value):
     line = rm.line(value)
     try:
         _gh("api", f"repos/{slug}/branches/release/{line}")
-    except RuntimeError:
+    except RuntimeError as e:
+        if "HTTP 404" not in str(e):
+            raise
         raise Usage(f"release/{line} does not exist on {slug}")
-    body = json.loads(_gh("api", f"repos/{slug}/pulls/{n}"))["body"] or ""
+    pr = json.loads(_gh("api", f"repos/{slug}/pulls/{n}"))
+    body = pr["body"] or ""
     if line in rm.declared_lines(body):
         return f"#{n} already declares `Backport-also: {line}`"
+    if MAIN_ONLY in {l["name"] for l in pr.get("labels", [])}:
+        raise Usage(
+            f"#{n} is {MAIN_ONLY}, which Backport never picks: label it `{RC}` first, then declare"
+        )
     _gh(
         "api",
         "-X",
@@ -296,6 +336,12 @@ def declare(slug, n, value):
         "-f",
         f"body={body.rstrip()}\n\nBackport-also: {line}\n",
     )
+    # GitHub has no conditional write: a concurrent body edit can drop the line, so check it landed.
+    after = json.loads(_gh("api", f"repos/{slug}/pulls/{n}"))["body"] or ""
+    if line not in rm.declared_lines(after):
+        raise RuntimeError(
+            f"#{n}'s body changed meanwhile and lost the declaration; run --declare again"
+        )
     return (
         f"#{n} now declares `Backport-also: {line}`. Pick it: gh workflow run backport.yaml -R {slug} "
         f"-f commits={n} -f lines={line} -f patch_released_lines=true"
@@ -309,7 +355,7 @@ def owed(slug, author):
     for branch in sorted(rs._branches(".")):
         line = branch.removeprefix("release/")
         base = rm.git(".", "merge-base", "origin/main", f"origin/{branch}")
-        since = rm.git(".", "log", "-1", "--format=%cs", base)
+        since = bp.search_since(".", base)
         mine = {
             f"#{p['number']}"
             for p in json.loads(
@@ -356,8 +402,9 @@ def owed(slug, author):
                         "command": cmd.format(pr[1:]),
                     }
                 )
+        listed = {r["pr"] for r in rows if r["line"] == line}
         for n, title in decl:
-            if f"#{n}" in mine:
+            if f"#{n}" in mine and f"#{n}" not in listed:  # one row per PR: same command
                 rows.append(
                     {
                         "line": line,
@@ -370,22 +417,14 @@ def owed(slug, author):
     return rows
 
 
-def body_errors(body):
-    """Lint PR's check on the PR body: a malformed declaration would silently declare nothing."""
-    return [
-        f"malformed `{b}`: write exactly `Backport-also: X.Y` (e.g. `Backport-also: 0.186`), one line per release "
-        "line"
-        for b in rm.declaration_errors(body)
-    ]
-
-
 def render(adv):
     where = f"#{adv['pr']}" if adv["pr"] else "this branch"
     if adv["result"] == "ask":
         q = adv["question"]
         text = (
             f"{where}: one question — {q['text']}\n  ({adv['reason']})\n"
-            f"  yes: {q['answers']['yes']}   no: {q['answers']['no']}\n  then: {adv['next']}"
+            f"  yes: {q['answers']['yes']}, then: {adv['next']['yes']}\n"
+            f"  no: {q['answers']['no']}, then: {adv['next']['no']}"
         )
     elif adv["label"] is None:
         text = f"{where}: no label — {adv['reason']}"
@@ -448,6 +487,7 @@ def main(argv=None):
             ".",
             "fetch",
             "-q",
+            "--prune",
             "origin",
             "main",
             "+refs/heads/release/*:refs/remotes/origin/release/*",
@@ -468,6 +508,9 @@ def main(argv=None):
             or "nothing owed"
         )
         return 0
+    except json.JSONDecodeError as e:
+        print(f"error: unreadable GitHub answer: {e}", file=sys.stderr)
+        return 1
     except (Usage, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2

@@ -51,7 +51,7 @@ jobs:
           import json, os, sys
           sys.path.insert(0, ".github/release")
           import relmgr
-          try:  # advisory: main may predate the advice command, and it must never break this check
+          try:  # advisory only (the body check is relmgr's): main may predate it, and it must never break this check
               import label_advice as la
           except Exception as e:
               print(f"::notice title=Lint PR::label advice unavailable: {e}")
@@ -68,8 +68,8 @@ jobs:
           # Also when the title failed, so one run names every error.
           if refusal := relmgr.release_only_refusal(os.environ["BASE"], labels):
               errors.append(refusal)
-          if la:
-              errors += la.body_errors(os.environ["BODY"])
+          if check := getattr(relmgr, "body_errors", None):  # main's relmgr may predate it
+              errors += check(os.environ["BODY"], labels)
           slug, pr = os.environ["GITHUB_REPOSITORY"], int(os.environ["PR"])
 
           def lookup_advice(**kw):  # advisory only: a failed lookup never fails or passes the PR

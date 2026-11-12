@@ -27,9 +27,12 @@ DECLINED_RE = re.compile(r"^Declined: (.+)$", re.M)
 BACKPORT_HEAD_RE = re.compile(r"backport/(\d+\.\d+)/([0-9a-f]{7})")
 LINE_RE = re.compile(r"[0-9]+\.[0-9]+")
 # `Backport-also: X.Y` on its own line in a PR body: the fix is owed to release/X.Y although its label does not
-# reach that line (a line GA for cloud but not yet for on-prem). Anything else that names it is malformed.
-DECLARE_RE = re.compile(r"^Backport-also: (\d+\.\d+)[ \t]*$", re.M)
-_DECLARE_ANY_RE = re.compile(r"^[ \t>*-]*backport[ \t_-]*also[ \t]*:.*$", re.I | re.M)
+# reach that line (a line GA for cloud but not yet for on-prem). Any other line that starts with it, after quote or
+# list markers, is malformed.
+DECLARE_RE = re.compile(r"^Backport-also: ([0-9]+\.[0-9]+)[ \t]*$", re.M)
+_DECLARE_ANY_RE = re.compile(
+    r"^[ \t>*-]*(?:[0-9]+[.)][ \t]*)?backport[ \t_-]*also\b.*$", re.I | re.M
+)
 
 
 def line(value):
@@ -54,6 +57,23 @@ def declaration_errors(body):
     return [
         m.strip() for m in _DECLARE_ANY_RE.findall(body) if not DECLARE_RE.fullmatch(m)
     ]
+
+
+def body_errors(body, labels=()):
+    """Lint PR's check on a PR body: a malformed declaration would silently declare nothing, and one on a
+    main-only PR can never be picked (Backport skips main-only).
+    """
+    errors = [
+        f"malformed `{b}`: write exactly `Backport-also: X.Y` (e.g. `Backport-also: 0.186`), one line per release "
+        "line"
+        for b in declaration_errors(body)
+    ]
+    if MAIN_ONLY in labels and declared_lines(body):
+        errors.append(
+            f"`{MAIN_ONLY}` with a `Backport-also` line: Backport never picks a {MAIN_ONLY} PR. Label it "
+            "`backport/rc` (or `backport/ga`), or remove the declaration"
+        )
+    return errors
 
 
 def vtag(value):
