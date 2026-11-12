@@ -220,6 +220,17 @@ class Advise(unittest.TestCase):
         a = la.advise("release/0.186", ["backend/x.py"], [], picks=True)
         self.assertEqual((a["result"], a["label"]), ("suggest", "release-branch-only"))
 
+    def test_a_pr_with_a_pick_trailer_into_a_release_line_is_only_suggested(self):
+        pr = {"base": {"ref": "release/0.186"}, "head": {"ref": "fix-x"}, "labels": []}
+        for msg, result in (
+            ("x\n\n(cherry picked from commit abc1234)", "suggest"),
+            ("x", "decided"),
+        ):
+            commits = json.dumps([[{"commit": {"message": msg}}]])
+            with mock.patch.object(la, "_gh", return_value=commits):
+                a = la.advise_pr("o/r", 7, pr=pr, paths=["backend/x.py"])
+            self.assertEqual((a["result"], a["label"]), (result, "release-branch-only"))
+
     def test_release_base_is_release_branch_only(self):
         a = la.advise("release/0.186", ["backend/x.py"], [])
         self.assertEqual((a["result"], a["label"]), ("decided", "release-branch-only"))
