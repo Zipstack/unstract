@@ -24,9 +24,12 @@ function recordDocumentEscapes() {
 /** Renders the field and records the Escapes that bubble up to the document. */
 function setup(props: SearchFieldProps = {}) {
   const parentEscape = recordDocumentEscapes();
-  const { user } = renderV1(<SearchField aria-label="Search" {...props} />);
+  const { user, unmount } = renderV1(
+    <SearchField aria-label="Search" {...props} />,
+  );
   return {
     user,
+    unmount,
     parentEscape,
     input: screen.getByLabelText("Search") as HTMLInputElement,
   };
@@ -63,11 +66,31 @@ it("does not clear on an Escape that cancels an IME composition", () => {
   expect(input.value).toBe("かな");
 });
 
-it("marks the control while Escape would clear it", async () => {
+/** What an overlay's onEscapeKeyDown would see for a key on this input. */
+function escapeClears(input: HTMLInputElement): boolean {
+  let clears = false;
+  const listener = (event: Event) => {
+    clears = isEscapeClearTarget(event);
+  };
+  document.addEventListener("keydown", listener, true);
+  fireEvent.keyDown(input, { key: "Shift" });
+  document.removeEventListener("keydown", listener, true);
+  return clears;
+}
+
+it("tells an overlay when Escape would clear the field", async () => {
   const { user, input } = setup();
-  expect(input.hasAttribute("data-escape-clears")).toBe(false);
+  expect(escapeClears(input)).toBe(false);
   await user.type(input, "a");
-  expect(input.hasAttribute("data-escape-clears")).toBe(true);
+  expect(escapeClears(input)).toBe(true);
+});
+
+it("does not claim Escape on a disabled or read-only field", () => {
+  for (const props of [{ disabled: true }, { readOnly: true }]) {
+    const { input, unmount } = setup({ defaultValue: "x", ...props });
+    expect(escapeClears(input)).toBe(false);
+    unmount();
+  }
 });
 
 it("clears a controlled field through onValueChange", async () => {
@@ -301,6 +324,15 @@ it("clears a value written to the DOM on Escape, before any re-render", async ()
   expect(input.value).toBe("");
   expect(form().getValues("q")).toBe("");
   expect(parentEscape).not.toHaveBeenCalled();
+});
+
+it("tells an overlay Escape will clear a value written to the DOM, before any re-render", async () => {
+  const { user, input } = renderRegisteredForm();
+  await user.clear(input);
+  expect(escapeClears(input)).toBe(false);
+  // What setValue does, without the re-render it may or may not cause.
+  input.value = "set";
+  expect(escapeClears(input)).toBe(true);
 });
 
 it("shows the value react-hook-form's reset restores", async () => {
