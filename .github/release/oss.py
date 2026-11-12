@@ -220,7 +220,7 @@ def rc(oss, branch, slack_url="", force=False, reason="", notes=None):
             + (
                 "did not run (see the log)"
                 if code == 1
-                else "blocks: MISSING picks (summary above); a release manager may override this with force and a reason"
+                else "blocks: MISSING picks (summary above); to override, rerun with force and a reason"
             )
         )
     if code == 2:
@@ -242,7 +242,7 @@ def _conflicts(branch, force):
     except RuntimeError as e:
         if not force:
             raise
-        # Only under force: the RM's override and reason are recorded on the tag.
+        # Only under force: the override and its reason are recorded on the tag.
         print(
             f"::warning::Could not list open backport conflict PRs on OSS {branch} (forced on): {e}",
             file=sys.stderr,
@@ -275,7 +275,7 @@ def promote(repo, oss, cloud_rc, force=False, reason=""):
     if prs and not force:
         raise RuntimeError(
             f"OSS {branch} has open backport conflict PRs {', '.join(prs)}: resolve and merge or close "
-            "them; a release manager may override this with force and a reason"
+            "them; to override, rerun with force and a reason"
         )
     code = gate(oss, branch, pinned, "error")
     if code == 1 or code == 2 and not force:
@@ -284,7 +284,7 @@ def promote(repo, oss, cloud_rc, force=False, reason=""):
             + (
                 "did not run (see the log)"
                 if code == 1
-                else "blocks: MISSING picks (summary above); a release manager may override this with force and a reason"
+                else "blocks: MISSING picks (summary above); to override, rerun with force and a reason"
             )
         )
     forced = (

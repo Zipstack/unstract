@@ -19,7 +19,6 @@ RBO_RE = re.compile(r"^(?:\* )?Release-branch-only: (\S+)", re.M)
 PR_TITLE_RE = re.compile(
     r"^(?:(?P<ticket>[A-Z][A-Z0-9]*-\d+) )?\[(?P<type>FIX|HOT-FIX|FEAT|GATED-FEAT|DOCS|DEPS|MISC|DEV|WIP)\] \S"
 )
-FIX_CLASSES = ("fix", "security", "critical")
 # Greedy, so a revert of a revert nests.
 REVERT_RE = re.compile(r'^Revert "(.+)"')
 REVERTS_RE = re.compile(r"^This reverts commit ([0-9a-f]{7,40})", re.M)
@@ -27,6 +26,13 @@ DECLINED_RE = re.compile(r"^Declined: (.+)$", re.M)
 # Match with fullmatch.
 BACKPORT_HEAD_RE = re.compile(r"backport/(\d+\.\d+)/([0-9a-f]{7})")
 LINE_RE = re.compile(r"[0-9]+\.[0-9]+")
+# `Backport-also: X.Y` on its own line in a PR body: the fix is owed to release/X.Y although its label does not
+# reach that line (a line GA for cloud but not yet for on-prem). Any other line that starts with it, after quote or
+# list markers, is malformed.
+DECLARE_RE = re.compile(r"^Backport-also: ([0-9]+\.[0-9]+)[ \t]*$", re.M)
+_DECLARE_ANY_RE = re.compile(
+    r"^[ \t>*+-]*(?:[0-9]+[.)][ \t]*)?backport[ \t_-]*also\b.*$", re.I | re.M
+)
 
 
 def line(value):
@@ -38,6 +44,36 @@ def line(value):
     if not LINE_RE.fullmatch(v):
         raise ValueError(f"not a release line X.Y (e.g. 0.186): {value!r}")
     return v
+
+
+def declared_lines(body):
+    """The release lines X.Y a PR body declares with `Backport-also: X.Y`."""
+    return set(DECLARE_RE.findall((body or "").replace("\r", "")))
+
+
+def declaration_errors(body):
+    """Body lines that try to declare a line but are not exactly `Backport-also: X.Y`."""
+    body = (body or "").replace("\r", "")
+    return [
+        m.strip() for m in _DECLARE_ANY_RE.findall(body) if not DECLARE_RE.fullmatch(m)
+    ]
+
+
+def body_errors(body, labels=()):
+    """Lint PR's check on a PR body: a malformed declaration would silently declare nothing, and one on a
+    main-only PR can never be picked (Backport skips main-only).
+    """
+    errors = [
+        f"malformed `{b}`: write exactly `Backport-also: X.Y` (e.g. `Backport-also: 0.186`), one line per release "
+        "line"
+        for b in declaration_errors(body)
+    ]
+    if MAIN_ONLY in labels and declared_lines(body):
+        errors.append(
+            f"`{MAIN_ONLY}` with a `Backport-also` line: Backport never picks a {MAIN_ONLY} PR. Label it "
+            "`backport/rc` (or `backport/ga`), or remove the declaration"
+        )
+    return errors
 
 
 def vtag(value):
@@ -315,38 +351,52 @@ def ci_commits(
     return rows, where
 
 
-FIX_LABELS = ("fix/security", "fix/critical", "fix/needs-backport")
+# Backport label -> class. The fix/ names are the old ones, accepted until the repo labels are renamed.
+BACKPORT_LABELS = {
+    "backport/rc": "rc",
+    "backport/ga": "ga",
+    "fix/needs-backport": "rc",
+    "fix/security": "ga",
+    "fix/critical": "ga",
+}
 MAIN_ONLY = "main-only"
 
 
+def _ticks(names):
+    return ", ".join(f"`{n}`" for n in names)
+
+
 def pr_fix_class(title, labels=()):
-    """The class comes from labels only; None without a fix/ label. A main merge also needs a backport label: main_fix_class."""
-    # Reject near-miss class labels (fix/<x>, fix-class/<x>, typos) so a typo cannot drop the class.
+    """The class ("rc" or "ga") comes from labels only; None without one. A main merge also needs a label: main_fix_class."""
+    # Reject near-miss class labels (backport/<x>, backport-ga, fix/<x>, fix-class/<x>, typos) so a typo cannot drop the class.
     bad = [
         l
         for l in labels
-        if l not in FIX_LABELS
-        and re.match(r"\s*fix(\w{0,3}[\W_]*class(?![a-z])|\s*/)", l, re.I)
+        if l not in BACKPORT_LABELS
+        and re.match(
+            r"\s*(backports?\s*(/|[\W_]+\s*(rc|ga)(?![a-z]))|fix(\w{0,3}[\W_]*class(?![a-z])|\s*/))",
+            l,
+            re.I,
+        )
     ]
     if bad:
-        raise ValueError(f"unknown fix label(s) {bad}; allowed: {', '.join(FIX_LABELS)}")
-    classes = {
-        l.split("/", 1)[1] for l in labels if l in ("fix/security", "fix/critical")
-    }
-    if len(classes) > 1:
-        raise ValueError(f"conflicting fix labels: {sorted('fix/' + c for c in classes)}")
-    fixes = sorted(set(labels) & set(FIX_LABELS))
+        raise ValueError(
+            f"unknown label(s) {_ticks(bad)}: use `backport/rc`, `backport/ga` or `{MAIN_ONLY}`"
+        )
+    found = sorted(set(labels) & set(BACKPORT_LABELS))
+    classes = {BACKPORT_LABELS[x] for x in found}
+    # Old names combine as they always did (fix/needs-backport with fix/security is ga); a new name allows one class.
+    if len(classes) > 1 and not all(x.startswith("fix/") for x in found):
+        raise ValueError(f"conflicting labels {_ticks(found)}: keep one")
     # The changelogs read the title, so no label excuses it. strip: GitHub keeps a leading space.
     inner = title.strip()
     while r := REVERT_RE.match(inner):
         inner = r.group(1).strip()
     if not PR_TITLE_RE.match(inner):
         raise ValueError(f"no recognised '[TYPE]' or 'TICKET [TYPE]' prefix: {title!r}")
-    if MAIN_ONLY in labels and fixes:
-        raise ValueError(f"conflicting labels: {MAIN_ONLY} with {fixes}")
-    if classes:
-        return classes.pop()
-    return "fix" if fixes else None
+    if MAIN_ONLY in labels and found:
+        raise ValueError(f"conflicting labels {_ticks([MAIN_ONLY, *found])}: keep one")
+    return ("ga" if "ga" in classes else "rc") if found else None
 
 
 def main_fix_class(title, labels=()):
@@ -366,8 +416,11 @@ def release_only_refusal(base, labels):
         )
     if MAIN_ONLY in labels and base.startswith("release/"):
         return f"label `{MAIN_ONLY}` is for PRs into main; remove it here"
-    if not base.startswith("release/") and not set(labels) & {MAIN_ONLY, *FIX_LABELS}:
-        return f"no backport label: add fix/needs-backport to copy it to release lines, or {MAIN_ONLY} to keep it on main"
+    if not base.startswith("release/") and not set(labels) & {
+        MAIN_ONLY,
+        *BACKPORT_LABELS,
+    }:
+        return f"no backport label: add `backport/rc`, `backport/ga` or `{MAIN_ONLY}`"
     return None
 
 
