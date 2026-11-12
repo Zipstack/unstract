@@ -47,7 +47,6 @@ from pipeline_v2.constants import (
 from pipeline_v2.constants import PipelineKey as PK
 from pipeline_v2.manager import PipelineManager
 from pipeline_v2.models import Pipeline
-from pipeline_v2.openapi_schema import PIPELINE_SCHEMA
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from pipeline_v2.serializers.aggregate import PipelineAggregateSerializer
 from pipeline_v2.serializers.crud import PipelineSerializer
@@ -77,7 +76,6 @@ def _pipeline_type_from(params: QueryDict) -> str | None:
     return pipeline_type
 
 
-@PIPELINE_SCHEMA
 class PipelineViewSet(
     OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
 ):
@@ -176,7 +174,11 @@ class PipelineViewSet(
 
     @action(detail=False, methods=["get"])
     def aggregate(self, request: Request) -> Response:
-        """Status counts and failing rows over the list's filtered rows."""
+        """Status counts and failing rows over the list's filtered rows.
+
+        Call it without ``status`` and ``failing`` to fill the counts while the
+        list is filtered by them.
+        """
         rows = self.filter_queryset(self.get_queryset())
         summary = aggregate_rows(rows, PIPELINE_ROW_FIELDS)
         return Response(PipelineAggregateSerializer(summary).data)

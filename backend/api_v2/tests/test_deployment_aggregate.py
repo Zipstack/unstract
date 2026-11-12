@@ -36,7 +36,7 @@ from api_v2.tests.test_deployment_listing import _MIDDLEWARE
 URL = "/deployment/"
 CONTRACT = json.loads(
     (
-        Path(__file__).parents[1] / "contract/deployment-aggregate-response.schema.json"
+        Path(__file__).parent / "deployment-aggregate-response.schema.json"
     ).read_text()
 )
 

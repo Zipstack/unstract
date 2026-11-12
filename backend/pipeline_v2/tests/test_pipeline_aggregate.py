@@ -33,7 +33,7 @@ TASK = "TASK"
 FilterCases = dict[str, tuple[dict[str, Any], set[str]]]
 CONTRACT = json.loads(
     (
-        Path(__file__).parents[1] / "contract/pipeline-aggregate-response.schema.json"
+        Path(__file__).parent / "pipeline-aggregate-response.schema.json"
     ).read_text()
 )
 

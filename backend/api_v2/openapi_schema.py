@@ -19,15 +19,12 @@ from drf_spectacular.utils import (
 from drf_standardized_errors.openapi import AutoSchema as StandardizedErrorsAutoSchema
 from platform_api.openapi_schema import PlatformKeyError
 from rest_framework import serializers
-from workflow_manager.workflow_v2.list_aggregate_serializers import ListFilterSerializer
-from workflow_manager.workflow_v2.list_aggregates import FAILING_LIST_CAP
 
 from api_v2.error_message import add_error_message
 from api_v2.models import API_NAME_MAX_LENGTH, DESCRIPTION_MAX_LENGTH
 from api_v2.serializers import (
     APIDeploymentListSerializer,
     APIExecutionResponseSerializer,
-    DeploymentAggregateSerializer,
     ExecutionQuerySerializer,
     ExecutionRequestSerializer,
 )
@@ -398,26 +395,5 @@ API_DEPLOYMENT_LIST_SCHEMA = extend_schema_view(
             ),
         },
         description=LIST_API_DEPLOYMENTS_DESCRIPTION,
-    ),
-)
-
-
-API_DEPLOYMENT_AGGREGATE_SCHEMA = extend_schema(
-    operation_id="aggregate_deployments",
-    summary="Count API deployments by status",
-    tags=["deployment"],
-    auth=[{"platformKey": []}],
-    parameters=[*API_DEPLOYMENT_LIST_QUERY_PARAMETERS, ListFilterSerializer],
-    responses={
-        200: DeploymentAggregateSerializer,
-        400: OpenApiResponse(
-            ErrorResponse, description="A query parameter was malformed."
-        ),
-    },
-    description=(
-        "Counts the deployments the list returns for the same filters, so "
-        f"`total` equals the list's `count`. `failing` holds at most "
-        f"{FAILING_LIST_CAP} rows, newest failure first; `failing_count` counts "
-        "them all."
     ),
 )
