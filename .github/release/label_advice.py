@@ -30,9 +30,10 @@ SELF = "python3 .github/release/label_advice.py"
 CLOUD = "Zipstack/unstract-cloud"  # on-prem is promoted there, for both repos' lines
 # Paths that never ship in a release image: docs, tests and repo tooling. A PR touching only these
 # is decided main-only by design, though a release line may want a test or CI fix: the developer
-# labels it backport/rc instead, which Lint PR only warns on.
+# labels it backport/rc instead, which Lint PR only warns on. Nested Markdown other than a README
+# can be a runtime prompt, so it counts as shipping.
 NONCODE = re.compile(
-    r"\.(md|mdx|rst)$|^docs/|(^|/)tests?/|(^|/)test_[^/]*\.py$|_test\.py$|\.(test|spec)\.[jt]sx?$"
+    r"^[^/]*\.(md|mdx|rst)$|(^|/)README\.md$|^docs/|(^|/)tests?/|(^|/)test_[^/]*\.py$|_test\.py$|\.(test|spec)\.[jt]sx?$"
     r"|(^|/)__tests__/|(^|/)unittests/|^\.github/|^\.claude(-plugin)?/|^\.pre-commit-config\.yaml$"
 )
 PROMOTE_RE = re.compile(r"Promote v?(\d+\.\d+)\.\d+-rc\.\d+ · ([^(]*)")

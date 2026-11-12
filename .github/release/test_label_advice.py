@@ -295,6 +295,15 @@ class Advise(unittest.TestCase):
         a = la.advise("main", paths + ["backend/x.py"], [line("0.186")])
         self.assertEqual(a["result"], "suggest")  # one shipped file: not decided
 
+    def test_nested_markdown_ships_unless_it_is_a_readme(self):
+        lines = [line("0.186", ga=True)]
+        a = la.advise(
+            "main", ["workers/plugins/agentic_table_engine/src/prompts/x.md"], lines
+        )
+        self.assertEqual(a["result"], "ask")
+        a = la.advise("main", ["backend/global_search/README.md"], lines)
+        self.assertEqual((a["result"], a["label"]), ("decided", "main-only"))
+
     def test_agent_tooling_and_root_markdown_are_main_only(self):
         for path in (
             ".claude/plugins/devkit/.claude-plugin/plugin.json",
