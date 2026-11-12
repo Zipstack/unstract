@@ -1657,6 +1657,9 @@ class PrFixClass(unittest.TestCase):
             self.assertIn("`backport/rc`, `backport/ga` or `main-only`", str(e.exception))
         with self.assertRaisesRegex(ValueError, "conflicting labels .*: keep one"):
             c("UN-1 [FIX] x", ["backport/rc", "backport/ga"])
+        # Backport's own status labels must not read as a near-miss.
+        for x in ("backport-conflict", "backport-merged", "backport-declined"):
+            self.assertIsNone(c("UN-1 [FIX] x", ["main-only", x]))
 
     def test_old_label_names_are_unknown(self):
         for old in ("fix/needs-backport", "fix/security", "fix/critical"):

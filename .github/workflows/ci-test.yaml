@@ -57,7 +57,7 @@ jobs:
         id: filter
         with:
           # `every`: a file counts as relevant only if it matches ALL the
-          # negated globs, i.e. lies outside every ignored dir.
+          # negated globs, i.e. lies outside every ignored pattern.
           predicate-quantifier: every
           filters: |
             relevant:

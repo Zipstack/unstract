@@ -200,6 +200,7 @@ class Owed(Repo):
             print(
                 "held: 26 main commit(s) since the cut of release/1.7, 1 fix_class lookup(s)"
             )
+            print("::warning::PR listing failed, classing commit by commit: HTTP 403")
             return [
                 ("a" * 40, "fix", "#11", "mine"),
                 ("b" * 40, "fix", "#99", "theirs"),
@@ -258,6 +259,7 @@ class Owed(Repo):
                 self.owed()
             self.assertEqual(out.getvalue(), "")
             self.assertEqual("held: 26 main commit(s)" in err.getvalue(), shown, env)
+            self.assertIn("::warning::PR listing failed", err.getvalue(), env)
 
 
 def line(v, present=True, ga=False, onprem_ga=False):
