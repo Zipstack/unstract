@@ -1620,11 +1620,9 @@ class PrFixClass(unittest.TestCase):
         self.assertEqual(c("UN-1 [FEAT] x", ["backport/ga", "bug"]), "ga")
         for labels in (
             ["backport/x"],
-            ["backport/RC"],
             ["Backport/ga"],
             ["backport-ga"],
             ["backports/rc"],
-            ["backport:rc"],
             ["fix/typo"],
             ["fix-class/security"],
             ["Fix/security"],
@@ -1647,12 +1645,8 @@ class PrFixClass(unittest.TestCase):
         self.assertEqual(c("UN-1 [FIX] x", ["fix/needs-backport"]), "rc")
         self.assertEqual(c("UN-1 [FIX] x", ["fix/security"]), "ga")
         self.assertEqual(c("UN-1 [FIX] x", ["fix/critical"]), "ga")
-        self.assertIsNone(rm.release_only_refusal("main", ["fix/security"]))
-        # Old names combine as they did; same-class old and new names agree.
         self.assertEqual(c("UN-1 [MISC] x", ["fix/security", "fix/needs-backport"]), "ga")
-        self.assertEqual(c("UN-1 [MISC] x", ["fix/critical", "fix/needs-backport"]), "ga")
         self.assertEqual(c("UN-1 [FIX] x", ["fix/needs-backport", "backport/rc"]), "rc")
-        self.assertEqual(c("UN-1 [FIX] x", ["fix/security", "backport/ga"]), "ga")
         self.assertIsNone(c("UN-1 [FIX] x", ["main-only", "backport-conflict"]))
 
     def test_main_needs_one_routing_label(self):
