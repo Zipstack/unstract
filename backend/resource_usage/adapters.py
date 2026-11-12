@@ -56,7 +56,7 @@ def tool_instance_refs(adapters: Sequence[Any]) -> Iterable[tuple[Any, Reference
         F("metadata"),
         Value([key[1] for key in needles], output_field=ArrayField(TextField())),
     )
-    # array_length of an empty array is NULL, so rows naming no needle drop out.
+    # Rows naming no needle get an empty array (length 0) and drop out.
     rows = (
         ToolInstance.objects.filter(
             workflow__organization_id__in={key[0] for key in needles}
