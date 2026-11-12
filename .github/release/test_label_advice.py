@@ -280,6 +280,7 @@ class Owed(Repo):
                 self.assertEqual(la.main(["--owed", "--author", "dev"]), 0)
         finally:
             os.chdir(old)
+        held.assert_called_once()
         self.assertEqual(held.call_args.args[2], "release/1.7")
 
     def test_backports_warnings_show_even_when_it_fails(self):
