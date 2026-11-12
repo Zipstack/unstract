@@ -13,7 +13,9 @@ holds the command to re-run for each answer). Exit 0 with advice, 1 when GitHub 
 
 import argparse
 import contextlib
+import io
 import json
+import os
 import re
 import sys
 import urllib.parse
@@ -31,7 +33,7 @@ CLOUD = "Zipstack/unstract-cloud"  # on-prem is promoted there, for both repos' 
 # labels it backport/rc instead, which Lint PR only warns on.
 NONCODE = re.compile(
     r"\.(md|mdx|rst)$|^docs/|(^|/)tests?/|(^|/)test_[^/]*\.py$|_test\.py$|\.(test|spec)\.[jt]sx?$"
-    r"|(^|/)__tests__/|(^|/)unittests/|^\.github/|^\.pre-commit-config\.yaml$"
+    r"|(^|/)__tests__/|(^|/)unittests/|^\.github/|^\.claude(-plugin)?/|^\.pre-commit-config\.yaml$"
 )
 PROMOTE_RE = re.compile(r"Promote v?(\d+\.\d+)\.\d+-rc\.\d+ · ([^(]*)")
 
@@ -385,7 +387,9 @@ def owed(slug, author):
         )
         accept = bp.HELD if released else bp.OWED  # what Backport picks there on its own
         cmd = f"gh workflow run backport.yaml -R {slug} -f commits={{}} -f lines={line} -f patch_released_lines=true"
-        with contextlib.redirect_stdout(sys.stderr):
+        # Backport's run log: a developer reading the answer cannot act on it.
+        log = sys.stderr if os.environ.get("GITHUB_ACTIONS") else io.StringIO()
+        with contextlib.redirect_stdout(log):
             held = bp.held(
                 slug, ".", branch, accept=accept, cache=bp.pr_classes(slug, since)
             )
