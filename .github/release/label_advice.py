@@ -349,7 +349,9 @@ def owed(slug, author):
     """[{line, pr, title, why, command}] for author's merged PRs that a live line still owes (needs origin fetched)."""
     login = author or _gh("api", "user", "--jq", ".login")
     rows = []
-    for branch in sorted(rs._branches(".")):
+    for branch, ref in sorted(rs._branches(".").items()):
+        if not ref.startswith("refs/remotes/"):
+            continue  # a local branch left after origin deleted it: the line is retired
         line = branch.removeprefix("release/")
         base = rm.git(".", "merge-base", "origin/main", f"origin/{branch}")
         since = bp.search_since(".", base)

@@ -213,6 +213,9 @@ class Owed(Repo):
             os.chdir(old)
 
     def test_only_the_authors_prs_and_what_backport_would_pick(self):
+        dev_git(
+            self.repo, "branch", "release/1.5", "main"
+        )  # local only: origin has no 1.5
         rows, held, _ = self.owed()
         self.assertEqual(
             [(r["pr"], r["why"]) for r in rows],
