@@ -33,10 +33,18 @@ function storeTheme([key, theme]: [string, Theme]): void {
   }
 }
 
+/**
+ * The theme init script live on each page. Playwright leaves the order of
+ * several init scripts undefined, so there is only ever one: the previous
+ * theme's is disposed before the next is added.
+ */
+type InitScript = Awaited<ReturnType<Page["addInitScript"]>>;
+const themeScripts = new WeakMap<Page, InitScript>();
+
 export const defaultSetTheme: SetTheme = async (page, theme) => {
   const args: [string, Theme] = [THEME_STORAGE_KEY, theme];
-  // Init scripts run in the order added, so the latest theme wins on load.
-  await page.addInitScript(storeTheme, args);
+  await themeScripts.get(page)?.dispose();
+  themeScripts.set(page, await page.addInitScript(storeTheme, args));
   if (page.url() !== "about:blank") {
     await page.evaluate(storeTheme, args);
   }

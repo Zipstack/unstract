@@ -8,6 +8,7 @@ export {
   type ScreenState,
 } from "./five-states.ts";
 export {
+  expectAppKnowsUser,
   expectOldVersionRoundTrip,
   setOldVersionPreference,
 } from "./old-version.ts";

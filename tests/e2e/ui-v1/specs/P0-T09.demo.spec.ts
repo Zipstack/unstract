@@ -17,10 +17,10 @@ import { V1_ROOT_SELECTOR } from "../contract/v1-ui.ts";
 import { DIST, expect, test } from "../fixtures/index.ts";
 import {
   expectAccessible,
+  expectAppKnowsUser,
   expectOldVersionRoundTrip,
   expectV0RedirectsToV1,
   forEachTheme,
-  setOldVersionPreference,
 } from "../helpers/index.ts";
 import { routeRegex } from "../helpers/routes.ts";
 
@@ -81,8 +81,8 @@ test.describe("P0-T09 demo: P0-T03 demo pages", { tag: DIST.all }, () => {
     session,
   }) => {
     const org = encodeURIComponent(app.orgName);
-    // Starts at v1, with the user known before the v0 session loads.
-    await setOldVersionPreference(page, session.userId, false);
+    // The control needs the user, which the app records from the v0 session.
+    await expectAppKnowsUser(page, session.userId);
     await app.goto("v1-demo-review/details");
     await expect(page.getByTestId("v1-demo-review")).toBeVisible();
     // A full reload would discard this marker.

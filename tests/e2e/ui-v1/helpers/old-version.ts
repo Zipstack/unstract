@@ -6,16 +6,17 @@
  *     userId: session.userId,
  *   });
  *
- * For each v1 review route: with the preference on, the v1 URL lands on its
- * mapped v0 route and v0 renders, and that holds across a reload; with it
- * off, the v0 URL lands back on the v1 route and v1 renders.
+ * First it opens the page and waits until the app itself records the
+ * signed-in user (`unstract.v1.lastUser`), which proves the session reaches
+ * the version switch. Then, for each v1 review route: with the preference on,
+ * the v1 URL lands on its mapped v0 route and v0 renders, and still does
+ * after a reload; with it off, the v0 URL lands back on the v1 route.
  *
  * The preference is per user, per browser, with no backend call (P0-T03):
- * localStorage `unstract.v1.oldVersion.<userId>`. The version switch learns
- * the user from the v0 session, or before it loads from
- * `unstract.v1.lastUser`; a context signed in through the API has neither on
- * its first load, so this seeds the last user too. Any page without
- * `toggle: true` is refused, because no other page may honour it.
+ * localStorage `unstract.v1.oldVersion.<userId>`. It is written once on the
+ * loaded page, never as an init script, so the reload checks the app's own
+ * persistence. Any page without `toggle: true` is refused, because no other
+ * page may honour it.
  */
 
 import { expect, type Page, test } from "@playwright/test";
@@ -29,42 +30,62 @@ import {
 import { APP_MOUNTED_SELECTOR, V1_ROOT_SELECTOR } from "../contract/v1-ui.ts";
 import { fillPattern, type RouteParams, routeRegex } from "./routes.ts";
 
-function writePreference([lastUserKey, userId, key, value]: [
-  string,
-  string,
-  string,
-  string | null,
-]): void {
+function writePreference([key, value]: [string, string | null]): void {
   // Serialised into the page, so it must not reference anything outside.
-  try {
-    localStorage.setItem(lastUserKey, userId);
-    if (value === null) {
-      localStorage.removeItem(key);
-    } else {
-      localStorage.setItem(key, value);
-    }
-  } catch {
-    // about:blank has an opaque origin; the init script writes it on load.
+  if (value === null) {
+    localStorage.removeItem(key);
+  } else {
+    localStorage.setItem(key, value);
   }
 }
 
-/** Sets or clears one user's preference now and on every later load. */
+/**
+ * Sets or clears one user's preference in the open page's storage, as the
+ * Human Review control does. The page must be on the app's origin.
+ */
 export async function setOldVersionPreference(
   page: Page,
   userId: string,
   on: boolean,
 ): Promise<void> {
-  const args: [string, string, string, string | null] = [
-    LAST_USER_STORAGE_KEY,
-    userId,
+  if (page.url() === "about:blank") {
+    throw new Error("setOldVersionPreference needs a page open on the app");
+  }
+  const args: [string, string | null] = [
     oldVersionStorageKey(userId),
     on ? OLD_VERSION_ON : null,
   ];
-  // Init scripts run in order, so the latest call wins on later loads.
-  await page.addInitScript(writePreference, args);
-  if (page.url() !== "about:blank") {
-    await page.evaluate(writePreference, args);
-  }
+  await page.evaluate(writePreference, args);
+}
+
+/**
+ * Opens the app root and waits until the app has recorded `userId` as the
+ * signed-in user: the v0 session reached the version switch, which writes it
+ * (stores/oldVersion). Nothing in the harness writes this key.
+ *
+ * The root, because the session loads only on v0 routes (PersistentLogin sits
+ * inside the v0 tree). A browser whose first page is a v1 URL never records
+ * the user, so the preference cannot apply there until the v1 tree loads the
+ * session itself (P0-T06).
+ */
+export async function expectAppKnowsUser(
+  page: Page,
+  userId: string,
+): Promise<void> {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          (key) => localStorage.getItem(key),
+          LAST_USER_STORAGE_KEY,
+        ),
+      {
+        message:
+          "the app never recorded the signed-in user for the version switch",
+      },
+    )
+    .toBe(userId);
 }
 
 export interface RoundTripOptions {
@@ -97,6 +118,8 @@ export async function expectOldVersionRoundTrip(
     await expect(v1Root).toHaveCount(0);
   };
 
+  await expectAppKnowsUser(page, userId);
+
   for (const [v1, v0] of mappings) {
     const v1Url = fillPattern(v1, params);
     const v0Url = fillPattern(v0, params);
@@ -107,6 +130,7 @@ export async function expectOldVersionRoundTrip(
       await expect(page).toHaveURL(routeRegex(v0Url));
       await expectV0Rendered();
 
+      // Nothing re-seeds storage, so this checks the app kept the choice.
       await page.reload({ waitUntil: "domcontentloaded" });
       await expect(page).toHaveURL(routeRegex(v0Url));
       await expectV0Rendered();
