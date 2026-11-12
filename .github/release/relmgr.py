@@ -437,13 +437,17 @@ def already_bumped(repo, branch, tag):
     """Is the tip the bot's bump for tag? Left behind when a run pushed the bump but not the tag."""
     ver = tag.removeprefix("v")
     chart = git(repo, "show", f"{branch}:{CHART}", check=False)
-    if chart.returncode == 0 and not re.search(
-        rf"^version: {re.escape(ver)}$", chart.stdout, re.M
-    ):
-        return False
+    if chart.returncode == 0:
+        # Older bumps set the chart version without the v; their tags must still resolve.
+        ok = {tag, ver}
+        found = re.search(r"^version: (.*)$", chart.stdout, re.M)
+        if not found or found[1] not in ok:
+            return False
+        want = {f"release: chart {v}" for v in ok}
+    else:
+        want = {f"release: {ver}"}
     email, subject = git(repo, "log", "-1", "--format=%ae%n%s", branch).split("\n", 1)
-    want = f"release: chart {ver}" if chart.returncode == 0 else f"release: {ver}"
-    return email.lower() == BOT_EMAIL.lower() and subject == want
+    return email.lower() == BOT_EMAIL.lower() and subject in want
 
 
 VALUES = "charts/unstract-platform/values.yaml"
@@ -457,9 +461,12 @@ GA_KEYS = {
 def ga_bump_stray(repo, base, sha, stable):
     """What base..sha changes beyond the GA bump (each GA_KEYS line changed exactly once, to stable); empty when none."""
     want = {
-        "version: ": stable.removeprefix("v"),
-        "appVersion: ": f'"{stable}"',
-        "UNSTRACT_APPS_VERSION: &UNSTRACT_APPS_VERSION ": stable,
+        "version: ": {
+            stable,
+            stable.removeprefix("v"),
+        },  # GA commits made before the v came back
+        "appVersion: ": {f'"{stable}"'},
+        "UNSTRACT_APPS_VERSION: &UNSTRACT_APPS_VERSION ": {stable},
     }
     stray = [
         f"{s}: {p}"
@@ -484,7 +491,7 @@ def ga_bump_stray(repo, base, sha, stable):
             hunk = True
         elif hunk and ln[:1] in ("+", "-") and path in GA_KEYS:
             key = next((k for k in GA_KEYS[path] if ln[1:].startswith(k)), None)
-            if key is None or (ln[0] == "+" and ln[1 + len(key) :] != want[key]):
+            if key is None or (ln[0] == "+" and ln[1 + len(key) :] not in want[key]):
                 stray.append(f"{path}: {ln}")
             else:
                 count[path, key, ln[0]] = count.get((path, key, ln[0]), 0) + 1

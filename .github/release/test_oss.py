@@ -305,41 +305,44 @@ class Lines(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "did not run"):
             oss.promote(self.cloud, self.oss, "v1.7.1-rc.2", force=True, reason="x")
 
-    def test_stabilized_promote_tags_the_line_once(self):
-        # only --stabilized writes the tag, once; a later promote keeps it on the GA commit
+    def test_first_promote_stabilizes_the_oss_line(self):
+        # The OSS line did not move since the cut: the first promote, of any cloud product, still tags its GA, and
+        # that GA alone makes the OSS line stabilized. No stabilized/X.Y mark is written.
+        self.addCleanup(rs.use, rs.SLUG)
+        rs.use("unstract")
+        state = lambda: rs.derive(
+            self.oss,
+            dt.datetime.now(dt.UTC),
+            lambda a: self.fail(f"registry read of {a}"),
+        )
         self.quiet(oss.cut, self.oss, "1.7")
         self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
-        # Cloud GA, on-prem still enabled.
-        oss.promote(self.cloud, self.oss, "v1.7.0-rc.1")
-        self.assertEqual(self.remote("tag", "-l", "stabilized/*"), "")
-        self.clone()
-        oss.promote(self.cloud, self.oss, "v1.7.0-rc.1", stabilized=True)
-        ga = self.remote("rev-parse", "ee-v1.7.0^{commit}")
-        self.assertEqual(self.remote("rev-parse", "stabilized/1.7^{commit}"), ga)
-        self.work("release/1.7", "oss fix")
-        self.quiet(oss.rc, self.oss, "release/1.7")
-        self.pin("ee-v1.7.1-rc.1", "v1.7.1-rc.1")
-        self.clone()
+        st = state()
         self.assertEqual(
-            oss.promote(self.cloud, self.oss, "v1.7.1-rc.1", stabilized=True), "ee-v1.7.1"
+            (st["branches"][0]["state"], st["backport_targets"]["fix"]),
+            ("stabilizing", ["release/1.7"]),
         )
-        self.assertEqual(self.remote("rev-parse", "stabilized/1.7^{commit}"), ga)
+        self.assertEqual(oss.promote(self.cloud, self.oss, "v1.7.0-rc.1"), "ee-v1.7.0")
+        st = state()
+        self.assertEqual(
+            (st["branches"][0]["state"], st["backport_targets"]["fix"]),
+            ("stabilized", []),
+        )
+        self.assertEqual(st["branches"][0]["targets"]["oss"]["ga"]["tag"], "ee-v1.7.0")
+        self.assertEqual(
+            self.remote("tag", "-l", "ee-v*").split(), ["ee-v1.7.0", "ee-v1.7.0-rc.1"]
+        )
+        self.assertEqual(self.remote("tag", "-l", "stabilized/*"), "")
 
-    def test_cli_stabilized_flag(self):
+    def test_cli_promote(self):
         self.quiet(oss.cut, self.oss, "1.7")
         self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
         self.addCleanup(os.chdir, os.getcwd())
         os.chdir(self.cloud)  # main promotes the cloud clone in the working directory
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            code = oss.main(
-                ["--oss-repo", self.oss, "promote", "--rc", "v1.7.0-rc.1", "--stabilized"]
-            )
+            code = oss.main(["--oss-repo", self.oss, "promote", "--rc", "v1.7.0-rc.1"])
         self.assertEqual((code, out.getvalue()), (0, "ee-v1.7.0\n"))
-        self.assertEqual(
-            self.remote("rev-parse", "stabilized/1.7^{commit}"),
-            self.remote("rev-parse", "ee-v1.7.0^{commit}"),
-        )
 
     def test_promote_refuses_a_downgrade(self):
         self.quiet(oss.cut, self.oss, "1.7")
@@ -2691,7 +2694,6 @@ class PendingPicksWorkflow(Workflow):
             inline("promote.yaml", "Plan"),
             RC=rc,
             TARGET="cloud",
-            PRODUCTS='["cloud"]',
             **env,
         )
 
@@ -2730,12 +2732,16 @@ class PendingPicksWorkflow(Workflow):
             f"ship it; open conflict PRs: {oss.OSS}#40",
         )
 
-    def test_promote_marks_a_cloud_only_line_stabilized(self):
-        # A cloud-only line: its cloud promote leaves every enabled target GA, so the OSS step gets --stabilized.
-        self.line("1.7", "v1.7.0-rc.1")
-        r = self.promote()
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("stabilized=true\n", self.read("output"))
+    def test_every_product_promotes_the_pinned_oss_rc(self):
+        # The OSS GA, which stabilizes the OSS line, comes from whichever product promotes the line first, on-prem
+        # alone included: the OSS step runs for every product, before the cloud tag.
+        with open(os.path.join(HERE, "..", "workflows", "promote.yaml")) as fh:
+            wf = fh.read()
+        start = wf.index("      - name: Promote the pinned OSS RC\n")
+        step = wf[start : wf.index("      - name: ", start + 1)]
+        self.assertNotIn("if:", step)
+        self.assertIn("oss.py promote", step)
+        self.assertLess(start, wf.index("      - name: GA commit and tag\n"))
 
     def test_promote_needs_the_rc_on_every_image(self):
         self.line("1.7", "v1.7.0-rc.1")
@@ -2895,7 +2901,6 @@ class PendingPicksWorkflow(Workflow):
             inline("promote.yaml", "Plan"),
             RC="v1.7.0-rc.1",
             TARGET="on-prem",
-            PRODUCTS='["on-prem"]',
         )
         self.blocked(
             r, "::error::on-prem is not enabled on release/1.7 (enabled: ['cloud'])"
@@ -2951,34 +2956,36 @@ class PendingPicksWorkflow(Workflow):
             self.forced(self.promote(FORCE="true", REASON="hotfix")), "hotfix"
         )
 
-    def test_promote_of_both_products_stabilizes_on_the_second(self):
-        # Cloud, promoted first in this run, has tagged v1.7.0; its registry retag is not read back yet.
-        self.line("1.7", "v1.7.0-rc.1")
+    def test_promote_held_oss_fixes_after_oss_ga(self):
+        self.line("1.7", "v1.7.0-rc.1")  # no cloud GA yet: the cloud line is stabilizing
+        oss_work = self.repos["oss"][1]
+        r = self.promote("v1.7.0-rc.1")  # nothing held: passes
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        dev_git(
+            oss_work, "tag", "ee-v1.7.0", "origin/release/1.7"
+        )  # an earlier Promote's OSS step, then a failure
+        dev_git(oss_work, "push", "-q", "origin", "ee-v1.7.0")
+        dev_git(oss_work, "pull", "-q", "origin", "main")
+        dev_git(oss_work, "commit", "-q", "--allow-empty", "-m", "fix: z (#9)")
+        dev_git(oss_work, "push", "-q", "origin", "main")
+        dev_git(oss_work, "fetch", "-q", "origin")
+        dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "[FIX] x (#9)")
+        dev_git(self.cloud, "push", "-q", "origin", "main")
         self.write(
-            "reg-on-prem_backend.jsonl",
+            "pulls.json",
             json.dumps(
-                {
-                    "digest": "sha256:op",
-                    "pushed_at": "2026-09-01T00:00:00Z",
-                    "tags": ["v1.7.0-rc.1"],
-                }
-            )
-            + "\n",
+                [{"number": 9, "title": "[FIX] x", "labels": [{"name": "fix/security"}]}]
+            ),
         )
-        dev_git(self.cloud, "tag", "v1.7.0", "v1.7.0-rc.1")
-        dev_git(self.cloud, "push", "-q", "origin", "v1.7.0")
-        plan = lambda products: self.run_step(
-            inline("promote.yaml", "Plan"),
-            RC="v1.7.0-rc.1",
-            TARGET="on-prem",
-            PRODUCTS=products,
+        r = self.promote("v1.7.0-rc.1")
+        self.blocked(r, "::error::pending picks")
+        self.assertRegex(
+            r.stdout,
+            rf"::error::[0-9a-f]{{7}} \(security, PR {re.escape(oss.OSS)}#9\) held for release/1\.7",
         )
-        r = plan('["cloud", "on-prem"]')
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("stabilized=true\n", self.read("output"))
-        r = plan('["on-prem"]')  # cloud not in this run and not GA: the line stays open
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("stabilized=false\n", self.read("output"))
+        self.assertNotRegex(
+            r.stdout, r"\(security, PR #9\)"
+        )  # the cloud line is still stabilizing: not checked
 
     def test_promote_held_fixes(self):
         self.line("1.7", "v1.7.0-rc.1", "v1.7.0")  # cloud GA: the line is stabilized
@@ -3217,14 +3224,13 @@ class LateTargetWorkflow(Workflow):
             inline("promote.yaml", "Plan"),
             RC="v1.7.0-rc.3",
             TARGET="on-prem",
-            PRODUCTS='["on-prem"]',
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         out = dict(line.split("=", 1) for line in self.read("output").splitlines())
         ga = dev_git(self.cloud, "rev-parse", "v1.7.0^{commit}")
         self.assertEqual(
-            (out["stable"], out["sha"], out["new_tag"], out["forced"], out["stabilized"]),
-            ("v1.7.0", ga, "false", "", "true"),
+            (out["stable"], out["sha"], out["new_tag"], out["forced"]),
+            ("v1.7.0", ga, "false", ""),
         )
 
     def test_after_a_patch_pick_builds_the_next_patch_rc(self):
@@ -3241,7 +3247,7 @@ class LateTargetWorkflow(Workflow):
             ("stabilized", True),
         )
 
-    def test_take_rc_never_deletes_the_oss_stabilized_tag(self):
+    def test_take_rc_never_reopens_a_line(self):
         with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
             self.assertNotIn("reopen", fh.read())
         self.assertFalse(hasattr(oss, "reopen"))
@@ -3350,7 +3356,7 @@ class TakeRcVersion(Workflow):
 
         code, text = summary("success")
         self.assertEqual(code, 0)
-        self.assertIn("On-prem RC chart `unstract-platform:1.7.1-rc.1`: success", text)
+        self.assertIn("On-prem RC chart `unstract-platform:v1.7.1-rc.1`: success", text)
         self.assertIn("QA tests", text)
         code, text = summary("failure")
         self.assertEqual(code, 1)
@@ -3740,7 +3746,7 @@ class TakeRcBump(Workflow):
     def setUp(self):
         super().setUp()
         os.makedirs(os.path.join(self.cloud, "charts", "unstract-platform"))
-        self.chart("0.1.0")
+        self.chart("v0.1.0")
         dev_git(self.cloud, "add", "charts")
         dev_git(self.cloud, "commit", "-q", "-m", "chart")
         dev_git(self.cloud, "push", "-q", "origin", "main")
@@ -3749,9 +3755,9 @@ class TakeRcBump(Workflow):
 
     def chart(self, ver):
         with open(os.path.join(self.cloud, self.CHART), "w") as fh:
-            fh.write(f'name: unstract-platform\nversion: {ver}\nappVersion: "v{ver}"\n')
+            fh.write(f'name: unstract-platform\nversion: {ver}\nappVersion: "{ver}"\n')
         with open(os.path.join(self.cloud, self.VALUES), "w") as fh:
-            fh.write(f"tag: &UNSTRACT_APPS_VERSION v{ver}\n")
+            fh.write(f"tag: &UNSTRACT_APPS_VERSION {ver}\n")
 
     def bump(self, tag="v1.7.0-rc.1"):
         return subprocess.run(
@@ -3784,10 +3790,10 @@ class TakeRcBump(Workflow):
         return tip
 
     def test_fresh_tip_bumps_the_chart(self):
-        self.tagged(self.bump(), "release: chart 1.7.0-rc.1")
+        self.tagged(self.bump(), "release: chart v1.7.0-rc.1")
         chart = self.origin("show", f"release/1.7:{self.CHART}")
         self.assertRegex(
-            chart, r'(?m)^version: 1\.7\.0-rc\.1\nappVersion: "v1\.7\.0-rc\.1"$'
+            chart, r'(?m)^version: v1\.7\.0-rc\.1\nappVersion: "v1\.7\.0-rc\.1"$'
         )
         self.assertEqual(
             self.origin("show", f"release/1.7:{self.VALUES}"),
@@ -3796,7 +3802,7 @@ class TakeRcBump(Workflow):
 
     def test_already_bumped_tip_is_tagged_as_it_is(self):
         # An earlier run pushed the bump and stopped before the tag push.
-        self.chart("1.7.0-rc.1")
+        self.chart("v1.7.0-rc.1")
         dev_git(
             self.cloud,
             "-c",
@@ -3804,21 +3810,21 @@ class TakeRcBump(Workflow):
             "commit",
             "-q",
             "-am",
-            "release: chart 1.7.0-rc.1",
+            "release: chart v1.7.0-rc.1",
         )
         dev_git(self.cloud, "push", "-q", "origin", "HEAD:release/1.7")
         before = self.origin("rev-parse", "release/1.7")
         r = self.bump()
-        self.assertEqual(self.tagged(r, "release: chart 1.7.0-rc.1"), before)
+        self.assertEqual(self.tagged(r, "release: chart v1.7.0-rc.1"), before)
         self.assertIn("is already the bump commit for v1.7.0-rc.1", r.stdout)
 
     def test_chart_already_at_the_version_gets_an_empty_bump(self):
-        self.chart("1.7.0-rc.1")
+        self.chart("v1.7.0-rc.1")
         dev_git(self.cloud, "commit", "-q", "-am", "chart by hand")
         dev_git(self.cloud, "push", "-q", "origin", "HEAD:release/1.7")
         before = self.origin("rev-parse", "release/1.7")
         r = self.bump()
-        tip = self.tagged(r, "release: chart 1.7.0-rc.1")
+        tip = self.tagged(r, "release: chart v1.7.0-rc.1")
         self.assertEqual(self.origin("rev-parse", f"{tip}^"), before)
         self.assertEqual(self.origin("diff", "--name-only", before, tip), "")
         self.assertIn("made an empty bump commit", r.stdout)
