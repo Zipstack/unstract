@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
 from workflow_manager.execution.abort import MAX_ABORT_IDS
@@ -5,11 +6,17 @@ from workflow_manager.execution.enum import AbortOutcome
 from workflow_manager.execution.serializer.execution import ExecutionSerializer
 
 
+@extend_schema_serializer(component_name="ExecutionListRow")
 class StuckExecutionSerializer(ExecutionSerializer):
-    """An execution row plus ``stuck_since``, served for ``?stuck=true``."""
+    """An execution row plus ``stuck_since``, served for ``?stuck=true``.
 
+    Also the list's documented row, where ``stuck_since`` is optional.
+    """
+
+    # Not read-only, so the schema can mark it optional.
     stuck_since = serializers.DateTimeField(
-        read_only=True, help_text="Time of last activity on the run or its files."
+        required=False,
+        help_text="Time of last activity on the run or its files; only with stuck=true.",
     )
 
 

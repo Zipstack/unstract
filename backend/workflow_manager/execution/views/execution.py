@@ -2,12 +2,7 @@ import logging
 
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import (
-    OpenApiParameter,
-    PolymorphicProxySerializer,
-    extend_schema,
-    extend_schema_view,
-)
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import viewsets
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from utils.filters.ordering_filter import DeterministicOrderingFilter
@@ -55,13 +50,8 @@ class UserWorkflowExecutionPermission(BasePermission):
                 ),
             )
         ],
-        # A row carries stuck_since only under ?stuck=true.
-        responses=PolymorphicProxySerializer(
-            component_name="ExecutionListRow",
-            serializers=[ExecutionSerializer, StuckExecutionSerializer],
-            resource_type_field_name=None,
-            many=True,
-        ),
+        # One row schema; stuck_since is optional and set only under ?stuck=true.
+        responses=StuckExecutionSerializer(many=True),
     )
 )
 class ExecutionViewSet(viewsets.ReadOnlyModelViewSet):
