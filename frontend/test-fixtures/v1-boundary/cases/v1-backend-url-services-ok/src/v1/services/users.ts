@@ -1,5 +1,4 @@
-import { orgPath } from "./context";
-import { http, type RequestOptions } from "./http";
+import { http, orgPath, type RequestOptions } from "./http";
 
 export type User = Readonly<{ id: string; email: string }>;
 

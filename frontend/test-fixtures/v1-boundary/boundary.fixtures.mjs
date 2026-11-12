@@ -123,7 +123,13 @@ const CASES = parseTable(`
   v1-http-client-axios           | lint:v1         | Only services/ imports the HTTP client
   v1-http-client-module          | lint:v1         | Only services/ imports the HTTP client
   v1-http-client-dynamic         | lint:v1         | Only services/ imports the HTTP client
+  v1-http-client-js-ext          | lint:v1         | Only services/ imports the HTTP client
+  v1-raw-fetch                   | lint:v1         | Only services/ sends requests
+  v1-raw-xhr                     | lint:v1         | Only services/ sends requests
+  v1-raw-eventsource-global      | lint:v1         | Only services/ sends requests
+  v1-plugin-page-backend-url     | lint:v1         | Backend URLs appear only in services/
   v1-backend-url-services-ok     | typecheck:v1 + lint:v1 | -
+  v1-plugin-services-ok          | lint:v1         | -
   v1-backend-url-test-ok         | lint:v1         | -
   v1-explicit-any                | lint:v1         | noExplicitAny
   # The v1 override must add to the shared rules, not replace them.

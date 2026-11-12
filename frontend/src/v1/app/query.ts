@@ -23,7 +23,7 @@ function reportQueryError(
   query: Query<unknown, unknown, unknown>,
 ): void {
   // A failed refresh keeps stale data on screen, so only then a toast.
-  const notify = query.state.data !== undefined && query.meta?.notify !== false;
+  const notify = query.state.data !== undefined;
   reportApiError(error, { notify, id: query.queryHash });
 }
 
@@ -38,13 +38,15 @@ function reportMutationError(
 
 /** The v1 QueryClient; `defaults` override the default options (tests). */
 export function createQueryClient(defaults: DefaultOptions = {}): QueryClient {
+  // "always": offline fails fast as `network` instead of pausing, and a save is never sent later.
+  const networkMode = "always";
   return new QueryClient({
     queryCache: new QueryCache({ onError: reportQueryError }),
     mutationCache: new MutationCache({ onError: reportMutationError }),
     defaultOptions: {
       ...defaults,
-      queries: { retry: retryRead, ...defaults.queries },
-      mutations: { retry: false, ...defaults.mutations },
+      queries: { retry: retryRead, networkMode, ...defaults.queries },
+      mutations: { retry: false, networkMode, ...defaults.mutations },
     },
   });
 }

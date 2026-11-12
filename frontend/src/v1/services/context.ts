@@ -1,6 +1,6 @@
 // What the HTTP client takes from the session (UN-4314): the org and expiry handling.
 
-// v0's target too: the backend ends the session and lands on the login page.
+// v0's target too. GET goes when v0 retires (account_v2/views.py), so UN-4314's handler uses the POST sign-out.
 const SESSION_EXPIRED_URL = "/api/v1/logout";
 
 export type SessionExpiredHandler = () => void;
@@ -27,14 +27,9 @@ export function currentOrganizationId(): string {
   return organizationId;
 }
 
-/** `/api/v1/unstract/<org>` + path, the trailing slash kept as written. */
-export function orgPath(path: `/${string}`): string {
-  const org = encodeURIComponent(currentOrganizationId());
-  return `/api/v1/unstract/${org}${path}`;
-}
-
 /**
  * Replaces what happens on session expiry (default: v0's logout redirect).
+ * The handler must leave the page: the client calls it once per page load.
  * Returns a cleanup that restores the default if this handler is current.
  */
 export function onSessionExpired(handler: SessionExpiredHandler): () => void {

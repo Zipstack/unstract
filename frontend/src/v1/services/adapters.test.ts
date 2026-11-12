@@ -1,3 +1,4 @@
+import { QueryClient } from "@tanstack/react-query";
 import { DEFAULT_SESSION, makeSession, mockApi } from "@v1/test";
 import { adapterFixtures, adapterHandlers } from "@v1/test/fixtures/adapters";
 import { afterEach, expect, it } from "vitest";
@@ -74,4 +75,14 @@ it("keys queries by organisation, so two organisations never share a cache entry
     "page",
     { ...params, page: 1, pageSize: 10 },
   ]);
+});
+
+it("fetches for the organisation in the key, even after the current one changes", async () => {
+  setOrganizationId("org-1");
+  const options = adapterQueries.list({ adapterType: "LLM" });
+  setOrganizationId("org-2");
+  const seen: URL[] = [];
+  mockApi(...adapterHandlers(DEFAULT_SESSION, adapterFixtures.llm, seen));
+  await new QueryClient().fetchQuery(options);
+  expect(seen[0]?.pathname).toBe("/api/v1/unstract/org-1/adapter/");
 });

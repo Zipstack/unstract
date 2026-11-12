@@ -123,8 +123,9 @@ is convention.
   error with Retry, then the data. Forms map field errors with
   `mapFieldErrors()` from `@v1/services/errors`.
 - `lint:v1` rejects a string or template starting `/api/` or `/deployment/`,
-  and any import of axios or `@v1/services/http`, outside `services/`,
-  `test/` and test files.
+  any import of axios or `@v1/services/http`, and any call to `fetch`,
+  `XMLHttpRequest` or `EventSource`, outside `services/`,
+  `plugins/<plugin>/services/`, `test/` and test files.
 
 ## Version switch and route registry
 
@@ -140,7 +141,8 @@ only when a v1 page first renders.
   `REGISTERED_PAGES`. Its v0 URLs then redirect to v1; reverting is that line.
   v1 renders outside v0's `PersistentLogin` and `RequireAuth`, and its own
   session and guards come with P0-T06: a page registered before that ships
-  with no session load, login redirect or org check.
+  with no session load or org check, and leaves for sign-in only when a
+  service call gets a 401 (`services/http.ts`).
 - `app/registry/validate.test.ts` fails CI on an invalid entry: overlapping
   patterns across pages, a v1 route and a different v0 route of one page that
   match the same URL (a page may keep its v0 URL), a route without a mapping
@@ -199,7 +201,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | Script | Checks |
 | --- | --- |
 | `bun run typecheck:v1` | TypeScript-only files, styles only in `styles/`, allowed file types only, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
-| `bun run lint:v1` | Biome on `src/v1/` (warnings fail), then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, the single notification entry point, backend URLs and the HTTP client only in `services/`, then the styling policy (S1 to S8 above), then the icon rules |
+| `bun run lint:v1` | Biome on `src/v1/` (warnings fail), then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, the single notification entry point, backend URLs, the HTTP client and raw requests only in `services/`, then the styling policy (S1 to S8 above), then the icon rules |
 | `bun run tokens:v1` | Regenerates `styles/tokens.css` from `styles/tokens.json` (via `styles/tokens.ts`; runs under bun, which imports the TypeScript source directly) |
 | `bun run test:v1` | v1 unit tests (`vitest.v1.config.mts`, then cloud plugins with `vitest.v1-plugins.config.mts`) with v1's own coverage threshold, then the guardrail fixtures in `test-fixtures/v1-boundary/`, `test-fixtures/v1-harness/` and `test-fixtures/v1-unit-gate/` (the coverage threshold fails a run, and CI runs the rig group's config). The harness is documented in `test/README.md` |
 | `bun run seam:v1` | Seam guard: v1 work changes v0 (`src/` outside v1, `public/`) only at the files in `scripts/v1-seam-allowlist.json`, compared with `origin/main` |

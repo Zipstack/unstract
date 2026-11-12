@@ -123,6 +123,29 @@ describe("each kind, from the backend's own error bodies", () => {
     expect(error).toMatchObject({ kind: "unauthenticated", status: 401 });
   });
 
+  it.each([
+    [
+      "a provider rejecting its key",
+      { error: "Invalid API key.", type: "sdk_error" },
+      "Invalid API key.",
+    ],
+    [
+      "a connector's failed OAuth refresh",
+      {
+        type: "client_error",
+        errors: [{ code: "error", detail: "OAuth failed.", attr: null }],
+      },
+      "OAuth failed.",
+    ],
+  ])("client, not session expiry: a typed 401 from %s", async (_, body, message) => {
+    const expired = vi.fn();
+    const restore = onSessionExpired(expired);
+    const error = await failureFor(json(body, 401));
+    restore();
+    expect(error).toMatchObject({ kind: "client", status: 401, message });
+    expect(expired).not.toHaveBeenCalled();
+  });
+
   it("forbidden: the auth middleware's 403", async () => {
     const error = await failureFor(
       json({ message: "Organization access denied" }, 403),
@@ -197,6 +220,16 @@ describe("each kind, from the backend's own error bodies", () => {
     });
   });
 
+  it("unknown, not network: a cancelled request", () => {
+    for (const cause of [new CanceledError(), new CancelledError()]) {
+      expect(toApiError(cause)).toMatchObject({
+        kind: "unknown",
+        message: "The request was cancelled.",
+        cause,
+      });
+    }
+  });
+
   it("returns an ApiError as it is", () => {
     const error = new ApiError({ kind: "client", message: "m" });
     expect(toApiError(error)).toBe(error);
@@ -248,6 +281,17 @@ describe("mapFieldErrors", () => {
     });
     expect(mapFieldErrors(fieldsOnly, ["adapter_name"])).toEqual({
       fields: { adapter_name: "Required." },
+      form: undefined,
+    });
+  });
+
+  it.each([
+    ["an idle mutation (null)", null],
+    ["no error (undefined)", undefined],
+    ["a cancelled request", new CanceledError()],
+  ])("shows nothing for %s", (_, error) => {
+    expect(mapFieldErrors(error, ["adapter_name"])).toEqual({
+      fields: {},
       form: undefined,
     });
   });

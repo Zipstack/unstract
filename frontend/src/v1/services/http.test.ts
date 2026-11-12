@@ -1,9 +1,9 @@
 import { delay, HttpResponse, http as mock, mockApi } from "@v1/test";
 import { isCancel } from "axios";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { onSessionExpired } from "./context";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { onSessionExpired, setOrganizationId } from "./context";
 import { ApiError, REQUEST_ID_HEADER } from "./errors";
-import { createHttpClient, http } from "./http";
+import { createHttpClient, http, orgPath } from "./http";
 
 const URL = "/api/v1/echo/";
 const UUID_V4 =
@@ -26,6 +26,34 @@ function mockEcho(): void {
 function setCookies(cookies: string): void {
   vi.spyOn(document, "cookie", "get").mockReturnValue(cookies);
 }
+
+describe("orgPath", () => {
+  afterEach(() => setOrganizationId(null));
+
+  it("builds the org-scoped path and keeps the trailing slash as written", () => {
+    setOrganizationId("org-1");
+    expect(orgPath("/adapter/")).toBe("/api/v1/unstract/org-1/adapter/");
+    expect(orgPath("/adapter/info/a1/")).toBe(
+      "/api/v1/unstract/org-1/adapter/info/a1/",
+    );
+    expect(orgPath("/flags")).toBe("/api/v1/unstract/org-1/flags");
+  });
+
+  it("uses the organisation given, else the current one", () => {
+    setOrganizationId("org-1");
+    expect(orgPath("/x/", "org-2")).toBe("/api/v1/unstract/org-2/x/");
+    expect(orgPath("/x/", undefined)).toBe("/api/v1/unstract/org-1/x/");
+  });
+
+  it("encodes the organisation id, so it stays one segment", () => {
+    setOrganizationId("a/b c");
+    expect(orgPath("/x/")).toBe("/api/v1/unstract/a%2Fb%20c/x/");
+  });
+
+  it("throws while no organisation is set", () => {
+    expect(() => orgPath("/adapter/")).toThrow(/No organisation is set/);
+  });
+});
 
 describe("CSRF header", () => {
   beforeEach(() => {
@@ -127,6 +155,23 @@ describe("401", () => {
         reason: { kind: "unauthenticated" },
       });
     }
+  });
+
+  it("expires the session once per page load: the handler leaves the page", async () => {
+    mockApi(
+      mock.get(URL, () =>
+        HttpResponse.json({ message: "Unauthorized" }, { status: 401 }),
+      ),
+    );
+    const expired = vi.fn();
+    const cleanup = onSessionExpired(expired);
+    const client = createHttpClient();
+    const first = await client.get(URL).catch((e: unknown) => e);
+    const second = await client.get(URL).catch((e: unknown) => e);
+    cleanup();
+    expect(expired).toHaveBeenCalledTimes(1);
+    expect(first).toMatchObject({ kind: "unauthenticated" });
+    expect(second).toMatchObject({ kind: "unauthenticated" });
   });
 
   it("is not treated as expiry for other statuses", async () => {

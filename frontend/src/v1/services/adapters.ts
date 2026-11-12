@@ -1,6 +1,6 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
-import { currentOrganizationId, orgPath } from "./context";
-import { http, type RequestOptions } from "./http";
+import { currentOrganizationId } from "./context";
+import { http, orgPath, type RequestOptions } from "./http";
 import { type Page, type PageParams, pageQuery } from "./page";
 
 /* Adapters (LLM, embedding, vector DB, text extractor, OCR) in the current organisation. */
@@ -44,9 +44,9 @@ const filterQuery = (params: ListAdaptersParams) => ({
 /** `GET /api/v1/unstract/<org>/adapter/`, unpaged. */
 export async function listAdapters(
   params: ListAdaptersParams,
-  { signal }: RequestOptions = {},
+  { signal, org }: RequestOptions = {},
 ): Promise<Adapter[]> {
-  const { data } = await http.get<Adapter[]>(orgPath("/adapter/"), {
+  const { data } = await http.get<Adapter[]>(orgPath("/adapter/", org), {
     params: filterQuery(params),
     signal,
   });
@@ -56,16 +56,16 @@ export async function listAdapters(
 /** The same list, one page at a time. */
 export async function listAdaptersPage(
   params: ListAdaptersPageParams,
-  { signal }: RequestOptions = {},
+  { signal, org }: RequestOptions = {},
 ): Promise<AdapterPage> {
-  const { data } = await http.get<AdapterPage>(orgPath("/adapter/"), {
+  const { data } = await http.get<AdapterPage>(orgPath("/adapter/", org), {
     params: { ...filterQuery(params), ...pageQuery(params) },
     signal,
   });
   return data;
 }
 
-/** Query keys: `[org, "adapters", "list" | "page" | "detail", params | id]`. */
+/** Query keys: `[org, "adapters", "list" | "page", params]`. */
 export const adapterKeys = {
   all: () => [currentOrganizationId(), "adapters"] as const,
   list: (params: ListAdaptersParams) =>
@@ -74,17 +74,20 @@ export const adapterKeys = {
     [...adapterKeys.all(), "page", params] as const,
 };
 
+// Each query fetches for the org in its key, so rows never land under another org's key.
 export const adapterQueries = {
   list: (params: ListAdaptersParams) =>
     queryOptions({
       queryKey: adapterKeys.list(params),
-      queryFn: ({ signal }) => listAdapters(params, { signal }),
+      queryFn: ({ queryKey: [org], signal }) =>
+        listAdapters(params, { signal, org }),
     }),
   // The previous page stays on screen while the next one loads.
   page: (params: ListAdaptersPageParams) =>
     queryOptions({
       queryKey: adapterKeys.page(params),
-      queryFn: ({ signal }) => listAdaptersPage(params, { signal }),
+      queryFn: ({ queryKey: [org], signal }) =>
+        listAdaptersPage(params, { signal, org }),
       placeholderData: keepPreviousData,
     }),
 };

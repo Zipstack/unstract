@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { onlineManager, useMutation, useQuery } from "@tanstack/react-query";
 import { act, waitFor } from "@testing-library/react";
 import { type NotifyInput, setNotifier } from "@v1/lib/notify";
 import {
@@ -20,7 +20,15 @@ import {
 import { adapterFixtures, adapterHandlers } from "@v1/test/fixtures/adapters";
 import { isCancel } from "axios";
 import type { JsonBodyType } from "msw";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type MockInstance,
+  vi,
+} from "vitest";
 import { createQueryClient, retryRead } from "./query";
 
 const ADAPTERS = apiPath(DEFAULT_SESSION, "/adapter/");
@@ -44,6 +52,10 @@ afterEach(() => {
   unregister();
   setOrganizationId(null);
 });
+
+/* The data layer's console lines, without React Router's warnings. */
+const v1Lines = (spy: MockInstance) =>
+  spy.mock.calls.filter(([first]) => String(first).startsWith("[v1 "));
 
 /* A handler that answers `status` and counts its calls. */
 function failing(status: number, body: JsonBodyType = {}) {
@@ -77,7 +89,7 @@ describe("retryRead", () => {
 
 describe("reads", () => {
   it("retry a gateway error, then report it", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const calls = failing(503);
     const queryClient = createQueryClient({ queries: { retryDelay: 0 } });
     const { result } = renderHookV1(() => useQuery(adapterQueries.list(LLM)), {
@@ -85,6 +97,13 @@ describe("reads", () => {
     });
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(calls.count).toBe(3);
+    expect(v1Lines(warn)).toEqual([
+      [
+        "[v1 api] %s (request %s)",
+        "Something went wrong on our side. Try again.",
+        "req-7",
+      ],
+    ]);
   });
 
   it("do not retry a client error", async () => {
@@ -127,6 +146,8 @@ describe("reads", () => {
   });
 
   it("are cancelled when the caller unmounts, and report nothing", async () => {
+    const warn = vi.spyOn(console, "warn");
+    const error = vi.spyOn(console, "error");
     mockApi(
       mock.get(ADAPTERS, async () => {
         await delay(100);
@@ -145,9 +166,11 @@ describe("reads", () => {
     );
     await waitFor(() => expect(request).toBeDefined());
     unmount();
-    const error = await request?.catch((e: unknown) => e);
-    expect(isCancel(error)).toBe(true);
+    const cancelled = await request?.catch((e: unknown) => e);
+    expect(isCancel(cancelled)).toBe(true);
     expect(shown).toEqual([]);
+    expect(v1Lines(warn)).toEqual([]);
+    expect(v1Lines(error)).toEqual([]);
   });
 });
 
@@ -219,6 +242,30 @@ describe("mutations", () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
+  it("report nothing for a save the caller cancelled", async () => {
+    const warn = vi.spyOn(console, "warn");
+    const error = vi.spyOn(console, "error");
+    mockApi(
+      mock.get(ADAPTERS, async () => {
+        await delay(100);
+        return HttpResponse.json([]);
+      }),
+    );
+    const controller = new AbortController();
+    const { result } = renderHookV1(() =>
+      useMutation({
+        mutationFn: () => listAdapters(LLM, { signal: controller.signal }),
+      }),
+    );
+    act(() => result.current.mutate());
+    controller.abort();
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(isCancel(result.current.error)).toBe(true);
+    expect(shown).toEqual([]);
+    expect(v1Lines(warn)).toEqual([]);
+    expect(v1Lines(error)).toEqual([]);
+  });
+
   it("fail on network loss without retrying", async () => {
     const calls = { count: 0 };
     mockApi(
@@ -235,5 +282,43 @@ describe("mutations", () => {
     expect(result.current.error).toMatchObject({ kind: "network" });
     expect(calls.count).toBe(1);
     expect(shown).toHaveLength(1);
+  });
+});
+
+describe("offline", () => {
+  afterEach(() => onlineManager.setOnline(true));
+
+  it("a read fails as network instead of waiting for the connection", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    onlineManager.setOnline(false);
+    mockApi(mock.get(ADAPTERS, () => HttpResponse.error()));
+    const queryClient = createQueryClient({ queries: { retryDelay: 0 } });
+    const { result } = renderHookV1(() => useQuery(adapterQueries.list(LLM)), {
+      queryClient,
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error).toMatchObject({ kind: "network" });
+  });
+
+  it("a save fails instead of being sent when the connection returns", async () => {
+    onlineManager.setOnline(false);
+    const calls = { count: 0 };
+    mockApi(
+      mock.get(ADAPTERS, () => {
+        calls.count += 1;
+        return HttpResponse.error();
+      }),
+    );
+    const { result } = renderHookV1(
+      () => useMutation({ mutationFn: () => listAdapters(LLM) }),
+      { queryClient: createQueryClient() },
+    );
+    act(() => result.current.mutate());
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.isPaused).toBe(false);
+    expect(calls.count).toBe(1);
+    expect(shown).toEqual([
+      expect.objectContaining({ title: expect.stringContaining("connection") }),
+    ]);
   });
 });

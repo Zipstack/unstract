@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { adapterQueries } from "@v1/services/adapters";
 import { setOrganizationId } from "@v1/services/context";
 import {
@@ -82,4 +82,52 @@ it("takes a custom loading view", () => {
   }
   renderV1(<Custom />);
   expect(screen.getByText("Loading adapters")).toBeInTheDocument();
+});
+
+it("keeps the data on screen, with no alert, when a refresh fails", async () => {
+  const toast = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  mockApi(...adapterHandlers(DEFAULT_SESSION));
+  function Refreshable(): JSX.Element {
+    const query = useQuery(adapterQueries.list({ adapterType: "LLM" }));
+    return (
+      <>
+        <p>Status {query.status}</p>
+        <button type="button" onClick={() => void query.refetch()}>
+          Refresh
+        </button>
+        <QueryView query={query}>
+          {(rows) => <p>{rows.map((row) => row.adapter_name).join(", ")}</p>}
+        </QueryView>
+      </>
+    );
+  }
+  const { user } = renderV1(<Refreshable />);
+  expect(await screen.findByText("OpenAI GPT-4o, Claude")).toBeInTheDocument();
+  mockApi(mock.get(ADAPTERS, () => HttpResponse.json({}, { status: 500 })));
+  await user.click(screen.getByRole("button", { name: "Refresh" }));
+  await waitFor(() =>
+    expect(screen.getByText("Status error")).toBeInTheDocument(),
+  );
+  expect(screen.getByText("OpenAI GPT-4o, Claude")).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).toBeNull();
+  // No notifier is mounted, so the toast falls back to the console.
+  expect(toast).toHaveBeenCalledTimes(1);
+});
+
+it("renders a successful query whose select gives undefined, not an alert", async () => {
+  mockApi(...adapterHandlers(DEFAULT_SESSION));
+  function Pick(): JSX.Element {
+    const query = useQuery({
+      ...adapterQueries.list({ adapterType: "LLM" }),
+      select: (rows) => rows.find((row) => row.adapter_name === "Mistral"),
+    });
+    return (
+      <QueryView query={query}>
+        {(row) => <p>{row?.adapter_name ?? "No match"}</p>}
+      </QueryView>
+    );
+  }
+  renderV1(<Pick />);
+  expect(await screen.findByText("No match")).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).toBeNull();
 });

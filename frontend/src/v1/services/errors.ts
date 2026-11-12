@@ -29,6 +29,7 @@ const DEFAULT_MESSAGES: Readonly<Record<ApiErrorKind, string>> = {
   network: "Can't reach the server. Check your connection and try again.",
   unknown: "Something went wrong.",
 };
+const CANCELLED_MESSAGE = "The request was cancelled.";
 
 export type FieldErrors = Readonly<Record<string, readonly string[]>>;
 
@@ -115,7 +116,8 @@ const isSubscription = (status: number, body: ErrorBody): boolean =>
   body.items.some((item) => SUBSCRIPTION_TYPES.has(item.code ?? ""));
 
 function kindOf(status: number, body: ErrorBody): ApiErrorKind {
-  if (status === 401) {
+  // Only the auth middleware's untyped 401 is session expiry; a typed one is a provider's or connector's.
+  if (status === 401 && body.type === undefined) {
     return "unauthenticated";
   }
   if (isSubscription(status, body)) {
@@ -195,10 +197,15 @@ export function isCancelled(error: unknown): boolean {
   return isCancel(error) || isCancelledError(error);
 }
 
-/** Maps any failure to an ApiError. Check isCancelled() first. */
+/** Maps any failure to an ApiError; a cancel is `unknown`. Check isCancelled() first. */
 export function toApiError(error: unknown): ApiError {
   if (error instanceof ApiError) {
     return error;
+  }
+  // Before axios: its cancel has no response, so it would read as `network`.
+  if (isCancelled(error)) {
+    const message = CANCELLED_MESSAGE;
+    return new ApiError({ kind: "unknown", message, cause: error });
   }
   if (isAxiosError(error)) {
     return fromAxios(error);
@@ -228,6 +235,10 @@ export function mapFieldErrors<F extends string>(
   error: unknown,
   fields: readonly F[],
 ): FormErrors<F> {
+  // No error yet (an idle mutation), or a cancel: nothing to show.
+  if (error == null || isCancelled(error)) {
+    return { fields: {}, form: undefined };
+  }
   const apiError = toApiError(error);
   const shown = new Set<string>(fields);
   const isShown = (attr: string): attr is F => shown.has(attr);

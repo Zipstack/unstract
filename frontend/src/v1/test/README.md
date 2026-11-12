@@ -107,7 +107,7 @@ import { apiPath, DEFAULT_SESSION, HttpResponse, http, mockApi } from "@v1/test"
 
 mockApi(
   http.get<never, never, Adapter[]>(apiPath(DEFAULT_SESSION, "/adapter/"), () =>
-    HttpResponse.json(adapterFixtures.list),
+    HttpResponse.json(adapterFixtures.llm),
   ),
 );
 ```
@@ -134,23 +134,10 @@ arguments. A test that leaves fake timers on gets real timers back after it.
 
 Each service module in `services/` exports its request and response types.
 Its fixtures live in `test/fixtures/<service>.ts`, typed against those types
-so a contract change breaks the fixture at typecheck:
-
-```ts
-// test/fixtures/adapters.ts
-import type { Adapter } from "@v1/services/adapters";
-import { apiPath, HttpResponse, http, type TestSession } from "@v1/test";
-
-export const adapterFixtures = {
-  list: [{ id: "a1", adapter_name: "OpenAI", adapter_type: "LLM" }],
-} satisfies Record<string, Adapter[]>;
-
-export const adapterHandlers = (session: TestSession) => [
-  http.get<never, never, Adapter[]>(apiPath(session, "/adapter/"), () =>
-    HttpResponse.json(adapterFixtures.list),
-  ),
-];
-```
+with `satisfies`, so a contract change breaks the fixture at typecheck. See
+`test/fixtures/adapters.ts`: `adapterFixtures` holds the rows and
+`adapterHandlers(session, rows, seen)` answers `GET adapter/` the way the
+backend does.
 
 ## Accessibility
 

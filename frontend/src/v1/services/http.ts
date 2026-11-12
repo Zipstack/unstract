@@ -3,17 +3,29 @@ import axios, {
   type InternalAxiosRequestConfig,
   isCancel,
 } from "axios";
-import { expireSession } from "./context";
+import { currentOrganizationId, expireSession } from "./context";
 import { REQUEST_ID_HEADER, toApiError } from "./errors";
 
-// The one HTTP client for v1; only services/ imports it (see README.md).
+// The one HTTP client for v1 and its backend paths; only services/ imports it (see README.md).
 
 const CSRF_COOKIE = "csrftoken";
 const CSRF_HEADER = "X-CSRFToken";
 const MUTATING_METHODS = new Set(["post", "put", "patch", "delete"]);
 
 /** Options every service function takes. */
-export type RequestOptions = Readonly<{ signal?: AbortSignal }>;
+export type RequestOptions = Readonly<{
+  signal?: AbortSignal;
+  /** The organisation to call; a query passes its key's, else the current one. */
+  org?: string;
+}>;
+
+/** `/api/v1/unstract/<org>` + path, the trailing slash kept as written. */
+export function orgPath(
+  path: `/${string}`,
+  org: string = currentOrganizationId(),
+): string {
+  return `/api/v1/unstract/${encodeURIComponent(org)}${path}`;
+}
 
 function readCookie(name: string): string | undefined {
   const prefix = `${name}=`;
@@ -76,7 +88,7 @@ export function createHttpClient(): AxiosInstance {
       return Promise.reject(error);
     }
     const apiError = toApiError(error);
-    // Concurrent 401s redirect once.
+    // Once per page load, so concurrent 401s redirect once; the handler leaves the page.
     if (apiError.kind === "unauthenticated" && !expired) {
       expired = true;
       expireSession();
