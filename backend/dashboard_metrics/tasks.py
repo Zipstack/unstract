@@ -341,8 +341,8 @@ def _rollup_monthly_from_daily(month_start: date, skip: set | None = None) -> in
     before it.
 
     Upsert-only, per the design agreed on UN-3973: a monthly row the daily tier
-    no longer produces *at all* is left in place rather than deleted. A stale total
-    is recoverable with backfill_metrics; a deleted one is not, because the daily
+    no longer produces *at all* is left in place rather than deleted. A total that is
+    too low is recoverable with backfill_metrics; a deleted one is not, because the daily
     rows that would rebuild it are exactly what is missing.
 
     A month the daily tier covers only *partially* is a different case: date is not
