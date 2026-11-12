@@ -17,7 +17,11 @@ it("rejects a distribution it does not know", async () => {
   await expect(import("@v1/plugins")).rejects.toThrow(/must be one of/);
 });
 
-it("rejects a plugin route on a page the OSS route registry declares", async () => {
+it.each([
+  "/:orgName/v1-demo",
+  "/:org/V1-Demo",
+  "/:orgName/*",
+])("rejects a plugin route %s on a page the OSS route registry declares", async (path) => {
   vi.resetModules();
   const { pluginRegistry } = await import("@v1/plugins");
   expect(() =>
@@ -28,7 +32,7 @@ it("rejects a plugin route on a page the OSS route registry declares", async () 
           distributions: ["cloud"],
           routes: [
             {
-              path: "/:orgName/v1-demo",
+              path,
               load: async () => ({ default: () => null }),
             },
           ],

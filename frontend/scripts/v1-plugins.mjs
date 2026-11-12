@@ -16,31 +16,26 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const DEFAULT_DIR = path.join(import.meta.dirname, "../src/v1/plugins");
-const REGISTRY = path.join(
-  import.meta.dirname,
-  "../src/v1/lib/plugins/registry.ts",
-);
-// The v1 route registry: pure data with type-only imports, loaded like a manifest.
-const ROUTE_ENTRIES = path.join(
-  import.meta.dirname,
-  "../src/v1/app/registry/entries.ts",
-);
+const SRC = path.join(import.meta.dirname, "../src/v1");
+const REGISTRY = path.join(SRC, "lib/plugins/registry.ts");
+// The v1 route registry's pages, and its overlap rule for route patterns.
+const ROUTE_ENTRIES = path.join(SRC, "app/registry/entries.ts");
+const ROUTE_PATTERNS = path.join(SRC, "app/registry/patterns.ts");
 
 const dataUrl = (code) =>
   `data:text/javascript;base64,${Buffer.from(code).toString("base64")}`;
 
 const BUN = Boolean(process.versions.bun);
 
-let registry;
-function loadRegistry() {
+/** Imports a source module with its own imports; under Node, bundled by esbuild. */
+function loadSource(file) {
   if (BUN) {
-    registry ??= import(pathToFileURL(REGISTRY).href);
-    return registry;
+    return import(pathToFileURL(file).href);
   }
-  registry ??= import("esbuild")
+  return import("esbuild")
     .then(({ build }) =>
       build({
-        entryPoints: [REGISTRY],
+        entryPoints: [file],
         bundle: true,
         write: false,
         format: "esm",
@@ -48,7 +43,6 @@ function loadRegistry() {
       }),
     )
     .then((r) => import(dataUrl(r.outputFiles[0].text)));
-  return registry;
 }
 
 async function importManifest(file) {
@@ -102,12 +96,18 @@ export async function check(dir = DEFAULT_DIR) {
     }
   }
   const manifests = await Promise.all(ids.map((id) => load(dir, id)));
-  const { buildRegistry } = await loadRegistry();
-  const { PAGES, DEMO_PAGES } = await importManifest(ROUTE_ENTRIES);
+  const [{ buildRegistry }, { PAGES, DEMO_PAGES }, { patternsOverlap }] =
+    await Promise.all([
+      loadSource(REGISTRY),
+      loadSource(ROUTE_ENTRIES),
+      loadSource(ROUTE_PATTERNS),
+    ]);
   // Demo pages count: an E2E build registers them.
   const ossRoutes = [...PAGES, ...DEMO_PAGES].flatMap((p) => p.v1Routes);
   // Throws on any conflict in any distribution.
-  const offered = (d) => [...buildRegistry(manifests, d, ossRoutes).plugins];
+  const offered = (d) => [
+    ...buildRegistry(manifests, d, ossRoutes, patternsOverlap).plugins,
+  ];
   return {
     distributions: {
       oss: offered("oss"),
