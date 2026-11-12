@@ -3356,7 +3356,7 @@ class TakeRcVersion(Workflow):
 
         code, text = summary("success")
         self.assertEqual(code, 0)
-        self.assertIn("On-prem RC chart `unstract-platform:1.7.1-rc.1`: success", text)
+        self.assertIn("On-prem RC chart `unstract-platform:v1.7.1-rc.1`: success", text)
         self.assertIn("QA tests", text)
         code, text = summary("failure")
         self.assertEqual(code, 1)
@@ -3746,7 +3746,7 @@ class TakeRcBump(Workflow):
     def setUp(self):
         super().setUp()
         os.makedirs(os.path.join(self.cloud, "charts", "unstract-platform"))
-        self.chart("0.1.0")
+        self.chart("v0.1.0")
         dev_git(self.cloud, "add", "charts")
         dev_git(self.cloud, "commit", "-q", "-m", "chart")
         dev_git(self.cloud, "push", "-q", "origin", "main")
@@ -3755,9 +3755,9 @@ class TakeRcBump(Workflow):
 
     def chart(self, ver):
         with open(os.path.join(self.cloud, self.CHART), "w") as fh:
-            fh.write(f'name: unstract-platform\nversion: {ver}\nappVersion: "v{ver}"\n')
+            fh.write(f'name: unstract-platform\nversion: {ver}\nappVersion: "{ver}"\n')
         with open(os.path.join(self.cloud, self.VALUES), "w") as fh:
-            fh.write(f"tag: &UNSTRACT_APPS_VERSION v{ver}\n")
+            fh.write(f"tag: &UNSTRACT_APPS_VERSION {ver}\n")
 
     def bump(self, tag="v1.7.0-rc.1"):
         return subprocess.run(
@@ -3790,10 +3790,10 @@ class TakeRcBump(Workflow):
         return tip
 
     def test_fresh_tip_bumps_the_chart(self):
-        self.tagged(self.bump(), "release: chart 1.7.0-rc.1")
+        self.tagged(self.bump(), "release: chart v1.7.0-rc.1")
         chart = self.origin("show", f"release/1.7:{self.CHART}")
         self.assertRegex(
-            chart, r'(?m)^version: 1\.7\.0-rc\.1\nappVersion: "v1\.7\.0-rc\.1"$'
+            chart, r'(?m)^version: v1\.7\.0-rc\.1\nappVersion: "v1\.7\.0-rc\.1"$'
         )
         self.assertEqual(
             self.origin("show", f"release/1.7:{self.VALUES}"),
@@ -3802,7 +3802,7 @@ class TakeRcBump(Workflow):
 
     def test_already_bumped_tip_is_tagged_as_it_is(self):
         # An earlier run pushed the bump and stopped before the tag push.
-        self.chart("1.7.0-rc.1")
+        self.chart("v1.7.0-rc.1")
         dev_git(
             self.cloud,
             "-c",
@@ -3810,21 +3810,21 @@ class TakeRcBump(Workflow):
             "commit",
             "-q",
             "-am",
-            "release: chart 1.7.0-rc.1",
+            "release: chart v1.7.0-rc.1",
         )
         dev_git(self.cloud, "push", "-q", "origin", "HEAD:release/1.7")
         before = self.origin("rev-parse", "release/1.7")
         r = self.bump()
-        self.assertEqual(self.tagged(r, "release: chart 1.7.0-rc.1"), before)
+        self.assertEqual(self.tagged(r, "release: chart v1.7.0-rc.1"), before)
         self.assertIn("is already the bump commit for v1.7.0-rc.1", r.stdout)
 
     def test_chart_already_at_the_version_gets_an_empty_bump(self):
-        self.chart("1.7.0-rc.1")
+        self.chart("v1.7.0-rc.1")
         dev_git(self.cloud, "commit", "-q", "-am", "chart by hand")
         dev_git(self.cloud, "push", "-q", "origin", "HEAD:release/1.7")
         before = self.origin("rev-parse", "release/1.7")
         r = self.bump()
-        tip = self.tagged(r, "release: chart 1.7.0-rc.1")
+        tip = self.tagged(r, "release: chart v1.7.0-rc.1")
         self.assertEqual(self.origin("rev-parse", f"{tip}^"), before)
         self.assertEqual(self.origin("diff", "--name-only", before, tip), "")
         self.assertIn("made an empty bump commit", r.stdout)

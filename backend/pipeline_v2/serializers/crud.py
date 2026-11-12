@@ -1,11 +1,9 @@
 import logging
 from collections import OrderedDict
-from datetime import datetime
 from typing import Any
 
 from croniter import croniter
 from django.conf import settings
-from django.utils import timezone
 from permissions.permission import mutable_workflows_for
 from pipeline_v2.constants import PipelineConstants as PC
 from pipeline_v2.constants import PipelineKey as PK
@@ -269,14 +267,8 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
 
     def get_next_run_time(self, instance: Pipeline) -> str | None:
         """Calculate next scheduled run time from cron expression."""
-        if not instance.cron_string or not instance.active:
-            return None
-        try:
-            cron = croniter(instance.cron_string, timezone.now())
-            next_run: datetime = cron.get_next(datetime)
-            return next_run.isoformat()
-        except Exception:
-            return None
+        next_run = instance.next_run_time()
+        return next_run.isoformat() if next_run else None
 
     def create(self, validated_data: dict[str, Any]) -> Any:
         # TODO: Deduce pipeline type based on WF?

@@ -238,6 +238,34 @@ jobs:
         # Cheap pre-flight before the multi-minute image build.
         run: tox -e rig -- validate
 
+      # Frontend v1 E2E (`frontend-v1-e2e`) runs with `npx --no-install`, so its
+      # own node_modules and a browser must already be here. Scoped to
+      # tests/e2e/ui-v1 only; the v0 `ui` group's setup is deliberately left
+      # as it is. The leg runs the whole e2e tier, so the group is always
+      # selected; the caches keep that cheap. Install, lint and typecheck run
+      # before the image build, so a type error fails in seconds; the browser
+      # install stays after it.
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - name: Cache frontend-v1 E2E dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-ui-v1-${{ hashFiles('tests/e2e/ui-v1/bun.lock') }}
+
+      - name: Install frontend-v1 E2E dependencies
+        working-directory: tests/e2e/ui-v1
+        # No dependency lifecycle scripts: browsers are installed below.
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Lint and typecheck frontend-v1 E2E
+        working-directory: tests/e2e/ui-v1
+        # Playwright strips types without checking them, and neither the
+        # frontend lint workflow nor pre-commit covers tests/. The typecheck
+        # also holds the suite to the frontend registry types it imports.
+        run: bun run lint && bun run typecheck
+
       - name: Set up env files
         run: ./run-platform.sh -e
 
@@ -275,6 +303,24 @@ jobs:
             tool-text_extractor.cache-to=type=gha,mode=max,scope=tool-text_extractor
             worker-unified.cache-from=type=gha,scope=worker-unified
             worker-unified.cache-to=type=gha,mode=max,scope=worker-unified
+
+      - name: Cache Playwright browsers
+        id: ui-v1-browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          # The lock pins Playwright, which pins the browser build.
+          key: ${{ runner.os }}-playwright-ui-v1-${{ hashFiles('tests/e2e/ui-v1/bun.lock') }}
+
+      - name: Install Playwright browser
+        working-directory: tests/e2e/ui-v1
+        # The OS libraries are not cacheable; on a cache hit install only them.
+        run: |
+          if [ "${{ steps.ui-v1-browsers.outputs.cache-hit }}" = "true" ]; then
+            npx --no-install playwright install-deps chromium
+          else
+            npx --no-install playwright install --with-deps --only-shell chromium
+          fi
 
       - name: Run e2e tier (rig boots the platform via compose)
         env:
