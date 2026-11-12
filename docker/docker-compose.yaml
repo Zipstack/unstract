@@ -271,8 +271,11 @@ services:
     image: unstract/x2text-service:${VERSION}
     container_name: unstract-x2text-service
     restart: unless-stopped
-    ports:
-      - "3004:3004"
+    # Internal service: not published on the host. Other services reach it on the
+    # compose network as http://unstract-x2text-service:3004.
+    # For local development only, uncomment to expose it on loopback:
+    # ports:
+    #   - "127.0.0.1:3004:3004"
     env_file:
       - ../x2text-service/.env
     depends_on:

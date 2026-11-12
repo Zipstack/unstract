@@ -28,13 +28,13 @@ STATUSES = ("CONVERGED", "DECLINED", "MISSING", "UNCLASSIFIABLE", "RBO-ABSENT")
 CLOSE_HOWTO = "resolve, get one approval and merge, or close the PR to decline (the close comment is the reason)."
 
 
-def conflict_pr(head):
+def conflict_pr(head, slug=None):
     r = bm.run_gh(
         [
             "pr",
             "list",
             "-R",
-            os.environ["GITHUB_REPOSITORY"],
+            slug or os.environ["GITHUB_REPOSITORY"],
             "--head",
             head,
             "--state",
@@ -49,12 +49,12 @@ def conflict_pr(head):
     return (prs[0]["number"], prs[0]["url"]) if prs else None
 
 
-def push_failure(number, branch):
+def push_failure(number, branch, slug=None):
     r = bm.run_gh(
         [
             "api",
             "--paginate",
-            f"repos/{os.environ['GITHUB_REPOSITORY']}/issues/{number}/comments",
+            f"repos/{slug or os.environ['GITHUB_REPOSITORY']}/issues/{number}/comments",
             "--jq",
             f'.[] | .body | split("\\n")[0] | select(startswith("Backport to {branch} failed:"))',
         ],
@@ -513,6 +513,11 @@ def main(argv=None):
     p.add_argument("--state", help="relstate JSON; default: derive it now")
     p.add_argument("--repo", default=".")
     p.add_argument(
+        "--slug",
+        default=os.environ.get("GITHUB_REPOSITORY"),
+        help="owner/name of --repo on GitHub, for its backport PRs; default: $GITHUB_REPOSITORY",
+    )
+    p.add_argument(
         "--oss-repo",
         default=os.environ.get("OSS_REPO"),
         help="clone of the repo this one pins (relstate PINS); required when PINS is set. Default: $OSS_REPO",
@@ -534,6 +539,11 @@ def main(argv=None):
         return 1 if e.code else 0
     try:
         out_file = a.out and rm.local_path(a.out)
+        if not a.slug:
+            raise RuntimeError("--slug (or GITHUB_REPOSITORY) is required")
+        os.environ["GITHUB_REPOSITORY"] = a.slug  # relmgr's link helpers read it
+        if (name := a.slug.lower().split("/")[-1]) != rs.SLUG:
+            rs.use(name)  # relstate chose its config from the env at import
         if rs.PINS and not a.oss_repo:
             raise RuntimeError(
                 f"--oss-repo (or OSS_REPO) is required: this repo pins {rs.PINS}"
@@ -550,6 +560,8 @@ def main(argv=None):
             state,
             a.promote_ref,
             annotate=a.annotate,
+            lookup=functools.partial(conflict_pr, slug=a.slug),
+            failure=functools.partial(push_failure, slug=a.slug),
             oss_repo=a.oss_repo if rs.PINS else None,
         )
         order = rs.promote_blockers(state, a.branch, a.target)

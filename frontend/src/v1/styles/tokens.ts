@@ -10,8 +10,8 @@ import source from "./tokens.json";
  *
  * Colour is the Midnight Bloom collection minus its palette entries (sky-300,
  * sky-500, openai-green, white), plus the code-* and diff-* syntax and diff
- * colours P1-T16 added. Spacing is one 4pt scale: a value not on the
- * list is a bug. Type is eight roles, each a size, a line height and a
+ * colours P1-T16 added and the chart ramp chart-1..chart-5. Spacing is one
+ * 4pt scale: a value not on the list is a bug. Type is eight roles, each a size, a line height and a
  * weight. Elevation is one value per step. Focus has no offset: its colour
  * is the `ring` token.
  */

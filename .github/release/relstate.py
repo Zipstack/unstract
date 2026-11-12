@@ -52,11 +52,12 @@ def ver_re(prefix):
 
 
 def use(slug):
-    global TARGETS, LATEST_ONLY, KEPT, PINS, PREFIX, VER_RE
+    global SLUG, TARGETS, LATEST_ONLY, KEPT, PINS, PREFIX, VER_RE
     if slug not in REPOS:
         raise RuntimeError(
-            f"relstate has no config for repo {slug!r} (GITHUB_REPOSITORY); known: {', '.join(REPOS)}"
+            f"relstate has no config for repo {slug!r}; known: {', '.join(REPOS)}"
         )
+    SLUG = slug
     TARGETS, LATEST_ONLY, KEPT, PINS, PREFIX = REPOS[slug]
     VER_RE = ver_re(PREFIX)
 
@@ -82,9 +83,6 @@ def missing_images(target, tag):
 
 
 AR_API = "https://artifactregistry.googleapis.com/v1"
-# OSS tag stabilized/X.Y: every enabled target of the paired cloud line reached GA. OSS git cannot see the cloud
-# registry, so cloud Promote writes it.
-STABILIZED = "stabilized/"
 
 
 def ar_repository(kind):
@@ -360,9 +358,9 @@ def target_state(t, name, rows, now):
 
     On-prem: stabilized for WINDOW after the line's first stable chart push (a patch does not extend it), and only while
     among the newest WINDOW_LINES lines with an on-prem GA. A LATEST_ONLY target (cloud): only the latest GA branch
-    for it stays stabilized; older GA branches are past-eos for it. A KEPT target (OSS): stabilizing until every
-    enabled target of its paired cloud line is GA (the STABILIZED tag, which `oss.py promote --stabilized` writes;
-    nothing removes it, so a target added later does not reopen it), then stabilized while the branch exists; the cloud lines pinning it decide its retirement, and cloud Retire names it.
+    for it stays stabilized; older GA branches are past-eos for it. A KEPT target (OSS): stabilized from its GA
+    (the paired cloud line's first Promote, of either product, tags it) while the branch exists; the cloud lines pinning it
+    decide its retirement, and cloud Retire names it.
     """
     ga = rows[name]["targets"][t]["ga"]
     # Known limit: a target never GA stays stabilizing. Its line goes by Retire one shipped line now (force when the
@@ -370,7 +368,7 @@ def target_state(t, name, rows, now):
     if not ga:
         return "stabilizing"
     if t in KEPT:
-        return "stabilized" if rows[name]["targets"][t]["stabilized"] else "stabilizing"
+        return "stabilized"
     t_ga = sorted(
         (n for n, r in rows.items() if r["targets"].get(t, {}).get("ga")),
         key=lambda n: _key(rows[n]["line"]),
@@ -439,7 +437,7 @@ def _anomaly_reason(repo, name, refs, sha):
         return "no branch"
     if not sha:
         return "no git tag"
-    if not rm.is_ancestor(repo, sha, refs[name]):
+    if not rm.is_ancestor(repo, rm.rc_commit(repo, sha, PREFIX), refs[name]):
         return "commit not on branch"
     return None
 
@@ -492,13 +490,13 @@ def _fill_ga(repo, t, builds, anchor, reg, refs, rows):
                     for g in reg[artifact]
                     if stable.fullmatch(g)
                     and (c := _tag_commit(repo, g))
-                    and rm.is_ancestor(repo, c, refs[row["branch"]])
+                    and rm.is_ancestor(
+                        repo, rm.rc_commit(repo, c, PREFIX), refs[row["branch"]]
+                    )
                 ),
                 key=_vkey,
             ):
                 tt[key] = {"tag": tags[pick], **reg[artifact][tags[pick]]}
-        if t in KEPT:
-            tt["stabilized"] = bool(_tag_commit(repo, STABILIZED + row["line"]))
 
 
 def _line_state(states):
@@ -537,11 +535,13 @@ def _set_states(rows, now):
             tt["state"] = target_state(t, name, rows, now)
         row["enabled"] = sorted(row["targets"])
         # No enabled target (cut, nothing built yet) is stabilizing: every line builds cloud by default.
-        # A late target with no GA counts as stabilized: it adds no auto-picks, and the line stays supported (Retire one
-        # shipped line now needs force) until it has a GA; a line where no target has a GA goes by Abandon.
+        # The line's first GA, for any target, ends its auto-picks: a target with no GA yet then counts as stabilized,
+        # so it takes plain fixes only by a named Backport. Its own state stays stabilizing: it keeps its target
+        # supported and blocks that target's Promote on newer lines; Retire needs force for it only when it is late.
+        any_ga = any(tt["ga"] for tt in row["targets"].values())
         row["state"] = _line_state(
             {
-                "stabilized" if tt["late"] and not tt["ga"] else tt["state"]
+                "stabilized" if any_ga and not tt["ga"] else tt["state"]
                 for tt in row["targets"].values()
             }
         )
@@ -729,15 +729,6 @@ def abandon_plan(repo, branch, registry=registry_tags, services=rc_service_tags)
         "versions": versions,
         "kept": kept,
     }
-
-
-def stabilizes(row, target, done=()):
-    """Whether promoting target leaves every enabled target of the line row GA: each is target, in done (promoted
-    earlier in the same run), or already GA. Cloud Promote then marks the pinned OSS line stabilized.
-    """
-    return all(
-        u == target or u in done or row["targets"][u]["ga"] for u in row["enabled"]
-    )
 
 
 def promote_blockers(state, branch, target):
