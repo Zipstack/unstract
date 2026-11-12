@@ -293,8 +293,7 @@ class TestModelAwareUploadCheck:
     def test_validation_error_logs_never_quote_the_metadata(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        # Missing ``api_base``: pydantic's error quotes the whole stored
-        # metadata dict, api_key included.
+        # Missing ``api_base``, so the SDK raises a validation error for it.
         canary = "leak-canary"
         monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "5")
         caplog.set_level(logging.DEBUG)
@@ -306,6 +305,10 @@ class TestModelAwareUploadCheck:
         assert canary not in str(excinfo.value.detail)
         assert "SdkError" in caplog.text
         assert canary not in caplog.text
+        # The SDK leaves settings out of this text, so the canary alone can't
+        # catch the text itself being quoted.
+        assert "api_base" not in str(excinfo.value.detail)
+        assert "api_base" not in caplog.text
         assert all(rec.exc_info is None for rec in caplog.records)
 
     def test_profile_without_llm_uses_the_fixed_cap(

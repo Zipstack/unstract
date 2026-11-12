@@ -15,8 +15,9 @@ import { useFieldControl } from "./field-context";
 import { Input, type InputProps } from "./Input";
 import { isComposing } from "./keyboard";
 
-// No onChange: onValueChange is the one way to hear a change, so a controlled
-// field cannot be wired in a way that silently loses Clear and Escape.
+// onChange is left out of the type: onValueChange is the documented way to
+// hear a change. A spread (`{...field}`, `{...register()}`) still carries one,
+// and the field calls it on typing and on clear.
 export type SearchFieldProps = Omit<
   InputProps,
   "type" | "value" | "defaultValue" | "onChange" | "leading" | "trailing"
@@ -75,27 +76,45 @@ export function SearchField({
   readOnly,
   ref,
   controlClassName,
-  ...props
+  ...rest
 }: SearchFieldProps): JSX.Element {
+  const { onChange: spreadOnChange, ...props } = rest as typeof rest & {
+    onChange?: InputProps["onChange"];
+  };
   const [uncontrolled, setUncontrolled] = useState(defaultValue);
   const current = value ?? uncontrolled;
   const inputRef = useRef<HTMLInputElement>(null);
   const composedRef = useMemo(() => composeRefs(inputRef, ref), [ref]);
   const state = useFieldControl({ disabled, readOnly });
   // A controlled field without onValueChange cannot be cleared, so it lets Escape through.
-  const canClear = value === undefined || onValueChange !== undefined;
+  const canClear =
+    value === undefined ||
+    onValueChange !== undefined ||
+    spreadOnChange !== undefined;
   const clearable =
     canClear && current !== "" && !state.disabled && !state.readOnly;
 
   // A form reset restores the DOM value, not this state, so restore it here.
+  // A listener later in the dispatch (React's onReset) may cancel the reset,
+  // so wait for the dispatch to finish and check.
   useEffect(() => {
     const form = inputRef.current?.form;
     if (!form || value !== undefined) {
       return undefined;
     }
-    const onReset = () => setUncontrolled(defaultValue);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onReset = (event: Event) => {
+      timer = setTimeout(() => {
+        if (!event.defaultPrevented) {
+          setUncontrolled(defaultValue);
+        }
+      });
+    };
     form.addEventListener("reset", onReset);
-    return () => form.removeEventListener("reset", onReset);
+    return () => {
+      form.removeEventListener("reset", onReset);
+      clearTimeout(timer);
+    };
   }, [value, defaultValue]);
 
   const update = (next: string) => {
@@ -103,6 +122,22 @@ export function SearchField({
       setUncontrolled(next);
     }
     onValueChange?.(next);
+  };
+
+  const clear = () => {
+    const input = inputRef.current;
+    if (!(spreadOnChange && input)) {
+      update("");
+      return;
+    }
+    // A spread onChange reads a real event (react-hook-form's register reads
+    // event.target), so clear the way typing does: set the DOM value and fire
+    // input, which reaches the onChange below.
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set?.call(input, "");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -119,11 +154,13 @@ export function SearchField({
       return;
     }
     event.stopPropagation();
-    update("");
+    clear();
   };
 
   return (
     <Input
+      // First, so nothing in a spread replaces the handlers this field owns.
+      {...props}
       ref={composedRef}
       type="search"
       value={current}
@@ -132,6 +169,7 @@ export function SearchField({
       data-escape-clears={clearable ? "" : undefined}
       onChange={(event: ChangeEvent<HTMLInputElement>) => {
         update(event.target.value);
+        spreadOnChange?.(event);
       }}
       onKeyDown={handleKeyDown}
       leading={<Search aria-hidden />}
@@ -140,7 +178,7 @@ export function SearchField({
           <FieldAction
             label={clearLabel}
             onClick={() => {
-              update("");
+              clear();
               inputRef.current?.focus();
             }}
           >
@@ -152,7 +190,6 @@ export function SearchField({
         "ui:[&::-webkit-search-cancel-button]:appearance-none ui:[&::-webkit-search-decoration]:appearance-none",
         controlClassName,
       )}
-      {...props}
     />
   );
 }

@@ -47,8 +47,8 @@ it("covers the families the board defines", () => {
   ]);
   expect(byFamily("type")).toHaveLength(25); // eight roles × (size, line-height, weight) + overline tracking
   // The Midnight Bloom collection minus its four palette entries (30), plus
-  // the ten syntax and diff colours P1-T16 adds.
-  expect(byFamily("colour")).toHaveLength(40);
+  // the ten syntax and diff colours P1-T16 adds and the five chart ramp steps.
+  expect(byFamily("colour")).toHaveLength(45);
   for (const name of [
     "background",
     "foreground",

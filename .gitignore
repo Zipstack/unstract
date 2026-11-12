@@ -47,6 +47,8 @@ lib64/
 !frontend/src/lib/
 !frontend/src/v1/**/lib/
 !frontend/test-fixtures/**/lib/
+# The v1 guard fixtures drive git through shell scripts (test-fixtures/v1-boundary).
+!frontend/test-fixtures/v1-boundary/**/*.sh
 parts/
 sdist/
 var/

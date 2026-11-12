@@ -1,10 +1,10 @@
 """Backport: cherry-pick (-x) main fixes onto every release branch that accepts them.
 
-Usage: backport.py --state state.json (--commits SHA|PR[,...] | --rescan) [--confirm-stabilized] [--lines X.Y[,...]]
+Usage: backport.py --state state.json (--commits SHA|PR[,...] | --rescan) [--patch-released-lines] [--lines X.Y[,...]]
 
 --rescan (every push to main): pick every main commit since each target's cut that no trailer there names
-(security/critical only on stabilized targets, held without --confirm-stabilized). --commits (dispatch): only these;
-with --confirm-stabilized a plain fix also goes onto the stabilized lines --lines names.
+(security/critical only on stabilized targets, held without --patch-released-lines). --commits (dispatch): only these;
+with --patch-released-lines a plain fix also goes onto the stabilized lines --lines names.
 
 Run from a full clone whose `origin` pushes with the bot token, with GH_TOKEN set to the bot token and
 RELEASE_BOT_APP_SLUG set to the release App's slug.
@@ -255,8 +255,14 @@ def link_result(res):
 
 
 def latest_tag(repo, branch):
-    """A stable tag ranks above the RC it was promoted from (same commit, same patch)."""
-    tags = rs.line_tags(repo, branch.split("/", 1)[1], "--merged", f"origin/{branch}")
+    """A stable tag ranks above the RC it was promoted from (same patch). A stable tag sits on Promote's GA commit,
+    off the line, so a tag counts when its RC commit is on the line.
+    """
+    tags = [
+        t
+        for t in rs.line_tags(repo, branch.split("/", 1)[1])
+        if rm.is_ancestor(repo, rm.rc_commit(repo, t, rs.PREFIX), f"origin/{branch}")
+    ]
     if not tags:
         return None, None
     m = lambda t: rs.VER_RE.fullmatch(t)
@@ -1183,6 +1189,8 @@ def push_title(slug, sha):
     except ValueError as e:  # the picks are done, only this line is left
         print(f"::warning::{sha[:7]}: fix class: {e}")
         cls, pr = UNCLASSIFIABLE, "-"
+    if pr == "no PR":  # as rescan classes it: shown, never "not a fix"
+        cls, title = UNCLASSIFIABLE, "no PR found, so it cannot be classed"
     if cls == UNCLASSIFIABLE and pr != "-":
         print(f"::warning::{sha[:7]}: fix class: {title}")
     return f"Backport · push {rm.commit_link(sha)} ({link_pr(pr)}, {cls or 'not a fix'})"
@@ -1207,7 +1215,7 @@ def main():
     mode.add_argument(
         "--rescan", action="store_true", help="every target since its cut (push to main)"
     )
-    p.add_argument("--confirm-stabilized", action="store_true")
+    p.add_argument("--patch-released-lines", action="store_true")
     p.add_argument(
         "--lines",
         default="",
@@ -1224,10 +1232,12 @@ def main():
         sys.exit(f"::error::lines: {e}")
     if a.rescan:
         rows, awaiting, missing, owed = rescan(
-            slug, targets, a.confirm_stabilized, listed
+            slug, targets, a.patch_released_lines, listed
         )
     else:
-        rows, awaiting = dispatch(slug, targets, a.commits, a.confirm_stabilized, listed)
+        rows, awaiting = dispatch(
+            slug, targets, a.commits, a.patch_released_lines, listed
+        )
     failed = sum(res.startswith("failed") for *_, res, _ in rows)
     # Every owed commit ends the run picked, declined, held, on a pick head, or not a fix; else the run is red.
     try:

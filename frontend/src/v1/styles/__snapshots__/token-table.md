@@ -30,6 +30,11 @@
 | colour | sidebar-muted-foreground | `--sidebar-muted-foreground` | `ui:text-sidebar-muted-foreground` | #737373 | #a1a1aa | #a9c3da |
 | colour | header | `--header` | `ui:bg-header` | #fcfcfc | #0a0a0a | #072b4d |
 | colour | header-foreground | `--header-foreground` | `ui:text-header-foreground` | #1a1a1a | #fafafa | #ffffff |
+| colour | chart-1 | `--chart-1` | `ui:fill-chart-1` | #86b6ef | #9ec5f4 | #86b6ef |
+| colour | chart-2 | `--chart-2` | `ui:fill-chart-2` | #5598e7 | #6da7ec | #5598e7 |
+| colour | chart-3 | `--chart-3` | `ui:fill-chart-3` | #2a78d6 | #3987e5 | #2a78d6 |
+| colour | chart-4 | `--chart-4` | `ui:fill-chart-4` | #1c5cab | #256abf | #1c5cab |
+| colour | chart-5 | `--chart-5` | `ui:fill-chart-5` | #104281 | #184f95 | #104281 |
 | colour | code-key | `--code-key` | `ui:text-code-key` | #b41b30 | #fca5a5 | #b41b30 |
 | colour | code-string | `--code-string` | `ui:text-code-string` | #5b5bc0 | #c1c5fb | #5d5dc4 |
 | colour | code-number | `--code-number` | `ui:text-code-number` | #147739 | #4ade80 | #147839 |

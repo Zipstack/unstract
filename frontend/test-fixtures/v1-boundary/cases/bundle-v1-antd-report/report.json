@@ -1,0 +1,12 @@
+{
+  "modules": {
+    "src/index.jsx": ["src/v1/pages/logs/index.tsx"],
+    "src/v1/pages/logs/index.tsx": [
+      "/repo/frontend/node_modules/some-table/index.js"
+    ],
+    "/repo/frontend/node_modules/some-table/index.js": [
+      "/repo/frontend/node_modules/antd/es/button/index.js"
+    ],
+    "/repo/frontend/node_modules/antd/es/button/index.js": []
+  }
+}
