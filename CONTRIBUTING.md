@@ -17,7 +17,7 @@ labels decide what it copies, so set them when you open the PR.
     their first release.
   - **`main-only`:** it stays on `main`. Never with a `backport/` label.
   - **`backport/ga`:** the fix must also reach released lines, once whoever runs
-    the release confirms. It is enough on its own.
+    the release confirms.
   - **A revert** takes the backport label of the PR it reverts. GitHub's Revert
     button opens it with no label.
   - **Choose by whether a release line needs the change, never from the title type:**

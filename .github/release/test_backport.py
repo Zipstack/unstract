@@ -571,7 +571,7 @@ class DispatchNonFix(unittest.TestCase):
                     "#250",
                     "none",
                     "-",
-                    "skipped: not a fix; swap #250's main-only label for backport/rc or backport/ga and rerun",
+                    "skipped: not a fix; swap #250's main-only label for a backport label and rerun",
                     "-",
                 ),
                 (b, "no PR", "error", "-", "failed: no PR found", "-"),
@@ -711,7 +711,7 @@ class DispatchNamedPr(unittest.TestCase):
                     "#1946",
                     "none",
                     "-",
-                    "skipped: not a fix; swap #1946's main-only label for backport/rc or backport/ga and rerun",
+                    "skipped: not a fix; swap #1946's main-only label for a backport label and rerun",
                     "-",
                 )
             ],
@@ -789,7 +789,7 @@ class DispatchHold(unittest.TestCase):
                             "#4",
                             "rc",
                             "release/0.190",
-                            "failed: stabilized; a plain fix needs lines",
+                            "failed: stabilized; a backport/rc fix needs lines",
                             "-",
                         ),
                         (fix, "release/0.191"),
@@ -855,7 +855,7 @@ class DispatchPatch(unittest.TestCase):
         )
 
     def test_confirm_without_branches_says_why(self):
-        why = "failed: stabilized; a plain fix needs lines"
+        why = "failed: stabilized; a backport/rc fix needs lines"
         self.assertEqual(
             self.run_(True, []),
             [
@@ -1621,6 +1621,7 @@ class Pick(unittest.TestCase):
         os.chdir(d + "/w")
         self.addCleanup(os.chdir, cwd)
         self.calls = []
+        self.labels = "fix/needs-backport\nfix/security\nbackport/x\nother"
 
     @staticmethod
     def write(path, text):
@@ -1630,7 +1631,7 @@ class Pick(unittest.TestCase):
     def gh(self, *a, token=None, retry=True):
         self.calls.append(a)
         if a[:2] == ("api", "repos/o/r/pulls/5"):
-            return "backport/ga\nbackport/rc\nother"
+            return self.labels
         return "https://github.com/o/r/pull/8"
 
     def pick(self):
@@ -1646,7 +1647,7 @@ class Pick(unittest.TestCase):
         create = next(a for a in self.calls if a[:2] == ("pr", "create"))
         self.assertEqual(
             [create[i + 1] for i, x in enumerate(create) if x == "--label"],
-            ["backport/ga", "backport/rc"],
+            ["fix/needs-backport", "fix/security"],
         )
 
     def test_conflict_pick_carries_fix_labels(self):
@@ -1655,11 +1656,12 @@ class Pick(unittest.TestCase):
         self.g("commit", "-q", "-am", "z")
         self.g("push", "-q", "origin", "HEAD:release/1.0")
         self.g("fetch", "-q", "origin")
+        self.labels = "backport/ga\nother"
         self.assertEqual(self.pick()[0], "pr")
         create = next(a for a in self.calls if a[:2] == ("pr", "create"))
         self.assertEqual(
             [create[i + 1] for i, x in enumerate(create) if x == "--label"],
-            ["backport-conflict", "backport/ga", "backport/rc"],
+            ["backport-conflict", "backport/ga"],
         )
 
     def test_empty_pick_names_the_decline(self):

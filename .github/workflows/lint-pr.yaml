@@ -65,8 +65,8 @@ jobs:
           if errors:
               menu = "" if os.environ["BASE"].startswith("release/") else (
                      "A PR into main needs exactly one of these labels; the title type does not choose it:\n"
-                     "- `backport/rc`: also copy it to the release lines still awaiting GA.\n"
-                     "- `backport/ga`: also copy it to released lines; each released-line pick is confirmed before Promote.\n"
+                     "- `backport/rc` (old name `fix/needs-backport`): also copy it to the release lines still awaiting GA.\n"
+                     "- `backport/ga` (old name `fix/security`): also copy it to those lines and to released lines; each released-line pick is confirmed before Promote.\n"
                      "- `main-only`: keep it on main only.\n"
                      "A revert takes the label of the PR it reverts.\n")
               # Label advice: printed between the errors and the label menu. Empty until the advice command lands.

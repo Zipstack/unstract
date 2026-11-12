@@ -331,19 +331,25 @@ def _ticks(names):
 
 def pr_fix_class(title, labels=()):
     """The class ("rc" or "ga") comes from labels only; None without one. A main merge also needs a label: main_fix_class."""
-    # Reject near-miss class labels (backport/<x>, fix/<x>, fix-class/<x>, typos) so a typo cannot drop the class.
+    # Reject near-miss class labels (backport/<x>, backport-ga, fix/<x>, fix-class/<x>, typos) so a typo cannot drop the class.
     bad = [
         l
         for l in labels
         if l not in BACKPORT_LABELS
-        and re.match(r"\s*(backport\s*/|fix(\w{0,3}[\W_]*class(?![a-z])|\s*/))", l, re.I)
+        and re.match(
+            r"\s*(backports?\s*(/|[\W_]+\s*(rc|ga)(?![a-z]))|fix(\w{0,3}[\W_]*class(?![a-z])|\s*/))",
+            l,
+            re.I,
+        )
     ]
     if bad:
         raise ValueError(
             f"unknown label(s) {_ticks(bad)}: use `backport/rc`, `backport/ga` or `{MAIN_ONLY}`"
         )
     found = sorted(set(labels) & set(BACKPORT_LABELS))
-    if len(found) > 1:
+    classes = {BACKPORT_LABELS[x] for x in found}
+    # Old names combine as they always did (fix/needs-backport with fix/security is ga); a new name allows one class.
+    if len(classes) > 1 and not all(x.startswith("fix/") for x in found):
         raise ValueError(f"conflicting labels {_ticks(found)}: keep one")
     # The changelogs read the title, so no label excuses it. strip: GitHub keeps a leading space.
     inner = title.strip()
@@ -353,7 +359,7 @@ def pr_fix_class(title, labels=()):
         raise ValueError(f"no recognised '[TYPE]' or 'TICKET [TYPE]' prefix: {title!r}")
     if MAIN_ONLY in labels and found:
         raise ValueError(f"conflicting labels {_ticks([MAIN_ONLY, *found])}: keep one")
-    return BACKPORT_LABELS[found[0]] if found else None
+    return ("ga" if "ga" in classes else "rc") if found else None
 
 
 def main_fix_class(title, labels=()):
