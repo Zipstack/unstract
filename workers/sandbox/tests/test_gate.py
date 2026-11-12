@@ -1379,3 +1379,83 @@ def test_the_function_scope_binding_lookup_stays_linear(monkeypatch):
         f"script ({small} -> {large}); the per-(scope, name) memoisation in "
         f"_function_scope_binds has regressed to a per-read walk"
     )
+
+
+def test_a_global_declaration_is_not_shadowed_through_a_comprehension_scope():
+    """The same bypass as the sibling above, one scope deeper.
+
+    `global eval` makes the name resolve in module globals for every free read
+    in that function, INCLUDING reads inside a comprehension it contains. The
+    walk latched its `global` answer on the innermost function scope of any
+    kind, and a comprehension is one -- but a comprehension body is an
+    expression and can never hold a `global` statement, so the latched answer
+    was always False and the declaration one level out was never consulted.
+    `outer`'s parameter then exempted the read.
+
+    Measured before the fix: this gate-passed, `f is eval` was True, and
+    calling it ran `__import__('os').getuid()` and returned the real uid.
+    """
+    ok, reason = check_code_safe(
+        "def outer(eval=1):\n"
+        "    def inner():\n"
+        "        global eval\n"
+        "        return [eval for _ in [1]][0]\n"
+        "    return inner()\n"
+        "f = outer()\n"
+        "f(\"__import__('os').getuid()\")\n"
+    )
+    assert ok is False, "a comprehension scope hid the global declaration"
+    assert "eval" in reason
+
+
+def test_a_global_declaration_is_not_shadowed_through_a_lambda_body():
+    """`lambda` is the other expression-bodied scope in `_FUNCTION_SCOPES`.
+
+    It cannot hold a `global` statement either, so latching on it had the same
+    effect as latching on a comprehension.
+    """
+    ok, reason = check_code_safe(
+        "def outer(eval=1):\n"
+        "    def inner():\n"
+        "        global eval\n"
+        "        return (lambda: eval)()\n"
+        "    return inner()\n"
+        "f = outer()\n"
+        "f(\"__import__('os').getuid()\")\n"
+    )
+    assert ok is False, "a lambda body hid the global declaration"
+    assert "eval" in reason
+
+
+def test_a_comprehension_target_still_shadows_the_builtin():
+    """The companion direction, so skipping those scopes is not over-broad.
+
+    A comprehension that binds the name ITSELF makes it that scope's local, so
+    no `global` can apply to it and the binding is a real shadow. The fix
+    latches on such a scope instead of skipping it, which is what keeps this
+    accepted.
+    """
+    ok, reason = check_code_safe("rows = [1, 2]\nresult = [vars for vars in rows]\n")
+    assert ok is True, reason
+
+
+def test_a_comprehension_reading_an_enclosing_local_is_still_accepted():
+    """The read is a free variable resolving to the enclosing function's own
+    binding, with no `global` anywhere. Walking out past the comprehension must
+    still find that binding and exempt the read.
+    """
+    ok, reason = check_code_safe(
+        "def f(rows):\n"
+        "    vars = {'n': 2}\n"
+        "    return [vars['n'] for _ in rows]\n"
+        "result = f([1])\n"
+    )
+    assert ok is True, reason
+
+
+def test_a_lambda_parameter_still_shadows_the_builtin():
+    """A `lambda` that binds the name through its own parameter list is the
+    same case as the comprehension target: a genuine local.
+    """
+    ok, reason = check_code_safe("g = lambda vars: vars['n']\nresult = g({'n': 1})\n")
+    assert ok is True, reason

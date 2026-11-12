@@ -505,6 +505,14 @@ _FUNCTION_SCOPES = (
     ast.GeneratorExp,
 )
 
+#: The subset of `_FUNCTION_SCOPES` whose body is a statement list, so a
+#: `global` declaration can appear in it at all. A comprehension or `lambda`
+#: body is a single expression and can never hold one, so such a scope is
+#: never the one that decides whether a name resolves in module globals. It
+#: can still BIND the name through its own parameters or iteration targets,
+#: which is a genuine shadow and is handled separately.
+_DECLARING_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef)
+
 
 #: Module-level statements whose execution is UNCONDITIONAL given that control
 #: reached them, so a later Load in the same scope is guaranteed to see the
@@ -1137,7 +1145,35 @@ def _shadows_builtin(node, parents) -> bool:
                 return False
             return True
         if isinstance(cur, _FUNCTION_SCOPES):
-            if not seen_function_scope:
+            if not seen_function_scope and (
+                isinstance(cur, _DECLARING_SCOPES) or _function_scope_binds(cur, node.id)
+            ):
+                # Latching on the innermost function scope of ANY kind was
+                # unsound: a comprehension and a `lambda` are in
+                # `_FUNCTION_SCOPES` but cannot contain a `global` statement,
+                # so `_declares_global` was asked a question whose answer is
+                # always False, latched it, and the governing declaration one
+                # level out was never consulted. Measured on this PR,
+                # gate-passed AND executed through the real builtin:
+                #
+                #     def outer(eval=1):
+                #         def inner():
+                #             global eval
+                #             return [eval for _ in [1]][0]
+                #         return inner()
+                #     f = outer()
+                #     f("__import__('os').getuid()")
+                #
+                # The comprehension's read of `eval` is a free variable, so it
+                # resolves through `inner`, where the name IS declared global;
+                # `outer`'s parameter is as irrelevant to it as in the
+                # non-comprehension spelling greptile reported. Skipping such a
+                # scope walks out to the one that actually decides.
+                #
+                # A comprehension or `lambda` that binds the name ITSELF is a
+                # different case: the name is its local, no `global` can apply
+                # to it, and the binding arm below is the right answer -- so
+                # that latches rather than being skipped.
                 seen_function_scope = True
                 global_in_scope = _declares_global(cur, node.id)
             if not global_in_scope and _function_scope_binds(cur, node.id):
