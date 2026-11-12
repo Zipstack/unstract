@@ -213,7 +213,7 @@ def registry_tags(artifact, repos=None):
 
 
 def _read(artifact, registry):
-    """registry(artifact), with chart tags X.Y.Z read as vX.Y.Z (charts are tagged without the v)."""
+    """registry(artifact), with chart tags X.Y.Z read as vX.Y.Z (some charts were pushed without the v)."""
     tags = registry(artifact)
     if not artifact.startswith("chart/"):
         return tags
@@ -238,8 +238,11 @@ def rc_chart_tags(registry=registry_tags):
     """
     if "on-prem" not in TARGETS:
         return set()
+    # Some RC charts were pushed without the v.
     return {
-        "v" + t for t in registry(RC_CHART) if re.fullmatch(r"\d+\.\d+\.\d+-rc\.\d+", t)
+        "v" + t.removeprefix("v")
+        for t in registry(RC_CHART)
+        if re.fullmatch(r"v?\d+\.\d+\.\d+-rc\.\d+", t)
     }
 
 
@@ -654,7 +657,7 @@ def _by_version(tags):
     """{id or digest: {id, digest, tags}}: one digest in two repositories is two versions."""
     by_version = {}
 
-    # Version order, so the last version is the newest RC (rc.10 after rc.9); other tags first. Chart versions
+    # Version order, so the last version is the newest RC (rc.10 after rc.9); other tags first. Some chart versions
     # carry no "v".
     def key(kv):
         t = kv[0] if VER_RE.fullmatch(kv[0]) else f"{PREFIX}v{kv[0]}"

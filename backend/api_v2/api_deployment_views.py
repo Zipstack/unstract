@@ -29,6 +29,16 @@ from utils.enums import CeleryTaskState
 from utils.hubspot_notify import notify_hubspot_event
 from utils.pagination import CustomPagination
 from workflow_manager.workflow_v2.dto import ExecutionResponse
+from workflow_manager.workflow_v2.list_aggregate_serializers import (
+    LIST_FILTER_ACTIONS,
+    list_filters_from,
+    workflow_filter_from,
+)
+from workflow_manager.workflow_v2.list_aggregates import (
+    RowFields,
+    aggregate_rows,
+    apply_list_filters,
+)
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from api_v2.api_deployment_dto_registry import ApiDeploymentDTORegistry
@@ -51,6 +61,7 @@ from api_v2.rate_limiter import APIDeploymentRateLimiter
 from api_v2.serializers import (
     APIDeploymentListSerializer,
     APIDeploymentSerializer,
+    DeploymentAggregateSerializer,
     DeploymentResponseSerializer,
     ExecutionQuerySerializer,
     ExecutionRequestSerializer,
@@ -62,6 +73,9 @@ if notification_plugin:
     from plugins.notification.constants import ResourceType
 
 logger = logging.getLogger(__name__)
+
+# The last run is the one the list shows, annotated in get_queryset.
+DEPLOYMENT_ROW_FIELDS = RowFields(active="is_active", last_run="last_run_time_annotated")
 
 
 @DEPLOYMENT_EXECUTION_SCHEMA
@@ -342,16 +356,8 @@ class APIDeploymentViewSet(
 
         # TODO: replace the hand-read params and their OpenApiParameter
         # restatements with a FilterSet so the spec cannot drift from the code
-        workflow_filter = self.request.query_params.get("workflow", None)
+        workflow_filter = workflow_filter_from(self.request.query_params)
         if workflow_filter:
-            try:
-                uuid.UUID(workflow_filter)
-            except ValueError:
-                # Django raises on evaluation, past the handler that turns a bad
-                # request into a 400.
-                raise serializers.ValidationError(
-                    {"workflow": "Must be a valid UUID."}
-                ) from None
             queryset = queryset.filter(workflow_id=workflow_filter)
 
         # Search by display name
@@ -366,10 +372,28 @@ class APIDeploymentViewSet(
 
         return queryset
 
+    def filter_queryset(self, queryset: QuerySet) -> QuerySet:
+        queryset = super().filter_queryset(queryset)
+        if self.action not in LIST_FILTER_ACTIONS:
+            return queryset
+        filters = list_filters_from(self.request.query_params)
+        return apply_list_filters(queryset, filters, DEPLOYMENT_ROW_FIELDS)
+
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action in ["list"]:
             return APIDeploymentListSerializer
         return APIDeploymentSerializer
+
+    @action(detail=False, methods=["get"])
+    def aggregate(self, request: Request) -> Response:
+        """Status counts and failing rows over the list's filtered rows.
+
+        Call it without ``status`` and ``failing`` to fill the counts while the
+        list is filtered by them.
+        """
+        rows = self.filter_queryset(self.get_queryset())
+        summary = aggregate_rows(rows, DEPLOYMENT_ROW_FIELDS)
+        return Response(DeploymentAggregateSerializer(summary).data)
 
     @action(detail=True, methods=["get"])
     def fetch_one(self, request: Request, pk: str | None = None) -> Response:

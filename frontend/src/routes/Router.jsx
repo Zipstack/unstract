@@ -98,6 +98,18 @@ const SelectProduct = lazyPlugin(
   () => import("../plugins/select-product/SelectProduct.jsx"),
   "SelectProduct",
 );
+// `/flow` on a deployment that does not serve Flow (UN-4669). nginx hands the
+// path to the SPA (`try_files $uri /index.html`), so without a route the
+// visitor got the bare `NotFound` below — a 404 that says nothing about Flow
+// and offers nothing. The plugin explains it and points at the products this
+// deployment does have.
+//
+// Absent in OSS, where `lazyPlugin` resolves to a stub and the element falls
+// back to `NotFound` — correct there, since an OSS build has no Flow at all.
+const FlowUnavailable = lazyPlugin(
+  () => import("../plugins/flow-unavailable/FlowUnavailable.jsx"),
+  "FlowUnavailable",
+);
 const UnstractSubscriptionEndPage = lazyPlugin(
   () =>
     import(
@@ -290,6 +302,9 @@ function Router() {
               </Route>
               {verticalsRouter && verticalsRouter()}
             </Route>
+            {FlowUnavailable && (
+              <Route path="flow/*" element={<FlowUnavailable />} />
+            )}
             <Route path="*" element={<NotFound />} />
             <Route path="oauth-status" element={<OAuthStatus />} />
           </Routes>
