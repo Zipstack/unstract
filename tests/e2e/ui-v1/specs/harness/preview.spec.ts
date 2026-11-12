@@ -67,10 +67,10 @@ test.describe(
     if (!previewable.length) {
       // A visible skip, not an empty describe that reports nothing.
       test("the preview override renders an unregistered page", () => {
-        test.skip(
-          true,
-          `no page is declared in PAGES, unregistered and shipped in ${currentDistribution()} yet; runs once a page task declares one`,
-        );
+        const reason = `no page is declared in PAGES, unregistered and shipped in ${currentDistribution()} yet; runs once a page task declares one`;
+        // The skip's premise, checked: a page to preview must not be skipped.
+        expect(previewable, reason).toHaveLength(0);
+        test.skip(true, reason);
       });
     }
 
