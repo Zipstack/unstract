@@ -63,8 +63,9 @@ describe("buildRegistry", () => {
   });
 
   it("fails on overlapping routes when given an overlap rule, naming both paths", () => {
+    // Stands in for patternsOverlap: every /billing route overlaps.
     const prefix = (a: string, b: string) =>
-      a.startsWith(b.replace("*", "")) || b.startsWith(a.replace("*", ""));
+      a.startsWith("/billing") && b.startsWith("/billing");
     const other = {
       ...billing,
       id: "other",
