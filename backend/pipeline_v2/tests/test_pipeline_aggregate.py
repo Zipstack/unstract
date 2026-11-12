@@ -1,5 +1,5 @@
 """``pipeline/aggregate/``, the pipeline list it counts, and the status, owner,
-last-run and failing list filters (UN-4320).
+last-run and failing list filters.
 """
 
 import json
@@ -14,6 +14,8 @@ from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import resolve, reverse
 from django.utils import timezone
+from workflow_manager.workflow_v2.failing_streaks import FAILING_STREAK_RUNS
+from workflow_manager.workflow_v2.list_aggregates import FAILING_LIST_CAP
 from workflow_manager.workflow_v2.tests.list_rows import (
     COMPLETED,
     ERROR,
@@ -35,7 +37,7 @@ CONTRACT = json.loads(
     ).read_text()
 )
 
-# What a pipeline list row carried before the aggregate existed.
+# The keys of a pipeline list row.
 LIST_ROW_KEYS = {
     "access_control_bundle_id",
     "active",
@@ -109,7 +111,7 @@ class _PipelineRows(ListRowsSeed):
 
 
 class PipelineListBaselineTests(_PipelineRows, TestCase):
-    """The list as it was before the new filters, pinned."""
+    """The list body and SQL without the list filters, pinned."""
 
     def test_a_row_carries_the_same_keys(self) -> None:
         for row in self._list()["results"]:
@@ -212,6 +214,11 @@ class PipelineAggregateTests(_PipelineRows, TestCase):
                     format_checker=jsonschema.FormatChecker(),
                 )
 
+    def test_the_contract_limits_match_the_code(self) -> None:
+        self.assertEqual(CONTRACT["properties"]["failing"]["maxItems"], FAILING_LIST_CAP)
+        row = CONTRACT["$defs"]["failingRow"]["properties"]
+        self.assertEqual(row["failures_in_a_row"]["minimum"], FAILING_STREAK_RUNS)
+
     def test_detail_routes_ignore_the_list_filters(self) -> None:
         for params in ({"status": "error"}, {"status": "bogus"}, {"failing": "true"}):
             with self.subTest(**params):
@@ -294,9 +301,10 @@ class NextRunTimeTests(ListRowsSeed, TestCase):
                 with self.assertNoLogs("pipeline_v2.models", level="WARNING"):
                     self.assertIsNone(row.next_run_time())
 
-    def test_only_a_schedule_error_is_swallowed(self) -> None:
+    def test_any_other_error_is_logged_and_has_no_next_run(self) -> None:
         row = self._pipeline("scheduled", cron_string="0 0 * * *")
 
         with mock.patch("pipeline_v2.models.croniter", side_effect=RuntimeError):
-            with self.assertRaises(RuntimeError):
-                row.next_run_time()
+            with self.assertLogs("pipeline_v2.models", level="ERROR") as logs:
+                self.assertIsNone(row.next_run_time())
+        self.assertIn(str(row.pk), logs.output[0])

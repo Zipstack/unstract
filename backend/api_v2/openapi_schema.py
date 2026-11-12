@@ -371,7 +371,6 @@ API_DEPLOYMENT_LIST_SCHEMA = extend_schema_view(
         summary=LIST_API_DEPLOYMENTS_SUMMARY,
         tags=["deployment"],
         auth=[{"platformKey": []}],
-        # The new list filters are for the frontend; they stay out of the published spec.
         parameters=API_DEPLOYMENT_LIST_QUERY_PARAMETERS,
         responses={
             200: OpenApiResponse(
@@ -403,7 +402,6 @@ API_DEPLOYMENT_LIST_SCHEMA = extend_schema_view(
 )
 
 
-# Not published in the client spec; see `api_v2/README.md`.
 API_DEPLOYMENT_AGGREGATE_SCHEMA = extend_schema(
     operation_id="aggregate_deployments",
     summary="Count API deployments by status",

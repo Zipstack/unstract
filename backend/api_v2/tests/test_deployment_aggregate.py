@@ -1,5 +1,5 @@
 """``api/deployment/aggregate/`` and the status, owner, last-run and failing
-list filters (UN-4320).
+list filters.
 
 The aggregate reads the list's own filtered queryset, so for every filter and
 caller its ``total`` must equal the list's ``count``.
@@ -19,6 +19,8 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import resolve, reverse
 from platform_api.models import PlatformApiKey
 from platform_api.services import create_api_user_for_key
+from workflow_manager.workflow_v2.failing_streaks import FAILING_STREAK_RUNS
+from workflow_manager.workflow_v2.list_aggregates import FAILING_LIST_CAP
 from workflow_manager.workflow_v2.tests.list_rows import (
     COMPLETED,
     ERROR,
@@ -127,6 +129,11 @@ class DeploymentAggregateTests(ListRowsSeed, TestCase):
                     CONTRACT,
                     format_checker=jsonschema.FormatChecker(),
                 )
+
+    def test_the_contract_limits_match_the_code(self) -> None:
+        self.assertEqual(CONTRACT["properties"]["failing"]["maxItems"], FAILING_LIST_CAP)
+        row = CONTRACT["$defs"]["failingRow"]["properties"]
+        self.assertEqual(row["failures_in_a_row"]["minimum"], FAILING_STREAK_RUNS)
 
     def test_detail_routes_ignore_the_list_filters(self) -> None:
         for params in ({"status": "error"}, {"status": "bogus"}, {"failing": "true"}):

@@ -1,4 +1,4 @@
-"""OpenAPI annotations for the pipeline list and its aggregate. See README.md."""
+"""OpenAPI annotations for the pipeline list and its aggregate."""
 
 from api_v2.openapi_schema import ErrorResponse
 from drf_spectacular.utils import (

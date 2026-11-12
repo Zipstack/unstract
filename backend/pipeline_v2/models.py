@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime
 
@@ -23,6 +24,8 @@ from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from backend.constants import FieldLengthConstants as FieldLength
+
+logger = logging.getLogger(__name__)
 
 APP_ID_LENGTH = 32
 PIPELINE_NAME_LENGTH = 32
@@ -197,6 +200,9 @@ class Pipeline(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
                 datetime
             )
         except CroniterError:
-            # Silent on purpose: the list calls this for every row.
+            return None
+        except Exception:
+            # One bad row must not fail the whole list.
+            logger.exception("Next run failed for pipeline %s", self.pk)
             return None
         return next_run

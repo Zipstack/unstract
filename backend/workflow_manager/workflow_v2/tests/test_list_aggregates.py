@@ -1,5 +1,5 @@
 """The status, failing, owner and last-run rules behind the list filters and
-the ``aggregate/`` counts (UN-4320).
+the ``aggregate/`` counts.
 """
 
 import uuid
