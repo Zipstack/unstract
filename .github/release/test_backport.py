@@ -1621,7 +1621,7 @@ class Pick(unittest.TestCase):
         os.chdir(d + "/w")
         self.addCleanup(os.chdir, cwd)
         self.calls = []
-        self.labels = "fix/needs-backport\nfix/security\nbackport/x\nother"
+        self.labels = "backport/rc\nbackport-conflict\nbackport/x\nother"
 
     @staticmethod
     def write(path, text):
@@ -1647,7 +1647,7 @@ class Pick(unittest.TestCase):
         create = next(a for a in self.calls if a[:2] == ("pr", "create"))
         self.assertEqual(
             [create[i + 1] for i, x in enumerate(create) if x == "--label"],
-            ["fix/needs-backport", "fix/security"],
+            ["backport/rc"],
         )
 
     def test_conflict_pick_carries_fix_labels(self):

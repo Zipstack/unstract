@@ -1,5 +1,7 @@
 """Tests for label_advice, the Backport-also declaration rule and backport.declared(). Run: python test_label_advice.py"""
 
+import contextlib
+import io
 import json
 import os
 import tempfile
@@ -191,14 +193,19 @@ class Declared(Repo):
 
 
 class Owed(Repo):
-    def owed(self):
+    def owed(self, run_log=None):
         dev_git(self.repo, "fetch", "-q", "origin", "--tags")
-        held = mock.Mock(
-            return_value=[
+
+        def default_log(*a, **k):
+            print(
+                "held: 26 main commit(s) since the cut of release/1.7, 1 fix_class lookup(s)"
+            )
+            return [
                 ("a" * 40, "fix", "#11", "mine"),
                 ("b" * 40, "fix", "#99", "theirs"),
             ]
-        )
+
+        held = mock.Mock(side_effect=run_log or default_log)
         mine = json.dumps([{"number": 11}, {"number": 12}])
         old = os.getcwd()
         os.chdir(self.repo)
@@ -238,6 +245,37 @@ class Owed(Repo):
             held.call_args.kwargs["accept"], bp.HELD
         )  # released: only held fixes are owed
 
+    def test_backports_run_log_shows_only_under_actions(self):
+        for env, shown in (({}, False), ({"GITHUB_ACTIONS": "true"}, True)):
+            out, err = io.StringIO(), io.StringIO()
+            with (
+                mock.patch.dict(os.environ),
+                contextlib.redirect_stdout(out),
+                contextlib.redirect_stderr(err),
+            ):
+                os.environ.pop("GITHUB_ACTIONS", None)  # CI runs this suite under Actions
+                os.environ.update(env)
+                self.owed()
+            self.assertEqual(out.getvalue(), "")
+            self.assertEqual("held: 26 main commit(s)" in err.getvalue(), shown, env)
+
+    def test_backports_warnings_show_even_when_it_fails(self):
+        def fail(*a, **k):
+            print("::warning::PR listing failed, classing commit by commit: HTTP 403")
+            print("  second line of gh's stderr")
+            raise RuntimeError("HTTP 403")
+
+        err = io.StringIO()
+        with (
+            mock.patch.dict(os.environ),
+            contextlib.redirect_stderr(err),
+        ):
+            os.environ.pop("GITHUB_ACTIONS", None)
+            with self.assertRaisesRegex(RuntimeError, "HTTP 403"):
+                self.owed(fail)
+        self.assertIn("::warning::PR listing failed", err.getvalue())
+        self.assertIn("second line of gh's stderr", err.getvalue())
+
 
 def line(v, present=True, ga=False, onprem_ga=False):
     return {"line": v, "present": present, "ga": ga, "onprem_ga": onprem_ga}
@@ -273,6 +311,24 @@ class Advise(unittest.TestCase):
         self.assertEqual((a["result"], a["label"]), ("decided", "main-only"))
         a = la.advise("main", paths + ["backend/x.py"], [line("0.186")])
         self.assertEqual(a["result"], "suggest")  # one shipped file: not decided
+
+    def test_nested_markdown_ships_unless_it_is_a_readme(self):
+        lines = [line("0.186", ga=True)]
+        a = la.advise(
+            "main", ["workers/plugins/agentic_table_engine/src/prompts/x.md"], lines
+        )
+        self.assertEqual(a["result"], "ask")
+        a = la.advise("main", ["backend/global_search/README.md"], lines)
+        self.assertEqual((a["result"], a["label"]), ("decided", "main-only"))
+
+    def test_agent_tooling_and_root_markdown_are_main_only(self):
+        for path in (
+            ".claude/plugins/devkit/.claude-plugin/plugin.json",
+            ".claude-plugin/marketplace.json",
+            "CLAUDE.md",
+        ):
+            a = la.advise("main", [path], [line("0.186", ga=True)])
+            self.assertEqual((a["result"], a["label"]), ("decided", "main-only"), path)
 
     def test_code_on_no_live_line_is_main_only(self):
         a = la.advise(

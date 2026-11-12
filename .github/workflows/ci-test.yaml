@@ -57,7 +57,7 @@ jobs:
         id: filter
         with:
           # `every`: a file counts as relevant only if it matches ALL the
-          # negated globs, i.e. lies outside every ignored dir.
+          # negated globs, i.e. lies outside every ignored pattern.
           predicate-quantifier: every
           filters: |
             relevant:
@@ -66,10 +66,13 @@ jobs:
               - "!docs/**"
               - "!.github/**"
               - "!.claude/**"
+              # Root only: Markdown below the root can be test or runtime input.
+              - "!*.md"
             e2e_relevant:
               - "!docs/**"
               - "!.github/**"
               - "!.claude/**"
+              - "!*.md"
             # .github/** is ignored above, but a change to this workflow must still test itself.
             ci_self:
               - ".github/workflows/ci-test.yaml"

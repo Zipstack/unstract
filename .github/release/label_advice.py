@@ -13,7 +13,9 @@ holds the command to re-run for each answer). Exit 0 with advice, 1 when GitHub 
 
 import argparse
 import contextlib
+import io
 import json
+import os
 import re
 import sys
 import urllib.parse
@@ -28,10 +30,11 @@ SELF = "python3 .github/release/label_advice.py"
 CLOUD = "Zipstack/unstract-cloud"  # on-prem is promoted there, for both repos' lines
 # Paths that never ship in a release image: docs, tests and repo tooling. A PR touching only these
 # is decided main-only by design, though a release line may want a test or CI fix: the developer
-# labels it backport/rc instead, which Lint PR only warns on.
+# labels it backport/rc instead, which Lint PR only warns on. Below the root, .md/.mdx/.rst other
+# than README.md can be a runtime prompt, so it counts as shipping.
 NONCODE = re.compile(
-    r"\.(md|mdx|rst)$|^docs/|(^|/)tests?/|(^|/)test_[^/]*\.py$|_test\.py$|\.(test|spec)\.[jt]sx?$"
-    r"|(^|/)__tests__/|(^|/)unittests/|^\.github/|^\.pre-commit-config\.yaml$"
+    r"^[^/]*\.(md|mdx|rst)$|(^|/)README\.md$|^docs/|(^|/)tests?/|(^|/)test_[^/]*\.py$|_test\.py$|\.(test|spec)\.[jt]sx?$"
+    r"|(^|/)__tests__/|(^|/)unittests/|^\.github/|^\.claude(-plugin)?/|^\.pre-commit-config\.yaml$"
 )
 PROMOTE_RE = re.compile(r"Promote v?(\d+\.\d+)\.\d+-rc\.\d+ · ([^(]*)")
 
@@ -385,11 +388,21 @@ def owed(slug, author):
         )
         accept = bp.HELD if released else bp.OWED  # what Backport picks there on its own
         cmd = f"gh workflow run backport.yaml -R {slug} -f commits={{}} -f lines={line} -f patch_released_lines=true"
-        with contextlib.redirect_stdout(sys.stderr):
-            held = bp.held(
-                slug, ".", branch, accept=accept, cache=bp.pr_classes(slug, since)
-            )
-            decl = bp.declared(slug, ".", branch)
+        # Backport's `held:` count: a developer reading the answer cannot act on it, but can on a warning.
+        log = sys.stderr if os.environ.get("GITHUB_ACTIONS") else io.StringIO()
+        try:
+            with contextlib.redirect_stdout(log):
+                held = bp.held(
+                    slug, ".", branch, accept=accept, cache=bp.pr_classes(slug, since)
+                )
+                decl = bp.declared(slug, ".", branch)
+        finally:
+            if log is not sys.stderr:
+                sys.stderr.writelines(
+                    x
+                    for x in log.getvalue().splitlines(True)
+                    if not x.startswith("held: ")
+                )
         for _, cls, pr, title in held:
             if pr in mine:
                 rows.append(
