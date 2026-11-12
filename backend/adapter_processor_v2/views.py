@@ -196,9 +196,6 @@ class AdapterInstanceViewSet(
     def get_permissions(self) -> list[Any]:
         # Frictionless adapters: blocked for everyone (update/retrieve/test),
         # deletable by any org member. Others use owner / shared-user gating.
-        # ``usage`` deliberately follows ``adapter_info``, not ``destroy``: a
-        # member may delete a friction-less adapter but not see what uses it,
-        # so a refused delete (409) can't be explained to them.
         if self.action in ["update", "partial_update", "retrieve", "test_and_record"]:
             return [IsFrictionLessAdapter()]
         if self.action == "destroy":

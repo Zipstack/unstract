@@ -23,8 +23,7 @@ Without `with_usage` or `unused` the lists are unchanged. `unused_count` counts
 across all pages and, like `failing_count`, ignores the `unused`, `failing` and
 `last_test_status` filters, so it stays put while the user toggles them.
 
-Anyone who may see the profile may read its usage. Items the caller cannot open
-are still listed and counted, without id or name.
+Items the caller cannot open are still listed and counted, without id or name.
 
 ## What counts as used
 
@@ -35,10 +34,10 @@ the delete guard refuses on, with the exceptions listed under the table.
 |---|---|---|
 | Adapter id, or adapter name before the lazy migration, anywhere in a workflow tool instance's `metadata` | `workflows` | yes |
 | Prompt Studio project's summarize, monitor or challenge LLM | `prompt_studio_projects` | yes |
-| Prompt Studio profile's LLM, embedding, vector DB or text extractor | `prompt_studio_projects` (the profile's project) | yes |
+| Prompt Studio profile's LLM, embedding, vector DB or text extractor | `prompt_studio_projects` (the profile's project, or `other` when it has none) | yes |
 | Connector on a workflow source or destination | `workflows`, with `role` | yes |
-| Any other `PROTECT` or `RESTRICT` foreign key to the profile | `other` | yes |
-| A reference another app registers without blocking the delete | that app's group | no |
+| Any other unclaimed `PROTECT` or `RESTRICT` foreign key to the profile | `other` | yes |
+| A reference another app registers | that app's group | as registered |
 
 - The `other` row is the safety net: a foreign key added later that blocks
   deletion is reported even before anyone gives it a group.

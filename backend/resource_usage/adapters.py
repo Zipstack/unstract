@@ -47,8 +47,6 @@ def tool_instance_refs(adapters: Sequence[Any]) -> Iterable[tuple[Any, Reference
     As in the delete guard, a reference is the adapter's id or, before the
     lazy migration, its name, matched within the adapter's organisation.
     """
-    from tool_instance_v2.models import ToolInstance
-
     # (organization_id, id or name) -> adapter pks
     needles: dict[tuple[Any, str], list[Any]] = {}
     for adapter in adapters:
@@ -56,17 +54,28 @@ def tool_instance_refs(adapters: Sequence[Any]) -> Iterable[tuple[Any, Reference
             needles.setdefault((adapter.organization_id, needle), []).append(adapter.pk)
     if not needles:
         return
+    for workflow_id, workflow_name, org_id, matched in _matching_rows(needles):
+        adapter_pks = {pk for leaf in matched for pk in needles.get((org_id, leaf), ())}
+        for adapter_pk in adapter_pks:
+            yield adapter_pk, _workflow_ref(workflow_id, workflow_name)
+
+
+def _matching_rows(needles: dict[tuple[Any, str], list[Any]]) -> Any:
+    """Tool instances naming a needle, with the needle strings they hold."""
+    from tool_instance_v2.models import ToolInstance
+
     matched_leaves = _StringLeavesIn(
         F("metadata"),
         Value([key[1] for key in needles], output_field=ArrayField(TextField())),
     )
-    # Rows naming no needle get an empty array (length 0) and drop out.
-    rows = (
+    # Rows naming no needle get an empty array and drop out. ``exclude`` puts
+    # the subquery in WHERE once; a ``__len`` lookup would render it twice.
+    return (
         ToolInstance.objects.filter(
             workflow__organization_id__in={key[0] for key in needles}
         )
         .annotate(matched=matched_leaves)
-        .filter(matched__len__gt=0)
+        .exclude(matched=[])
         .values_list(
             "workflow_id",
             "workflow__workflow_name",
@@ -74,10 +83,6 @@ def tool_instance_refs(adapters: Sequence[Any]) -> Iterable[tuple[Any, Reference
             "matched",
         )
     )
-    for workflow_id, workflow_name, org_id, matched in rows:
-        adapter_pks = {pk for leaf in matched for pk in needles.get((org_id, leaf), ())}
-        for adapter_pk in adapter_pks:
-            yield adapter_pk, _workflow_ref(workflow_id, workflow_name)
 
 
 def _workflow_ref(workflow_id: Any, workflow_name: str) -> Reference:

@@ -12,9 +12,9 @@ from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
 from adapter_processor_v2.views import AdapterInstanceViewSet
 from api_v2.models import APIDeployment
-from connection_check.tests.base import ConnectionCheckTestBase, make_user
 from connection_check.constants import ConnectionStatus
 from connection_check.models import AdapterTestResult
+from connection_check.tests.base import ConnectionCheckTestBase, make_user
 from connector_v2.models import ConnectorInstance
 from connector_v2.views import ConnectorInstanceViewSet
 from django.db import connection, models
@@ -30,15 +30,8 @@ from utils.tests.auth_seam import member_role
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
-from resource_usage.adapters import prompt_studio_refs
+from resource_usage.adapters import _matching_rows, prompt_studio_refs
 from resource_usage.constants import OTHER_GROUP, ProfileKind
-from resource_usage.serializers import (
-    AdapterUsageSerializer,
-    ConnectorUsageItemSerializer,
-    ConnectorUsageSerializer,
-    UsageItemSerializer,
-    usage_payload,
-)
 from resource_usage.references import (
     ProfileUsage,
     Reference,
@@ -47,6 +40,13 @@ from resource_usage.references import (
     register_provider,
     relation_label,
     unregister_provider,
+)
+from resource_usage.serializers import (
+    AdapterUsageSerializer,
+    ConnectorUsageItemSerializer,
+    ConnectorUsageSerializer,
+    UsageItemSerializer,
+    usage_payload,
 )
 
 SOURCE = WorkflowEndpoint.EndpointType.SOURCE
@@ -115,22 +115,25 @@ class AdapterGuardParityTests(UsageTestBase):
     """Every case is checked against what ``destroy`` actually does."""
 
     def _cases(self) -> dict[str, AdapterInstance]:
-        cases = {name: self.make_adapter(name) for name in (
-            "unused",
-            "by-id",
-            "by-name",
-            "nested",
-            "project-fk",
-            "profile",
-            "orphan-profile",
-            "workflow-and-project",
-            "other-org-id",
-            "other-org-name",
-            'quoted "name" \\ here',
-            "naïve-llm",
-            "root-list",
-            "root-string",
-        )}
+        cases = {
+            name: self.make_adapter(name)
+            for name in (
+                "unused",
+                "by-id",
+                "by-name",
+                "nested",
+                "project-fk",
+                "profile",
+                "orphan-profile",
+                "workflow-and-project",
+                "other-org-id",
+                "other-org-name",
+                'quoted "name" \\ here',
+                "naïve-llm",
+                "root-list",
+                "root-string",
+            )
+        }
         workflow = self.make_workflow("wf")
         self.make_tool_instance(workflow, {"llm": str(cases["by-id"].pk)})
         # Before the lazy migration, metadata holds the adapter name.
@@ -196,9 +199,7 @@ class AdapterGuardParityTests(UsageTestBase):
         for value in ("something-else", "unnamed-model", "named-model", "un-named"):
             self.make_tool_instance(self.make_workflow(value), {"model": value})
         usage = collect(ProfileKind.ADAPTER, [adapter])
-        self.assertEqual(
-            [ref.name for ref in usage[adapter.pk].counted], ["wf"]
-        )
+        self.assertEqual([ref.name for ref in usage[adapter.pk].counted], ["wf"])
 
     def test_a_name_matches_only_in_the_adapters_own_org(self, _ctx: Any) -> None:
         mine = self.make_adapter("same-name")
@@ -300,6 +301,21 @@ class MetadataMatchTests(UsageTestBase):
                 guard = AdapterInstanceViewSet._adapter_used_in_tool_instance(adapter)
                 used = collect(ProfileKind.ADAPTER, [adapter])[adapter.pk].used_in_count
                 self.assertEqual(bool(used), guard)
+
+    def test_the_scan_returns_only_rows_naming_a_needle(self, _ctx: Any) -> None:
+        adapter = self.make_adapter("scan")
+        workflow = self.make_workflow("wf")
+        self.make_tool_instance(workflow, {"llm": str(adapter.pk)})
+        self.make_tool_instance(workflow, {"llm": "something-else"})
+        needles = {(adapter.organization_id, str(adapter.pk)): [adapter.pk]}
+
+        rows = _matching_rows(needles)
+
+        self.assertEqual(
+            list(rows), [(workflow.pk, "wf", adapter.organization_id, [str(adapter.pk)])]
+        )
+        # One walk of metadata for SELECT and one for WHERE, not more.
+        self.assertEqual(str(rows.query).count("jsonb_path_query"), 2)
 
 
 class ProfileUsageTests(ConnectionCheckTestBase):
@@ -457,9 +473,7 @@ class UsageEndpointTests(UsageTestBase):
                     (item["id"], item["name"], item["accessible"]), (None, None, False)
                 )
 
-    def test_items_are_ordered_accessible_first_then_by_name(
-        self, _ctx: Any
-    ) -> None:
+    def test_items_are_ordered_accessible_first_then_by_name(self, _ctx: Any) -> None:
         self.make_tool_instance(
             self.make_workflow("apples"), {"llm": str(self.adapter.pk)}
         )
@@ -496,12 +510,15 @@ class UsageEndpointTests(UsageTestBase):
 
         def stringly(adapters: Any) -> Any:
             for adapter in adapters:
-                yield str(adapter.pk), Reference(
-                    group="lookups",
-                    item_type="lookup",
-                    model=CustomTool,
-                    pk=self.project.pk,
-                    name="Lookup",
+                yield (
+                    str(adapter.pk),
+                    Reference(
+                        group="lookups",
+                        item_type="lookup",
+                        model=CustomTool,
+                        pk=self.project.pk,
+                        name="Lookup",
+                    ),
                 )
 
         register_provider(ProfileKind.ADAPTER, stringly)
@@ -535,13 +552,16 @@ class UsageEndpointTests(UsageTestBase):
         def agentic(adapters: Any) -> Any:
             for adapter in adapters:
                 if adapter.pk == spare.pk:
-                    yield adapter.pk, Reference(
-                        group="agentic_studio_projects",
-                        item_type="agentic_studio_project",
-                        model=CustomTool,
-                        pk=self.project.pk,
-                        name="Agentic",
-                        blocks_delete=False,
+                    yield (
+                        adapter.pk,
+                        Reference(
+                            group="agentic_studio_projects",
+                            item_type="agentic_studio_project",
+                            model=CustomTool,
+                            pk=self.project.pk,
+                            name="Agentic",
+                            blocks_delete=False,
+                        ),
                     )
 
         register_provider(ProfileKind.ADAPTER, agentic)
@@ -555,7 +575,6 @@ class UsageEndpointTests(UsageTestBase):
         response = self.call(AdapterInstanceViewSet, "delete", "destroy", pk=spare.pk)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
-
     def test_org_shared_connector_usage_for_a_member(self, _ctx: Any) -> None:
         connector = self.make_connector("shared", shared_to_org=True)
         response = self.usage(ConnectorInstanceViewSet, connector, self.member)
@@ -565,10 +584,18 @@ class UsageEndpointTests(UsageTestBase):
         connector = self.make_connector("source")
         self.make_endpoint(self.workflow, connector, SOURCE)
         cases = [
-            (AdapterInstanceViewSet, self.adapter, AdapterUsageSerializer,
-             UsageItemSerializer),
-            (ConnectorInstanceViewSet, connector, ConnectorUsageSerializer,
-             ConnectorUsageItemSerializer),
+            (
+                AdapterInstanceViewSet,
+                self.adapter,
+                AdapterUsageSerializer,
+                UsageItemSerializer,
+            ),
+            (
+                ConnectorInstanceViewSet,
+                connector,
+                ConnectorUsageSerializer,
+                ConnectorUsageItemSerializer,
+            ),
         ]
         for viewset, profile, payload_serializer, item_serializer in cases:
             data = self.usage(viewset, profile).data
@@ -674,9 +701,7 @@ class UsageListTests(UsageTestBase):
             rows = self._list(AdapterInstanceViewSet, "?with_usage=true")
         self.assertEqual([r["adapter_name"] for r in rows], ["used"])
 
-    def test_profile_added_between_usage_and_rows_gets_its_usage(
-        self, _ctx: Any
-    ) -> None:
+    def test_profile_added_between_usage_and_rows_gets_its_usage(self, _ctx: Any) -> None:
         """A profile created after usage was read is listed with its usage."""
         from resource_usage.views import ProfileUsageMixin
 
@@ -740,7 +765,9 @@ class UsageListTests(UsageTestBase):
         connector_extra = queries(ConnectorInstanceViewSet)
         for index in range(5):
             adapter = self.make_adapter(f"more-{index}")
-            self.make_tool_instance(self.make_workflow(f"w{index}"), {"x": str(adapter.pk)})
+            self.make_tool_instance(
+                self.make_workflow(f"w{index}"), {"x": str(adapter.pk)}
+            )
             connector = self.make_connector(f"more-{index}")
             self.make_endpoint(self.make_workflow(f"c{index}"), connector, DESTINATION)
         self.assertEqual(queries(AdapterInstanceViewSet), adapter_extra)
