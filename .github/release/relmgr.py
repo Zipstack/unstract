@@ -19,7 +19,6 @@ RBO_RE = re.compile(r"^(?:\* )?Release-branch-only: (\S+)", re.M)
 PR_TITLE_RE = re.compile(
     r"^(?:(?P<ticket>[A-Z][A-Z0-9]*-\d+) )?\[(?P<type>FIX|HOT-FIX|FEAT|GATED-FEAT|DOCS|DEPS|MISC|DEV|WIP)\] \S"
 )
-FIX_CLASSES = ("fix", "security", "critical")
 # Greedy, so a revert of a revert nests.
 REVERT_RE = re.compile(r'^Revert "(.+)"')
 REVERTS_RE = re.compile(r"^This reverts commit ([0-9a-f]{7,40})", re.M)
@@ -315,38 +314,46 @@ def ci_commits(
     return rows, where
 
 
-FIX_LABELS = ("fix/security", "fix/critical", "fix/needs-backport")
+# Backport label -> class. The fix/ names are the old ones, accepted until the repo labels are renamed.
+BACKPORT_LABELS = {
+    "backport/rc": "rc",
+    "backport/ga": "ga",
+    "fix/needs-backport": "rc",
+    "fix/security": "ga",
+    "fix/critical": "ga",
+}
 MAIN_ONLY = "main-only"
 
 
+def _ticks(names):
+    return ", ".join(f"`{n}`" for n in names)
+
+
 def pr_fix_class(title, labels=()):
-    """The class comes from labels only; None without a fix/ label. A main merge also needs a backport label: main_fix_class."""
-    # Reject near-miss class labels (fix/<x>, fix-class/<x>, typos) so a typo cannot drop the class.
+    """The class ("rc" or "ga") comes from labels only; None without one. A main merge also needs a label: main_fix_class."""
+    # Reject near-miss class labels (backport/<x>, fix/<x>, fix-class/<x>, typos) so a typo cannot drop the class.
     bad = [
         l
         for l in labels
-        if l not in FIX_LABELS
-        and re.match(r"\s*fix(\w{0,3}[\W_]*class(?![a-z])|\s*/)", l, re.I)
+        if l not in BACKPORT_LABELS
+        and re.match(r"\s*(backport\s*/|fix(\w{0,3}[\W_]*class(?![a-z])|\s*/))", l, re.I)
     ]
     if bad:
-        raise ValueError(f"unknown fix label(s) {bad}; allowed: {', '.join(FIX_LABELS)}")
-    classes = {
-        l.split("/", 1)[1] for l in labels if l in ("fix/security", "fix/critical")
-    }
-    if len(classes) > 1:
-        raise ValueError(f"conflicting fix labels: {sorted('fix/' + c for c in classes)}")
-    fixes = sorted(set(labels) & set(FIX_LABELS))
+        raise ValueError(
+            f"unknown label(s) {_ticks(bad)}: use `backport/rc`, `backport/ga` or `{MAIN_ONLY}`"
+        )
+    found = sorted(set(labels) & set(BACKPORT_LABELS))
+    if len(found) > 1:
+        raise ValueError(f"conflicting labels {_ticks(found)}: keep one")
     # The changelogs read the title, so no label excuses it. strip: GitHub keeps a leading space.
     inner = title.strip()
     while r := REVERT_RE.match(inner):
         inner = r.group(1).strip()
     if not PR_TITLE_RE.match(inner):
         raise ValueError(f"no recognised '[TYPE]' or 'TICKET [TYPE]' prefix: {title!r}")
-    if MAIN_ONLY in labels and fixes:
-        raise ValueError(f"conflicting labels: {MAIN_ONLY} with {fixes}")
-    if classes:
-        return classes.pop()
-    return "fix" if fixes else None
+    if MAIN_ONLY in labels and found:
+        raise ValueError(f"conflicting labels {_ticks([MAIN_ONLY, *found])}: keep one")
+    return BACKPORT_LABELS[found[0]] if found else None
 
 
 def main_fix_class(title, labels=()):
@@ -366,8 +373,11 @@ def release_only_refusal(base, labels):
         )
     if MAIN_ONLY in labels and base.startswith("release/"):
         return f"label `{MAIN_ONLY}` is for PRs into main; remove it here"
-    if not base.startswith("release/") and not set(labels) & {MAIN_ONLY, *FIX_LABELS}:
-        return f"no backport label: add fix/needs-backport to copy it to release lines, or {MAIN_ONLY} to keep it on main"
+    if not base.startswith("release/") and not set(labels) & {
+        MAIN_ONLY,
+        *BACKPORT_LABELS,
+    }:
+        return f"no backport label: add `backport/rc`, `backport/ga` or `{MAIN_ONLY}`"
     return None
 
 

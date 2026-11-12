@@ -1,7 +1,7 @@
 name: Lint PR
 
 # Every PR into main or a release branch needs a recognised `[TYPE]` title prefix, whatever its labels.
-# A PR into main also needs a backport label: fix/needs-backport, main-only, fix/security or fix/critical.
+# A PR into main also needs one label: backport/rc, backport/ga or main-only.
 # Release branches too: the release changelog is built from their PR titles.
 # The backport class is only printed here; Backport recomputes it at pick time.
 on:
@@ -64,13 +64,14 @@ jobs:
               errors.append(refusal)
           if errors:
               menu = "" if os.environ["BASE"].startswith("release/") else (
-                     "A PR into main needs one backport label; the title type does not choose it:\n"
-                     "- `fix/needs-backport`: copy it to the release lines still awaiting GA.\n"
-                     "- `main-only`: keep it on main. Never with a fix/ label, and not on a PR into a release branch.\n"
-                     "- `fix/security` or `fix/critical` (at most one): also copy it to released lines, once the release "
-                     "manager confirms. Either one is enough on its own.\n"
-                     "A revert takes the backport label of the PR it reverts.\n")
-              msg = ("\n".join(errors) + "\n" + menu +
+                     "A PR into main needs exactly one of these labels; the title type does not choose it:\n"
+                     "- `backport/rc`: also copy it to the release lines still awaiting GA.\n"
+                     "- `backport/ga`: also copy it to released lines; each released-line pick is confirmed before Promote.\n"
+                     "- `main-only`: keep it on main only.\n"
+                     "A revert takes the label of the PR it reverts.\n")
+              # Label advice: printed between the errors and the label menu. Empty until the advice command lands.
+              advice = ""
+              msg = ("\n".join(errors) + "\n" + advice + menu +
                      "Title: `[TYPE] text` or `TICKET [TYPE] text` (e.g. `ABC-123 [FIX] ...`).")
               print("::error title=Lint PR::" + msg.replace("\n", "%0A"))  # workflow commands end at a raw newline
               summary.write(f"### Lint PR: failed\n\n{msg}\n")

@@ -319,13 +319,13 @@ class Lines(unittest.TestCase):
         self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
         st = state()
         self.assertEqual(
-            (st["branches"][0]["state"], st["backport_targets"]["fix"]),
+            (st["branches"][0]["state"], st["backport_targets"]["rc"]),
             ("stabilizing", ["release/1.7"]),
         )
         self.assertEqual(oss.promote(self.cloud, self.oss, "v1.7.0-rc.1"), "ee-v1.7.0")
         st = state()
         self.assertEqual(
-            (st["branches"][0]["state"], st["backport_targets"]["fix"]),
+            (st["branches"][0]["state"], st["backport_targets"]["rc"]),
             ("stabilized", []),
         )
         self.assertEqual(st["branches"][0]["targets"]["oss"]["ga"]["tag"], "ee-v1.7.0")
@@ -632,7 +632,7 @@ class Gate(unittest.TestCase):
             g("branch", "release/1.6")
             g("branch", "release/1.7")
             with open(os.path.join(d, "f.txt"), "w") as fh:
-                fh.write("fix")
+                fh.write("rc")
             g("add", "f.txt")
             g("commit", "-q", "-m", "F: oss fix (#7)")
             f = g("rev-parse", "HEAD")
@@ -2753,7 +2753,7 @@ class PendingPicksWorkflow(Workflow):
 
     def test_promote_fails_a_product_with_no_rc_build(self):
         self.line("1.7", "v1.7.0-rc.1")
-        dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "fix")
+        dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "rc")
         dev_git(self.cloud, "tag", "v1.7.0-rc.2")
         dev_git(
             self.cloud,
@@ -2927,7 +2927,7 @@ class PendingPicksWorkflow(Workflow):
                     {
                         "number": 5,
                         "title": "[FIX] y",
-                        "labels": [{"name": "fix/needs-backport"}],
+                        "labels": [{"name": "backport/rc"}],
                     }
                 ]
             ),
@@ -2974,17 +2974,17 @@ class PendingPicksWorkflow(Workflow):
         self.write(
             "pulls.json",
             json.dumps(
-                [{"number": 9, "title": "[FIX] x", "labels": [{"name": "fix/security"}]}]
+                [{"number": 9, "title": "[FIX] x", "labels": [{"name": "backport/ga"}]}]
             ),
         )
         r = self.promote("v1.7.0-rc.1")
         self.blocked(r, "::error::pending picks")
         self.assertRegex(
             r.stdout,
-            rf"::error::[0-9a-f]{{7}} \(security, PR {re.escape(oss.OSS)}#9\) held for release/1\.7",
+            rf"::error::[0-9a-f]{{7}} \(ga, PR {re.escape(oss.OSS)}#9\) held for release/1\.7",
         )
         self.assertNotRegex(
-            r.stdout, r"\(security, PR #9\)"
+            r.stdout, r"\(ga, PR #9\)"
         )  # the cloud line is still stabilizing: not checked
 
     def test_promote_held_fixes(self):
@@ -3012,13 +3012,13 @@ class PendingPicksWorkflow(Workflow):
         self.write(
             "pulls.json",
             json.dumps(
-                [{"number": 9, "title": "[FIX] x", "labels": [{"name": "fix/security"}]}]
+                [{"number": 9, "title": "[FIX] x", "labels": [{"name": "backport/ga"}]}]
             ),
         )
         r = self.promote("v1.7.1-rc.1")
         self.blocked(r, "::error::pending picks")
         self.assertRegex(
-            r.stdout, r"::error::[0-9a-f]{7} \(security, PR #9\) held for release/1\.7"
+            r.stdout, r"::error::[0-9a-f]{7} \(ga, PR #9\) held for release/1\.7"
         )
         self.assertNotIn(
             f"oss-token api repos/{oss.OSS}/", self.read("gh.log")
@@ -3040,7 +3040,7 @@ class PendingPicksWorkflow(Workflow):
         self.assertEqual(
             len(
                 re.findall(
-                    r"::error::[0-9a-f]{7} \(security, PR #9\) held for release/1\.7",
+                    r"::error::[0-9a-f]{7} \(ga, PR #9\) held for release/1\.7",
                     r.stdout,
                 )
             ),
@@ -3048,14 +3048,14 @@ class PendingPicksWorkflow(Workflow):
         )
         self.assertRegex(
             r.stdout,
-            rf"::error::[0-9a-f]{{7}} \(security, PR {re.escape(oss.OSS)}#9\) held for release/1\.7",
+            rf"::error::[0-9a-f]{{7}} \(ga, PR {re.escape(oss.OSS)}#9\) held for release/1\.7",
         )
         take = self.run_step(
             inline("take-rc-build.yaml", "Plan checks"),
             BRANCH="release/1.7",
             TARGETS="cloud",
         )  # Take RC lists the OSS-held fix too, and never blocks on it
-        held = f"Held for the RM on {oss.OSS} [`release/1.7`](https://github.com/{oss.OSS}/tree/release/1.7)"
+        held = f"Held for confirmation on {oss.OSS} [`release/1.7`](https://github.com/{oss.OSS}/tree/release/1.7)"
         self.assertIn(held, self.read("notes.md"), take.stdout + take.stderr)
         self.assertIn(held, self.read("summary"))
         self.assertIn(f"backport.yaml -R {oss.OSS} -f commits=#9", self.read("summary"))
@@ -3074,7 +3074,7 @@ class PendingPicksWorkflow(Workflow):
         )
         self.blocked(
             self.promote("v1.7.1-rc.1", FORCE="true", REASON="x"),
-            "::error::cannot list held security/critical fixes",
+            "::error::cannot list held backport/ga fixes",
         )
         self.assertIn("rerun Promote once GitHub answers", self.read("summary"))
 
@@ -3160,7 +3160,7 @@ class LateTargetWorkflow(Workflow):
                     {
                         "number": 5,
                         "title": "[FIX] y",
-                        "labels": [{"name": "fix/needs-backport"}],
+                        "labels": [{"name": "backport/rc"}],
                     }
                 ]
             ),
@@ -3205,7 +3205,7 @@ class LateTargetWorkflow(Workflow):
     def test_unchanged_tip_reuses_its_rc_and_promotes_onto_the_cloud_ga(self):
         notes, out = self.take_rc()
         self.assertIn(
-            "| [#5](https://github.com/Zipstack/unstract-cloud/pull/5) | [FIX] y | fix |",
+            "| [#5](https://github.com/Zipstack/unstract-cloud/pull/5) | [FIX] y | rc |",
             notes,
         )  # owed, shown
         self.assertIn(
@@ -3219,7 +3219,7 @@ class LateTargetWorkflow(Workflow):
         self.built("v1.7.0-rc.3")
         st = self.state()
         self.assertEqual(st["branches"][0]["state"], "stabilized")
-        self.assertEqual(st["backport_targets"]["fix"], [])
+        self.assertEqual(st["backport_targets"]["rc"], [])
         r = self.run_step(
             inline("promote.yaml", "Plan"),
             RC="v1.7.0-rc.3",
@@ -4066,7 +4066,7 @@ sys.exit(int(codes[os.environ["BUILD"].split().index(t)] if len(codes) > 1 else 
         r = self.gate(2)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn(
-            "::error::convergence gate: MISSING picks; a release manager may override this with force and a reason",
+            "::error::convergence gate: MISSING picks; to override, rerun with force and a reason",
             r.stdout,
         )
         summary = self.read("summary")
@@ -4159,11 +4159,11 @@ sys.exit(int(codes[os.environ["BUILD"].split().index(t)] if len(codes) > 1 else 
             job = fh.read().split("\n  summary:\n", 1)[1].split("\n    steps:\n", 1)[0]
         self.assertIn("\n      FORCE: ${{ inputs.force }}\n", job)
         self.assertEqual(
-            next_line("false"), "**Next:** QA tests `v1.7.1-rc.1`, then RM runs Promote."
+            next_line("false"), "**Next:** QA tests `v1.7.1-rc.1`, then run Promote."
         )
         self.assertEqual(
             next_line("true"),
-            "**Next:** QA tests `v1.7.1-rc.1`, then RM runs Promote. A gate forced here blocks Promote "
+            "**Next:** QA tests `v1.7.1-rc.1`, then run Promote. A gate forced here blocks Promote "
             "again unless forced there too; see the RC notes.",
         )
 
@@ -4365,7 +4365,7 @@ class LintPrStep(unittest.TestCase):
                     **os.environ,
                     "PATH": f"{d}:{os.environ['PATH']}",
                     "TITLE": title,
-                    "LABELS": json.dumps(["main-only", "fix/needs-backport"]),
+                    "LABELS": json.dumps(["main-only", "backport/rc"]),
                     "GITHUB_REPOSITORY": "o/r",
                     "PR": "7",
                     "BASE": base,

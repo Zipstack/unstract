@@ -41,40 +41,40 @@ class Held(unittest.TestCase):
     def test_held_filter(self):
         a, b, c, d, e = (ch * 40 for ch in "abcde")
         classes = {
-            a: ("security", "#1"),
-            b: ("critical", "#2"),
-            c: ("fix", "#3"),
+            a: ("ga", "#1"),
+            b: ("ga", "#2"),
+            c: ("rc", "#3"),
             d: (None, "no PR"),
-            e: ("security", "#5"),
+            e: ("ga", "#5"),
         }
         # a picked (abbreviated trailer), e declined (same trailer): only b is held; fix and non-fix never are.
         self.assertEqual(
-            bp.held_filter([a, b, c, d, e], classes, {a[:7], e}), [(b, "critical", "#2")]
+            bp.held_filter([a, b, c, d, e], classes, {a[:7], e}), [(b, "ga", "#2")]
         )
         classes[d] = (bp.UNCLASSIFIABLE, "no PR")
         self.assertEqual(
             bp.held_filter([a, b, c, d, e], classes, {a[:7], e}),
-            [(b, "critical", "#2"), (d, bp.UNCLASSIFIABLE, "no PR")],
+            [(b, "ga", "#2"), (d, bp.UNCLASSIFIABLE, "no PR")],
         )
         self.assertEqual(
             bp.held_filter([a, b, c, d, e], classes, {a[:7], e}, accept=bp.OWED),
-            [(b, "critical", "#2"), (c, "fix", "#3"), (d, bp.UNCLASSIFIABLE, "no PR")],
+            [(b, "ga", "#2"), (c, "rc", "#3"), (d, bp.UNCLASSIFIABLE, "no PR")],
         )
         rows = [
-            (a, "release/0.189", "security", "#1"),
-            (a, "release/0.182", "security", "#1"),
-            (b, "release/0.182", "critical", "#2"),
+            (a, "release/0.189", "ga", "#1"),
+            (a, "release/0.182", "ga", "#1"),
+            (b, "release/0.182", "ga", "#2"),
         ]
         self.assertEqual(
             bp.held_warnings(rows),
             [
-                "::warning::release/0.189: 1 held security/critical fix, Backport with patch_released_lines",
-                "::warning::release/0.182: 2 held security/critical fixes, Backport with patch_released_lines",
+                "::warning::release/0.189: 1 held backport/ga fix, confirm with Backport and patch_released_lines",
+                "::warning::release/0.182: 2 held backport/ga fixes, confirm with Backport and patch_released_lines",
             ],
         )
         self.assertEqual(
-            bp.held_line(b, "critical", "#2", "release/0.182"),
-            "::warning::bbbbbbb (critical, PR #2) held for release/0.182: stabilized, needs patch_released_lines",
+            bp.held_line(b, "ga", "#2", "release/0.182"),
+            "::warning::bbbbbbb (ga, PR #2) held for release/0.182: stabilized, needs patch_released_lines",
         )
 
         self.assertIsNone(bp.held_note([], "release/0.182"))
@@ -83,10 +83,10 @@ class Held(unittest.TestCase):
         ):
             self.assertEqual(
                 bp.held_note(
-                    [(b, "critical", "#2", "t"), (d, bp.UNCLASSIFIABLE, "no PR", "t")],
+                    [(b, "ga", "#2", "t"), (d, bp.UNCLASSIFIABLE, "no PR", "t")],
                     "release/0.182",
                 ),
-                f"⚠ Held for the RM on `release/0.182` (stabilized; Promote blocks unless forced): #2 critical. "
+                f"⚠ Held for confirmation on `release/0.182` (stabilized; Promote blocks unless forced): #2 ga. "
                 "Pick with `gh workflow run backport.yaml -f commits=#2 -f lines=0.182 -f patch_released_lines=true` "
                 f"{bp.UNCLASSIFIABLE}, add a backport label or fix its PR title, or record a decline: `{d[:7]}` (no PR) t",
             )
@@ -135,16 +135,16 @@ class Rescan(unittest.TestCase):
     def test_plan(self):
         a, b, c, d, e, u = (ch * 40 for ch in "abcdeu")
         classes = {
-            a: ("fix", "#1", "A"),
-            b: ("fix", "#2", "B"),
-            c: ("security", "#3", "C"),
-            d: ("fix", "#4", "D"),
-            e: ("fix", "#5", "E"),
+            a: ("rc", "#1", "A"),
+            b: ("rc", "#2", "B"),
+            c: ("ga", "#3", "C"),
+            d: ("rc", "#4", "D"),
+            e: ("rc", "#5", "E"),
             u: (bp.UNCLASSIFIABLE, "no PR", "U"),
         }
         targets = {
-            "fix": ["release/0.190"],
-            "security_critical": [
+            "rc": ["release/0.190"],
+            "ga": [
                 {"branch": "release/0.190", "needs_rm_confirmation": False},
                 {"branch": "release/0.187", "needs_rm_confirmation": True},
             ],
@@ -166,18 +166,18 @@ class Rescan(unittest.TestCase):
         self.assertEqual(
             plan,
             [
-                ("release/0.190", c, "security", "#3", "C"),
-                ("release/0.190", d, "fix", "#4", "D"),
+                ("release/0.190", c, "ga", "#3", "C"),
+                ("release/0.190", d, "rc", "#4", "D"),
             ],
         )
-        self.assertEqual(awaiting, [(c, "release/0.187", "security", "#3")])
+        self.assertEqual(awaiting, [(c, "release/0.187", "ga", "#3")])
         self.assertEqual(
             unclassifiable,
             [(u, "release/0.190", "no PR", "U"), (u, "release/0.187", "no PR", "U")],
         )
         plan, awaiting, _ = bp.rescan_plan(targets, held, confirm=True)
         self.assertEqual(
-            (plan[-1], awaiting), (("release/0.187", c, "security", "#3", "C"), [])
+            (plan[-1], awaiting), (("release/0.187", c, "ga", "#3", "C"), [])
         )
 
     def test_listed_branches(self):
@@ -193,7 +193,7 @@ class Rescan(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             state = os.path.join(d, "state.json")
             with open(state, "w") as fh:
-                json.dump({"backport_targets": {"fix": [], "security_critical": []}}, fh)
+                json.dump({"backport_targets": {"rc": [], "ga": []}}, fh)
             r = subprocess.run(
                 [
                     sys.executable,
@@ -219,10 +219,8 @@ class Rescan(unittest.TestCase):
 
     def test_branches_narrow(self):
         targets = {
-            "fix": ["release/0.190"],
-            "security_critical": [
-                {"branch": "release/0.187", "needs_rm_confirmation": True}
-            ],
+            "rc": ["release/0.190"],
+            "ga": [{"branch": "release/0.187", "needs_rm_confirmation": True}],
         }
         self.assertEqual(
             bp.rescan_targets(targets, ["release/0.187", "release/0.1"]),
@@ -268,15 +266,15 @@ class Listing(unittest.TestCase):
                 "mergeCommit": {"oid": sha},
             }
             listing = [
-                pr(1, fix, "UN-1 [FIX] a", ["fix/needs-backport"]),
-                pr(2, sec, "UN-2 [FIX] b", ["fix/security"]),
+                pr(1, fix, "UN-1 [FIX] a", ["backport/rc"]),
+                pr(2, sec, "UN-2 [FIX] b", ["backport/ga"]),
                 pr(3, misc, "UN-3 [MISC] c", ["main-only"]),
                 pr(4, bad, "no prefix"),
                 {"number": 5, "title": "open", "labels": [], "mergeCommit": None},
             ]
             classes = bp.classes_from_listing(listing)
-            self.assertEqual(classes[fix], ("fix", "#1", "UN-1 [FIX] a"))
-            self.assertEqual(classes[sec], ("security", "#2", "UN-2 [FIX] b"))
+            self.assertEqual(classes[fix], ("rc", "#1", "UN-1 [FIX] a"))
+            self.assertEqual(classes[sec], ("ga", "#2", "UN-2 [FIX] b"))
             self.assertEqual(classes[misc], (None, "#3", "UN-3 [MISC] c"))
             self.assertEqual(classes[bad][:2], (bp.UNCLASSIFIABLE, "#4"))
             self.assertIn(
@@ -305,8 +303,8 @@ class Listing(unittest.TestCase):
             self.assertEqual(
                 [(s, c) for s, c, *_ in rows],
                 [
-                    (fix, "fix"),
-                    (sec, "security"),
+                    (fix, "rc"),
+                    (sec, "ga"),
                     (bad, bp.UNCLASSIFIABLE),
                     (nopr, bp.UNCLASSIFIABLE),
                 ],
@@ -418,11 +416,11 @@ class OwedSummary(unittest.TestCase):
     def test_table_and_label_hint(self):
         a, b = "a" * 40, "b" * 40
         out = bp.owed_summary(
-            [(a, "fix", "#3", "UN-1 [FIX] x | y"), (b, bp.UNCLASSIFIABLE, "no PR", "z")],
+            [(a, "rc", "#3", "UN-1 [FIX] x | y"), (b, bp.UNCLASSIFIABLE, "no PR", "z")],
             "release/0.187",
         )
         self.assertIn(
-            f"| [`aaaaaaa`]({WEB}/commit/{a}) | [#3]({WEB}/pull/3) | UN-1 [FIX] x \\| y | fix |",
+            f"| [`aaaaaaa`]({WEB}/commit/{a}) | [#3]({WEB}/pull/3) | UN-1 [FIX] x \\| y | rc |",
             out,
         )
         self.assertIn(
@@ -459,19 +457,19 @@ class SummaryLinks(unittest.TestCase):
                 bp.dispatch_row(
                     a,
                     "#251",
-                    "fix",
+                    "rc",
                     "release/0.192",
                     "merged 1234567 (#260, retried)",
                     "-",
                 ),
-                f"| [`6d49d9f`]({WEB}/commit/{a}) | [#251]({WEB}/pull/251) | fix "
+                f"| [`6d49d9f`]({WEB}/commit/{a}) | [#251]({WEB}/pull/251) | rc "
                 f"| [`release/0.192`]({WEB}/tree/release/0.192) "
                 f"| merged [`1234567`]({WEB}/commit/1234567) ([#260]({WEB}/pull/260), retried) | - |",
             )
             self.assertIn(
                 f"| pr [#261]({WEB}/pull/261) |",
                 bp.dispatch_row(
-                    a, "#251", "fix", "release/0.190", f"pr {WEB}/pull/261", "-"
+                    a, "#251", "rc", "release/0.190", f"pr {WEB}/pull/261", "-"
                 ),
             )
             self.assertTrue(
@@ -484,23 +482,23 @@ class SummaryLinks(unittest.TestCase):
         a, b = self.A, "b" * 40
         with mock.patch.dict(os.environ, ACTIONS):
             owed = bp.owed_summary(
-                [(a, "fix", "#3", "t"), (b, bp.UNCLASSIFIABLE, "no PR", "z")],
+                [(a, "rc", "#3", "t"), (b, bp.UNCLASSIFIABLE, "no PR", "z")],
                 "release/0.187",
             )
             self.assertIn(f"for [`release/0.187`]({WEB}/tree/release/0.187):", owed)
             self.assertIn(
-                f"| [`6d49d9f`]({WEB}/commit/{a}) | [#3]({WEB}/pull/3) | t | fix |", owed
+                f"| [`6d49d9f`]({WEB}/commit/{a}) | [#3]({WEB}/pull/3) | t | rc |", owed
             )
             self.assertIn(f"| [`bbbbbbb`]({WEB}/commit/{b}) | no PR | z |", owed)
             oss = "https://github.com/Zipstack/unstract"
             note = bp.held_note(
-                [(a, "critical", "#2", "t"), (b, bp.UNCLASSIFIABLE, "no PR", "t")],
+                [(a, "ga", "#2", "t"), (b, bp.UNCLASSIFIABLE, "no PR", "t")],
                 "release/0.182",
                 "Zipstack/unstract",
             )
             self.assertIn(
                 f"on Zipstack/unstract [`release/0.182`]({oss}/tree/release/0.182) (stabilized; Promote blocks "
-                f"unless forced): [Zipstack/unstract#2]({oss}/pull/2) critical. Pick with",
+                f"unless forced): [Zipstack/unstract#2]({oss}/pull/2) ga. Pick with",
                 note,
             )
             self.assertIn(
@@ -509,19 +507,19 @@ class SummaryLinks(unittest.TestCase):
             self.assertIn("-f commits=#2 -f lines=0.182", note)
             pending = bp.pending_block(
                 [(261, "release/0.190", 1)],
-                [(b, "release/0.189", "security", "no PR", 1)],
+                [(b, "release/0.189", "ga", "no PR", 1)],
             )
             self.assertIn(
                 f"- [#261]({WEB}/pull/261) on [`release/0.190`]({WEB}/tree/release/0.190) · open 1 day",
                 pending,
             )
             self.assertIn(
-                f"- [`bbbbbbb`]({WEB}/commit/{b}) (no PR) security → [`release/0.189`]({WEB}/tree/release/0.189)",
+                f"- [`bbbbbbb`]({WEB}/commit/{b}) (no PR) ga → [`release/0.189`]({WEB}/tree/release/0.189)",
                 " ".join(pending),
             )
             self.assertIn(f"-f commits={b[:12]} -f lines=0.189", " ".join(pending))
             self.assertEqual(
-                bp.this_run([(a, "#251", "fix", "release/0.192", "failed: x", "-")]),
+                bp.this_run([(a, "#251", "rc", "release/0.192", "failed: x", "-")]),
                 [
                     f"- [#251]({WEB}/pull/251) → [`release/0.192`]({WEB}/tree/release/0.192): failed: x"
                 ],
@@ -560,7 +558,7 @@ class DispatchNonFix(unittest.TestCase):
         ):
             rows, awaiting = bp.dispatch(
                 "o/r",
-                {"fix": ["release/0.191"], "security_critical": []},
+                {"rc": ["release/0.191"], "ga": []},
                 f"{a} {b}",
                 False,
                 [],
@@ -573,7 +571,7 @@ class DispatchNonFix(unittest.TestCase):
                     "#250",
                     "none",
                     "-",
-                    "skipped: not a fix; swap #250's main-only label for fix/needs-backport (or the fix label it needs) and rerun",
+                    "skipped: not a fix; swap #250's main-only label for backport/rc or backport/ga and rerun",
                     "-",
                 ),
                 (b, "no PR", "error", "-", "failed: no PR found", "-"),
@@ -590,7 +588,7 @@ PR_1946 = {
     "title": "UN-4160 [MISC] Log in to prod through Unstract ID",
     "labels": [
         {"name": "main-only"}
-    ],  # set for the not-a-fix path; the live PR carries fix/needs-backport
+    ],  # set for the not-a-fix path; the live PR carries backport/rc
     "merged": True,
     "merge_commit_sha": MERGED,
 }
@@ -656,11 +654,11 @@ class FixClassSubject(unittest.TestCase):
                 **PR_1946,
                 "number": 7,
                 "title": "UN-7 [FIX] x",
-                "labels": [{"name": "fix/needs-backport"}],
+                "labels": [{"name": "backport/rc"}],
             }
         ]
         self.assertEqual(
-            self.fix_class(pulls=json.dumps(listed)), ("fix", "#7", "UN-7 [FIX] x")
+            self.fix_class(pulls=json.dumps(listed)), ("rc", "#7", "UN-7 [FIX] x")
         )
         self.assertEqual(len(self.calls), 1)
 
@@ -700,7 +698,7 @@ class DispatchNamedPr(unittest.TestCase):
         ):
             rows, _ = bp.dispatch(
                 "o/r",
-                {"fix": ["release/0.191"], "security_critical": []},
+                {"rc": ["release/0.191"], "ga": []},
                 "#1946",
                 False,
                 [],
@@ -713,7 +711,7 @@ class DispatchNamedPr(unittest.TestCase):
                     "#1946",
                     "none",
                     "-",
-                    "skipped: not a fix; swap #1946's main-only label for fix/needs-backport (or the fix label it needs) and rerun",
+                    "skipped: not a fix; swap #1946's main-only label for backport/rc or backport/ga and rerun",
                     "-",
                 )
             ],
@@ -756,12 +754,12 @@ class DispatchHold(unittest.TestCase):
     def test_security_waits_for_rm_on_a_stabilized_line(self):
         sec, fix = "s" * 40, "f" * 40
         classes = {
-            sec: ("security", "#3", "UN-3 [FIX] x"),
-            fix: ("fix", "#4", "UN-4 [FIX] y"),
+            sec: ("ga", "#3", "UN-3 [FIX] x"),
+            fix: ("rc", "#4", "UN-4 [FIX] y"),
         }
         targets = {
-            "fix": ["release/0.191"],
-            "security_critical": [
+            "rc": ["release/0.191"],
+            "ga": [
                 {"branch": "release/0.191", "needs_rm_confirmation": False},
                 {"branch": "release/0.190", "needs_rm_confirmation": True},
             ],
@@ -777,7 +775,7 @@ class DispatchHold(unittest.TestCase):
                 run(False),
                 (
                     [(sec, "release/0.191"), (fix, "release/0.191")],
-                    [(sec, "release/0.190", "security", "#3")],
+                    [(sec, "release/0.190", "ga", "#3")],
                 ),
             )
             self.assertEqual(
@@ -789,7 +787,7 @@ class DispatchHold(unittest.TestCase):
                         (
                             fix,
                             "#4",
-                            "fix",
+                            "rc",
                             "release/0.190",
                             "failed: stabilized; a plain fix needs lines",
                             "-",
@@ -807,8 +805,8 @@ class DispatchPatch(unittest.TestCase):
     def setUp(self):
         self.fix = "f" * 40
         targets = {
-            "fix": ["release/0.191"],
-            "security_critical": [
+            "rc": ["release/0.191"],
+            "ga": [
                 {"branch": "release/0.191", "needs_rm_confirmation": False},
                 {"branch": "release/0.190", "needs_rm_confirmation": True},
                 {"branch": "release/0.188", "needs_rm_confirmation": True},
@@ -818,7 +816,7 @@ class DispatchPatch(unittest.TestCase):
             mock.patch.object(bp, "resolve", lambda slug, c, prs: c),
             mock.patch.object(bp, "main_order", lambda repo, shas: shas),
             mock.patch.object(
-                bp, "fix_class", lambda slug, sha: ("fix", "#4", "UN-4 [HOT-FIX] y")
+                bp, "fix_class", lambda slug, sha: ("rc", "#4", "UN-4 [HOT-FIX] y")
             ),
             mock.patch.object(bp, "pick_row", lambda slug, sha, b, *a: b),
             mock.patch("sys.stdout", io.StringIO()),
@@ -847,12 +845,12 @@ class DispatchPatch(unittest.TestCase):
                 (
                     self.fix,
                     "#4",
-                    "fix",
+                    "rc",
                     "release/0.190",
                     "failed: stabilized; needs patch_released_lines",
                     "-",
                 ),
-                (self.fix, "#4", "fix", "release/0.150", "failed: not a target", "-"),
+                (self.fix, "#4", "rc", "release/0.150", "failed: not a target", "-"),
             ],
         )
 
@@ -861,22 +859,20 @@ class DispatchPatch(unittest.TestCase):
         self.assertEqual(
             self.run_(True, []),
             [
-                (self.fix, "#4", "fix", "release/0.190", why, "-"),
-                (self.fix, "#4", "fix", "release/0.188", why, "-"),
+                (self.fix, "#4", "rc", "release/0.190", why, "-"),
+                (self.fix, "#4", "rc", "release/0.188", why, "-"),
                 "release/0.191",
             ],
         )
         self.assertEqual(self.run_(False, []), ["release/0.191"])
         # No stabilizing line: the why rows stand alone, without a "no target branch" row.
         only = {
-            "fix": [],
-            "security_critical": [
-                {"branch": "release/0.190", "needs_rm_confirmation": True}
-            ],
+            "rc": [],
+            "ga": [{"branch": "release/0.190", "needs_rm_confirmation": True}],
         }
         self.assertEqual(
             self.run_(True, [], only),
-            [(self.fix, "#4", "fix", "release/0.190", why, "-")],
+            [(self.fix, "#4", "rc", "release/0.190", why, "-")],
         )
 
 
@@ -916,8 +912,8 @@ class PatchLines(unittest.TestCase):
         }
         rows = {
             "release/0.190": [
-                (a, "fix", "#7", "t"),
-                (b, "security", "no PR", "t"),
+                (a, "rc", "#7", "t"),
+                (b, "ga", "no PR", "t"),
                 (u, bp.UNCLASSIFIABLE, "no PR", "t"),
             ],
             "release/0.188": [],
@@ -1023,7 +1019,7 @@ class MissedPicks(unittest.TestCase):
             "Zipstack/unstract": [conflict(30, "release/0.191")],
         }
         self.rows = {
-            "release/0.191": [(self.B, "fix", "#7", "t")],
+            "release/0.191": [(self.B, "rc", "#7", "t")],
             "release/0.190": [],
         }
         self.cut = {"release/0.191": "2026-10-20", "release/0.190": "2026-09-15"}
@@ -1127,15 +1123,19 @@ class PushSummary(unittest.TestCase):
         )
         self.assertEqual(
             row(conflicts=[243], held_n=4, unbuilt=1),
-            "| `release/0.192` | stabilizing | `v0.192.0-rc.2` · all built | 0 | 1 conflict, 4 RM | resolve #243 |".replace(
+            "| `release/0.192` | stabilizing | `v0.192.0-rc.2` · all built | 0 | 1 conflict, 4 held | resolve #243 |".replace(
                 "all built", "+1 not built"
             ),
         )
         self.assertTrue(
-            row(held_n=4, unbuilt=1).endswith("| 4 RM | RM: confirm 4 security fixes |")
+            row(held_n=4, unbuilt=1).endswith(
+                "| 4 held | confirm 4 held backport/ga fixes |"
+            )
         )
         self.assertTrue(
-            row(held_n=1, unbuilt=1).endswith("| 1 RM | RM: confirm 1 security fix |")
+            row(held_n=1, unbuilt=1).endswith(
+                "| 1 held | confirm 1 held backport/ga fix |"
+            )
         )
         self.assertTrue(row(unbuilt=1).endswith("+1 not built | 0 | - | Take RC |"))
         self.assertTrue(row().endswith("all built | 0 | - | Promote |"))
@@ -1193,17 +1193,17 @@ class PushSummary(unittest.TestCase):
     def test_this_run_and_pending(self):
         a = "a" * 40
         rows = [
-            (a, "#251", "fix", "release/0.192", "merged 1234567 (#260)", "-"),
+            (a, "#251", "rc", "release/0.192", "merged 1234567 (#260)", "-"),
             (
                 a,
                 "#251",
-                "fix",
+                "rc",
                 "release/0.190",
                 "pr https://github.com/o/r/pull/261",
                 "-",
             ),
-            (a, "#251", "fix", "release/0.189", "skipped: already on branch", "-"),
-            (a, "#251", "fix", "release/0.188", "merged 89abcde (#262, retried)", "-"),
+            (a, "#251", "rc", "release/0.189", "skipped: already on branch", "-"),
+            (a, "#251", "rc", "release/0.188", "merged 89abcde (#262, retried)", "-"),
         ]
         self.assertEqual(
             bp.this_run(rows),
@@ -1216,14 +1216,14 @@ class PushSummary(unittest.TestCase):
         out = bp.pending_block(
             [(261, "release/0.190", 6)],
             [
-                (a, "release/0.190", "security", "#247", 2),
-                (a, "release/0.189", "security", "#247", 2),
+                (a, "release/0.190", "ga", "#247", 2),
+                (a, "release/0.189", "ga", "#247", 2),
             ],
         )
         self.assertEqual(out[0], "<details><summary>Pending (2)</summary>")
         self.assertIn("- #261 on `release/0.190` · open 6 days ⚠", out)
         self.assertIn(
-            "- #247 security → `release/0.190`, `release/0.189` · merged 2 days ago", out
+            "- #247 ga → `release/0.190`, `release/0.189` · merged 2 days ago", out
         )
         self.assertIn(
             "gh workflow run backport.yaml -f commits=#247 -f lines=0.190,0.189 "
@@ -1400,7 +1400,7 @@ class FinishOpen(unittest.TestCase):
         self.assertEqual(self.merged[0][0], 4)
         self.assertIn("(cherry picked from commit " + "a" * 40 + ")", self.merged[0][1])
         # The push summary parses this detail: a format change must not drop the row from it.
-        row = ("a" * 40, "#1", "fix", "release/1.0", " ".join(out), "-")
+        row = ("a" * 40, "#1", "rc", "release/1.0", " ".join(out), "-")
         self.assertEqual(len(bp.this_run([row])), 1)
 
     def test_waits_for_a_person(self):
@@ -1630,7 +1630,7 @@ class Pick(unittest.TestCase):
     def gh(self, *a, token=None, retry=True):
         self.calls.append(a)
         if a[:2] == ("api", "repos/o/r/pulls/5"):
-            return "fix/security\nfix/needs-backport\nother"
+            return "backport/ga\nbackport/rc\nother"
         return "https://github.com/o/r/pull/8"
 
     def pick(self):
@@ -1646,7 +1646,7 @@ class Pick(unittest.TestCase):
         create = next(a for a in self.calls if a[:2] == ("pr", "create"))
         self.assertEqual(
             [create[i + 1] for i, x in enumerate(create) if x == "--label"],
-            ["fix/security", "fix/needs-backport"],
+            ["backport/ga", "backport/rc"],
         )
 
     def test_conflict_pick_carries_fix_labels(self):
@@ -1659,7 +1659,7 @@ class Pick(unittest.TestCase):
         create = next(a for a in self.calls if a[:2] == ("pr", "create"))
         self.assertEqual(
             [create[i + 1] for i, x in enumerate(create) if x == "--label"],
-            ["backport-conflict", "fix/security", "fix/needs-backport"],
+            ["backport-conflict", "backport/ga", "backport/rc"],
         )
 
     def test_empty_pick_names_the_decline(self):
@@ -1767,7 +1767,7 @@ class PickRow(unittest.TestCase):
             mock.patch.object(bp, "pick", return_value=("merged", "abc1234 (#8)")),
             mock.patch("sys.stdout", io.StringIO()),
         ):
-            row = bp.pick_row("o/r", "c" * 40, "release/1.0", "fix", "#5", "t")
+            row = bp.pick_row("o/r", "c" * 40, "release/1.0", "rc", "#5", "t")
         self.assertEqual(row[4], "merged abc1234 (#8)")
         self.assertEqual(row[5], "unknown (RuntimeError: bad \\| path)")
 
@@ -1779,7 +1779,7 @@ class PickRow(unittest.TestCase):
             mock.patch("sys.stdout", io.StringIO()),
             mock.patch("sys.stderr", io.StringIO()) as err,
         ):
-            row = bp.pick_row("o/r", "c" * 40, "release/1.0", "fix", "#5", "t")
+            row = bp.pick_row("o/r", "c" * 40, "release/1.0", "rc", "#5", "t")
         self.assertEqual(row[4], "failed: KeyError: 'x'")
         self.assertIn("Traceback", err.getvalue())
 
@@ -1831,8 +1831,8 @@ class DispatchCommit(unittest.TestCase):
     def test_unlabelled_named_commit_fails_with_its_pr(self):
         pr = {"number": 8, "title": "UN-8 [FIX] x", "labels": []}
         targets = {
-            "fix": ["release/0.190"],
-            "security_critical": [
+            "rc": ["release/0.190"],
+            "ga": [
                 {"branch": "release/0.190", "needs_rm_confirmation": False},
                 {"branch": "release/0.187", "needs_rm_confirmation": True},
             ],
@@ -2043,8 +2043,8 @@ class PickStep(unittest.TestCase):
 
 
 TARGETS = {
-    "fix": ["release/0.191"],
-    "security_critical": [
+    "rc": ["release/0.191"],
+    "ga": [
         {"branch": "release/0.191", "needs_rm_confirmation": False},
         {"branch": "release/0.190", "needs_rm_confirmation": True},
     ],
@@ -2055,33 +2055,33 @@ class Unsettled(unittest.TestCase):
     a, b, c, d = "a" * 40, "b" * 40, "c" * 40, "d" * 40
     OWED = {
         "release/0.191": [
-            (a, "fix", "#7", "UN-1 [FIX] x"),
+            (a, "rc", "#7", "UN-1 [FIX] x"),
             (b, bp.UNCLASSIFIABLE, "no PR", "y"),
-            (c, "security", "#8", "UN-2 [FIX] z"),
+            (c, "ga", "#8", "UN-2 [FIX] z"),
         ],
-        "release/0.190": [(d, "critical", "#9", "UN-3 [HOT-FIX] w")],
+        "release/0.190": [(d, "ga", "#9", "UN-3 [HOT-FIX] w")],
     }
 
     def test_left_in_no_known_state(self):
         self.assertEqual(
             bp.unsettled(TARGETS, self.OWED, [], set()),
             [
-                (self.a, "#7", "release/0.191", "fix"),
+                (self.a, "#7", "release/0.191", "rc"),
                 (self.b, "no PR", "release/0.191", bp.UNCLASSIFIABLE),
-                (self.c, "#8", "release/0.191", "security"),
+                (self.c, "#8", "release/0.191", "ga"),
             ],
-        )  # d is held for the RM on the stabilized line
+        )  # d is held for confirmation on the stabilized line
 
     def test_a_row_or_a_pick_head_settles_it(self):
-        rows = [(self.a, "#7", "fix", "release/0.191", "picked", "-")]
+        rows = [(self.a, "#7", "rc", "release/0.191", "picked", "-")]
         heads = {"backport/0.191/ccccccc"}
         self.assertEqual(
             bp.unsettled(TARGETS, self.OWED, rows, heads),
             [(self.b, "no PR", "release/0.191", bp.UNCLASSIFIABLE)],
         )
-        other = [(self.a, "#7", "fix", "release/0.190", "picked", "-")]  # another line
+        other = [(self.a, "#7", "rc", "release/0.190", "picked", "-")]  # another line
         self.assertIn(
-            (self.a, "#7", "release/0.191", "fix"),
+            (self.a, "#7", "release/0.191", "rc"),
             bp.unsettled(TARGETS, self.OWED, other, heads),
         )
 
@@ -2096,7 +2096,7 @@ class Unsettled(unittest.TestCase):
         with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
             lines = bp.unsettled_lines(
                 [
-                    (self.a, "#7", "release/0.191", "fix"),
+                    (self.a, "#7", "release/0.191", "rc"),
                     (self.b, "no PR", "release/0.191", bp.UNCLASSIFIABLE),
                 ],
                 {self.a, self.b},
@@ -2104,7 +2104,7 @@ class Unsettled(unittest.TestCase):
         self.assertEqual(
             out.getvalue().splitlines(),
             [
-                "::error::aaaaaaa (fix, PR #7) is owed on release/0.191 and was left undone: "
+                "::error::aaaaaaa (rc, PR #7) is owed on release/0.191 and was left undone: "
                 f"dispatch Backport with commits={self.a[:12]} lines=0.191, or record a decline",
                 f"::error::bbbbbbb ({bp.UNCLASSIFIABLE}, PR no PR) is owed on release/0.191 and was left undone: "
                 "fix its PR title or labels and rerun Backport, or record a decline",
@@ -2115,7 +2115,7 @@ class Unsettled(unittest.TestCase):
 
     def test_owed_before_this_run_says_so(self):
         left = [
-            (self.a, "#7", "release/0.191", "fix"),
+            (self.a, "#7", "release/0.191", "rc"),
             (self.b, "no PR", "release/0.191", bp.UNCLASSIFIABLE),
         ]
         with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
@@ -2160,7 +2160,7 @@ class MainLeftUndone(unittest.TestCase):
         self.state = os.path.join(tmp.name, "state.json")
         with open(self.state, "w") as f:
             json.dump({"branches": [], "backport_targets": TARGETS}, f)
-        self.owed = {"release/0.191": [(self.a, "fix", "#7", "UN-1 [FIX] x")]}
+        self.owed = {"release/0.191": [(self.a, "rc", "#7", "UN-1 [FIX] x")]}
         self.rows = []
 
     def main(self, owed=None, rows=(), heads=(), old=True):
@@ -2187,26 +2187,26 @@ class MainLeftUndone(unittest.TestCase):
     def test_owed_and_untouched_fails(self):
         code, out = self.main()
         self.assertEqual(code, 1)
-        self.assertIn("::error::aaaaaaa (fix, PR #7) is owed on release/0.191", out)
+        self.assertIn("::error::aaaaaaa (rc, PR #7) is owed on release/0.191", out)
         self.assertIn("**⛔ Left undone**", out)
 
     def test_named_but_left_undone_keeps_the_wording(self):
-        other = [(self.a, "#7", "fix", "release/0.190", "picked", "-")]
+        other = [(self.a, "#7", "rc", "release/0.190", "picked", "-")]
         code, out = self.main(rows=other)
         self.assertEqual(code, 1)
         self.assertIn(
-            "::error::aaaaaaa (fix, PR #7) is owed on release/0.191 and was left undone: ",
+            "::error::aaaaaaa (rc, PR #7) is owed on release/0.191 and was left undone: ",
             out,
         )
         self.assertNotIn("before this run", out)
 
     def test_untouched_says_owed_before_this_run(self):
         e = "e" * 40
-        named = [(e, "#5", "fix", "release/0.191", "picked", "-")]
+        named = [(e, "#5", "rc", "release/0.191", "picked", "-")]
         code, out = self.main(rows=named)
         self.assertEqual(code, 1)
         self.assertIn(
-            "::error::aaaaaaa (fix, PR #7) is owed on release/0.191 and "
+            "::error::aaaaaaa (rc, PR #7) is owed on release/0.191 and "
             "was owed before this run, not caused by it: "
             f"dispatch Backport with commits={self.a[:12]} lines=0.191",
             out,
@@ -2218,11 +2218,11 @@ class MainLeftUndone(unittest.TestCase):
         self.assertEqual(self.main(old=False)[0], 0)
 
     def test_named_within_grace_still_fails(self):
-        other = [(self.a, "#7", "fix", "release/0.190", "picked", "-")]
+        other = [(self.a, "#7", "rc", "release/0.190", "picked", "-")]
         self.assertEqual(self.main(rows=other, old=False)[0], 1)
 
     def test_settled_passes(self):
-        picked = [(self.a, "#7", "fix", "release/0.191", "picked", "-")]
+        picked = [(self.a, "#7", "rc", "release/0.191", "picked", "-")]
         self.assertEqual(self.main(rows=picked)[0], 0)
         self.assertEqual(self.main(heads=["backport/0.191/aaaaaaa"])[0], 0)
         self.assertEqual(self.main(owed={})[0], 0)
@@ -2284,18 +2284,18 @@ class StateCheck(unittest.TestCase):
         )
 
     def test_owed_pick_at_the_grace_boundary(self):
-        owed = [(self.a, "fix", "#7", "UN-1 [FIX] x")]
+        owed = [(self.a, "rc", "#7", "UN-1 [FIX] x")]
         self.assertEqual(self.check(owed, merged="2026-10-10T10:00:00Z"), (0, ""))
         code, out = self.check(owed, merged="2026-10-10T09:59:59Z")
         self.assertEqual(code, 1)
         self.assertEqual(
             out,
-            "::error::aaaaaaa (fix, PR #7) owed on stabilizing release/0.191 and not picked: "
+            "::error::aaaaaaa (rc, PR #7) owed on stabilizing release/0.191 and not picked: "
             f"dispatch Backport with commits={self.a[:12]}, or record a decline\n",
         )
 
     def test_owed_on_an_open_conflict_pr_waits_for_the_pr(self):
-        owed = [(self.a, "fix", "#7", "UN-1 [FIX] x")]
+        owed = [(self.a, "rc", "#7", "UN-1 [FIX] x")]
         pr = self.pr(
             12, "release/0.191", "backport/0.191/aaaaaaa", "2026-10-10T00:00:00Z"
         )
@@ -2352,12 +2352,12 @@ class StateCheck(unittest.TestCase):
             )
 
     def test_held_is_listed_not_failed(self):
-        held = [(self.d, "security", "#9", "UN-3 [FIX] w")]
+        held = [(self.d, "ga", "#9", "UN-3 [FIX] w")]
         code, out = self.check(held=held, merged="2026-10-01T00:00:00Z")
         self.assertEqual(code, 0)
         self.assertEqual(
             out,
-            "::notice::ddddddd (security, PR #9) held for release/0.190: stabilized, needs patch_released_lines\n",
+            "::notice::ddddddd (ga, PR #9) held for release/0.190: stabilized, needs patch_released_lines\n",
         )
 
 
