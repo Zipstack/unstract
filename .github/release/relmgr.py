@@ -351,14 +351,8 @@ def ci_commits(
     return rows, where
 
 
-# Backport label -> class. The fix/ names are the old ones, accepted until the repo labels are renamed.
-BACKPORT_LABELS = {
-    "backport/rc": "rc",
-    "backport/ga": "ga",
-    "fix/needs-backport": "rc",
-    "fix/security": "ga",
-    "fix/critical": "ga",
-}
+# Backport label -> class.
+BACKPORT_LABELS = {"backport/rc": "rc", "backport/ga": "ga"}
 MAIN_ONLY = "main-only"
 
 
@@ -384,9 +378,7 @@ def pr_fix_class(title, labels=()):
             f"unknown label(s) {_ticks(bad)}: use `backport/rc`, `backport/ga` or `{MAIN_ONLY}`"
         )
     found = sorted(set(labels) & set(BACKPORT_LABELS))
-    classes = {BACKPORT_LABELS[x] for x in found}
-    # Old names combine as they always did (fix/needs-backport with fix/security is ga); a new name allows one class.
-    if len(classes) > 1 and not all(x.startswith("fix/") for x in found):
+    if len(found) > 1:
         raise ValueError(f"conflicting labels {_ticks(found)}: keep one")
     # The changelogs read the title, so no label excuses it. strip: GitHub keeps a leading space.
     inner = title.strip()
@@ -396,7 +388,7 @@ def pr_fix_class(title, labels=()):
         raise ValueError(f"no recognised '[TYPE]' or 'TICKET [TYPE]' prefix: {title!r}")
     if MAIN_ONLY in labels and found:
         raise ValueError(f"conflicting labels {_ticks([MAIN_ONLY, *found])}: keep one")
-    return ("ga" if "ga" in classes else "rc") if found else None
+    return BACKPORT_LABELS[found[0]] if found else None
 
 
 def main_fix_class(title, labels=()):
