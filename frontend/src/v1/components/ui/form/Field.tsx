@@ -16,6 +16,11 @@ export type FieldProps = Readonly<{
   /** The control's id, which replaces any id on the control itself; generated when omitted. */
   id?: string;
   className?: string;
+  /**
+   * One form control. The Field gives its id, description and state to every
+   * control that reads its context, so two controls would share one id, and a
+   * control that does not read it (a native `<select>`) is not labelled.
+   */
   children: ReactNode;
 }>;
 

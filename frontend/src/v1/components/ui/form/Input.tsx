@@ -1,7 +1,7 @@
 import { cn } from "@v1/lib/cn";
-import type { ComponentProps, JSX, ReactNode } from "react";
+import { type ComponentProps, type JSX, type ReactNode, useId } from "react";
 import { FieldFrame, fieldControlClass } from "./FieldFrame";
-import { useFieldControl } from "./field-context";
+import { joinIds, useFieldControl } from "./field-context";
 
 export type InputProps = Omit<ComponentProps<"input">, "prefix"> &
   Readonly<{
@@ -36,15 +36,23 @@ export function Input({
   className,
   controlClassName,
   "aria-describedby": describedBy,
+  "aria-invalid": ariaInvalid,
   ...props
 }: InputProps): JSX.Element {
   const control = useFieldControl({
     id,
     "aria-describedby": describedBy,
+    "aria-invalid": ariaInvalid,
     invalid,
     disabled,
     readOnly,
   });
+  // The prefix and suffix are part of the value ("https://", "pages"), so the
+  // control is described by them; they are not in its accessible name.
+  const generatedId = useId();
+  const slotId = control.id ?? generatedId;
+  const prefixId = prefix ? `${slotId}-prefix` : undefined;
+  const suffixId = suffix ? `${slotId}-suffix` : undefined;
   return (
     <FieldFrame
       invalid={control.invalid}
@@ -58,14 +66,18 @@ export function Input({
         </span>
       ) : null}
       {prefix ? (
-        <span data-slot="field-prefix" className={textSlot}>
+        <span id={prefixId} data-slot="field-prefix" className={textSlot}>
           {prefix}
         </span>
       ) : null}
       <input
         data-slot="control"
         id={control.id}
-        aria-describedby={control["aria-describedby"]}
+        aria-describedby={joinIds(
+          control["aria-describedby"],
+          prefixId,
+          suffixId,
+        )}
         aria-invalid={control["aria-invalid"]}
         disabled={control.disabled}
         readOnly={control.readOnly}
@@ -73,7 +85,7 @@ export function Input({
         {...props}
       />
       {suffix ? (
-        <span data-slot="field-suffix" className={textSlot}>
+        <span id={suffixId} data-slot="field-suffix" className={textSlot}>
           {suffix}
         </span>
       ) : null}

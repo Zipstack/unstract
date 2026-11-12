@@ -19,11 +19,13 @@ export function Textarea({
   className,
   controlClassName,
   "aria-describedby": describedBy,
+  "aria-invalid": ariaInvalid,
   ...props
 }: TextareaProps): JSX.Element {
   const control = useFieldControl({
     id,
     "aria-describedby": describedBy,
+    "aria-invalid": ariaInvalid,
     invalid,
     disabled,
     readOnly,

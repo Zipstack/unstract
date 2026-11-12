@@ -32,12 +32,13 @@ it("inserts a line break on Shift+Enter and does not submit", async () => {
 
 it("does not submit an Enter that ends an IME composition", () => {
   const { onSubmit, textarea } = setup();
+  fireEvent.change(textarea, { target: { value: "かな" } });
   fireEvent.keyDown(textarea, { key: "Enter", isComposing: true });
   // Safari: composition already ended, only keyCode 229 marks it.
   fireEvent.keyDown(textarea, { key: "Enter", keyCode: 229 });
   expect(onSubmit).not.toHaveBeenCalled();
   fireEvent.keyDown(textarea, { key: "Enter" });
-  expect(onSubmit).toHaveBeenCalledOnce();
+  expect(onSubmit).toHaveBeenCalledExactlyOnceWith("かな");
 });
 
 it("lets the caller's onKeyDown cancel the submit", () => {
@@ -51,6 +52,22 @@ it("lets the caller's onKeyDown cancel the submit", () => {
   );
   fireEvent.keyDown(screen.getByLabelText("Prompt"), { key: "Enter" });
   expect(onSubmit).not.toHaveBeenCalled();
+});
+
+it("does nothing on Enter when the box is empty or only whitespace", async () => {
+  const { user, onSubmit, textarea } = setup();
+  await user.type(textarea, "{Enter}");
+  expect(textarea.value).toBe("");
+  await user.type(textarea, "  {Enter}");
+  expect(textarea.value).toBe("  ");
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
+it("labels the Enter key send on a touch keyboard only when Enter submits", () => {
+  const { textarea } = setup();
+  expect(textarea).toHaveAttribute("enterkeyhint", "send");
+  renderV1(<PromptTextarea aria-label="Note" />);
+  expect(screen.getByLabelText("Note")).not.toHaveAttribute("enterkeyhint");
 });
 
 it("inserts a line break on Enter when there is no onSubmit", async () => {

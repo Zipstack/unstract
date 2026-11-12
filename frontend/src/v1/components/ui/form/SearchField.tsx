@@ -1,11 +1,12 @@
 import { cn } from "@v1/lib/cn";
-import { composeRefs } from "@v1/lib/merge-refs";
+import { mergeRefs } from "@v1/lib/merge-refs";
 import { Search, X } from "lucide-react";
 import {
   type ChangeEvent,
   type JSX,
   type KeyboardEvent,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -17,7 +18,9 @@ import { isComposing } from "./keyboard";
 
 // onChange is left out of the type: onValueChange is the documented way to
 // hear a change. A spread (`{...field}`, `{...register()}`) still carries one,
-// and the field calls it on typing and on clear.
+// and the field calls it on typing and on clear. A spread onChange without a
+// value (`{...register()}`) leaves the input uncontrolled, so the value the
+// form library writes to the DOM stays on screen.
 export type SearchFieldProps = Omit<
   InputProps,
   "type" | "value" | "defaultValue" | "onChange" | "leading" | "trailing"
@@ -30,15 +33,6 @@ export type SearchFieldProps = Omit<
     clearLabel?: string;
   }>;
 
-/*
- * Escape clears the field when it has a value, and stops there; on an empty
- * field Escape bubbles so a dialog or menu can close. Radix layers see Escape
- * on the document in the capture phase, before this handler, so an overlay
- * that holds a SearchField calls preventDefault in onEscapeKeyDown when
- * `isEscapeClearTarget(event)` (keyboard.ts) is true. The clear
- * therefore ignores a preventDefault made before it; only a preventDefault
- * called from the caller's own onKeyDown cancels it.
- */
 /**
  * Runs the caller's onKeyDown and reports whether it called preventDefault
  * itself. A Radix layer may have prevented the event already, so the event's
@@ -53,7 +47,7 @@ function callerPreventsDefault(
   }
   const preventDefault = event.preventDefault;
   let called = false;
-  // ponytail: wraps the method for the call only, then puts the original back.
+  // Wraps the method for the call only, then puts the original back.
   event.preventDefault = () => {
     called = true;
     preventDefault.call(event);
@@ -66,6 +60,16 @@ function callerPreventsDefault(
   return called;
 }
 
+/**
+ * A search box with a Clear button. Escape clears the field when it has a
+ * value, and stops there; on an empty field Escape bubbles so a dialog or menu
+ * can close. Radix layers see Escape on the document in the capture phase,
+ * before this handler, so an overlay that holds a SearchField calls
+ * preventDefault in onEscapeKeyDown when `isEscapeClearTarget(event)`
+ * (keyboard.ts) is true. The clear therefore ignores a preventDefault made
+ * before it; only a preventDefault called from the caller's own onKeyDown
+ * cancels it.
+ */
 export function SearchField({
   value,
   defaultValue = "",
@@ -81,12 +85,31 @@ export function SearchField({
   const { onChange: spreadOnChange, ...props } = rest as typeof rest & {
     onChange?: InputProps["onChange"];
   };
+  // `{...register()}`: the form library sets the DOM value itself (defaults,
+  // setValue, reset), so the input is left uncontrolled and `uncontrolled`
+  // follows the DOM instead of driving it.
+  const domOwned = value === undefined && spreadOnChange !== undefined;
   const [uncontrolled, setUncontrolled] = useState(defaultValue);
   const current = value ?? uncontrolled;
   const inputRef = useRef<HTMLInputElement>(null);
-  const composedRef = useMemo(() => composeRefs(inputRef, ref), [ref]);
+  const composedRef = useMemo(() => mergeRefs(inputRef, ref), [ref]);
+  const onValueChangeRef = useRef(onValueChange);
   const state = useFieldControl({ disabled, readOnly });
-  // A controlled field without onValueChange cannot be cleared, so it lets Escape through.
+
+  useLayoutEffect(() => {
+    onValueChangeRef.current = onValueChange;
+  });
+
+  // Pick up a value written straight to the DOM, so the Clear button matches it.
+  useLayoutEffect(() => {
+    const input = inputRef.current;
+    if (domOwned && input && input.value !== uncontrolled) {
+      setUncontrolled(input.value);
+    }
+  });
+
+  // A controlled field without onValueChange or a spread onChange cannot be
+  // cleared, so it lets Escape through.
   const canClear =
     value === undefined ||
     onValueChange !== undefined ||
@@ -105,9 +128,14 @@ export function SearchField({
     let timer: ReturnType<typeof setTimeout> | undefined;
     const onReset = (event: Event) => {
       timer = setTimeout(() => {
-        if (!event.defaultPrevented) {
-          setUncontrolled(defaultValue);
+        if (event.defaultPrevented) {
+          return;
         }
+        const restored = domOwned
+          ? (inputRef.current?.value ?? defaultValue)
+          : defaultValue;
+        setUncontrolled(restored);
+        onValueChangeRef.current?.(restored);
       });
     };
     form.addEventListener("reset", onReset);
@@ -115,7 +143,7 @@ export function SearchField({
       form.removeEventListener("reset", onReset);
       clearTimeout(timer);
     };
-  }, [value, defaultValue]);
+  }, [value, defaultValue, domOwned]);
 
   const update = (next: string) => {
     if (value === undefined) {
@@ -145,12 +173,15 @@ export function SearchField({
     if (callerCancelled || event.key !== "Escape" || isComposing(event)) {
       return;
     }
-    if (current !== "" && !state.disabled && !state.readOnly) {
+    // A DOM-owned value may have been set (setValue) since the last render.
+    const shown = domOwned ? event.currentTarget.value : current;
+    const editable = shown !== "" && !state.disabled && !state.readOnly;
+    if (editable) {
       // Chromium and WebKit clear a non-empty type="search" input on Escape
       // themselves, bypassing `update`; only this component clears it.
       event.preventDefault();
     }
-    if (!clearable) {
+    if (!(canClear && editable)) {
       return;
     }
     event.stopPropagation();
@@ -163,7 +194,7 @@ export function SearchField({
       {...props}
       ref={composedRef}
       type="search"
-      value={current}
+      {...(domOwned ? { defaultValue } : { value: current })}
       disabled={disabled}
       readOnly={readOnly}
       data-escape-clears={clearable ? "" : undefined}

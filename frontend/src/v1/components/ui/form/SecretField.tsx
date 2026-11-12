@@ -1,5 +1,5 @@
 import { type CopyResult, copyText } from "@v1/lib/code/clipboard";
-import { composeRefs } from "@v1/lib/merge-refs";
+import { mergeRefs } from "@v1/lib/merge-refs";
 import { toast } from "@v1/lib/notify";
 import { Copy, Eye, EyeOff } from "lucide-react";
 import { type JSX, useMemo, useRef, useState } from "react";
@@ -67,7 +67,7 @@ export function SecretField({
 }: SecretFieldProps): JSX.Element {
   const [revealed, setRevealed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const composedRef = useMemo(() => composeRefs(inputRef, ref), [ref]);
+  const composedRef = useMemo(() => mergeRefs(inputRef, ref), [ref]);
   const state = useFieldControl({ disabled });
   // A disabled field disables Reveal too, so a shown value is masked again.
   const shown = revealed && !state.disabled;

@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { type AriaAttributes, createContext, useContext } from "react";
 
 export type FieldContextValue = Readonly<{
   controlId: string;
@@ -21,6 +21,8 @@ export function useFieldContext(): FieldContextValue | null {
 export type FieldControlInput = Readonly<{
   id?: string;
   "aria-describedby"?: string;
+  /** A spread `aria-invalid` (react-hook-form, a validation library); a true value marks the control invalid. */
+  "aria-invalid"?: AriaAttributes["aria-invalid"];
   invalid?: boolean;
   disabled?: boolean;
   readOnly?: boolean;
@@ -37,19 +39,29 @@ export type FieldControlState = Readonly<{
   readOnly: boolean;
 }>;
 
-function joinIds(...ids: (string | undefined)[]): string | undefined {
+/** Joins the given ids into one space-separated list, skipping empty ones. */
+export function joinIds(...ids: (string | undefined)[]): string | undefined {
   const joined = ids.filter(Boolean).join(" ");
   return joined === "" ? undefined : joined;
 }
 
 /**
  * Resolves a control's id, description, and state. The enclosing Field's id
- * wins, since its label points at it (set `id` on the Field); otherwise the
- * control's own props win, then the Field's.
+ * wins, since its label points at it (set `id` on the Field). The description
+ * joins the Field's ids, then the control's; for state, the control's own
+ * props win, then the Field's. A true `aria-invalid` counts as `invalid`, so
+ * the frame and the ARIA state agree.
  */
 export function useFieldControl(props: FieldControlInput): FieldControlState {
   const field = useFieldContext();
-  const invalid = props.invalid ?? field?.invalid ?? false;
+  const ariaInvalid = props["aria-invalid"];
+  const ownInvalid =
+    ariaInvalid !== undefined &&
+    ariaInvalid !== false &&
+    ariaInvalid !== "false"
+      ? true
+      : props.invalid;
+  const invalid = ownInvalid ?? field?.invalid ?? false;
   return {
     id: field?.controlId ?? props.id,
     labelId: field?.labelId,
