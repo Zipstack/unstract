@@ -217,7 +217,7 @@ def line(v, present=True, ga=False, onprem_ga=False):
 
 class Advise(unittest.TestCase):
     def test_a_cherry_pick_into_a_release_line_is_only_suggested(self):
-        a = la.advise("release/0.186", ["backend/x.py"], [], "[FIX] x", picks=True)
+        a = la.advise("release/0.186", ["backend/x.py"], [], picks=True)
         self.assertEqual((a["result"], a["label"]), ("suggest", "release-branch-only"))
 
     def test_release_base_is_release_branch_only(self):
@@ -248,7 +248,6 @@ class Advise(unittest.TestCase):
             "main",
             ["backend/x.py"],
             [line("0.188"), line("0.186", present=False)],
-            "[FIX] x",
         )
         self.assertEqual(
             (a["result"], a["label"], a["info"]), ("suggest", "backport/rc", [])
@@ -256,7 +255,7 @@ class Advise(unittest.TestCase):
 
     def test_released_line_asks_the_hotfix_question(self):
         lines = [line("0.188"), line("0.186", ga=True, onprem_ga=True)]
-        a = la.advise("main", ["backend/x.py"], lines, "[FIX] x", pr=7)
+        a = la.advise("main", ["backend/x.py"], lines, pr=7)
         self.assertEqual(a["result"], "ask")
         self.assertEqual(
             a["question"]["answers"], {"yes": "backport/ga", "no": "backport/rc"}

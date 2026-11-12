@@ -40,7 +40,7 @@ class Usage(Exception):
     pass
 
 
-def advise(base, paths, lines, title="", hotfix=None, pr=None, head="", picks=False):
+def advise(base, paths, lines, hotfix=None, pr=None, head="", picks=False):
     """Pure core. lines: [{"line", "present", "ga", "onprem_ga"}] for the live release lines; present = some
     changed code path exists at the line's tip; ga = the line has a stable tag; onprem_ga = on-prem confirmed GA
     (None: unknown). picks: a commit of a PR into a release line carries a `cherry picked from` trailer.
@@ -108,8 +108,6 @@ def advise(base, paths, lines, title="", hotfix=None, pr=None, head="", picks=Fa
         if rc
         else "not a hotfix, and every line with the code is released"
     )
-    if no == RC and (kind := re.search(r"\[(FEAT|GATED-FEAT|MISC|DEV|WIP)\]", title)):
-        reason += f"; a {kind[1]} usually stays {MAIN_ONLY}"
     return {
         **out,
         "result": "suggest",
@@ -287,7 +285,7 @@ def advise_pr(slug, n, hotfix=None, pr=None, paths=None, need_ga=True):
         )
         for c in page
     )
-    adv = advise(base, paths, lines, pr["title"], hotfix, n, pr["head"]["ref"], picks)
+    adv = advise(base, paths, lines, hotfix, n, pr["head"]["ref"], picks)
     have = {l["name"] for l in pr.get("labels", [])}
     if adv["label"] and adv["result"] != "ask" and adv["label"] not in have:
         others = sorted(have & {MAIN_ONLY, RBO, *rm.BACKPORT_LABELS})
@@ -307,9 +305,8 @@ def advise_branch(slug, ref, hotfix=None):
         set(rm.git(".", "diff", "--name-only", "--no-renames", base, ref).split("\n"))
         - {""}
     )
-    title = rm.git(".", "log", "-1", "--format=%s", ref)
     lines = line_facts(slug, paths) if code(paths) else []
-    return {"repo": slug, "pr": None, **advise("main", paths, lines, title, hotfix, ref)}
+    return {"repo": slug, "pr": None, **advise("main", paths, lines, hotfix, ref)}
 
 
 def declare(slug, n, value):

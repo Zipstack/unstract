@@ -51,7 +51,7 @@ jobs:
           import json, os, sys
           sys.path.insert(0, ".github/release")
           import relmgr
-          try:  # advisory only (the body check is relmgr's): main may predate it, and it must never break this check
+          try:  # advisory: main may predate it, and it must never break this check
               import label_advice as la
           except Exception as e:
               print(f"::notice title=Lint PR::label advice unavailable: {e}")
@@ -86,7 +86,6 @@ jobs:
                      "- `backport/ga` (old name `fix/security`): also copy it to those lines; released lines get it only by a Backport run that names the line.\n"
                      "- `main-only`: keep it on main only.\n"
                      "A revert takes the label of the PR it reverts.\n")
-              # Label advice: printed between the errors and the label menu.
               advice = f"Advice: {la.render(adv)}\n" if adv else ""
               msg = ("\n".join(errors) + "\n" + advice + menu +
                      "Title: `[TYPE] text` or `TICKET [TYPE] text` (e.g. `ABC-123 [FIX] ...`).")
