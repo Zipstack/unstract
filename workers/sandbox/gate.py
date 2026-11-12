@@ -823,6 +823,44 @@ def _is_descendant(node, ancestor, parents) -> bool:
 
 
 def _function_scope_binds(scope, name: str) -> bool:
+    """Memoised front end for :func:`_function_scope_binds_uncached`.
+
+    The answer depends only on `(scope, name)` and the tree is not mutated
+    during a check, so it is cached on the scope node -- per parse, exactly as
+    `_scope_declared_names` caches its own collector.
+
+    **Why this is not a micro-optimisation.** The uncached walk is O(size of
+    function) and `_shadows_builtin` calls it once per Load of the name, so a
+    function with N reads of a name it does not bind cost O(N x size). Measured
+    by counting `ast.iter_child_nodes` calls on `vars = {}` at module scope
+    followed by a function of N `a{i} = vars` assignments -- a shape that
+    gate-PASSES, because the module binding exempts it only after the whole
+    function has been walked for every single read:
+
+        n=500  ->  1,265,047 node visits
+        n=2000 -> 20,060,047 node visits   (4x the input, 15.86x the work)
+
+    That is quadratic, it fits well under the 64 KiB submission cap, and it is
+    spent in `check_code_safe` BEFORE the child process and its timeout exist,
+    so it holds a sandbox worker lane rather than being charged to the job.
+    Reported by greptile on #2309.
+
+    The existing scaling tests did not catch it: both put their reads inside
+    `for vars in rows:`, where `_binds_as_own_target` exempts the Load before
+    this function is ever reached. `test_the_function_scope_binding_lookup_`
+    `stays_linear` covers the shape without that loop.
+    """
+    cache = getattr(scope, "_gate_binds_cache", None)
+    if cache is None:
+        cache = {}
+        scope._gate_binds_cache = cache
+    if name in cache:
+        return cache[name]
+    cache[name] = result = _function_scope_binds_uncached(scope, name)
+    return result
+
+
+def _function_scope_binds_uncached(scope, name: str) -> bool:
     """Does `scope` bind `name` in its own body (not inside a nested scope)?
 
     Order is irrelevant: Python makes a name bound anywhere in a function local
@@ -1039,6 +1077,31 @@ def _shadows_builtin(node, parents) -> bool:
     # below an identity check against `cur.body` instead of a walk of it.
     prev = node
     cur = parents.get(node)
+    # `global <name>` in the scope that CONTAINS this Load makes the name
+    # resolve in module globals, and Python does not consult enclosing function
+    # bindings at all in that case. The walk used to keep going anyway, so an
+    # enclosing parameter of the same name exempted the Load. Measured on this
+    # PR, gate-passed AND executed through the real builtin:
+    #
+    #     def outer(eval=1):
+    #         def inner():
+    #             global eval
+    #             return eval
+    #         return inner()
+    #     f = outer()
+    #     f("__import__('os').getuid()")
+    #
+    # `outer`'s parameter is irrelevant to `inner`'s read -- the module global
+    # `eval` is unset, so the Load falls through to the builtin. Reported by
+    # greptile on #2309.
+    #
+    # Only the FIRST genuinely-enclosing function scope decides this. An outer
+    # scope's `global` says nothing about an inner scope's reads, which is why
+    # `seen_function_scope` latches rather than re-testing at every level.
+    # `nonlocal` is deliberately NOT included: it resolves in an enclosing
+    # FUNCTION scope, so those bindings do still apply.
+    global_in_scope = False
+    seen_function_scope = False
     while cur is not None:
         # Does THIS scope actually enclose the Load at runtime? A parameter
         # default, annotation, decorator, class base or outermost comprehension
@@ -1053,7 +1116,11 @@ def _shadows_builtin(node, parents) -> bool:
         # builtin. This is what makes `for input in rows: print(input)` work at
         # module level, where the `for` itself is not an unconditional binding
         # (an empty `rows` binds nothing, so a Load AFTER the loop is refused).
-        if _binds_as_own_target(cur, node.id, prev):
+        # Suppressed once the name is a module global for this Load: an
+        # enclosing `for`/`with`/`except` target cannot shadow a global. This
+        # also declines to exempt a MODULE-level binder in that combination,
+        # which over-refuses a vanishingly rare shape in the safe direction.
+        if not global_in_scope and _binds_as_own_target(cur, node.id, prev):
             # A module-scope `for`/`with`/`except` target can be unbound by a
             # `del` in its own body -- `for eval in [1]: del eval; f = eval`
             # with the read INSIDE the body gate-passed and executed, because
@@ -1070,7 +1137,10 @@ def _shadows_builtin(node, parents) -> bool:
                 return False
             return True
         if isinstance(cur, _FUNCTION_SCOPES):
-            if _function_scope_binds(cur, node.id):
+            if not seen_function_scope:
+                seen_function_scope = True
+                global_in_scope = _declares_global(cur, node.id)
+            if not global_in_scope and _function_scope_binds(cur, node.id):
                 return True
         elif isinstance(cur, ast.Module):
             # A module-scope `del` withdraws the exemption: the binding the

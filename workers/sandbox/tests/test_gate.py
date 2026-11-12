@@ -1285,3 +1285,97 @@ class TestFrameAndMatchRoutesToBuiltins:
         """
         ok, reason = check_code_safe(code)
         assert ok is True, f"{label}: gate refused legitimate code -- {reason}"
+
+
+def test_a_global_declaration_is_not_shadowed_by_an_enclosing_parameter():
+    """`global X` resolves in module globals; enclosing FUNCTION bindings do not
+    apply, and treating one as a shadow reached the real `eval`.
+
+    Measured on #2309 before the fix: GATE-PASS, and the snippet executed
+    `__import__('os').getuid()` through the real builtin, because the module
+    global `eval` is never assigned and the Load falls through. `outer`'s
+    parameter is irrelevant to `inner`'s read -- Python does not consult it.
+    """
+    ok, reason = check_code_safe(
+        "def outer(eval=1):\n"
+        "    def inner():\n"
+        "        global eval\n"
+        "        return eval\n"
+        "    return inner()\n"
+        "f = outer()\n"
+        "f(\"__import__('os').getuid()\")\n"
+    )
+    assert ok is False
+    assert "eval" in reason
+
+
+def test_a_nonlocal_declaration_still_sees_the_enclosing_parameter():
+    """The companion direction, so the fix above is not over-broad.
+
+    `nonlocal` resolves in an enclosing FUNCTION scope, so the enclosing
+    parameter IS the binding and the read is the script's own local -- not the
+    builtin. Narrowing the new rule to `global` is what keeps this accepted;
+    had it keyed on "declares global or nonlocal" this would be refused.
+    """
+    ok, reason = check_code_safe(
+        "def outer(vars=None):\n"
+        "    def inner():\n"
+        "        nonlocal vars\n"
+        "        vars = {'n': 1}\n"
+        "        return vars['n']\n"
+        "    return inner()\n"
+        "x = outer()\n"
+    )
+    assert ok is True, reason
+
+
+def test_the_function_scope_binding_lookup_stays_linear(monkeypatch):
+    """The shape the two sibling scaling tests do NOT reach.
+
+    Both of those put their reads inside `for vars in rows:`, where
+    `_binds_as_own_target` exempts the Load before `_function_scope_binds` is
+    ever called -- so neither covered the walk that was quadratic. Here the
+    binding is at MODULE scope and the function merely READS the name N times,
+    which is the shape that cost O(N x function size): the module binding
+    exempts each read only after the whole function has been walked.
+
+    Counting `ast.iter_child_nodes` calls, not wall-clock, for the reason the
+    sibling tests record: a ratio taken from wall-clock does not cancel machine
+    load under `pytest-xdist` and broke CI once already.
+
+    Measured, n=500 -> n=2000: 1,265,047 -> 20,060,047 visits (15.86x) before
+    the fix; 15,052 -> 60,052 (3.99x) after.
+    """
+    import ast
+
+    real = ast.iter_child_nodes
+    calls = 0
+
+    def counting_iter_child_nodes(node):
+        nonlocal calls
+        calls += 1
+        return real(node)
+
+    monkeypatch.setattr(ast, "iter_child_nodes", counting_iter_child_nodes)
+
+    def visits_for(n):
+        nonlocal calls
+        body = "\n".join(f"    a{i} = vars" for i in range(n))
+        code = "vars = {}\ndef transform(rows):\n" + body + "\n    return 0\n"
+        assert len(code.encode()) < 65536, "fixture must stay a submittable size"
+        calls = 0
+        ok, reason = check_code_safe(code)
+        # It must PASS: a refusal would never reach the expensive walk, and the
+        # test would then measure nothing.
+        assert ok is True, reason
+        return calls
+
+    small = visits_for(500)
+    large = visits_for(2000)
+    assert small > 0, "the counter never fired; is the patch target still right?"
+    ratio = large / small
+    assert ratio < 8.0, (
+        f"gate checking visited {ratio:.2f}x more AST nodes for a 4x larger "
+        f"script ({small} -> {large}); the per-(scope, name) memoisation in "
+        f"_function_scope_binds has regressed to a per-read walk"
+    )
