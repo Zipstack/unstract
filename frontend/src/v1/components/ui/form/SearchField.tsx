@@ -207,6 +207,15 @@ export function SearchField({
         spreadOnChange?.(event);
       }}
       onKeyDown={handleKeyDown}
+      // A form library's setValue writes the DOM without a render, so the
+      // Clear button can be stale until the field next renders or takes focus.
+      // The Clear button refocuses the field, so pressing a stale one hides it.
+      onFocus={(event) => {
+        if (domOwned) {
+          setUncontrolled(event.currentTarget.value);
+        }
+        props.onFocus?.(event);
+      }}
       leading={<Search aria-hidden />}
       trailing={
         clearable ? (
