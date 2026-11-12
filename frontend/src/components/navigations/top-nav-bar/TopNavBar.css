@@ -40,6 +40,15 @@
   background-color: var(--accent);
 }
 
+.top-navbar-org-name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
 .top-navbar-avatar-chevron {
   width: 13px;
   height: 13px;
