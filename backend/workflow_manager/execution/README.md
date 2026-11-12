@@ -111,14 +111,19 @@ run in the organisation. Shared users who are not owners get `not_permitted`.
 
 **What abort does.** In one transaction per id:
 
-1. Sets the execution to `STOPPED` with the error `Execution aborted`, which
-   also frees an API deployment's rate-limit slot and sends the existing
-   "was stopped" inbox notice, unless the inbox item already shows a newer run.
-2. Sets its `PENDING` and `EXECUTING` file rows to `STOPPED` with the same error,
-   and stamps their execution time. Finished file rows, file history, destination
-   writes and usage are kept.
-3. Writes the run's file counts from its file rows: completed files are
+1. Sets its `PENDING` and `EXECUTING` file rows to `STOPPED` with the error
+   `Execution aborted`, and stamps their execution time. Finished file rows,
+   file history, destination writes and usage are kept.
+2. Writes the run's file counts from its file rows: completed files are
    successful, and every other file is failed.
+3. Sets the execution to `STOPPED` with the same error, which also frees an API
+   deployment's rate-limit slot and sends the existing "was stopped" inbox
+   notice, unless the inbox item already shows a newer run.
+
+`STOPPED` is written last because that write also publishes it to the Redis
+execution cache: a failure in step 1 or 2 then never caches `STOPPED`
+(`test_a_failure_before_the_stop_never_caches_stopped`). If the abort still fails
+after step 3, it rolls back and puts the stored status back in the cache.
 
 Once that commits, it:
 

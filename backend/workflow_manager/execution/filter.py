@@ -16,7 +16,7 @@ STUCK_PARAM = "stuck"
 
 def stuck_requested(query_params: Any) -> bool:
     """True when ``stuck`` parses as true, by the same rule as the filter."""
-    return BooleanWidget().value_from_datadict(query_params, None, STUCK_PARAM) is True
+    return BooleanWidget().value_from_datadict(query_params, {}, STUCK_PARAM) is True
 
 
 class ExecutionFilter(filters.FilterSet):

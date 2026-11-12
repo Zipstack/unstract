@@ -219,3 +219,7 @@ class SchemaContractTests(SimpleTestCase):
 
         list_params = {p["name"] for p in paths["/"]["get"]["parameters"]}
         self.assertIn("stuck", list_params)
+        # A list row is a plain execution, or one with stuck_since under ?stuck=true.
+        row = {"$ref": "#/components/schemas/StuckExecution"}
+        self.assertIn(row, components["ExecutionListRow"]["oneOf"])
+        self.assertIn("stuck_since", components["StuckExecution"]["properties"])
