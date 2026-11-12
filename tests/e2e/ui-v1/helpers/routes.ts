@@ -9,7 +9,7 @@ export function paramNames(pattern: string): string[] {
 }
 
 /** A final splat segment, which the registry allows (patterns.ts). */
-const SPLAT = /\/\*$/;
+const SPLAT = "/*";
 
 /**
  * `/:orgName/workflows/:id` + params -> `/org_1/workflows/42`. A final `*`
@@ -17,16 +17,18 @@ const SPLAT = /\/\*$/;
  * kept, each segment encoded, and empty when omitted.
  */
 export function fillPattern(pattern: string, params: RouteParams): string {
-  const filled = pattern
-    .replace(SPLAT, "")
-    .replace(PARAM, (_, name: string) => {
+  const hasSplat = pattern.endsWith(SPLAT);
+  const filled = (hasSplat ? pattern.slice(0, -SPLAT.length) : pattern).replace(
+    PARAM,
+    (_, name: string) => {
       const value = params[name];
       if (value === undefined) {
         throw new Error(`route ${pattern} needs a value for :${name}`);
       }
       return encodeURIComponent(value);
-    });
-  if (!SPLAT.test(pattern)) {
+    },
+  );
+  if (!hasSplat) {
     return filled;
   }
   const splat = params["*"] ?? "";
