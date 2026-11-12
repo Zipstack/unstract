@@ -160,11 +160,14 @@ repo owner's call, not a drive-by. Two reasons:
      containment, which is worse than the honest absence of it, because the
      appearance is what gets cited in a review.
   2. The exposure that matters does not depend on which path is opened.
-     ``open('/proc/<ppid>/environ')`` returns the parent's full *unscrubbed*
+     ``open('/proc/<ppid>/environ')`` returned the parent's full *unscrubbed*
      environment — including ``DB_PASSWORD`` — because ``runner.py`` spawns the
      child with no ``user=``/``group=`` and it inherits the consumer's UID. No
-     import is needed, so neither ``_ALLOWED_IMPORTS`` nor any rule below bounds
-     it. A path check here would be read as closing that, and it would not.
+     import was needed, so neither ``_ALLOWED_IMPORTS`` nor any rule below ever
+     bounded it. That read is now refused, by the consumer clearing its dumpable
+     flag at startup (``pg_queue_consumer/_bootstrap.py``) — i.e. OUTSIDE this
+     gate, in a process the gate never sees. The conclusion is unchanged: a path
+     check here would be read as having closed it, and it would not have.
 
 The containment for that is layers 2–5 plus the narrowly-scoped queue/result DB
 role tracked as **UN-4218**; see accepted residual **R12** in

@@ -160,11 +160,21 @@ known path … non-sensitive … not an exfiltration path"*, contained by a laye
 this is the text an admin signs off against, so it is corrected here independently of
 when the hardening lands:
 
-- **It reaches credentials, not a benign file.** The sandboxed child runs as the *same
-  UID* as the worker process, so `open('/proc/<ppid>/environ')` returns the worker's
-  full environment — including `DB_PASSWORD`. No import is needed: `open()` alone is
-  enough, so the allowlist (`pathlib`/`os`/`io`/`socket`/`urllib` all outside it) does
-  not bound this.
+- **It reached credentials, not a benign file — and that read is now refused.** The
+  sandboxed child runs as the *same UID* as the worker process, so
+  `open('/proc/<ppid>/environ')` returned the worker's full environment — including
+  `DB_PASSWORD`. No import was needed: `open()` alone was enough, so the allowlist
+  (`pathlib`/`os`/`io`/`socket`/`urllib` all outside it) never bounded this.
+  **Closed** by `pg_queue_consumer/_bootstrap.py`, which clears the launcher's
+  dumpable flag (`prctl(PR_SET_DUMPABLE, 0)`) before the supervisor forks: that
+  re-owns `/proc/<pid>/environ` to root, so a same-UID reader without
+  `CAP_SYS_PTRACE` is refused. Measured both ways in
+  `workers/tests/test_pg_consumer_proc_hardening.py`, whose control asserts the
+  unhardened pool still leaks. Note what this does and does not do: it protects the
+  *environment*, which is where every secret in this pod lives today (all via
+  `envFrom`; the only volume is a `/tmp` emptyDir and `automountServiceAccountToken`
+  is `false`). A secret delivered as a FILE would be readable by `open()` whatever
+  the dumpable flag says, so adding a secret volume to this pod reopens the residual.
 - **The "no secrets" invariant does not hold for this pod.** `workerPgSandbox.additionalConfigs`
   is `[database]` — on the PG transport the queue *is* Postgres, so the pod must mount
   `DB_HOST/DB_USER/DB_PASSWORD/DB_NAME`. Combined with the NetworkPolicy permitting
@@ -186,8 +196,9 @@ when the hardening lands:
   Read that block before adding to the allowlist on the strength of this test.
   **That does not make layer 1 a boundary.** It is a static check over a
   dynamic language, the closure is of the paths that exist in today's stdlib,
-  and the worst case above needs no import at all — `open()` alone reaches
-  `/proc/<ppid>/environ`.
+  and the worst case above needed no import at all — `open()` alone reached
+  `/proc/<ppid>/environ`. That one path is now closed, but it was closed
+  *outside* this gate, by the launcher process the gate never sees.
 
 **So the true worst case is credential disclosure plus database reach beyond the job's
 own input**, not disclosure of a non-sensitive container file. What still contains it is
@@ -197,8 +208,13 @@ default-deny remains load-bearing; "no secrets" must not be cited as an invarian
 this pod until the credential is actually removed from it.
 
 Required mitigation (not deferred): a narrowly-scoped queue/result DB role, so the
-credential the pod carries cannot read beyond its own job — tracked as **UN-4218**,
-alongside `/proc` hardening and a distinct UID per child. A numeric `runAsUser` was
+credential the pod carries cannot read beyond its own job — tracked as **UN-4218**.
+`/proc` hardening is **done** (see the bullet above); it blocks the *disclosure* of
+the credential but does not remove it from the pod, so UN-4218 is still required. A
+distinct UID per child is **not available** on this pod: it runs `runAsNonRoot` with
+`capabilities.drop: [ALL]` and `allowPrivilegeEscalation: false`, so `setuid` has no
+`CAP_SETUID` to call and `Popen(user=…)` would fail. Granting that capability to the
+pod that executes untrusted code would cost more than the separation buys. A numeric `runAsUser` was
 also on this list and is **done on the chart branch** -- a FORWARD REFERENCE, like the
 `AKV-Q5b` citation in `backend/agent_kv/constants.py`, and marked as one here:
 `workerPgSandbox.securityContext.runAsUser` is 999 at both pod and container level in
