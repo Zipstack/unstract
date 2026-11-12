@@ -66,9 +66,12 @@ def workflow_filter_from(params: QueryDict) -> str | None:
 
 
 class StatusCountsSerializer(serializers.Serializer):
-    """Rows per status. The four always sum to `total`."""
+    """Rows per status. They always sum to `total`."""
 
     success = serializers.IntegerField()
+    partial_success = serializers.IntegerField(
+        help_text="The latest finished run completed with some files failed."
+    )
     error = serializers.IntegerField()
     never_run = serializers.IntegerField()
     inactive = serializers.IntegerField()

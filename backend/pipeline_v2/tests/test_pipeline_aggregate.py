@@ -176,7 +176,13 @@ class PipelineAggregateTests(AggregateRouteChecks, _PipelineRows, TestCase):
         self.assertEqual(summary["total"], 5)
         self.assertEqual(
             summary["by_status"],
-            {"success": 1, "error": 2, "never_run": 1, "inactive": 1},
+            {
+                "success": 1,
+                "partial_success": 0,
+                "error": 2,
+                "never_run": 1,
+                "inactive": 1,
+            },
         )
         self.assertEqual(self._aggregate(type=TASK)["total"], 2)
 

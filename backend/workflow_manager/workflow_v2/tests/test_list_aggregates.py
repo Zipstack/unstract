@@ -35,6 +35,7 @@ from workflow_manager.workflow_v2.tests.list_rows import (
     STOPPED,
     ListRowsSeed,
 )
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 
 class StatusRuleTests(ListRowsSeed, TestCase):
@@ -61,11 +62,23 @@ class StatusRuleTests(ListRowsSeed, TestCase):
         self.assertEqual(self._status_of(recovered), RowStatus.SUCCESS)
         self.assertEqual(self._status_of(broken), RowStatus.ERROR)
 
-    def test_a_partly_failed_run_is_a_success(self) -> None:
-        row = self._deployment("partial")
-        self._runs(row, [COMPLETED], successful_files=1, failed_files=2)
+    def test_a_completed_run_follows_its_file_results(self) -> None:
+        """Partial success agrees with the card's pill for the same run."""
+        cases = [
+            (COMPLETED, 3, 0, "COMPLETED", RowStatus.SUCCESS),
+            (COMPLETED, None, None, "COMPLETED", RowStatus.SUCCESS),
+            (COMPLETED, 1, 2, "PARTIAL_SUCCESS", RowStatus.PARTIAL_SUCCESS),
+            (COMPLETED, 0, 2, "COMPLETED", RowStatus.ERROR),
+            (ERROR, 1, 2, "ERROR", RowStatus.ERROR),
+        ]
+        for run, successful, failed, pill, status in cases:
+            with self.subTest(run=run, successful=successful, failed=failed):
+                row = self._deployment(f"{run} {successful} {failed}")
+                self._runs(row, [run], successful_files=successful, failed_files=failed)
 
-        self.assertEqual(self._status_of(row), RowStatus.SUCCESS)
+                (latest,) = WorkflowExecution.get_last_run_statuses(row.pk)
+                self.assertEqual(latest["status"], pill)
+                self.assertEqual(self._status_of(row), status)
 
     def test_a_stopped_run_is_an_error(self) -> None:
         row = self._deployment("stopped")
@@ -83,6 +96,7 @@ class StatusRuleTests(ListRowsSeed, TestCase):
 
     def test_counts_cover_every_row_once(self) -> None:
         self._runs(self._deployment("a"), [COMPLETED])
+        self._runs(self._deployment("p"), [COMPLETED], successful_files=1, failed_files=1)
         self._runs(self._deployment("b"), [ERROR])
         self._runs(self._deployment("c"), [STOPPED])
         self._deployment("d")
@@ -91,7 +105,8 @@ class StatusRuleTests(ListRowsSeed, TestCase):
         counts = count_by_status(APIDeployment.objects.all(), DEPLOYMENT_ROW_FIELDS)
 
         self.assertEqual(
-            counts, StatusCounts(success=1, error=2, never_run=1, inactive=1)
+            counts,
+            StatusCounts(success=1, partial_success=1, error=2, never_run=1, inactive=1),
         )
         self.assertEqual(counts.total, APIDeployment.objects.count())
 

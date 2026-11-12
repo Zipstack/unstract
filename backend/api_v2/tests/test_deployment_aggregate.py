@@ -96,7 +96,13 @@ class DeploymentAggregateTests(AggregateRouteChecks, ListRowsSeed, TestCase):
         self.assertEqual(summary["total"], 5)
         self.assertEqual(
             summary["by_status"],
-            {"success": 1, "error": 2, "never_run": 1, "inactive": 1},
+            {
+                "success": 1,
+                "partial_success": 0,
+                "error": 2,
+                "never_run": 1,
+                "inactive": 1,
+            },
         )
 
     def test_each_caller_counts_only_what_it_can_see(self) -> None:

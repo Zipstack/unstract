@@ -5,8 +5,9 @@ always matches the list filtered the same way.
 
 A row's status comes from its latest finished run (COMPLETED, STOPPED or
 ERROR); PENDING and EXECUTING runs are skipped. ``inactive`` wins over the run.
-STOPPED counts as ``error``, as the run callback reports it as a failure. A
-COMPLETED run counts as ``success`` even when some of its files failed.
+A COMPLETED run is ``partial_success`` when some files failed and some
+succeeded, as on the row's card, and ``error`` when every file failed. STOPPED
+counts as ``error``, as the run callback reports it as a failure.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from django.db.models import (
     Value,
     When,
 )
+from django.db.models.functions import Coalesce
 from permissions.roles import ResourceRole
 from tenant_account_v2.sharing_helpers import resources_visible_via_memberships
 
@@ -49,6 +51,7 @@ class RowStatus(StrEnum):
     """A row's status in the list."""
 
     SUCCESS = "success"
+    PARTIAL_SUCCESS = "partial_success"
     ERROR = "error"
     NEVER_RUN = "never_run"
     INACTIVE = "inactive"
@@ -79,13 +82,20 @@ class StatusCounts:
     """Rows per ``RowStatus``."""
 
     success: int = 0
+    partial_success: int = 0
     error: int = 0
     never_run: int = 0
     inactive: int = 0
 
     @property
     def total(self) -> int:
-        return self.success + self.error + self.never_run + self.inactive
+        return (
+            self.success
+            + self.partial_success
+            + self.error
+            + self.never_run
+            + self.inactive
+        )
 
 
 @dataclass(frozen=True)
@@ -102,19 +112,33 @@ class ListAggregate:
         return self.by_status.total
 
 
+def _run_status() -> Case:
+    """A finished run's ``RowStatus`` value."""
+    completed = Q(status=_SUCCEEDED)
+    return Case(
+        When(
+            WorkflowExecution.partial_success(),
+            then=Value(RowStatus.PARTIAL_SUCCESS.value),
+        ),
+        When(completed & Q(failed_files__gt=0), then=Value(RowStatus.ERROR.value)),
+        When(completed, then=Value(RowStatus.SUCCESS.value)),
+        When(status__in=_ERRORED, then=Value(RowStatus.ERROR.value)),
+        output_field=CharField(),
+    )
+
+
 def with_status(rows: QuerySet[Any], fields: RowFields) -> QuerySet[Any]:
     """Annotate each row's ``RowStatus`` value as ``_row_status``."""
     latest_finished = (
         WorkflowExecution.objects.filter(pipeline_id=OuterRef("pk"), status__in=_FINISHED)
         .order_by("-created_at")
-        .values("status")[:1]
+        .values(run_status=_run_status())[:1]
     )
-    return rows.annotate(_latest_finished=Subquery(latest_finished)).annotate(
+    never_run = Value(RowStatus.NEVER_RUN.value)
+    return rows.annotate(
         _row_status=Case(
             When(**{fields.active: False}, then=Value(RowStatus.INACTIVE.value)),
-            When(_latest_finished=_SUCCEEDED, then=Value(RowStatus.SUCCESS.value)),
-            When(_latest_finished__in=_ERRORED, then=Value(RowStatus.ERROR.value)),
-            default=Value(RowStatus.NEVER_RUN.value),
+            default=Coalesce(Subquery(latest_finished), never_run),
             output_field=CharField(),
         )
     )

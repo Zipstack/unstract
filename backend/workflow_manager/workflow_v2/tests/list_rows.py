@@ -210,6 +210,15 @@ class AggregateRouteChecks:
         row = self.contract["$defs"]["failingRow"]["properties"]
         self.assertEqual(row["failures_in_a_row"]["minimum"], FAILING_STREAK_RUNS)
 
+    def test_a_partly_failed_latest_run_has_its_own_status(self: Any) -> None:
+        self._runs(self.ok, [COMPLETED], hours_ago=1, successful_files=1, failed_files=1)
+        listed = self._list(status="partial_success")["results"]
+
+        self.assertEqual([str(row["id"]) for row in listed], [str(self.ok.pk)])
+        self.assertEqual(self._aggregate()["by_status"]["partial_success"], 1)
+        cases: list[dict[str, Any]] = [{}, {"status": "partial_success"}]
+        self.assertEqual(self._mismatches_with_the_list(cases), [])
+
     def test_detail_routes_ignore_the_list_filters(self: Any) -> None:
         for params in ({"status": "error"}, {"status": "bogus"}, {"failing": "true"}):
             with self.subTest(**params):

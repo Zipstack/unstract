@@ -19,6 +19,7 @@
       "type": "object",
       "required": [
         "success",
+        "partial_success",
         "error",
         "never_run",
         "inactive"
@@ -26,6 +27,10 @@
       "additionalProperties": false,
       "properties": {
         "success": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "partial_success": {
           "type": "integer",
           "minimum": 0
         },
