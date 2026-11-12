@@ -482,8 +482,12 @@ def held(slug, repo, branch, accept=HELD, cache=None, token=None):
     print(
         f"held: {len(commits)} main commit(s) since the cut of {branch}, {looked} fix_class lookup(s)"
     )
-    # A decline carries the same trailer as a pick, so one grep covers both.
-    trailers = {
+    return held_filter(commits, classes, _trailers(repo, base, remote), accept)
+
+
+def _trailers(repo, base, remote):
+    """Main commits the line's pick trailers name. A decline carries the same trailer as a pick, so one grep covers both."""
+    return {
         o
         for c in rm.git(
             repo,
@@ -495,7 +499,65 @@ def held(slug, repo, branch, accept=HELD, cache=None, token=None):
         ).split()
         for o in rm.picked_from(repo, c)
     }
-    return held_filter(commits, classes, trailers, accept)
+
+
+REVERTS_ANY_RE = re.compile(r"^(?:\* )?This reverts commit ([0-9a-f]{7,40})", re.M)
+
+
+def declared(slug, repo, branch, token=None):
+    """[(number, title)] of merged main PRs whose body declares `Backport-also: X.Y` for this line and whose merge
+    commit, first-parent on main since the cut, is neither picked nor declined there, nor reverted on main.
+    A failed listing raises: it never reads as nothing declared.
+    """
+    line = branch.removeprefix("release/")
+    remote = f"origin/{branch}"
+    base = rm.git(repo, "merge-base", MAIN, remote)
+    since = rm.git(repo, "log", "-1", "--format=%cs", base)
+    # Known limit: search stops at 1000 results; a PR past it is missed (no block), never wrongly blocked.
+    prs = json.loads(
+        gh(
+            "pr",
+            "list",
+            "-R",
+            slug,
+            "--state",
+            "merged",
+            "--base",
+            "main",
+            "--search",
+            f"merged:>={since}",
+            "--limit",
+            "1000",
+            "--json",
+            "number,title,body,mergeCommit",
+            token=token,
+        )
+    )
+    mine = [
+        p for p in prs if p.get("mergeCommit") and line in rm.declared_lines(p["body"])
+    ]
+    if not mine:
+        return []
+    commits = set(
+        rm.git(repo, "log", "--first-parent", "--format=%H", f"{base}..{MAIN}").split()
+    )
+    # A revert names the commit (a squash lists it under "* "), or GitHub's revert PR title quotes the PR's title.
+    reverted = set(
+        REVERTS_ANY_RE.findall(rm.git(repo, "log", "--format=%B", f"{base}..{MAIN}"))
+    )
+    reverted_titles = {
+        m[1].strip()
+        for s in rm.git(repo, "log", "--format=%s", f"{base}..{MAIN}").splitlines()
+        if (m := rm.REVERT_RE.match(s))
+    }
+    done = _trailers(repo, base, remote) | reverted
+    return [
+        (p["number"], p["title"])
+        for p in mine
+        if (c := p["mergeCommit"]["oid"]) in commits
+        and not any(c.startswith(t) for t in done)
+        and p["title"].strip() not in reverted_titles
+    ]
 
 
 def backport_head(branch, sha):

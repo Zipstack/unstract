@@ -37,6 +37,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
           BASE: ${{ github.base_ref }}
+          BODY: ${{ github.event.pull_request.body }}
         run: |
           if [ ! -f .github/release/relmgr.py ]; then
             echo "::notice title=Lint PR::skipped: main has no .github/release/relmgr.py yet"
@@ -50,6 +51,11 @@ jobs:
           import json, os, sys
           sys.path.insert(0, ".github/release")
           import relmgr
+          try:  # advisory: main may predate the advice command, and it must never break this check
+              import label_advice as la
+          except Exception as e:
+              print(f"::notice title=Lint PR::label advice unavailable: {e}")
+              la = None
 
           title, labels = os.environ["TITLE"], json.loads(os.environ["LABELS"])
           summary = open(os.environ["GITHUB_STEP_SUMMARY"], "a")
@@ -62,15 +68,26 @@ jobs:
           # Also when the title failed, so one run names every error.
           if refusal := relmgr.release_only_refusal(os.environ["BASE"], labels):
               errors.append(refusal)
+          if la:
+              errors += la.body_errors(os.environ["BODY"])
+          slug, pr = os.environ["GITHUB_REPOSITORY"], int(os.environ["PR"])
+
+          def lookup_advice(**kw):  # advisory only: a failed lookup never fails or passes the PR
+              try:
+                  return la.advise_pr(slug, pr, **kw) if la else None
+              except Exception as e:
+                  print(f"::notice title=Lint PR::label advice unavailable: {e}")
+                  return None
           if errors:
+              adv = lookup_advice()
               menu = "" if os.environ["BASE"].startswith("release/") else (
                      "A PR into main needs exactly one of these labels; the title type does not choose it:\n"
                      "- `backport/rc`: also copy it to the release lines still awaiting GA.\n"
                      "- `backport/ga`: also copy it to released lines; each released-line pick is confirmed before Promote.\n"
                      "- `main-only`: keep it on main only.\n"
                      "A revert takes the label of the PR it reverts.\n")
-              # Label advice: printed between the errors and the label menu. Empty until the advice command lands.
-              advice = ""
+              # Label advice: printed between the errors and the label menu.
+              advice = f"Advice: {la.render(adv)}\n" if adv else ""
               msg = ("\n".join(errors) + "\n" + advice + menu +
                      "Title: `[TYPE] text` or `TICKET [TYPE] text` (e.g. `ABC-123 [FIX] ...`).")
               print("::error title=Lint PR::" + msg.replace("\n", "%0A"))  # workflow commands end at a raw newline
@@ -79,6 +96,12 @@ jobs:
           print(f"class={cls}")
           open(os.environ["GITHUB_OUTPUT"], "a").write(f"class={cls}\n")
           summary.write(f"### Lint PR\n\nBackport class: `{cls}`\n")
+          # Only a decided result is checked: a suggestion is the author's call.
+          adv = lookup_advice(need_ga=False)
+          if adv and adv["result"] == "decided" and adv["label"] and adv["label"] not in labels:
+              warn = f"the advice is `{adv['label']}` ({adv['reason']}); this PR has {', '.join(labels) or 'no label'}"
+              print(f"::warning title=Lint PR::{warn}")
+              summary.write(f"\n⚠ {warn}\n")
           if cls != "none":
               summary.write("\nKeep this PR to the fix; a bundled fix cannot be cherry-picked.\n")
           PY

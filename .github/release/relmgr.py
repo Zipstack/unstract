@@ -26,6 +26,10 @@ DECLINED_RE = re.compile(r"^Declined: (.+)$", re.M)
 # Match with fullmatch.
 BACKPORT_HEAD_RE = re.compile(r"backport/(\d+\.\d+)/([0-9a-f]{7})")
 LINE_RE = re.compile(r"[0-9]+\.[0-9]+")
+# `Backport-also: X.Y` on its own line in a PR body: the fix is owed to release/X.Y although its label does not
+# reach that line (a line GA for cloud but not yet for on-prem). Anything else that names it is malformed.
+DECLARE_RE = re.compile(r"^Backport-also: (\d+\.\d+)[ \t]*$", re.M)
+_DECLARE_ANY_RE = re.compile(r"^[ \t>*-]*backport[ \t_-]*also[ \t]*:.*$", re.I | re.M)
 
 
 def line(value):
@@ -37,6 +41,19 @@ def line(value):
     if not LINE_RE.fullmatch(v):
         raise ValueError(f"not a release line X.Y (e.g. 0.186): {value!r}")
     return v
+
+
+def declared_lines(body):
+    """The release lines X.Y a PR body declares with `Backport-also: X.Y`."""
+    return set(DECLARE_RE.findall((body or "").replace("\r", "")))
+
+
+def declaration_errors(body):
+    """Body lines that try to declare a line but are not exactly `Backport-also: X.Y`."""
+    body = (body or "").replace("\r", "")
+    return [
+        m.strip() for m in _DECLARE_ANY_RE.findall(body) if not DECLARE_RE.fullmatch(m)
+    ]
 
 
 def vtag(value):

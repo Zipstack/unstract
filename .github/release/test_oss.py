@@ -893,6 +893,8 @@ urllib.request.urlopen = _urlopen
         with open(os.path.join(bin_, "gh"), "w") as fh:
             fh.write(f"""#!/bin/sh
 case "$*" in
+  "pr list -R "*"--state merged"*) echo "$GH_TOKEN $*" >> {d}/gh.log; [ -e {d}/mergedfail ] && exit 1
+    cat "{d}/merged-$(echo "$4" | tr / _).json" 2>/dev/null || echo "[]";;
   "pr list -R "*) echo "$GH_TOKEN $*" >> {d}/gh.log; [ -e {d}/prfail ] && exit 1
     cat "{d}/$(echo "$4" | tr / _).json" 2>/dev/null || echo "[]";;
   *"/pulls"*) echo "$GH_TOKEN $*" >> {d}/gh.log; [ -e {d}/pullsfail ] && exit 1
@@ -3128,6 +3130,80 @@ class PendingPicksWorkflow(Workflow):
             r.stdout,
         )
 
+    def test_take_rc_blocks_on_prem_on_a_declared_fix_unless_forced(self):
+        self.line("1.7")
+        rows = {}
+        for name, slug, n in (
+            ("cloud", "Zipstack/unstract-cloud", 11),
+            ("oss", oss.OSS, 12),
+        ):
+            work = self.repos[name][1]
+            dev_git(work, "pull", "-q", "origin", "main")
+            dev_git(work, "commit", "-q", "--allow-empty", "-m", f"[FIX] declared (#{n})")
+            dev_git(work, "push", "-q", "origin", "main")
+            dev_git(work, "fetch", "-q", "origin")
+            sha = rm.git(work, "rev-parse", "HEAD")
+            rows[slug] = [
+                {
+                    "number": n,
+                    "title": "[FIX] declared",
+                    "body": "Backport-also: 1.7\r\n",
+                    "mergeCommit": {"oid": sha},
+                }
+            ]
+            self.write(f"merged-{slug.replace('/', '_')}.json", json.dumps(rows[slug]))
+        dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
+        script = inline("take-rc-build.yaml", "Plan checks")
+        r = self.run_step(script, BRANCH="release/1.7", TARGETS="cloud")
+        self.assertEqual(
+            r.returncode, 0, r.stdout + r.stderr
+        )  # a declaration holds on-prem builds only
+        r = self.run_step(script, BRANCH="release/1.7", TARGETS="cloud,on-prem")
+        self.blocked(r, "::error::declared fixes not yet on release/1.7")
+        summary = self.read("summary")
+        for slug, n in (("Zipstack/unstract-cloud", 11), (oss.OSS, 12)):
+            self.assertIn(
+                f"- {slug}#{n} [FIX] declared: pick it with `gh workflow run backport.yaml -R {slug} "
+                f"-f commits={n} -f lines=1.7 -f patch_released_lines=true`, or remove the "
+                f"`Backport-also: 1.7` line from PR #{n} if the fix is no longer needed",
+                summary,
+            )
+        self.assertIn(
+            "**Next:** pick each fix or remove its declaration, then run Take RC build again",
+            summary,
+        )
+        self.assertIn(
+            "oss-token pr list -R Zipstack/unstract --state merged", self.read("gh.log")
+        )
+        r = self.run_step(
+            script,
+            BRANCH="release/1.7",
+            TARGETS="on-prem",
+            FORCE="true",
+            REASON="customer ask",
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        notes = self.read("notes.md")
+        self.assertIn("Zipstack/unstract-cloud#11 [FIX] declared", notes)
+        self.assertIn("Forced: customer ask", notes)
+        self.write("mergedfail", "")
+        r = self.run_step(script, BRANCH="release/1.7", TARGETS="on-prem")
+        self.blocked(r, "::error::cannot list declared fixes")
+        self.assertIn(
+            "**Next:** retry Take RC build once GitHub answers", self.read("summary")
+        )
+        r = self.run_step(
+            script,
+            BRANCH="release/1.7",
+            TARGETS="on-prem",
+            FORCE="true",
+            REASON="gh down",
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(
+            "::warning::\n⚠ Declared fixes: unchecked, the listing failed", r.stdout
+        )
+
     def test_take_rc_passes_a_line_without_conflict_prs(self):
         self.line("1.7")
         dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
@@ -4348,15 +4424,32 @@ elif a[:2] in (["release", "edit"], ["release", "create"]):
 class LintPrStep(unittest.TestCase):
     """The Classify PR step judges each PR against its own base."""
 
-    def classify(self, title, labels, base, gh_exit=0):
-        """labels: what the API returns now; the event payload's labels are a stale decoy."""
+    def classify(self, title, labels, base, gh_exit=0, body="", files=(), files_exit=0):
+        """labels: what the API returns now; the event payload's labels are a stale decoy. files: the PR's files,
+        in the pulls files API's shape; the advice reads them and the PR itself.
+        """
         with tempfile.TemporaryDirectory() as d:
-            with open(
-                os.path.join(d, "gh"), "w"
-            ) as fh:  # fake gh: the issue labels API, jq already applied
-                fh.write(
-                    f'#!/bin/sh\necho "$*" >> "{d}/calls"\necho \'{json.dumps(labels)}\'\nexit {gh_exit}\n'
-                )
+            pr = {
+                "base": {"ref": base},
+                "head": {"ref": "dev"},
+                "title": title,
+                "labels": [{"name": n} for n in labels],
+            }
+            for name, data in (("labels", labels), ("pr", pr), ("files", [list(files)])):
+                with open(os.path.join(d, name), "w") as fh:
+                    json.dump(data, fh)
+            with open(os.path.join(d, "gh"), "w") as fh:  # fake gh, jq already applied
+                fh.write(f"""#!/bin/sh
+echo "$*" >> "{d}/calls"
+case "$*" in
+  *"/issues/7/labels"*) cat "{d}/labels"; exit {gh_exit};;
+  *"/pulls/7/files"*) cat "{d}/files"; exit {files_exit};;
+  *"/pulls/7") cat "{d}/pr";;
+  *"/branches?per_page=100 --jq .[].name") echo release/0.186;;
+  *"/git/trees/release/0.186?recursive=1") echo '{{"truncated": false, "tree": [{{"path": "backend/x.py"}}]}}';;
+  *) exit 1;;
+esac
+""")
             os.chmod(os.path.join(d, "gh"), 0o755)
             r = subprocess.run(
                 ["bash", "-e", "-c", step("lint-pr.yaml", "Classify PR")],
@@ -4366,9 +4459,10 @@ class LintPrStep(unittest.TestCase):
                     "PATH": f"{d}:{os.environ['PATH']}",
                     "TITLE": title,
                     "LABELS": json.dumps(["main-only", "backport/rc"]),
-                    "GITHUB_REPOSITORY": "o/r",
+                    "GITHUB_REPOSITORY": "Zipstack/unstract-cloud",
                     "PR": "7",
                     "BASE": base,
+                    "BODY": body,
                     "GITHUB_STEP_SUMMARY": os.path.join(d, "summary"),
                     "GITHUB_OUTPUT": os.path.join(d, "output"),
                 },
@@ -4377,10 +4471,71 @@ class LintPrStep(unittest.TestCase):
             )
             with open(os.path.join(d, "calls")) as fh:
                 self.assertEqual(
-                    fh.read(),
-                    "api repos/o/r/issues/7/labels?per_page=100 --jq [.[].name]\n",
+                    fh.readline(),
+                    "api repos/Zipstack/unstract-cloud/issues/7/labels?per_page=100 --jq [.[].name]\n",
                 )
             return r.returncode, r.stdout
+
+    def test_a_decided_label_differing_warns_only(self):
+        docs = [{"filename": "docs/x.md"}, {"filename": ".github/workflows/y.yaml"}]
+        rc, out = self.classify("UN-1 [FIX] x", ["backport/rc"], "main", files=docs)
+        self.assertEqual(rc, 0, out)
+        self.assertIn(
+            "::warning title=Lint PR::the advice is `main-only` (only docs, tests or repo tooling change; "
+            "none ships); this PR has backport/rc",
+            out,
+        )
+        self.assertEqual(
+            self.classify("UN-1 [FIX] x", ["main-only"], "main", files=docs),
+            (0, "class=none\n"),
+        )
+        rc, out = self.classify("UN-1 [FIX] x", [], "release/0.186")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("::warning title=Lint PR::the advice is `release-branch-only`", out)
+
+    def test_a_suggestion_is_never_checked(self):
+        # The code is on release/0.186, so the advice only suggests backport/rc: main-only is the author's call.
+        rc, out = self.classify(
+            "UN-1 [FIX] x", ["main-only"], "main", files=[{"filename": "backend/x.py"}]
+        )
+        self.assertEqual((rc, out), (0, "class=none\n"))
+
+    def test_a_failed_advice_lookup_neither_fails_nor_warns(self):
+        rc, out = self.classify("UN-1 [FIX] x", ["main-only"], "main", files_exit=1)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("::notice title=Lint PR::label advice unavailable", out)
+        self.assertNotIn("::warning", out)
+
+    def test_a_malformed_declaration_fails(self):
+        rc, out = self.classify(
+            "UN-1 [FIX] x",
+            ["main-only"],
+            "main",
+            body="x\r\nBackport-also: release/0.186\r\n",
+        )
+        self.assertEqual(rc, 1, out)
+        self.assertIn(
+            "::error title=Lint PR::malformed `Backport-also: release/0.186`: write exactly "
+            "`Backport-also: X.Y`",
+            out,
+        )
+        self.assertEqual(
+            self.classify(
+                "UN-1 [FIX] x", ["main-only"], "main", body="Backport-also: 0.186\r\n"
+            ),
+            (0, "class=none\n"),
+        )
+
+    def test_a_missing_label_prints_the_advice(self):
+        rc, out = self.classify(
+            "UN-1 [FIX] x", [], "main", files=[{"filename": "docs/x.md"}]
+        )
+        self.assertEqual(rc, 1, out)
+        self.assertIn(
+            "%0AAdvice: #7: decided `main-only` — only docs, tests or repo tooling change; none ships%0A"
+            "  apply: gh api repos/Zipstack/unstract-cloud/issues/7/labels -f 'labels[]=main-only'%0A",
+            out,
+        )
 
     def test_the_newest_event_run_reports(self):
         with open(os.path.join(HERE, "..", "workflows", "lint-pr.yaml")) as fh:
@@ -4425,9 +4580,9 @@ class LintPrStep(unittest.TestCase):
         )
 
     def test_a_release_pr_needs_none_and_refuses_main_only(self):
-        self.assertEqual(
-            self.classify("UN-1 [FIX] x", [], "release/0.186"), (0, "class=none\n")
-        )
+        rc, out = self.classify("UN-1 [FIX] x", [], "release/0.186")
+        self.assertEqual(rc, 0, out)  # the label advice only warns
+        self.assertTrue(out.startswith("class=none\n"), out)
         rc, out = self.classify("UN-1 [FIX] x", ["main-only"], "release/0.186")
         self.assertEqual(rc, 1, out)
         self.assertIn("label `main-only` is for PRs into main", out)
