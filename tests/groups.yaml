@@ -362,11 +362,13 @@ groups:
   frontend-v1-e2e:
     # Playwright over the v1 pages: one spec per page task in specs/, the
     # P8-T01 journeys in journeys/. Self-contained like `ui` (own package.json,
-    # lock and Playwright). Tests run, skip or fail by their distribution tag
-    # against UNSTRACT_DISTRIBUTION (default oss); see
-    # tests/e2e/ui-v1/fixtures/tags.ts.
-    # Gating: ci-test.yaml's e2e job installs its node_modules and browser, so
-    # a red run fails the build like any e2e group.
+    # lock and Playwright). Tests tagged for UNSTRACT_DISTRIBUTION (default
+    # oss) run, tests tagged only for another are not collected, and untagged
+    # ones fail; see tests/e2e/ui-v1/fixtures/tags.ts.
+    # Gating in OSS CI: ci-test.yaml's e2e job installs its node_modules and
+    # browser, so a red run fails the build. Locally, install them first
+    # (tests/e2e/ui-v1/README.md). Like every Node group, it reads as skipped
+    # (exit 5) on a machine with no `npx` at all.
     tier: e2e
     runner: playwright
     workdir: tests/e2e/ui-v1

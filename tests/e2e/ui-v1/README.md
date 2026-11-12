@@ -7,13 +7,18 @@ rig group, so v1 results never mix with v0's (D10, constraint 12).
 ## Run
 
 ```bash
-# Through the rig, as CI runs it (boots the platform, e2e-smoke first)
-tox -e e2e
-
-# Standalone against a running stack
+# Once: the suite's own dependencies and a browser. The group gates the
+# build, so without these the rig reports it red, not skipped.
 cd tests/e2e/ui-v1
 bun install --frozen-lockfile
 bunx playwright install chromium
+
+# Through the rig, as CI runs it (boots the platform, e2e-smoke first).
+# The stack needs a frontend image built with VITE_V1_DEV_ROUTES=true, as
+# ci-test.yaml builds it; a release image has no demo pages.
+tox -e e2e
+
+# Standalone against a running stack
 UNSTRACT_FRONTEND_URL=http://localhost:3000 UNSTRACT_BACKEND_URL=http://localhost:8000 bunx playwright test
 
 bun run lint && bun run typecheck
@@ -77,7 +82,7 @@ test.describe("P4-T01 API Deployments", { tag: DIST.both }, () => {
 | `expectAccessible` | axe scan, WCAG 2.0/2.1 A+AA, fails at or above the impact level |
 | `forEachTheme` | Repeats a check in Light, Dark and Unstract |
 | `expectV0RedirectsToV1` | A v0 URL lands on the mapped v1 route |
-| `expectOldVersionRoundTrip` | Human Review (page 11) only: old-version preference on and off, for `session.userId` |
+| `expectOldVersionRoundTrip` | Toggle pages only (Human Review, page 11, and its demo stand-in): old-version preference on and off, for `session.userId` |
 
 ## Where the harness meets the frontend
 
