@@ -10,7 +10,7 @@ reported as usage.
 
 Providers turn known relations into named, routable items. Any direct
 ``PROTECT``/``RESTRICT`` relation no provider claims is still reported, in the
-``other`` group, so a profile the guard refuses is never reported as unused.
+``other`` group. README.md states the rule with its exceptions.
 """
 
 from __future__ import annotations
@@ -208,35 +208,40 @@ def _derived_refs(index: dict[Any, ProfileUsage]) -> None:
                 workflow_refs.setdefault(str(ref.pk), []).append((usage, ref))
     if not workflow_refs:
         return
-
-    deployments = APIDeployment._base_manager.filter(
-        workflow_id__in=workflow_refs
-    ).values_list("id", "display_name", "workflow_id")
-    for pk, name, workflow_id in deployments:
-        for usage, workflow_ref in workflow_refs[str(workflow_id)]:
-            usage.add(
-                Reference(
-                    group=UsageGroup.DEPLOYMENTS,
-                    item_type=ItemType.API_DEPLOYMENT,
-                    model=APIDeployment,
-                    pk=pk,
-                    name=name,
-                    role=workflow_ref.role,
-                    blocks_delete=False,
-                    direct=False,
-                )
-            )
-
-    pipelines = Pipeline._base_manager.filter(workflow_id__in=workflow_refs).values_list(
-        "id", "pipeline_name", "workflow_id"
+    _add_workflow_children(
+        workflow_refs,
+        APIDeployment,
+        "display_name",
+        UsageGroup.DEPLOYMENTS,
+        ItemType.API_DEPLOYMENT,
     )
-    for pk, name, workflow_id in pipelines:
+    _add_workflow_children(
+        workflow_refs,
+        Pipeline,
+        "pipeline_name",
+        UsageGroup.PIPELINES,
+        ItemType.PIPELINE,
+    )
+
+
+def _add_workflow_children(
+    workflow_refs: dict[str, list[tuple[ProfileUsage, Reference]]],
+    model: type[Model],
+    name_field: str,
+    group: str,
+    item_type: str,
+) -> None:
+    """Add the ``model`` rows of each workflow, listed but not counted."""
+    rows = model._base_manager.filter(workflow_id__in=workflow_refs).values_list(
+        "id", name_field, "workflow_id"
+    )
+    for pk, name, workflow_id in rows:
         for usage, workflow_ref in workflow_refs[str(workflow_id)]:
             usage.add(
                 Reference(
-                    group=UsageGroup.PIPELINES,
-                    item_type=ItemType.PIPELINE,
-                    model=Pipeline,
+                    group=group,
+                    item_type=item_type,
+                    model=model,
                     pk=pk,
                     name=name,
                     role=workflow_ref.role,

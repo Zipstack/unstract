@@ -153,7 +153,8 @@ the delete guard refuses on, with the exceptions listed under the table.
   per request. The database first narrows the organisation's tool instances
   to those with a string value in `metadata` equal to an adapter's id or name
   (an equality test Postgres 14+ can hash, so the cost barely grows with the
-  number of adapters); only those rows are sent back and walked.
+  number of adapters); only the matched strings are sent back, not the
+  whole `metadata`.
 
 ## Adding references from another app
 

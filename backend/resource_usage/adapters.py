@@ -2,48 +2,35 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Sequence
 from typing import Any
 
 from django.contrib.postgres.fields import ArrayField
-from django.db.models import BooleanField, F, Func, Q, TextField, Value
+from django.db.models import F, Func, Q, TextField, Value
 
 from resource_usage.constants import OTHER_GROUP, ItemType, ProfileKind, UsageGroup
 from resource_usage.references import Reference, register_provider, relation_label
 
 
-def string_leaves(value: Any) -> Iterator[str]:
-    """Every string nested anywhere in a JSON value.
+class _StringLeavesIn(Func):
+    """The distinct strings anywhere in a JSON value that equal one of ``needles``.
 
-    Walks values the way ``AdapterInstanceViewSet._adapter_used_in_tool_instance``
-    does: dict values (not keys), list items, and strings; anything else is
-    skipped. A test holds the two to the same answer.
-    """
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, dict):
-        for item in value.values():
-            yield from string_leaves(item)
-    elif isinstance(value, list):
-        for item in value:
-            yield from string_leaves(item)
-
-
-class _HasStringLeafIn(Func):
-    """True when any string anywhere in a JSON value equals one of ``needles``.
-
-    Reads the JSON the way the delete guard walks it (object values and array
-    items, never keys) and compares by equality. Postgres 14+ can hash that
-    test for a constant array (psycopg2 sends the list inline), so the cost
-    barely grows with the number of needles.
-    Renders ``EXISTS (SELECT 1 FROM jsonb_path_query(<json>, <strings>) AS
-    leaf WHERE leaf #>> '{}' = ANY(<needles>))``: the joiner sits between the
-    two arguments.
+    Reads the JSON the way the delete guard walks it
+    (``AdapterInstanceViewSet._adapter_used_in_tool_instance``): object values
+    and array items, never keys, compared by equality. Postgres 14+ can hash
+    that test for a constant array (psycopg2 sends the list inline), so the
+    cost barely grows with the number of needles. Only the matched strings are
+    sent back, not the whole ``metadata``.
+    Renders ``ARRAY(SELECT DISTINCT leaf #>> '{}' FROM jsonb_path_query(<json>,
+    <strings>) AS leaf WHERE leaf #>> '{}' = ANY(<needles>))``: the joiner sits
+    between the two arguments.
     """
 
     arity = 2
-    output_field = BooleanField()
-    template = "EXISTS (SELECT 1 FROM jsonb_path_query(%(expressions)s))"
+    output_field = ArrayField(TextField())
+    template = (
+        "ARRAY(SELECT DISTINCT leaf #>> '{}' FROM jsonb_path_query(%(expressions)s))"
+    )
     arg_joiner = (
         ", 'strict $.** ? (@.type() == \"string\")') AS leaf"
         " WHERE leaf #>> '{}' = ANY("
@@ -57,49 +44,48 @@ def tool_instance_refs(adapters: Sequence[Any]) -> Iterable[tuple[Any, Reference
     lazy migration, its name, matched within the adapter's organisation.
     """
     from tool_instance_v2.models import ToolInstance
-    from workflow_manager.workflow_v2.models.workflow import Workflow
 
     # (organization_id, id or name) -> adapter pks
     needles: dict[tuple[Any, str], list[Any]] = {}
     for adapter in adapters:
         for needle in (str(adapter.pk), adapter.adapter_name):
             needles.setdefault((adapter.organization_id, needle), []).append(adapter.pk)
-
     if not needles:
         return
-    org_ids = {key[0] for key in needles}
-    # Fetch only tool instances with a string equal to a needle; the walk
-    # below then attributes each row to its adapters.
-    mentions_a_needle = _HasStringLeafIn(
+    matched_leaves = _StringLeavesIn(
         F("metadata"),
         Value([key[1] for key in needles], output_field=ArrayField(TextField())),
     )
+    # array_length of an empty array is NULL, so rows naming no needle drop out.
     rows = (
-        ToolInstance.objects.filter(workflow__organization_id__in=org_ids)
-        .alias(mentions_a_needle=mentions_a_needle)
-        .filter(mentions_a_needle=True)
+        ToolInstance.objects.filter(
+            workflow__organization_id__in={key[0] for key in needles}
+        )
+        .annotate(matched=matched_leaves)
+        .filter(matched__len__gt=0)
         .values_list(
             "workflow_id",
             "workflow__workflow_name",
             "workflow__organization_id",
-            "metadata",
+            "matched",
         )
     )
-    for workflow_id, workflow_name, org_id, metadata in rows:
-        matched: set[Any] = set()
-        for leaf in string_leaves(metadata):
-            matched.update(needles.get((org_id, leaf), ()))
-        for adapter_pk in matched:
-            yield (
-                adapter_pk,
-                Reference(
-                    group=UsageGroup.WORKFLOWS,
-                    item_type=ItemType.WORKFLOW,
-                    model=Workflow,
-                    pk=workflow_id,
-                    name=workflow_name,
-                ),
-            )
+    for workflow_id, workflow_name, org_id, matched in rows:
+        adapter_pks = {pk for leaf in matched for pk in needles.get((org_id, leaf), ())}
+        for adapter_pk in adapter_pks:
+            yield adapter_pk, _workflow_ref(workflow_id, workflow_name)
+
+
+def _workflow_ref(workflow_id: Any, workflow_name: str) -> Reference:
+    from workflow_manager.workflow_v2.models.workflow import Workflow
+
+    return Reference(
+        group=UsageGroup.WORKFLOWS,
+        item_type=ItemType.WORKFLOW,
+        model=Workflow,
+        pk=workflow_id,
+        name=workflow_name,
+    )
 
 
 _CUSTOM_TOOL_FIELDS = ("summarize_llm_adapter", "monitor_llm", "challenge_llm")

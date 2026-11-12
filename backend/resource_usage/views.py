@@ -4,6 +4,7 @@ connector viewsets.
 
 from __future__ import annotations
 
+import builtins
 from typing import Any
 
 from django.db.models import QuerySet
@@ -37,7 +38,6 @@ class ProfileUsageMixin:
     # Profile columns the usage providers read.
     usage_fields: tuple[str, ...] = ("id", "organization")
     request: Request
-    action: str | None
 
     def usage_requested(self) -> bool:
         params = self.request.query_params
@@ -53,9 +53,9 @@ class ProfileUsageMixin:
         cached: dict[Any, ProfileUsage] | None = getattr(self, "_usage_index", None)
         if cached is None:
             base = self.filter_queryset(self.get_status_base_queryset())  # type: ignore[attr-defined]
-            # Plain rows: the providers read only these columns, and skipping
-            # the rest avoids decrypting every profile's stored settings.
-            # The index needs no ordering.
+            # Plain rows: the providers read only these columns (for
+            # connectors, skipping the rest also avoids decrypting each one's
+            # stored settings). The index needs no ordering.
             profiles = list(
                 base.order_by()
                 .select_related(None)
@@ -100,7 +100,7 @@ class ProfileUsageMixin:
         return response
 
     def _add_late_rows(
-        self, by_pk: dict[str, ProfileUsage], rows: list[dict[str, Any]]
+        self, by_pk: dict[str, ProfileUsage], rows: builtins.list[dict[str, Any]]
     ) -> None:
         """Work out usage for rows the index lacks: profiles created or shared
         with the caller after the index was read. Costs queries only then.

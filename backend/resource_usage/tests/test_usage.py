@@ -1,7 +1,7 @@
 """Where adapters and connectors are used (PB-T11, UN-4328).
 
-The core rule: a profile the delete guard refuses is reported as used, and one
-it allows as unused. The parity tests check that against the real ``destroy``.
+README.md ("What counts as used") states the rule and its exceptions. The
+parity tests check it against the real ``destroy``.
 """
 
 from types import SimpleNamespace
@@ -13,6 +13,8 @@ from adapter_processor_v2.models import AdapterInstance
 from adapter_processor_v2.views import AdapterInstanceViewSet
 from api_v2.models import APIDeployment
 from connection_check.tests.base import ConnectionCheckTestBase, make_user
+from connection_check.constants import ConnectionStatus
+from connection_check.models import AdapterTestResult
 from connector_v2.models import ConnectorInstance
 from connector_v2.views import ConnectorInstanceViewSet
 from django.db import connection, models
@@ -28,9 +30,15 @@ from utils.tests.auth_seam import member_role
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
-from resource_usage.adapters import prompt_studio_refs, string_leaves
+from resource_usage.adapters import prompt_studio_refs
 from resource_usage.constants import OTHER_GROUP, ProfileKind
-from resource_usage.serializers import usage_payload
+from resource_usage.serializers import (
+    AdapterUsageSerializer,
+    ConnectorUsageItemSerializer,
+    ConnectorUsageSerializer,
+    UsageItemSerializer,
+    usage_payload,
+)
 from resource_usage.references import (
     ProfileUsage,
     Reference,
@@ -175,31 +183,42 @@ class AdapterGuardParityTests(UsageTestBase):
         # Two tool instances in one workflow count it once.
         self.assertEqual(index[cases["by-id"].pk].used_in_count, 1)
 
-    def test_only_tool_instances_naming_an_adapter_are_walked(self, _ctx: Any) -> None:
+    def test_only_exact_values_in_the_adapters_org_match(self, _ctx: Any) -> None:
         adapter = self.make_adapter("named")
-        workflow = self.make_workflow("wf")
-        self.make_tool_instance(workflow, {"llm": str(adapter.pk)})
-        self.make_tool_instance(workflow, {"llm": "something-else"})
+        self.make_tool_instance(self.make_workflow("wf"), {"llm": str(adapter.pk)})
         # Another organisation's tool instance naming the same id.
         foreign: Workflow = Workflow.objects.create(
             workflow_name="foreign", organization=self.other_org, created_by=self.owner
         )
         self.make_tool_instance(foreign, {"llm": str(adapter.pk), "org": "other"})
-        # A value that only contains the name is not a reference.
-        self.make_tool_instance(workflow, {"model": "unnamed-model"})
-        self.make_tool_instance(workflow, {"model": "named-model"})
-        self.make_tool_instance(workflow, {"model": "un-named"})
-        with patch(
-            "resource_usage.adapters.string_leaves", wraps=string_leaves
-        ) as walk:
-            usage = collect(ProfileKind.ADAPTER, [adapter])
-        self.assertEqual(usage[adapter.pk].used_in_count, 1)
-        walked = [call.args[0] for call in walk.call_args_list]
-        self.assertNotIn({"llm": "something-else"}, walked)
-        self.assertNotIn({"llm": str(adapter.pk), "org": "other"}, walked)
-        self.assertNotIn({"model": "unnamed-model"}, walked)
-        self.assertNotIn({"model": "named-model"}, walked)
-        self.assertNotIn({"model": "un-named"}, walked)
+        # A value that only contains the name is not a reference. Each sits in
+        # its own workflow, so a false match would raise the count.
+        for value in ("something-else", "unnamed-model", "named-model", "un-named"):
+            self.make_tool_instance(self.make_workflow(value), {"model": value})
+        usage = collect(ProfileKind.ADAPTER, [adapter])
+        self.assertEqual(
+            [ref.name for ref in usage[adapter.pk].counted], ["wf"]
+        )
+
+    def test_a_name_matches_only_in_the_adapters_own_org(self, _ctx: Any) -> None:
+        mine = self.make_adapter("same-name")
+        theirs = AdapterInstance(
+            adapter_name="same-name",
+            adapter_id=mine.adapter_id,
+            adapter_type="LLM",
+            adapter_metadata={"api_key": "k"},
+            organization=self.other_org,
+            created_by=self.owner,
+        )
+        theirs.create_adapter()
+        self.make_tool_instance(self.make_workflow("mine"), {"llm": "same-name"})
+        foreign: Workflow = Workflow.objects.create(
+            workflow_name="theirs", organization=self.other_org, created_by=self.owner
+        )
+        self.make_tool_instance(foreign, {"llm": "same-name"})
+        index = collect(ProfileKind.ADAPTER, [mine, theirs])
+        self.assertEqual([ref.name for ref in index[mine.pk].counted], ["mine"])
+        self.assertEqual([ref.name for ref in index[theirs.pk].counted], ["theirs"])
 
     def test_profile_without_project_is_in_other(self, _ctx: Any) -> None:
         cases = self._cases()
@@ -254,29 +273,33 @@ class BlockingRelationsTests(ConnectionCheckTestBase):
         self.assertEqual(blocking_relations(fake), [hidden])  # type: ignore[arg-type]
 
 
-class StringLeavesTests(ConnectionCheckTestBase):
-    """The scan reads metadata the way the delete guard does."""
+@patch.object(AdapterInstance, "get_context_window_size", return_value=4096)
+class MetadataMatchTests(UsageTestBase):
+    """The SQL reads metadata the way the delete guard does, on the database."""
 
-    def test_same_answer_as_the_guard(self) -> None:
-        needle = "11111111-1111-1111-1111-111111111111"
+    def test_same_answer_as_the_guard(self, _ctx: Any) -> None:
+        # A name that a JSON boolean prints as: only strings may match.
+        adapter = self.make_adapter("true")
+        needle = str(adapter.pk)
+        workflow = self.make_workflow("wf")
         samples: list[Any] = [
             {"llm": needle},
             {"a": {"b": [needle]}},
             [needle],
             needle,
+            {"llm": "true"},
             {needle: "key-not-value"},
-            None,
+            {"llm": f"{needle}-suffix"},
             42,
             {"flag": True},
         ]
-        adapter = type("A", (), {"id": needle, "adapter_name": "n", "organization": 1})
         for metadata in samples:
-            with patch(
-                "adapter_processor_v2.views.ToolInstance.objects"
-            ) as manager:
-                manager.filter.return_value.values_list.return_value = [metadata]
+            with self.subTest(metadata=metadata):
+                ToolInstance.objects.all().delete()
+                self.make_tool_instance(workflow, metadata)
                 guard = AdapterInstanceViewSet._adapter_used_in_tool_instance(adapter)
-            self.assertEqual(needle in set(string_leaves(metadata)), guard, metadata)
+                used = collect(ProfileKind.ADAPTER, [adapter])[adapter.pk].used_in_count
+                self.assertEqual(bool(used), guard)
 
 
 class ProfileUsageTests(ConnectionCheckTestBase):
@@ -522,6 +545,29 @@ class UsageEndpointTests(UsageTestBase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
 
+    def test_org_shared_connector_usage_for_a_member(self, _ctx: Any) -> None:
+        connector = self.make_connector("shared", shared_to_org=True)
+        response = self.usage(ConnectorInstanceViewSet, connector, self.member)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_payload_keys_match_the_published_serializers(self, _ctx: Any) -> None:
+        connector = self.make_connector("source")
+        self.make_endpoint(self.workflow, connector, SOURCE)
+        cases = [
+            (AdapterInstanceViewSet, self.adapter, AdapterUsageSerializer,
+             UsageItemSerializer),
+            (ConnectorInstanceViewSet, connector, ConnectorUsageSerializer,
+             ConnectorUsageItemSerializer),
+        ]
+        for viewset, profile, payload_serializer, item_serializer in cases:
+            data = self.usage(viewset, profile).data
+            self.assertEqual(set(data), set(payload_serializer().fields))
+            items = [item for group in data["groups"].values() for item in group]
+            self.assertTrue(items)
+            for item in items:
+                self.assertEqual(set(item), set(item_serializer().fields))
+
+
 @patch.object(AdapterInstance, "get_context_window_size", return_value=4096)
 class UsageListTests(UsageTestBase):
     def setUp(self) -> None:
@@ -568,6 +614,39 @@ class UsageListTests(UsageTestBase):
         self.assertEqual(page["unused_count"], 2)
         rows = self._list(ConnectorInstanceViewSet, "?unused=true")
         self.assertEqual([r["connector_name"] for r in rows], ["idle"])
+
+    def _unused_count(self, query: str) -> Any:
+        page = self._list(AdapterInstanceViewSet, f"?page=1&with_usage=true{query}")
+        return page["unused_count"]
+
+    def test_unused_count_leaves_out_profiles_the_caller_cannot_see(
+        self, _ctx: Any
+    ) -> None:
+        for name, org, creator in (
+            ("foreign", self.other_org, self.owner),
+            ("members-own", self.org, self.member),
+        ):
+            hidden = AdapterInstance(
+                adapter_name=name,
+                adapter_id=self.spare.adapter_id,
+                adapter_type="LLM",
+                adapter_metadata={"api_key": "k"},
+                organization=org,
+                created_by=creator,
+            )
+            hidden.create_adapter()
+            hidden.grant_owner(creator)
+        self.assertEqual(self._unused_count(""), 1)
+
+    def test_unused_count_follows_the_other_filters(self, _ctx: Any) -> None:
+        self.assertEqual(self._unused_count("&search=spare"), 1)
+        self.assertEqual(self._unused_count("&search=used"), 0)
+
+    def test_unused_count_ignores_the_failing_filter(self, _ctx: Any) -> None:
+        self.store_result(AdapterTestResult, self.used, ConnectionStatus.FAILED, "x")
+        page = self._list(AdapterInstanceViewSet, "?page=1&with_usage=true&failing=true")
+        self.assertEqual([r["adapter_name"] for r in page["results"]], ["used"])
+        self.assertEqual(page["unused_count"], 1)
 
     def test_profile_gone_between_usage_and_rows_is_left_out(self, _ctx: Any) -> None:
         """Usage is read before the rows, so a concurrent delete drops the row."""
