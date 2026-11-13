@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Form } from "@/components/ui/shims/antd-form";
 import { Checkbox, Select } from "@/components/ui/shims/antd-inputs";
 import { Tag } from "@/components/ui/shims/antd-leaves";
@@ -12,10 +12,36 @@ import { useSessionStore } from "../../../store/session-store";
 import { ApiKeyManager } from "../api-key-manager/ApiKeyManager.jsx";
 
 function DeploymentScopeFields({ form, deployments }) {
-  // Seeded `false` to match the Form.Item below: the checks here read
-  // `=== false` to mean "explicitly unchecked", so an undefined first render
-  // would disable the picker and drop its required-rule for that frame.
+  // Seeded `false` to match the Form.Item below: the picker's `disabled` reads
+  // `!== false`, so only an explicit `false` enables it, and an undefined
+  // first render would disable the picker for that frame.
   const allowAll = Form.useWatch("allow_all_deployments", form, false);
+
+  // Ticking "Allow all" makes the picker's rule pass, but an error already
+  // shown by an earlier submit would stay under the now-disabled picker.
+  useEffect(() => {
+    if (allowAll) {
+      form.setFields([{ name: "api_deployments", errors: [] }]);
+    }
+  }, [allowAll, form]);
+
+  // The same rule on every render, reading the checkbox when it runs. Do not
+  // switch to a `required` rule toggled by `allowAll`: on the Form shim,
+  // react-hook-form merges each render's rules into the field and never drops
+  // a key, so a `required` added while the box was unchecked would survive
+  // ticking it and block saving an "Allow all" key (UN-4630).
+  const deploymentRules = useMemo(
+    () => [
+      {
+        validator: (_rule, value) =>
+          form.getFieldValue("allow_all_deployments") || value?.length
+            ? Promise.resolve()
+            : Promise.reject(new Error("Select at least one deployment")),
+      },
+    ],
+    [form],
+  );
+
   return (
     <>
       <Form.Item
@@ -28,11 +54,7 @@ function DeploymentScopeFields({ form, deployments }) {
       <Form.Item
         name="api_deployments"
         label="Select API Deployments"
-        rules={
-          allowAll === false
-            ? [{ required: true, message: "Select at least one deployment" }]
-            : []
-        }
+        rules={deploymentRules}
       >
         <Select
           mode="multiple"
