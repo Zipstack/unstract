@@ -179,8 +179,21 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | `lib/` | Pure helpers | — |
 | `styles/` | Tokens and global v1 styles | `lib/`, `assets/` |
 | `assets/` | Static files: icons, logos, images (and a generated icon map) | — |
-| `plugins/` | Cloud overlay target; only a placeholder in the public repository | everything |
+| `plugins/` | The plugin loader (`index.ts`, which builds the registry); the cloud overlay copies plugin folders in beside it | everything |
 | `test/` | Render helpers, fixtures, network mocks | everything |
+
+## Plugins
+
+`lib/plugins/` is the extension-point contract. Pages and the shell import `Slot` from `@v1/lib/plugins`. `plugins/index.ts` builds the registry from the manifests and exports `PluginSlot` and `pluginRoutes()`. Nothing renders them yet: the v1 shell (P2-T01) is to wrap the app in `PluginProvider` with `PluginSlot` and add `pluginRoutes()` to the v1 router. Until then, and with no provider, every slot shows its fallback.
+
+- `types.ts` names every slot and its props. Adding a slot is one line there.
+- A plugin is `plugins/<id>/manifest.ts` exporting `manifest` (`satisfies PluginManifest`), with `distributions` (`cloud`, `onprem`) and lazy `slots` and `routes`. The folder name is the id. A manifest may only `import type`: the build check loads it without bundling.
+- `<Slot id props fallback />` shows the fallback when no plugin fills the slot, silently. A filler that fails to load or render shows the fallback, is logged and raises an error notification; each slot has its own error boundary. A failed load is reported once per slot until a load succeeds, and the slot waits 30 seconds (`SLOT_RETRY_MS`) before fetching the chunk again. A render error is reported each time a boundary catches one.
+- `VITE_DISTRIBUTION` (`oss`, the default, `cloud` or `onprem`) picks the plugins the build offers. The frontend Dockerfile takes it as a build arg in both the `development` and `builder` stages, and `vite build` fails on any other value.
+- Every build runs `scripts/v1-plugins.mjs`. It fails on a slot filled twice, two routes the router would match for the same URL (by two plugins, or by a plugin and a page in the v1 route registry, demo pages included; params, case and a final `*` count, via the registry's `patternsOverlap`) or a plugin with no distribution in any distribution, naming both owners. It writes `plugin-matrix.json` to the build output: the build's `distribution` and the plugins this build carries. The cloud overlay removes plugins outside the target distribution first, so the matrix of an OSS image is empty. `node scripts/v1-plugins.mjs` prints the matrix.
+- `plugin-matrix.json` also has `distributions` (for `oss`, `cloud` and `onprem`, the ids among this build's manifests) and `plugins` (each one's distributions, slots and routes). In a built image only `distributions[distribution]` is meaningful: the overlay has already removed the other distributions' plugins.
+- The check also fails on a slot id or distribution the contract does not define, a slot value or route `load` that is not a function, a route without a string `path`, a route path the route registry's `patternProblem` rejects (for example `:id?`, or no leading `/`), and a `plugins/` folder with no `manifest.ts`. tsc never sees an overlaid manifest, so these run-time checks stand in for `satisfies PluginManifest`. A manifest that fails to resolve an import is told it may only `import type`.
+- v0's optional-plugin stub skips `src/v1`, so a missing module in v1 fails the build.
 
 ## Scripts
 

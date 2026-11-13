@@ -47,11 +47,16 @@ function jsxInJs() {
  * reported as a failed file, not a failed assertion, and easy to read as
  * unrelated infrastructure noise.
  */
-function optionalPluginImports() {
+export function optionalPluginImports() {
   return {
     name: "optional-plugin-imports",
     resolveId(source, importer) {
-      if (!importer || !source.startsWith(".")) {
+      // v1 has no optional imports; a missing module there must fail.
+      if (
+        !importer ||
+        !source.startsWith(".") ||
+        importer.includes("/src/v1/")
+      ) {
         return null;
       }
       const sourcePath = source.split("?")[0].split("#")[0];
