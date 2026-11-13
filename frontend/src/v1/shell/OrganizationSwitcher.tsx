@@ -20,7 +20,7 @@ import {
   switchOrganization,
 } from "@v1/services/organizations";
 import { ArrowRightLeft } from "lucide-react";
-import { AlertDialog, Popover } from "radix-ui";
+import { AlertDialog, Popover as RadixPopover } from "radix-ui";
 import { useCallback, useRef, useState } from "react";
 
 // Frames NEW10 (1638:44855) and page 19, O01 to O04 (2259:182 to 2259:656).
@@ -283,7 +283,7 @@ export function OrganizationSwitcher({
 
   return (
     <>
-      <Popover.Root
+      <RadixPopover.Root
         onOpenChange={(open) => {
           if (open && state.status !== "ready") {
             load();
@@ -293,7 +293,7 @@ export function OrganizationSwitcher({
           }
         }}
       >
-        <Popover.Trigger
+        <RadixPopover.Trigger
           ref={pill}
           aria-label={`Organisation: ${current.displayName}`}
           className="ui:flex ui:h-9 ui:w-42.75 ui:items-center ui:gap-2 ui:rounded-lg ui:border ui:border-border ui:bg-card ui:px-2 ui:outline-none ui:focus-visible:focus-ring "
@@ -308,9 +308,9 @@ export function OrganizationSwitcher({
             aria-hidden
             className="ui:size-3.5 ui:text-muted-foreground"
           />
-        </Popover.Trigger>
-        <Popover.Portal container={getPortalContainer()}>
-          <Popover.Content
+        </RadixPopover.Trigger>
+        <RadixPopover.Portal container={getPortalContainer()}>
+          <RadixPopover.Content
             align="end"
             sideOffset={8}
             collisionPadding={8}
@@ -411,9 +411,9 @@ export function OrganizationSwitcher({
                 )}
               </>
             )}
-          </Popover.Content>
-        </Popover.Portal>
-      </Popover.Root>
+          </RadixPopover.Content>
+        </RadixPopover.Portal>
+      </RadixPopover.Root>
       {pending && (
         <ConfirmSwitch
           from={pending.from}
