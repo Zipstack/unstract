@@ -171,7 +171,6 @@ class DocumentsProcessedByOrgTests(_Seed, TestCase):
         ):
             self.assertEqual(self._run(), expected)
 
-
     def test_a_database_error_in_the_prefetch_does_not_abort_the_run(self) -> None:
         # Inside a request transaction (DJANGO_ATOMIC_REQUESTS) a failed statement
         # aborts the transaction; the fallback must still be able to query.
