@@ -3,10 +3,11 @@
 `workers/tests/test_queue_consumer_wiring.py` guards the same property with
 hardcoded queue names (`UNSERVED_KV_QUEUE`, `AGENT_TABLE_QUEUE`). That works
 today and catches a real, expensive failure -- but it cannot survive the change
-it most needs to survive. Re-enabling the `kv` extractor means adding one entry
-to `EXTRACTOR_ROUTES`, at which point `celery_executor_agentic_kv` flips from
-"must NOT be advertised" to "must be served", and the literal-pinned assertion
-has to be *deleted* to make the suite pass. An assertion whose correct response
+it most needs to survive. Re-enabling the `kv` extractor means `available=True`
+on the shared catalogue's `multi_stage` row, which `EXTRACTOR_ROUTES` derives
+from; at that point `celery_executor_agentic_kv` flips from "must NOT be
+advertised" to "must be served", and the literal-pinned assertion has to be
+*deleted* to make the suite pass. An assertion whose correct response
 to a change is deletion is not protecting anything at that moment.
 
 This suite derives both directions from the routing table, so the same change
@@ -150,9 +151,9 @@ def test_no_fleet_advertises_an_unrouted_executor(fleet):
 
     `agentic_kv` is the live case: this deployment ships no such plugin, so a
     fleet listing its queue would accept work nothing can drain. When `kv` is
-    re-enabled by adding its `EXTRACTOR_ROUTES` entry, this expectation inverts
-    on its own and `test_every_routed_executor_has_a_consumer` starts requiring
-    the queue instead -- which is the whole reason this is derived.
+    re-enabled on the shared catalogue, this expectation inverts on its own and
+    `test_every_routed_executor_has_a_consumer` starts requiring the queue
+    instead -- which is the whole reason this is derived.
     """
     served = _all_executor_fleets()[fleet]()
     forbidden = {_queue_name(e) for e in _unrouted_executors()}
@@ -196,9 +197,7 @@ CALLBACK_QUEUE = "agent_kv_callback"
 
 def test_the_docker_launcher_drains_the_terminal_callback_queue():
     """The launcher the workers-side suite does not cover."""
-    queues = _shell_role_queues(
-        RUN_WORKER_DOCKER, r'\["ide_callback"\]="([^"]+)"'
-    )
+    queues = _shell_role_queues(RUN_WORKER_DOCKER, r'\["ide_callback"\]="([^"]+)"')
 
     assert CALLBACK_QUEUE in queues, (
         f"run-worker-docker.sh's ide_callback role omits {CALLBACK_QUEUE}; a "
@@ -232,8 +231,8 @@ def test_the_host_launcher_drains_the_terminal_callback_queue():
 # `workers/tests/test_llm_bearing_ops.py` guards it against a hand-maintained
 # `PAID_OPERATIONS` twin, which enforces symmetry between two literals -- so it
 # can only fail when the copies DISAGREE, never when both are wrong together. A
-# new paid extractor added to `EXTRACTOR_ROUTES` and declared in neither list
-# ships with no billing alarm and nothing goes red.
+# new paid extractor routed here and declared in neither list ships with no
+# billing alarm and nothing goes red.
 #
 # Every operation this API routes drives LLM calls by construction -- that is
 # what an Agent-KV extractor IS -- so the set can be derived rather than
@@ -271,8 +270,19 @@ def _llm_bearing_ops_literal() -> set[str]:
 def test_every_routed_operation_has_a_billing_backstop():
     """The derived assertion the two literal lists cannot make.
 
-    Add an extractor to `EXTRACTOR_ROUTES` and forget the backstop, and this
-    fails -- without anyone having had to remember a second list.
+    Make an extractor routable on the shared catalogue -- an API door AND
+    `available=True`, since `api_routes()` requires both -- and forget the
+    backstop, and this fails, without anyone having had to remember a second
+    list.
+
+    SCOPE, because this reads wider than it is: `EXTRACTOR_ROUTES` is the blind
+    API's view, so this derives `api_operation` only. The catalogue's
+    `ide_operation` column is not covered, and two live LLM-bearing Studio
+    operations -- `agentic_extract` and `table_extract` -- are absent from
+    `_LLM_BEARING_OPS` and so have no zero-usage alarm at all. That gap
+    pre-dates the shared catalogue and closing it means editing the worker
+    tier's billing set, which is not this module's to do; it needs its own
+    ticket. Do not read a green run here as "every paid operation is covered".
     """
     declared = _llm_bearing_ops_literal()
     routed_ops = {operation for _executor, operation in EXTRACTOR_ROUTES.values()}

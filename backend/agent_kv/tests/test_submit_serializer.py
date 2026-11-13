@@ -124,9 +124,18 @@ def test_a_kv_submit_is_refused_at_the_serializer():
     `agentic_kv` is not deployed here, so nothing consumes
     `celery_executor_agentic_kv`. If `kv` were routable, this submit would
     return 202, dispatch into a queue with no consumer, and sit in DISPATCHED
-    forever -- no error at the producer, nothing in any log to find. A 400 at
-    the serializer is the whole difference between a clear refusal and a job
-    that silently never runs.
+    with no error at the producer and nothing naming the real cause.
+
+    How long it sits depends on the deployment, and an earlier version of this
+    docstring got it wrong in both directions. Nothing in this repo schedules
+    the stuck-job sweep (`workers/scheduler/agent_kv_tasks.py` says so), and
+    the cloud chart disables its CronJobs by default so on-prem does not run
+    them -- so off SaaS the row never terminalizes at all. Where the sweep DOES
+    run, `AGENT_KV_STUCK_JOB_GRACE_SECONDS` is a floor rather than a ceiling:
+    the sweep selects rows older than the cutoff, so the wait is at least that
+    long plus the CronJob interval. A 400 at the serializer is the whole
+    difference between a clear refusal and a job that looks accepted and then
+    never runs.
     """
     s = SubmitSerializer(
         data=_data(
@@ -420,9 +429,9 @@ def test_unknown_key_on_the_extractor_entry_is_rejected():
 #
 # The class is dormant on this deployment -- `kv` is not routable, so nothing
 # reaches it through a submit -- but it stays in the tree so the branch that
-# carries the KV engine re-enables the extractor with one line rather than a
-# content merge. Dormant and untested is how a one-line re-enable turns into a
-# regression, so its rules are asserted here against the serializer itself.
+# carries the KV engine needs no content merge to re-enable the extractor.
+# Dormant and untested is how that re-enable turns into a regression, so its
+# rules are asserted here against the serializer itself.
 # ---------------------------------------------------------------------------
 def _kv_options(**over):
     s = KVOptionsSerializer(data=over)
