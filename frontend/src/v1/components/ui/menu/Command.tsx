@@ -4,6 +4,7 @@ import {
   type JSX,
   type KeyboardEvent,
   type MouseEvent,
+  type PointerEvent,
   type ReactNode,
   useEffect,
   useId,
@@ -366,8 +367,8 @@ type CommandOptionProps = Readonly<{
 
 /**
  * One `role="option"` row. Focus stays on the combobox input, so the row is
- * not focusable, and its mousedown is default-prevented to keep the input
- * focused. An unavailable row gets no pointer handlers at all.
+ * only focusable from script, and its mousedown is default-prevented to keep
+ * the input focused. An unavailable row gets no pointer handlers at all.
  */
 function CommandOption({
   item,
@@ -379,13 +380,19 @@ function CommandOption({
 }: CommandOptionProps): JSX.Element {
   const unavailable = item.disabled || item.loading;
   const activate = () => onActivate(item);
-  const choose = () => onChoose(item);
+  // Runs on pointerup, as Radix menu rows do; the keyboard runs rows from the input.
+  const choose = (event: PointerEvent<HTMLElement>) => {
+    if (event.button === 0) {
+      onChoose(item);
+    }
+  };
   return (
-    // biome-ignore lint/a11y/useFocusableInteractive: focus stays on the combobox input, which points here with aria-activedescendant.
-    // biome-ignore lint/a11y/useKeyWithClickEvents: the combobox input handles the keyboard for every row.
     <div
       id={id}
       role="option"
+      // Focusable from script only; mousedown is prevented, so a click never
+      // takes focus from the input.
+      tabIndex={-1}
       aria-selected={active}
       aria-checked={item.checked}
       aria-disabled={unavailable || undefined}
@@ -397,7 +404,7 @@ function CommandOption({
       className={menuItemClass(item)}
       onMouseDown={preventFocusLoss}
       onMouseMove={unavailable || active ? undefined : activate}
-      onClick={unavailable ? undefined : choose}
+      onPointerUp={unavailable ? undefined : choose}
     >
       <MenuItemBody
         icon={item.icon}
