@@ -6,7 +6,7 @@ import axios, {
 import { currentOrganizationId, expireSession } from "./context";
 import { REQUEST_ID_HEADER, toApiError } from "./errors";
 
-// The one HTTP client for v1 and its backend paths; only services/ imports it (see README.md).
+// The one HTTP client for v1 and its backend paths; only services/ and plugins' services/ import it (README.md).
 
 const CSRF_COOKIE = "csrftoken";
 const CSRF_HEADER = "X-CSRFToken";

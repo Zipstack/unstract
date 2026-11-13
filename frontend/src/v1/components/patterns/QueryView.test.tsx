@@ -12,7 +12,7 @@ import {
   renderV1,
 } from "@v1/test";
 import { adapterFixtures, adapterHandlers } from "@v1/test/fixtures/adapters";
-import { Component, type JSX, type ReactNode } from "react";
+import { Component, type JSX, type ReactNode, useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { QueryView } from "./QueryView";
 
@@ -197,5 +197,49 @@ it("leaves a select that throws to the error boundary", async () => {
       <Broken />
     </Boundary>,
   );
+  expect(await screen.findByText("Caught bad select")).toBeInTheDocument();
+});
+
+it("leaves a select that throws after a failed refresh to the error boundary", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  mockApi(...adapterHandlers(DEFAULT_SESSION));
+  function Breakable(): JSX.Element {
+    const [broken, setBroken] = useState(false);
+    const query = useQuery({
+      ...adapterQueries.list({ adapterType: "LLM" }),
+      select: (rows) => {
+        if (broken) {
+          throw new TypeError("bad select");
+        }
+        return rows;
+      },
+    });
+    return (
+      <>
+        <p>Status {query.status}</p>
+        <button type="button" onClick={() => void query.refetch()}>
+          Refresh
+        </button>
+        <button type="button" onClick={() => setBroken(true)}>
+          Break
+        </button>
+        <QueryView query={query}>
+          {(rows) => <p>{rows.map((row) => row.adapter_name).join(", ")}</p>}
+        </QueryView>
+      </>
+    );
+  }
+  const { user } = renderV1(
+    <Boundary>
+      <Breakable />
+    </Boundary>,
+  );
+  expect(await screen.findByText("OpenAI GPT-4o, Claude")).toBeInTheDocument();
+  mockApi(mock.get(ADAPTERS, () => HttpResponse.json({}, { status: 500 })));
+  await user.click(screen.getByRole("button", { name: "Refresh" }));
+  await waitFor(() =>
+    expect(screen.getByText("Status error")).toBeInTheDocument(),
+  );
+  await user.click(screen.getByRole("button", { name: "Break" }));
   expect(await screen.findByText("Caught bad select")).toBeInTheDocument();
 });

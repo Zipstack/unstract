@@ -96,6 +96,16 @@ describe("each kind, from the backend's own error bodies", () => {
     });
   });
 
+  it("subscription: an untyped 402", async () => {
+    const error = await failureFor(
+      json({ errors: "Trial period expired." }, 402),
+    );
+    expect(error).toMatchObject({
+      kind: "subscription",
+      message: "Trial period expired.",
+    });
+  });
+
   it("subscription: a 400 whose error code is subscription_error", async () => {
     const error = await failureFor(
       json(

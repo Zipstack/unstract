@@ -33,9 +33,9 @@ function reportQueryError(
   });
 }
 
-// Only a `select` that threw (the cached query did not fail): a bug, for the error boundary.
-const throwSelectError = (_error: Error, query: Query) =>
-  query.state.status !== "error";
+// Only a `select` that threw (not the cached query's own error): a bug, for the error boundary.
+const throwSelectError = (error: Error, query: Query) =>
+  error !== query.state.error;
 
 function reportMutationError(
   error: Error,

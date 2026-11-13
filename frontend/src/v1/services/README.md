@@ -8,11 +8,11 @@ or error handling.
 
 | File | Holds |
 | --- | --- |
-| `http.ts` | The one HTTP client, and `orgPath()`. Adds `X-CSRFToken` (from the `csrftoken` cookie) to same-origin POST, PUT, PATCH and DELETE, and a new `X-Request-ID` to every request; rejects with an `ApiError`; treats the auth middleware's 401 as session expiry, once per page load, so concurrent 401s redirect once. Only `services/` imports it, or axios, or calls `fetch`, `XMLHttpRequest` or `EventSource` (`lint:v1`). |
+| `http.ts` | The one HTTP client, and `orgPath()`. Adds `X-CSRFToken` (from the `csrftoken` cookie) to same-origin POST, PUT, PATCH and DELETE, and a new `X-Request-ID` to every request; rejects with an `ApiError`; treats the auth middleware's 401 as session expiry, once per page load, so concurrent 401s redirect once. Only `services/` and `plugins/<plugin>/services/` import it, or axios, or call `fetch`, `XMLHttpRequest` or `EventSource` (`lint:v1`). |
 | `context.ts` | What the client takes from the session: `setOrganizationId()` (the org `orgPath()` uses) and `onSessionExpired()` (default: v0's `/api/v1/logout` redirect; a handler must leave the page). The session (P0-T06, UN-4314) sets both. |
 | `errors.ts` | `ApiError`, `toApiError()`, `isCancelled()`, `mapFieldErrors()`. |
 | `report.ts` | `reportApiError()`: a toast through `notify()`, or a log line with the request id. |
-| `page.ts` | `Page<T>` (the backend's `{count, next, previous, results}`), `PageParams` and `pageQuery()`. |
+| `page.ts` | `Page<T>` (the backend's `{count, next, previous, results}`), `PageParams`, `pageQuery()` and `previousPageInOrg()`. |
 | `<resource>.ts` | One module per backend resource, e.g. `adapters.ts`. |
 
 ## Writing a service module
@@ -30,7 +30,7 @@ or error handling.
   screen while the next loads, but never another organisation's (see
   `adapterQueries.page`). A page past the end is a 404 ("Invalid page."), so
   whoever holds the page number steps back to the last page,
-  `Math.ceil(count / pageSize)`, after a delete.
+  `Math.max(1, Math.ceil(count / pageSize))`, after a delete.
 - Export query keys and options per resource. Keys are
   `[org, resource, "list" | "page" | "detail", params | id]`, and each query
   fetches for the org in its key, so two organisations never share a cache
@@ -60,6 +60,9 @@ Every failure becomes an `ApiError` with `kind`, `message` (for people),
 `status`, `fieldErrors`, `formErrors` and `requestId`. A cancelled request
 rejects with axios's `CanceledError` instead; check `isCancelled()` first
 (`toApiError()` calls it `unknown`, "The request was cancelled.").
+A download (`responseType: "blob"`) gets its error body as a Blob, which is not
+read: its 401 is session expiry and its 402 `subscription`. The first v1
+download service makes `http.ts` parse JSON Blob errors, with a test.
 
 | Kind | When |
 | --- | --- |
@@ -82,7 +85,7 @@ rejects with axios's `CanceledError` instead; check `isCancelled()` first
 | Mutation | A toast with the request id. Pass `meta: { notify: false }` when the form shows it; it is then logged. |
 | Read whose first fetch fails (also a next page) | Inline, by `QueryView` (`components/patterns/`): an `InlineAlert` with Retry and the request id, after a skeleton (or, for a next page, the previous page). Also logged. |
 | Refresh that fails while the query's data is on screen | A toast, replaced rather than stacked while the same query keeps failing. Every query that cannot reach the server shares one toast. |
-| A `select` that throws | The page's error boundary: it is a bug, not a failed request. |
+| A `select` that throws | The page's error boundary once no fetch is in flight: it is a bug, not a failed request. |
 | 401 | One redirect to sign in; no toast. |
 | Subscription | A toast that stays until dismissed; inline like any other first-fetch failure. |
 | Cancellation | Nothing. |

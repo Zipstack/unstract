@@ -116,7 +116,7 @@ const CASES = parseTable(`
   # Outside the feedback folder, a static named radix-ui import without Toast is fine.
   v1-notify-radix-named-ok       | lint:v1         | -
   v1-notify-feedback-ok          | lint:v1         | -
-  # One way to call the backend: URLs and the HTTP client only in services/.
+  # One way to call the backend: URLs and the HTTP client only in services/ and plugins/<plugin>/services/.
   v1-backend-url-string          | lint:v1         | Backend URLs appear only in services/ and plugins/<plugin>/services/
   v1-backend-url-template        | lint:v1         | Backend URLs appear only in services/ and plugins/<plugin>/services/
   v1-backend-url-deployment      | lint:v1         | Backend URLs appear only in services/ and plugins/<plugin>/services/
