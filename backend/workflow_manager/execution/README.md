@@ -29,8 +29,9 @@ with `stuck=false`, the list response is the same as before. Aborted runs are th
 one new case the existing endpoints see; see
 [How the work stops](#how-the-work-stops). For them the API deployment endpoints
 make an accepted exception to the additive rule: a synchronous `POST` answers 422,
-and `GET` applies the caller's result filters. Only aborted runs reach this, so
-callers that never abort see no change.
+and `GET` applies the caller's result filters. Only aborted runs reach this, but
+the API caller is often not the one who aborts: an owner or admin can stop a run
+an API key is waiting on, and that caller then gets the new answer.
 
 ## What counts as stuck
 
