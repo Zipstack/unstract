@@ -136,4 +136,10 @@ class Usage(DefaultOrganizationMixin, BaseModel):
                 name="idx_usage_lookup_recent",
                 condition=Q(llm_usage_reason="lookup"),
             ),
+            # Dashboard aggregation: per-org queries over a short created_at
+            # window. See migration 0007.
+            models.Index(
+                fields=["organization", "-created_at"],
+                name="idx_usage_org_created",
+            ),
         ]
