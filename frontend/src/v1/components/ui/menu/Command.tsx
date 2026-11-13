@@ -3,6 +3,7 @@ import { SHELL_ICONS } from "@v1/lib/icons";
 import {
   type JSX,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
   useEffect,
   useId,
@@ -223,7 +224,12 @@ export function Command({
     }
   };
 
-  const status = loading ? "Loading…" : rows.length === 0 ? emptyText : null;
+  let status: string | null = null;
+  if (loading) {
+    status = "Loading…";
+  } else if (rows.length === 0) {
+    status = emptyText;
+  }
 
   return (
     <div
@@ -239,8 +245,8 @@ export function Command({
           data-slot="command-input"
           role="combobox"
           aria-label={label}
-          aria-expanded
-          aria-controls={listId}
+          aria-expanded={status === null}
+          aria-controls={status === null ? listId : undefined}
           aria-autocomplete="list"
           aria-activedescendant={active ? optionId(active) : undefined}
           // biome-ignore lint/a11y/noAutofocus: a menu or palette opened to search should take the typing at once.
@@ -271,7 +277,7 @@ export function Command({
               key={group.id}
               group={group}
               separated={index > 0}
-              headingId={`${id}-group-${group.id}`}
+              headingId={`${id}-group-${index}`}
               activeId={active?.id}
               optionId={optionId}
               onActivate={(item) => setActiveId(item.id)}
@@ -279,11 +285,17 @@ export function Command({
             />
           ))}
       </div>
-      {status && (
-        <output className="ui:block ui:px-3 ui:py-6 ui:text-center ui:font-sans ui:text-body-small ui:text-muted-foreground">
-          {status}
-        </output>
-      )}
+      {/* Always mounted, so a change to "No results" is announced. */}
+      <output
+        className={cn(
+          "ui:font-sans ui:text-body-small ui:text-muted-foreground",
+          status === null
+            ? "ui:sr-only"
+            : "ui:block ui:px-3 ui:py-6 ui:text-center",
+        )}
+      >
+        {status}
+      </output>
       {footer && (
         <div
           data-slot="command-footer"
@@ -326,53 +338,88 @@ function CommandGroupView({
             {group.heading}
           </div>
         )}
-        {group.items.map((item) => {
-          const unavailable = item.disabled || item.loading;
-          return (
-            // biome-ignore lint/a11y/useFocusableInteractive: focus stays on the combobox input, which points here with aria-activedescendant.
-            // biome-ignore lint/a11y/useKeyWithClickEvents: the combobox input handles the keyboard for every row.
-            <div
-              key={item.id}
-              id={optionId(item)}
-              role="option"
-              aria-selected={item.id === activeId}
-              aria-checked={item.checked}
-              aria-disabled={unavailable || undefined}
-              aria-busy={item.loading || undefined}
-              {...describedRowProps(optionId(item), item.description)}
-              data-highlighted={item.id === activeId ? "" : undefined}
-              data-disabled={unavailable ? "" : undefined}
-              data-destructive={item.destructive || undefined}
-              className={menuItemClass(item)}
-              onMouseDown={(event) => event.preventDefault()}
-              onMouseMove={() => {
-                if (!unavailable && item.id !== activeId) {
-                  onActivate(item);
-                }
-              }}
-              onClick={() => onChoose(item)}
-            >
-              <MenuItemBody
-                icon={item.icon}
-                shortcut={item.shortcut}
-                description={item.description}
-                destructive={item.destructive}
-                loading={item.loading}
-                rowId={optionId(item)}
-                indicator={
-                  hasChecks ? (
-                    <div className={MENU_INDICATOR_SLOT}>
-                      {item.checked && <MenuCheck />}
-                    </div>
-                  ) : undefined
-                }
-              >
-                {item.label}
-              </MenuItemBody>
-            </div>
-          );
-        })}
+        {group.items.map((item) => (
+          <CommandOption
+            key={item.id}
+            item={item}
+            id={optionId(item)}
+            active={item.id === activeId}
+            checkColumn={hasChecks}
+            onActivate={onActivate}
+            onChoose={onChoose}
+          />
+        ))}
       </div>
     </>
   );
+}
+
+type CommandOptionProps = Readonly<{
+  item: CommandItem;
+  id: string;
+  active: boolean;
+  /** Reserve the check slot, so labels line up in a group with checks. */
+  checkColumn: boolean;
+  onActivate: (item: CommandItem) => void;
+  onChoose: (item: CommandItem) => void;
+}>;
+
+/**
+ * One `role="option"` row. Focus stays on the combobox input, so the row is
+ * not focusable, and its mousedown is default-prevented to keep the input
+ * focused. An unavailable row gets no pointer handlers at all.
+ */
+function CommandOption({
+  item,
+  id,
+  active,
+  checkColumn,
+  onActivate,
+  onChoose,
+}: CommandOptionProps): JSX.Element {
+  const unavailable = item.disabled || item.loading;
+  const activate = () => onActivate(item);
+  const choose = () => onChoose(item);
+  return (
+    // biome-ignore lint/a11y/useFocusableInteractive: focus stays on the combobox input, which points here with aria-activedescendant.
+    // biome-ignore lint/a11y/useKeyWithClickEvents: the combobox input handles the keyboard for every row.
+    <div
+      id={id}
+      role="option"
+      aria-selected={active}
+      aria-checked={item.checked}
+      aria-disabled={unavailable || undefined}
+      aria-busy={item.loading || undefined}
+      {...describedRowProps(id, item.description)}
+      data-highlighted={active ? "" : undefined}
+      data-disabled={unavailable ? "" : undefined}
+      data-destructive={item.destructive || undefined}
+      className={menuItemClass(item)}
+      onMouseDown={preventFocusLoss}
+      onMouseMove={unavailable || active ? undefined : activate}
+      onClick={unavailable ? undefined : choose}
+    >
+      <MenuItemBody
+        icon={item.icon}
+        shortcut={item.shortcut}
+        description={item.description}
+        destructive={item.destructive}
+        loading={item.loading}
+        rowId={id}
+        indicator={
+          checkColumn ? (
+            <div className={MENU_INDICATOR_SLOT}>
+              {item.checked && <MenuCheck />}
+            </div>
+          ) : undefined
+        }
+      >
+        {item.label}
+      </MenuItemBody>
+    </div>
+  );
+}
+
+function preventFocusLoss(event: MouseEvent<HTMLElement>): void {
+  event.preventDefault();
 }

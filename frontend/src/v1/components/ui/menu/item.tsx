@@ -6,7 +6,7 @@ import type { JSX, ReactNode } from "react";
 /*
  * Pieces every menu shares: the surface, the row and what goes in a row.
  * Rows follow the drawn menus (frames 621:1114, 1084:630, 780:3510): 32 tall,
- * radius 6, a 16px icon 10 from the label, 13px medium text, and the
+ * radius 8 (the menu-item radius token; the frames draw 6), a 16px icon 10 from the label, 13px medium text, and the
  * destructive row in the destructive colour.
  *
  * Icons and slots sit in `div`s, never `span`s: v0 forces an `svg.lucide`

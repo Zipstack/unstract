@@ -241,6 +241,43 @@ describe("Command", () => {
     expect(document.getElementById(ref)?.textContent).toBe("Second");
   });
 
+  it("reports the list collapsed while a status row replaces it", async () => {
+    const user = userEvent.setup();
+    render(<Command label="Search" groups={GROUPS} />);
+    expect(input().getAttribute("aria-expanded")).toBe("true");
+    await user.keyboard("zzz");
+    expect(input().getAttribute("aria-expanded")).toBe("false");
+    expect(input().getAttribute("aria-controls")).toBeNull();
+  });
+
+  it("keeps the status region mounted, so a change to no results is announced", async () => {
+    const user = userEvent.setup();
+    render(<Command label="Search" groups={GROUPS} />);
+    const region = screen.getByRole("status");
+    expect(region.textContent).toBe("");
+    await user.keyboard("zzz");
+    expect(screen.getByRole("status")).toBe(region);
+    expect(region.textContent).toBe("No results");
+  });
+
+  it("names a group whose id holds spaces", () => {
+    render(
+      <Command
+        label="Search"
+        groups={[
+          {
+            id: "recent files",
+            heading: "Recent files",
+            items: [{ id: "a", label: "a.pdf" }],
+          },
+        ]}
+      />,
+    );
+    expect(
+      screen.getByRole("group", { name: "Recent files" }),
+    ).toBeInTheDocument();
+  });
+
   it("ignores Enter while composing text (IME)", () => {
     const onSelect = vi.fn();
     render(<Command label="Search" groups={GROUPS} onSelect={onSelect} />);
@@ -293,6 +330,46 @@ describe("SearchMenu", () => {
     await user.keyboard("{Enter}");
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("dialog")).toBeVisible();
+  });
+
+  it("opens on a fresh search when the caller closed it", async () => {
+    const user = userEvent.setup();
+    function Controlled() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(false)}>
+            Apply
+          </button>
+          <SearchMenu
+            open={open}
+            onOpenChange={setOpen}
+            label="Search columns"
+            items={[
+              { id: "name", label: "Name" },
+              { id: "owner", label: "Owned by" },
+            ]}
+            trigger={<MenuButton>Columns</MenuButton>}
+          />
+        </>
+      );
+    }
+    render(<Controlled />);
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    await user.keyboard("own");
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    expect(input()).toHaveValue("");
+    expect(screen.getAllByRole("option")).toHaveLength(2);
+  });
+
+  it("adds the caller's list classes to its own", async () => {
+    const user = userEvent.setup();
+    renderSearchMenu({ listClassName: "ui:max-h-120" });
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    expect(screen.getByRole("listbox").className).toContain("ui:max-h-120");
   });
 
   it("closes on Escape and opens again on a fresh search", async () => {
@@ -362,6 +439,27 @@ describe("useCommandPaletteShortcut", () => {
     useCommandPaletteShortcut(onOpen);
     return null;
   }
+
+  it("leaves handled, composing and key-less events alone, and takes an upper-case key", () => {
+    const onOpen = vi.fn();
+    function Upper() {
+      useCommandPaletteShortcut(onOpen, "K");
+      return null;
+    }
+    render(<Upper />);
+    const handled = new KeyboardEvent("keydown", {
+      key: "k",
+      ctrlKey: true,
+      cancelable: true,
+    });
+    handled.preventDefault();
+    document.dispatchEvent(handled);
+    fireEvent.keyDown(document, { key: "k", ctrlKey: true, isComposing: true });
+    document.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true }));
+    expect(onOpen).not.toHaveBeenCalled();
+    fireEvent.keyDown(document, { key: "k", ctrlKey: true });
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
 
   it("fires on Ctrl+K and ⌘K only, and stops listening on unmount", () => {
     const onOpen = vi.fn();

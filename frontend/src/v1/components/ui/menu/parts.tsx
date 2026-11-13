@@ -255,7 +255,10 @@ export function createMenuParts(R: MenuPrimitives, family: string) {
     );
   }
 
-  /** A submenu's list. It flips to the other side when there is no room. */
+  /**
+   * A submenu's list. It flips to the other side when there is no room, and
+   * scrolls when taller than the room left.
+   */
   function SubContent({
     className,
     collisionPadding = 8,
@@ -266,7 +269,11 @@ export function createMenuParts(R: MenuPrimitives, family: string) {
         <R.SubContent
           data-slot={`${family}-sub-content`}
           collisionPadding={collisionPadding}
-          className={cn(MENU_SURFACE, className)}
+          className={cn(
+            MENU_SURFACE,
+            "ui:max-h-(--radix-popper-available-height)",
+            className,
+          )}
           {...props}
         />
       </R.Portal>

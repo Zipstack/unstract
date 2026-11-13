@@ -1,3 +1,4 @@
+import { cn } from "@v1/lib/cn";
 import { getPortalContainer } from "@v1/lib/portal";
 import { Dialog as RadixDialog } from "radix-ui";
 import { type JSX, type ReactNode, useEffect, useRef } from "react";
@@ -75,36 +76,51 @@ export function CommandPalette({
           data-slot="command-palette-overlay"
           className="ui:fixed ui:inset-0 ui:z-50 ui:bg-scrim"
         />
-        <RadixDialog.Content
-          data-slot="command-palette"
-          aria-describedby={undefined}
-          className="ui:fixed ui:inset-x-4 ui:top-24 ui:z-50 ui:mx-auto ui:flex ui:max-h-120 ui:max-w-xl ui:flex-col ui:overflow-hidden ui:rounded-xl ui:border ui:border-border ui:bg-popover ui:text-popover-foreground ui:shadow-xl ui:outline-none"
-        >
-          <RadixDialog.Title className="ui:sr-only">{title}</RadixDialog.Title>
-          <Command
-            {...command}
-            label={label}
-            onSelect={select}
-            footer={footer ?? <CommandPaletteHints />}
-            className="ui:min-h-0 ui:flex-1"
-          />
-        </RadixDialog.Content>
+        {/* The frame keeps the palette 16px inside the viewport's bottom, so a
+            short or zoomed window scrolls the list instead of cutting it off.
+            It lets clicks through to the overlay, which closes the palette. */}
+        <div className="ui:pointer-events-none ui:fixed ui:inset-x-4 ui:top-24 ui:bottom-4 ui:z-50 ui:flex ui:items-start ui:justify-center">
+          <RadixDialog.Content
+            data-slot="command-palette"
+            aria-describedby={undefined}
+            className="ui:pointer-events-auto ui:flex ui:max-h-full ui:w-full ui:max-w-xl ui:flex-col ui:overflow-hidden ui:rounded-xl ui:border ui:border-border ui:bg-popover ui:text-popover-foreground ui:shadow-xl ui:outline-none"
+          >
+            <RadixDialog.Title className="ui:sr-only">
+              {title}
+            </RadixDialog.Title>
+            <Command
+              {...command}
+              label={label}
+              onSelect={select}
+              footer={footer ?? <CommandPaletteHints />}
+              className="ui:min-h-0 ui:flex-1"
+              listClassName={cn("ui:max-h-96", command.listClassName)}
+            />
+          </RadixDialog.Content>
+        </div>
       </RadixDialog.Portal>
     </RadixDialog.Root>
   );
 }
 
 /**
- * Calls `onOpen` on Ctrl+K, or ⌘K on a Mac, anywhere on the page. Mount it
- * once, in the shell, beside the palette.
+ * Calls `onOpen` on Ctrl+K or ⌘K (either modifier, on any platform)
+ * anywhere on the page. A key press another control already handled (for
+ * example a Ctrl+K chord in the code editor) is left alone. Mount it once,
+ * in the shell, beside the palette.
  */
 export function useCommandPaletteShortcut(onOpen: () => void, key = "k"): void {
   const latest = useRef(onOpen);
   latest.current = onOpen;
   useEffect(() => {
+    const target = key.toLowerCase();
     const onKeyDown = (event: KeyboardEvent) => {
+      // Autofill fires keydown with no key.
+      if (!event.key || event.defaultPrevented || event.isComposing) {
+        return;
+      }
       if (
-        event.key.toLowerCase() === key &&
+        event.key.toLowerCase() === target &&
         (event.metaKey || event.ctrlKey) &&
         !event.altKey &&
         !event.shiftKey

@@ -1,7 +1,7 @@
 import { cn } from "@v1/lib/cn";
 import { getPortalContainer } from "@v1/lib/portal";
 import { Popover as RadixPopover } from "radix-ui";
-import { type JSX, type ReactElement, useState } from "react";
+import { type JSX, type ReactElement, useEffect, useState } from "react";
 import { Command, type CommandItem, type CommandProps } from "./Command";
 import { MENU_SURFACE } from "./item";
 
@@ -51,12 +51,14 @@ export function SearchMenu({
     if (controlledOpen === undefined) {
       setOwnOpen(next);
     }
-    // A menu reopens on a fresh search.
-    if (!next && query === undefined) {
-      setOwnQuery("");
-    }
     onOpenChange?.(next);
   };
+  // Each opening starts on a fresh search, however the menu was last closed.
+  useEffect(() => {
+    if (open) {
+      setOwnQuery("");
+    }
+  }, [open]);
   const select = (item: CommandItem) => {
     onSelect?.(item);
     if (closeOnSelect) {
@@ -90,7 +92,7 @@ export function SearchMenu({
               onQueryChange?.(next);
             }}
             onSelect={select}
-            listClassName="ui:max-h-80"
+            listClassName={cn("ui:max-h-80", command.listClassName)}
           />
         </RadixPopover.Content>
       </RadixPopover.Portal>

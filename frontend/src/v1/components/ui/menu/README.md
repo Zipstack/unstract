@@ -29,7 +29,7 @@ Every row takes the same options (`MenuItemOptions`):
 | `destructive` | The destructive colour. Destructive rows go last, after a separator |
 | `loading` | A spinner instead of the icon; the row is disabled and `aria-busy` |
 
-Rows are 32 tall (more with a description), radius 6, with a 13px medium
+Rows are 32 tall (more with a description), radius 8, with a 13px medium
 label (frames 621:1114, 1084:630, 780:3510). The surface is the popover
 colour, radius 10, `shadow-md`, at least 192 wide.
 
