@@ -20,6 +20,7 @@ from account_v2.models import Organization
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Count, F, Min, OuterRef, Subquery, Sum
 from django.db.models.functions import TruncMonth
 from django.db.utils import DatabaseError, OperationalError
@@ -756,15 +757,20 @@ LLM_COMBINED_FIELDS = {
 }
 
 
-def _prefetched_query(by_granularity: dict[str, dict[str, list]]) -> Callable:
+def _prefetched_query(prefetch: dict, fallback: Callable) -> Callable:
     """A query_method stand-in that serves one org's rows from a prefetch.
 
     Accepts the same call shape _aggregate_single_metric uses, so a prefetched
-    metric goes through the same aggregation code as a queried one.
+    metric goes through the same aggregation code as a queried one. A call for
+    a granularity or window the prefetch did not cover goes to ``fallback``,
+    the per-org query, rather than answering from the wrong window.
     """
 
-    def query(org_id, _start, _end, granularity=Granularity.DAY, **_kwargs):
-        return by_granularity[granularity].get(str(org_id), [])
+    def query(org_id, start, end, granularity=Granularity.DAY, **kwargs):
+        window = prefetch.get(granularity)
+        if window is None or (window["start"], window["end"]) != (start, end):
+            return fallback(org_id, start, end, granularity=granularity, **kwargs)
+        return window["rows"].get(str(org_id), [])
 
     return query
 
@@ -776,7 +782,7 @@ def _prefetch_cross_org_metrics(
     daily_start: datetime,
     end_date: datetime,
     tier: AggregationTier,
-) -> dict[str, dict[str, dict[str, list]]]:
+) -> dict[str, dict[str, dict]]:
     """Query the metrics whose per-org form scans every org, once for all orgs.
 
     documents_processed filters on the (status, created_at) index, which has no
@@ -786,7 +792,12 @@ def _prefetch_cross_org_metrics(
 
     Returns {} on failure, so the run falls back to the per-org queries and
     behaves exactly as before; the failure is logged, not counted, because the
-    fallback still produces the metric.
+    fallback still produces the metric. The query runs in a savepoint, so a
+    database error inside a request transaction (DJANGO_ATOMIC_REQUESTS) is
+    rolled back rather than leaving the transaction aborted for the fallback.
+
+    Returns:
+        {metric_name: {granularity: {"start", "end", "rows": {org_id: rows}}}}
     """
     window_by_granularity = {}
     if _writes_hourly(tier):
@@ -796,14 +807,19 @@ def _prefetch_cross_org_metrics(
     if not org_ids or not window_by_granularity:
         return {}
     try:
-        return {
-            "documents_processed": {
-                granularity: MetricsQueryService.get_documents_processed_by_org(
-                    org_ids, start, end_date, granularity=granularity
-                )
-                for granularity, start in window_by_granularity.items()
+        with transaction.atomic():
+            return {
+                "documents_processed": {
+                    granularity: {
+                        "start": start,
+                        "end": end_date,
+                        "rows": MetricsQueryService.get_documents_processed_by_org(
+                            org_ids, start, end_date, granularity=granularity
+                        ),
+                    }
+                    for granularity, start in window_by_granularity.items()
+                }
             }
-        }
     except SoftTimeLimitExceeded:
         raise
     except Exception:
@@ -820,7 +836,7 @@ def _collect_org_metrics(
     daily_start: datetime,
     end_date: datetime,
     tier: AggregationTier,
-    prefetched: dict[str, dict[str, dict[str, list]]] | None = None,
+    prefetched: dict[str, dict[str, dict]] | None = None,
 ) -> tuple[dict, dict, int]:
     """Query every metric for one org into hourly/daily aggregates.
 
@@ -838,7 +854,7 @@ def _collect_org_metrics(
     prefetched = prefetched or {}
     for metric_name, query_method, is_histogram in METRIC_CONFIGS:
         if metric_name in prefetched:
-            query_method = _prefetched_query(prefetched[metric_name])
+            query_method = _prefetched_query(prefetched[metric_name], query_method)
         metric_type = MetricType.HISTOGRAM if is_histogram else MetricType.COUNTER
         # Pre-resolved identifier spares PageUsage a lookup per call.
         extra_kwargs = (
@@ -896,7 +912,7 @@ def _aggregate_org(
     end_date: datetime,
     tier: AggregationTier,
     stats: dict[str, Any],
-    prefetched: dict[str, dict[str, dict[str, list]]] | None = None,
+    prefetched: dict[str, dict[str, dict]] | None = None,
 ) -> None:
     """Aggregate one organization and upsert the tiers this run writes."""
     hourly_agg, daily_agg, errors = _collect_org_metrics(

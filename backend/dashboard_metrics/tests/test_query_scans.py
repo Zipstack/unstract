@@ -14,6 +14,7 @@ from datetime import timedelta
 from unittest import mock
 
 from account_v2.models import Organization
+from django.db import connection
 from django.test import TestCase
 from django.utils import timezone
 from workflow_manager.file_execution.models import WorkflowFileExecution
@@ -131,13 +132,24 @@ class DocumentsProcessedByOrgTests(_Seed, TestCase):
         return self._stored_documents()
 
     def test_aggregation_queries_documents_once_per_granularity(self) -> None:
-        with mock.patch.object(
-            MetricsQueryService,
-            "get_documents_processed",
-            wraps=MetricsQueryService.get_documents_processed,
-        ) as per_org:
+        with (
+            mock.patch.object(
+                MetricsQueryService,
+                "get_documents_processed",
+                wraps=MetricsQueryService.get_documents_processed,
+            ) as per_org,
+            mock.patch.object(
+                MetricsQueryService,
+                "get_documents_processed_by_org",
+                wraps=MetricsQueryService.get_documents_processed_by_org,
+            ) as cross_org,
+        ):
             stored = self._run()
         per_org.assert_not_called()
+        self.assertEqual(
+            sorted(c.kwargs["granularity"] for c in cross_org.call_args_list),
+            sorted([Granularity.HOUR, Granularity.DAY]),
+        )
         self.assertTrue(stored["hourly"] and stored["daily"])
 
     def test_aggregation_writes_what_the_per_org_path_writes(self) -> None:
@@ -156,6 +168,25 @@ class DocumentsProcessedByOrgTests(_Seed, TestCase):
             MetricsQueryService,
             "get_documents_processed_by_org",
             side_effect=RuntimeError("boom"),
+        ):
+            self.assertEqual(self._run(), expected)
+
+
+    def test_a_database_error_in_the_prefetch_does_not_abort_the_run(self) -> None:
+        # Inside a request transaction (DJANGO_ATOMIC_REQUESTS) a failed statement
+        # aborts the transaction; the fallback must still be able to query.
+        expected = self._run()
+        EventMetricsHourly._base_manager.all().delete()
+        EventMetricsDaily._base_manager.all().delete()
+
+        def fail_in_the_database(*_args, **_kwargs):
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1 / 0")
+
+        with mock.patch.object(
+            MetricsQueryService,
+            "get_documents_processed_by_org",
+            side_effect=fail_in_the_database,
         ):
             self.assertEqual(self._run(), expected)
 
@@ -200,6 +231,21 @@ class RecentActivityTests(_Seed, TestCase):
 
         self.assertEqual(self._actual(self.org_a), self._expected(self.org_a))
         self.assertEqual(set(self._actual(self.org_a)), {f.id for f in older})
+
+    def test_a_running_older_execution_still_shows_its_newest_files(self) -> None:
+        # A long batch keeps creating files while newer runs of the same
+        # workflow start and finish.
+        workflow = self._workflow(self.org_a)
+        batch = self._execution(workflow, 48)
+        WorkflowExecution.objects.filter(pk=batch.pk).update(
+            status=ExecutionStatus.EXECUTING.value
+        )
+        for i in range(12):
+            self._file(self._execution(workflow, 20 + i), 19 + i)
+        newest = [self._file(batch, 0.1 * (i + 1)) for i in range(3)]
+
+        self.assertEqual(self._actual(self.org_a), self._expected(self.org_a))
+        self.assertEqual(self._actual(self.org_a)[:3], [f.id for f in newest])
 
     def test_an_org_with_no_files_gets_no_rows(self) -> None:
         self._execution(self._workflow(self.org_a), 1)

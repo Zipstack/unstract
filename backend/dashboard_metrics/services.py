@@ -86,6 +86,15 @@ def _org_file_executions(organization_id: str):
     )
 
 
+# Statuses an execution can no longer create files in. Written into the SQL as
+# literals, not parameters, so the planner can match we_active_by_workflow_idx,
+# whose predicate is this same list (workflow_v2 migration 0023).
+_TERMINAL_EXECUTION_STATUSES = ", ".join(
+    f"'{s.value}'"
+    for s in (ExecutionStatus.COMPLETED, ExecutionStatus.STOPPED, ExecutionStatus.ERROR)
+)
+
+
 def _recent_file_execution_ids(organization_id: str, limit: int) -> list:
     """Ids of the org's ``limit`` newest file executions, read through indexes.
 
@@ -93,37 +102,55 @@ def _recent_file_execution_ids(organization_id: str, limit: int) -> list:
     use: it joins every execution of the org's workflows, which on prod was a
     sequential scan of the whole workflow_execution table (14-39 s, UN-4672).
 
-    Instead, for each of the org's workflows take its ``limit`` newest
-    executions that have files, through the (workflow_id, created_at) index,
-    and order only their files. The newest ``limit`` files overall are among
-    those unless an older execution of the same workflow kept creating files
-    after ``limit`` newer executions had started, which only overlapping
-    long-running executions do.
+    Instead the candidates are the files of two sets of executions, both
+    reached through indexes:
+
+    * per workflow, its ``limit`` newest executions that have files, through
+      the (workflow_id, created_at) index. Executions without files are
+      skipped, so a scheduled pipeline's empty runs cannot hide its last files;
+    * every execution still running, through we_active_by_workflow_idx. An
+      older execution that is still creating files can be newer, by file, than
+      ``limit`` executions started after it.
+
+    The one case left out: an execution that has finished, whose newest file
+    is among the org's newest ``limit`` although ``limit`` executions of the
+    same workflow started after it and each has only older files. That needs
+    those executions processed ahead of it.
     """
     workflow = Workflow._meta.db_table
     execution = WorkflowExecution._meta.db_table
     file_execution = WorkflowFileExecution._meta.db_table
     sql = f"""
-        SELECT wfe.id
-        FROM "{workflow}" w
-        CROSS JOIN LATERAL (
+        WITH candidates AS (
+            SELECT recent.id
+            FROM "{workflow}" w
+            CROSS JOIN LATERAL (
+                SELECT we.id
+                FROM "{execution}" we
+                WHERE we.workflow_id = w.id
+                  AND EXISTS (
+                      SELECT 1 FROM "{file_execution}" f
+                      WHERE f.workflow_execution_id = we.id
+                  )
+                ORDER BY we.created_at DESC
+                LIMIT %s
+            ) recent
+            WHERE w.organization_id = %s
+            UNION
             SELECT we.id
             FROM "{execution}" we
-            WHERE we.workflow_id = w.id
-              AND EXISTS (
-                  SELECT 1 FROM "{file_execution}" f
-                  WHERE f.workflow_execution_id = we.id
-              )
-            ORDER BY we.created_at DESC
-            LIMIT %s
-        ) recent
-        JOIN "{file_execution}" wfe ON wfe.workflow_execution_id = recent.id
-        WHERE w.organization_id = %s
+            JOIN "{workflow}" w ON w.id = we.workflow_id
+            WHERE w.organization_id = %s
+              AND we.status NOT IN ({_TERMINAL_EXECUTION_STATUSES})
+        )
+        SELECT wfe.id
+        FROM candidates
+        JOIN "{file_execution}" wfe ON wfe.workflow_execution_id = candidates.id
         ORDER BY wfe.created_at DESC
         LIMIT %s
     """
     with connection.cursor() as cursor:
-        cursor.execute(sql, [limit, organization_id, limit])
+        cursor.execute(sql, [limit, organization_id, organization_id, limit])
         return [row[0] for row in cursor.fetchall()]
 
 
