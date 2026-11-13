@@ -285,6 +285,9 @@ def test_first_index_then_healthy_probe_skips(env: dict[str, Any]) -> None:
 
 def test_healthy_reindex_keeps_one_copy(env: dict[str, Any]) -> None:
     n = env["seed"]()
+    before = env["ids"]()
     res = env["run"](reindex=True)
     assert res.success
     assert env["count"]() == n
+    # A reindex deletes the old points and writes new ones, each with a fresh id.
+    assert env["ids"]().isdisjoint(before)
