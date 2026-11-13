@@ -1,4 +1,5 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { type QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createQueryClient } from "@v1/app/query";
 import { ThemeProvider } from "@v1/app/theme/ThemeProvider";
 import { getPortalContainer, PORTAL_CONTAINER_ID } from "@v1/lib/portal";
 import { THEME_STORAGE_KEY } from "@v1/lib/theme";
@@ -12,7 +13,7 @@ import type { ThemeMode } from "./session";
  * lands. A slot is the app's own provider once its task has merged, and a
  * stand-in until then:
  *
- *   query   stand-in  P0-T05 data layer (UN-4313) → the app's QueryClient provider
+ *   query   real      app/query (P0-T05, UN-4313), with test defaults
  *   router  stand-in  P0-T03 router + registry (UN-4271) → the app's router, in memory
  *   theme   real      app/theme/ThemeProvider (P0-T04, #2399)
  *
@@ -38,13 +39,11 @@ export type ProviderSlot = (
   props: Readonly<{ context: ProviderContext; children: ReactNode }>,
 ) => JSX.Element;
 
-/** A QueryClient for one test: no retries, no refetch on focus, no GC mid-test. */
+/** The app's QueryClient for one test: no retries, no refetch on focus, no GC mid-test. */
 export function createTestQueryClient(): QueryClient {
-  return new QueryClient({
-    defaultOptions: {
-      queries: { retry: false, gcTime: Infinity, refetchOnWindowFocus: false },
-      mutations: { retry: false },
-    },
+  return createQueryClient({
+    queries: { retry: false, gcTime: Infinity, refetchOnWindowFocus: false },
+    mutations: { retry: false },
   });
 }
 

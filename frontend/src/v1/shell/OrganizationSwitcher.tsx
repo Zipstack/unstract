@@ -12,6 +12,7 @@ import {
   organizationInitials,
 } from "@v1/lib/organizations";
 import { getPortalContainer } from "@v1/lib/portal";
+import { ApiError } from "@v1/services/errors";
 import {
   listOrganizations,
   type Organization,
@@ -61,6 +62,10 @@ export function sessionEndedPath(body: unknown): string {
   return `/error?${query}`;
 }
 
+// A 401 has already sent the page to sign in, so no error is shown.
+const isLeaving = (error: unknown): boolean =>
+  error instanceof ApiError && error.kind === "unauthenticated";
+
 type ListState =
   | { status: "idle" | "loading" | "error" }
   | { status: "ready"; organizations: Organization[] };
@@ -78,7 +83,7 @@ function useOrganizationList() {
         }
       },
       (error: unknown) => {
-        if (request !== latest.current) {
+        if (request !== latest.current || isLeaving(error)) {
           return;
         }
         if (
@@ -168,8 +173,10 @@ function ConfirmSwitch({
         onAccessRemoved();
         return;
       }
-      setFailed("retry");
-      setBusy(false);
+      if (!isLeaving(error)) {
+        setFailed("retry");
+        setBusy(false);
+      }
     }
   }
 

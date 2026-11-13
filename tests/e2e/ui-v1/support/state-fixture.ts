@@ -1,9 +1,10 @@
 /**
  * A self-test fixture for the helpers, not an app page.
  *
- * `expectFiveStates` needs a screen that loads data, and P0-T03's demo pages
- * (`/:orgName/v1-demo`) render static content. So the helper self-tests serve
- * this page instead: `page.route` fulfils `/__v1-harness-fixture` on the
+ * `expectFiveStates` needs a screen that renders the core state components
+ * (STATE_TEST_IDS), and P0-T03's demo pages (`/:orgName/v1-demo`) render none.
+ * So the helper self-tests serve this page instead: `page.route` fulfils
+ * `/__v1-harness-fixture` on the
  * frontend origin with a minimal page that renders each state from its API
  * (`/__v1-harness-fixture/api/items`), using the contract/v1-ui.ts markers.
  * A green run here proves the helpers; the version switch is proven against

@@ -60,7 +60,8 @@ await user.click(screen.getByRole("button", { name: "Add" }));
 - `user`: a `userEvent.setup()` instance. Pass `userEventOptions`, for example
   `{ advanceTimers: vi.advanceTimersByTime }` with fake timers.
 - `queryClient`: a fresh client per render, with no retries, no refetch on
-  focus and no garbage collection mid-test. Pass `queryClient` to share one.
+  focus and no garbage collection mid-test. Pass `queryClient` to share one,
+  or `createQueryClient()` from `@v1/app/query` for the app's retry policy.
 - `portal`: the `#v1-portal` container, themed like the root.
 - `theme`: what the test rendered with.
 
@@ -80,7 +81,7 @@ the app's own provider once its task has landed, and a stand-in until then:
 
 | Slot | Today | Replace with, when it lands |
 | --- | --- | --- |
-| query | stand-in: `QueryClientProvider` over `createTestQueryClient()` | the data layer's provider (P0-T05, UN-4313) |
+| query | **real**: the app's `createQueryClient()` (P0-T05, UN-4313) with test defaults, so failures are reported as in the app | — |
 | router | stand-in: `MemoryRouter` (+ `Routes` when `path` is set) | the app router in memory mode, with the route registry (P0-T03, UN-4271) |
 | theme | **real**: `app/theme/ThemeProvider` (P0-T04, #2399) | — |
 | session | none: no v1 code reads a session | the session store or provider, when it lands. Add `session` to `ProviderContext` and `RenderV1Options` with it |
@@ -106,7 +107,7 @@ import { apiPath, DEFAULT_SESSION, HttpResponse, http, mockApi } from "@v1/test"
 
 mockApi(
   http.get<never, never, Adapter[]>(apiPath(DEFAULT_SESSION, "/adapter/"), () =>
-    HttpResponse.json(adapterFixtures.list),
+    HttpResponse.json(adapterFixtures.llm),
   ),
 );
 ```
@@ -133,23 +134,10 @@ arguments. A test that leaves fake timers on gets real timers back after it.
 
 Each service module in `services/` exports its request and response types.
 Its fixtures live in `test/fixtures/<service>.ts`, typed against those types
-so a contract change breaks the fixture at typecheck:
-
-```ts
-// test/fixtures/adapters.ts
-import type { Adapter } from "@v1/services/adapters";
-import { apiPath, HttpResponse, http, type TestSession } from "@v1/test";
-
-export const adapterFixtures = {
-  list: [{ id: "a1", adapter_name: "OpenAI", adapter_type: "LLM" }],
-} satisfies Record<string, Adapter[]>;
-
-export const adapterHandlers = (session: TestSession) => [
-  http.get<never, never, Adapter[]>(apiPath(session, "/adapter/"), () =>
-    HttpResponse.json(adapterFixtures.list),
-  ),
-];
-```
+with `satisfies`, so a contract change breaks the fixture at typecheck. See
+`test/fixtures/adapters.ts`: `adapterFixtures` holds the rows and
+`adapterHandlers(session, rows, seen)` answers `GET adapter/` with those
+rows, paged when the request asks for a page (it neither filters nor 404s).
 
 ## Accessibility
 

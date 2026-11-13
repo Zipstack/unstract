@@ -132,6 +132,19 @@ is convention.
   `isEscapeClearTarget(event)` is true, so Escape clears the search before it
   closes the overlay.
 
+## Data layer
+
+- Server state goes through TanStack Query with the typed functions in
+  `services/`; `services/README.md` has the contract. `V1App` mounts the one
+  QueryClient (`app/query.ts`), which reports every failure.
+- Render a read with `QueryView` (`components/patterns/`): skeleton, inline
+  error with Retry, then the data. Forms map field errors with
+  `mapFieldErrors()` from `@v1/services/errors`.
+- `lint:v1` rejects a string or template starting `/api/` or `/deployment/`,
+  any import of axios or `@v1/services/http`, and any call to `fetch`,
+  `XMLHttpRequest` or `EventSource`, outside `services/`,
+  `plugins/<plugin>/services/`, `test/` and test files.
+
 ## Version switch and route registry
 
 v0's router (`routes/Router.jsx`) wraps its routes in `VersionSwitch`, which
@@ -146,7 +159,10 @@ only when a v1 page first renders.
   `REGISTERED_PAGES`. Its v0 URLs then redirect to v1; reverting is that line.
   v1 renders outside v0's `PersistentLogin` and `RequireAuth`, and its own
   session and guards come with P0-T06: a page registered before that ships
-  with no session load, login redirect or org check.
+  with no session load or org check. Until something sets the org
+  (`setOrganizationId()`), its queries throw and it shows the error fallback;
+  it leaves for sign-in only when a service call gets a 401
+  (`services/http.ts`).
 - `app/registry/validate.test.ts` fails CI on an invalid entry: overlapping
   patterns across pages, a v1 route and a different v0 route of one page that
   match the same URL (a page may keep its v0 URL), a route without a mapping
@@ -191,7 +207,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | `components/patterns/` | Composites built from core components | `components/ui/`, `lib/`, `services/`, `stores/`, `hooks/`, `assets/` |
 | `shell/` | Top bar, rail, context bar, tab bar | `components/ui/`, `components/patterns/`, `services/`, `stores/`, `hooks/`, `lib/`, `assets/` |
 | `pages/<page>/` | One folder per target page | `components/ui/`, `components/patterns/`, `shell/`, `services/`, `stores/`, `hooks/`, `lib/`, `styles/`, `assets/`, `plugins/` — not other pages, `app/`, `test/` or the entry |
-| `services/` | Typed service modules; the only place a URL appears | `lib/` |
+| `services/` | Typed service modules and the HTTP client; with a cloud plugin's `plugins/<plugin>/services/`, the only place a backend URL appears (see `services/README.md`) | `lib/` |
 | `stores/` | Zustand stores | `lib/` |
 | `hooks/` | Shared hooks | `lib/` |
 | `lib/` | Pure helpers | — |
@@ -218,7 +234,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | Script | Checks |
 | --- | --- |
 | `bun run typecheck:v1` | TypeScript-only files, styles only in `styles/`, allowed file types only, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
-| `bun run lint:v1` | Biome on `src/v1/` (warnings fail), then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, the single notification entry point, then the styling policy (S1 to S8 above), then the icon rules |
+| `bun run lint:v1` | Biome on `src/v1/` (warnings fail), then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, the single notification entry point, backend URLs, the HTTP client and raw requests only in `services/` and `plugins/<plugin>/services/`, then the styling policy (S1 to S8 above), then the icon rules |
 | `bun run tokens:v1` | Regenerates `styles/tokens.css` from `styles/tokens.json` (via `styles/tokens.ts`; runs under bun, which imports the TypeScript source directly) |
 | `bun run test:v1` | v1 unit tests (`vitest.v1.config.mts`, then cloud plugins with `vitest.v1-plugins.config.mts`) with v1's own coverage threshold, then the guardrail fixtures in `test-fixtures/v1-boundary/`, `test-fixtures/v1-harness/` and `test-fixtures/v1-unit-gate/` (the coverage threshold fails a run, and CI runs the rig group's config). The harness is documented in `test/README.md` |
 | `bun run seam:v1` | Seam guard: v1 work changes v0 (`src/` outside v1, `public/`) only at the files in `scripts/v1-seam-allowlist.json`, compared with `origin/main` |

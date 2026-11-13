@@ -1,14 +1,18 @@
-import { http } from "@v1/lib/http";
 import posthog from "posthog-js";
+import { http, type RequestOptions } from "./http";
 
 /**
  * Ends the session. Returns the URL to open at top level: the identity
  * provider's sign-out on cloud, the web app on OSS. A script cannot follow a
  * cross-origin sign-out redirect, so the backend answers a POST with the URL.
  */
-export async function signOut(): Promise<string> {
+export async function signOut({
+  signal,
+}: Pick<RequestOptions, "signal"> = {}): Promise<string> {
   const { data } = await http.post<{ redirect_url?: unknown }>(
     "/api/v1/logout",
+    undefined,
+    { signal },
   );
   if (typeof data?.redirect_url !== "string" || data.redirect_url === "") {
     throw new Error("Sign-out reply carried no redirect URL");
