@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="OCR">
+  <rect width="64" height="64" rx="14" fill="#3158b8"/>
+  <path d="M16 24v-5a4 4 0 0 1 4-4h5m14 0h5a4 4 0 0 1 4 4v5M16 40v5a4 4 0 0 0 4 4h5m14 0h5a4 4 0 0 0 4-4v-5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+  <text x="32" y="37" text-anchor="middle" fill="#fff" font-family="sans-serif" font-weight="700" font-size="15">OCR</text>
+</svg>
