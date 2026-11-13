@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -167,6 +167,28 @@ describe("Accordion", () => {
     await user.keyboard("{Enter}");
     expect(two.getAttribute("aria-expanded")).toBe("false");
   });
+
+  it("puts a custom accordion trigger in charge with asChild", async () => {
+    const user = userEvent.setup();
+    render(
+      <Accordion type="single" collapsible>
+        <AccordionItem value="one">
+          <AccordionTrigger asChild>
+            <button type="button" className="custom">
+              Custom
+            </button>
+          </AccordionTrigger>
+          <AccordionContent>Body</AccordionContent>
+        </AccordionItem>
+      </Accordion>,
+    );
+    const trigger = screen.getByRole("button", { name: "Custom" });
+    // The child keeps its own look: no chevron, no trigger classes.
+    expect(trigger.querySelector("svg")).toBeNull();
+    expect(trigger.className).toBe("custom");
+    await user.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+  });
 });
 
 describe("Collapsible", () => {
@@ -263,7 +285,10 @@ describe("Checklist", () => {
     screen.getByRole("button", { name: /Prompt Studio project/ }).focus();
     await user.keyboard("{Enter}");
     expect(onSelect).toHaveBeenLastCalledWith("project");
-    await user.click(screen.getByRole("button", { name: /Locked/ }));
+    const locked = screen.getByRole("button", { name: /Locked/ });
+    // A step without a value has no value line.
+    expect(locked.textContent).toBe("4Locked, not started");
+    await user.click(locked);
     expect(onSelect).toHaveBeenCalledTimes(2);
   });
 });
@@ -288,6 +313,25 @@ describe("Stepper", () => {
     expect(rules[0]?.className).toContain("ui:bg-primary");
     expect(rules[1]?.className).toContain("ui:bg-border");
   });
+
+  it("marks only the first of several in-progress steps as current", () => {
+    render(
+      <Stepper
+        aria-label="Stages"
+        steps={[
+          { id: "a", label: "A", state: "in-progress" },
+          { id: "b", label: "B", state: "in-progress" },
+        ]}
+      />,
+    );
+    const items = within(
+      screen.getByRole("list", { name: "Stages" }),
+    ).getAllByRole("listitem");
+    expect(items.map((item) => item.getAttribute("aria-current"))).toEqual([
+      "step",
+      null,
+    ]);
+  });
 });
 
 describe("Pagination", () => {
@@ -303,7 +347,7 @@ describe("Pagination", () => {
     expect(rangeText(1, 0, 5)).toBe("5 entries");
   });
 
-  it("disables Previous on the first page and Next on the last", async () => {
+  it("disables Previous on the first page and Next on the last, keeping focus", async () => {
     const user = userEvent.setup();
     const onPageChange = vi.fn();
     const { rerender } = render(
@@ -317,7 +361,9 @@ describe("Pagination", () => {
     const nav = screen.getByRole("navigation", { name: "Pagination" });
     const previous = within(nav).getByRole("button", { name: "Previous" });
     const next = within(nav).getByRole("button", { name: "Next" });
-    expect(previous.hasAttribute("disabled")).toBe(true);
+    expect(previous.getAttribute("aria-disabled")).toBe("true");
+    await user.click(previous);
+    expect(onPageChange).not.toHaveBeenCalled();
     await user.click(next);
     expect(onPageChange).toHaveBeenLastCalledWith(2);
     rerender(
@@ -328,7 +374,13 @@ describe("Pagination", () => {
         onPageChange={onPageChange}
       />,
     );
-    expect(next.hasAttribute("disabled")).toBe(true);
+    // Next stays focusable at the end, so focus does not drop to the page.
+    expect(next.getAttribute("aria-disabled")).toBe("true");
+    expect(next.hasAttribute("disabled")).toBe(false);
+    next.focus();
+    await user.keyboard("{Enter}");
+    expect(document.activeElement).toBe(next);
+    expect(onPageChange).toHaveBeenCalledTimes(1);
     await user.click(previous);
     expect(onPageChange).toHaveBeenLastCalledWith(4);
     expect(nav.textContent).toContain("Showing 41 to 42 of 42 entries");
@@ -370,6 +422,10 @@ describe("Pagination", () => {
     await user.clear(input);
     await user.type(input, "2{Enter}");
     expect(onPageChange).toHaveBeenCalledTimes(2);
+    // A page below 1 goes to page 1.
+    await user.clear(input);
+    await user.type(input, "0{Enter}");
+    expect(onPageChange).toHaveBeenLastCalledWith(1);
   });
 
   it("changes the page size from the select", async () => {
@@ -399,23 +455,52 @@ describe("Pagination", () => {
     expect(onPageSizeChange).toHaveBeenLastCalledWith(50);
   });
 
-  it("clamps an out-of-range page, tells the parent, and disables the box with one page", () => {
+  it("leaves the page alone while the total is 0 and disables the box", () => {
     const onPageChange = vi.fn();
-    render(
+    const { rerender } = render(
       <Pagination
-        page={9}
+        page={3}
         pageSize={10}
         total={0}
         onPageChange={onPageChange}
       />,
     );
-    expect(onPageChange).toHaveBeenCalledExactlyOnceWith(1);
     const input = screen.getByRole("textbox", {
       name: "Page number, 1 to 1",
     }) as HTMLInputElement;
     expect(input.value).toBe("1");
     expect(input.disabled).toBe(true);
     expect(screen.getByText("No entries")).toBeTruthy();
+    // Both ends are disabled, so neither button moves the page.
+    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // The count arrives: page 3, restored from the URL, survives.
+    rerender(
+      <Pagination
+        page={3}
+        pageSize={10}
+        total={42}
+        onPageChange={onPageChange}
+      />,
+    );
+    expect(onPageChange).not.toHaveBeenCalled();
+  });
+
+  it("clamps a page past the end of a list and tells the parent once", () => {
+    const calls: number[] = [];
+    const props = { page: 9, pageSize: 10, total: 42 } as const;
+    const { rerender } = render(
+      <Pagination {...props} onPageChange={(page) => calls.push(page)} />,
+    );
+    // A fresh inline callback on each render does not report it again.
+    rerender(
+      <Pagination {...props} onPageChange={(page) => calls.push(page)} />,
+    );
+    rerender(
+      <Pagination {...props} onPageChange={(page) => calls.push(page)} />,
+    );
+    expect(calls).toEqual([5]);
+    expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("5");
   });
 
   it("keeps the first visible row in view when the page size changes", async () => {
@@ -435,6 +520,23 @@ describe("Pagination", () => {
     await user.selectOptions(screen.getByRole("combobox"), "20");
     expect(onPageSizeChange).toHaveBeenLastCalledWith(20);
     expect(onPageChange).toHaveBeenLastCalledWith(2);
+  });
+
+  it("rounds down to the page holding the first row", async () => {
+    const user = userEvent.setup();
+    const onPageChange = vi.fn();
+    render(
+      <Pagination
+        page={5}
+        pageSize={10}
+        total={100}
+        onPageChange={onPageChange}
+        onPageSizeChange={vi.fn()}
+      />,
+    );
+    // Rows 41-50 were showing; with 20 per page row 41 is on page 3.
+    await user.selectOptions(screen.getByRole("combobox"), "20");
+    expect(onPageChange).toHaveBeenLastCalledWith(3);
   });
 
   it("drops an uncommitted entry when the page changes from outside", async () => {
@@ -472,23 +574,5 @@ describe("Pagination", () => {
     expect(input.value).toBe("2");
     await user.keyboard("{Enter}");
     expect(onPageChange).not.toHaveBeenCalled();
-  });
-
-  it("puts a custom accordion trigger in charge with asChild", async () => {
-    const user = userEvent.setup();
-    render(
-      <Accordion type="single" collapsible>
-        <AccordionItem value="one">
-          <AccordionTrigger asChild>
-            <button type="button">Custom</button>
-          </AccordionTrigger>
-          <AccordionContent>Body</AccordionContent>
-        </AccordionItem>
-      </Accordion>,
-    );
-    const trigger = screen.getByRole("button", { name: "Custom" });
-    expect(trigger.querySelector("svg")).toBeNull();
-    await user.click(trigger);
-    expect(trigger.getAttribute("aria-expanded")).toBe("true");
   });
 });

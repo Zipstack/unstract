@@ -20,7 +20,8 @@ export type TabsProps = ComponentProps<typeof RadixTabs.Root> &
   Readonly<{ variant?: TabsVariant }>;
 
 /**
- * Tabs with automatic activation: the arrow keys move between tabs and select
+ * Tabs with automatic activation by default (pass `activationMode="manual"`
+ * to opt out): the arrow keys move between tabs and select
  * the one they land on; Home and End jump to the ends. The selected tab
  * carries `aria-selected="true"` and `data-state="active"`.
  */

@@ -12,7 +12,11 @@ export const STEP_STATES = [
 
 export type StepState = (typeof STEP_STATES)[number];
 
-/** Read to screen readers after the label, so a state is never colour alone. */
+/**
+ * Read to screen readers after the label. On screen, done and failed carry a
+ * glyph; in-progress and not-started differ by the marker's fill and the card
+ * colour, as in the frames.
+ */
 export const STEP_STATE_TEXT: Record<StepState, string> = {
   done: "completed",
   "in-progress": "in progress",

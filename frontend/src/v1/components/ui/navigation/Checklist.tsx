@@ -31,8 +31,8 @@ const CARD_BY_STATE: Record<StepState, string> = {
 
 /**
  * The guided-setup checklist (frames 756:1190, 758:20028, 789:3765): one card
- * per step with a numbered marker, label and value line. Each state is read
- * out as text after the label, so it never rests on colour alone.
+ * per step with a marker, label and value line. Each state is also read out
+ * as text after the label.
  */
 export function Checklist({
   steps,

@@ -5,6 +5,7 @@ import {
   type KeyboardEvent,
   useEffect,
   useId,
+  useRef,
   useState,
 } from "react";
 
@@ -14,8 +15,12 @@ export type PaginationProps = Readonly<{
   /** The current page, from 1. */
   page: number;
   pageSize: number;
-  /** Entries across all pages. */
+  /** Entries across all pages; 0 while the count is not known yet. */
   total: number;
+  /**
+   * Called with the page to show. Besides user input, it fires once when
+   * `page` is past the end of a non-empty list, with the last page.
+   */
   onPageChange: (page: number) => void;
   /** Shows the page-size select when given. */
   onPageSizeChange?: (pageSize: number) => void;
@@ -55,13 +60,15 @@ const CONTROL =
 
 const BUTTON = cn(
   CONTROL,
-  "ui:cursor-pointer ui:px-3 ui:not-disabled:hover:bg-accent ui:disabled:cursor-not-allowed ui:disabled:text-muted-foreground ui:disabled:opacity-60",
+  "ui:cursor-pointer ui:px-3 ui:not-aria-disabled:hover:bg-accent ui:aria-disabled:cursor-not-allowed ui:aria-disabled:text-muted-foreground ui:aria-disabled:opacity-60",
 );
 
 /**
  * Range text, page size, Previous and Next, and a page box that jumps on
  * Enter (Escape or leaving the box puts the current page back). Previous is
- * disabled on the first page and Next on the last.
+ * disabled on the first page and Next on the last; they stay focusable
+ * (`aria-disabled`), so focus does not drop to the page when one reaches an
+ * end.
  */
 export function Pagination({
   page,
@@ -88,13 +95,23 @@ export function Pagination({
   }, [draft, current]);
   const sizeId = useId();
 
-  // A page past the end (the total shrank, or the page size grew) is shown as
-  // the last page; tell the parent, so the rows it loads match the footer.
+  // A page past the end of a non-empty list (the total shrank, or the page
+  // size grew) is shown as the last page; tell the parent once, so the rows it
+  // loads match the footer. A total of 0 is skipped: it is also what a list
+  // shows before its count arrives, and resetting then would lose a page
+  // restored from the URL.
+  const onPageChangeRef = useRef(onPageChange);
   useEffect(() => {
-    if (current !== page) {
-      onPageChange(current);
+    onPageChangeRef.current = onPageChange;
+  }, [onPageChange]);
+  useEffect(() => {
+    if (total > 0 && current !== page) {
+      onPageChangeRef.current(current);
     }
-  }, [current, page, onPageChange]);
+  }, [current, page, total]);
+
+  const atFirst = current <= 1;
+  const atLast = current >= pages;
 
   const go = (target: number): void => {
     const next = Math.min(Math.max(1, target), pages);
@@ -165,8 +182,12 @@ export function Pagination({
         <button
           type="button"
           className={BUTTON}
-          disabled={current <= 1}
-          onClick={() => go(current - 1)}
+          aria-disabled={atFirst}
+          onClick={() => {
+            if (!atFirst) {
+              go(current - 1);
+            }
+          }}
         >
           <ChevronLeft aria-hidden className="ui:size-3.5" />
           Previous
@@ -194,8 +215,12 @@ export function Pagination({
         <button
           type="button"
           className={BUTTON}
-          disabled={current >= pages}
-          onClick={() => go(current + 1)}
+          aria-disabled={atLast}
+          onClick={() => {
+            if (!atLast) {
+              go(current + 1);
+            }
+          }}
         >
           Next
           <ChevronRight aria-hidden className="ui:size-3.5" />

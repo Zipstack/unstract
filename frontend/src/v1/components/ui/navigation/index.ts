@@ -35,7 +35,6 @@ export {
   rangeText,
 } from "./Pagination";
 export { Stepper, type StepperProps, type StepperStep } from "./Stepper";
-export { STEP_STATE_TEXT, STEP_STATES, type StepState } from "./stepState";
 export {
   Tabs,
   TabsContent,
