@@ -38,6 +38,5 @@ export function QueryView<T>({
       </InlineAlert>
     );
   }
-  // After a failed refresh, `data` is undefined if `select` made it so (T allows it), or threw during a fetch.
   return <>{children(query.data as T)}</>;
 }
