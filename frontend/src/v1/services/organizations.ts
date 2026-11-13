@@ -1,7 +1,7 @@
 import type { OrganizationDetails } from "@v1/lib/organizations";
 import axios from "axios";
 import { ApiError } from "./errors";
-import { http } from "./http";
+import { http, type RequestOptions } from "./http";
 
 /** A row of GET /api/v1/organization. role, member_count and region may be absent. */
 export interface Organization extends OrganizationDetails {
@@ -16,16 +16,23 @@ export interface Organization extends OrganizationDetails {
  * answered 412 after logging the session out; `body` may name the cause.
  * `access-removed`: the set call answered 403, so the user left that
  * organisation after the list loaded. Any other failure is thrown as is.
+ * `cause` is the refused request's ApiError.
  */
 export class OrganizationError extends Error {
   readonly kind: "session-ended" | "access-removed";
   readonly body: unknown;
+  readonly requestId: string | undefined;
 
-  constructor(kind: OrganizationError["kind"], body?: unknown) {
-    super(`Organisation request refused: ${kind}`);
+  constructor(
+    kind: OrganizationError["kind"],
+    body?: unknown,
+    cause?: ApiError,
+  ) {
+    super(`Organisation request refused: ${kind}`, { cause });
     this.name = "OrganizationError";
     this.kind = kind;
     this.body = body;
+    this.requestId = cause?.requestId;
   }
 }
 
@@ -34,17 +41,22 @@ function refusal(
   status: number,
   kind: OrganizationError["kind"],
 ): unknown {
-  const cause = error instanceof ApiError ? error.cause : error;
-  return axios.isAxiosError(cause) && cause.response?.status === status
-    ? new OrganizationError(kind, cause.response.data)
-    : error;
+  if (!(error instanceof ApiError) || error.status !== status) {
+    return error;
+  }
+  const { cause } = error;
+  const body = axios.isAxiosError(cause) ? cause.response?.data : undefined;
+  return new OrganizationError(kind, body, error);
 }
 
-export async function listOrganizations(): Promise<Organization[]> {
+export async function listOrganizations({
+  signal,
+}: Pick<RequestOptions, "signal"> = {}): Promise<Organization[]> {
   let data: { organizations?: unknown } | undefined;
   try {
     ({ data } = await http.get<{ organizations?: unknown }>(
       "/api/v1/organization",
+      { signal },
     ));
   } catch (error) {
     throw refusal(error, 412, "session-ended");
@@ -57,9 +69,13 @@ export async function listOrganizations(): Promise<Organization[]> {
 }
 
 /** Makes the organisation the session's current one. */
-export async function switchOrganization(id: string): Promise<void> {
+export async function switchOrganization(
+  id: string,
+  { signal }: Pick<RequestOptions, "signal"> = {},
+): Promise<void> {
+  const url = `/api/v1/organization/${encodeURIComponent(id)}/set`;
   try {
-    await http.post(`/api/v1/organization/${encodeURIComponent(id)}/set`);
+    await http.post(url, undefined, { signal });
   } catch (error) {
     throw refusal(error, 403, "access-removed");
   }

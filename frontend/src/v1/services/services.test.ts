@@ -3,8 +3,16 @@ import {
   type AxiosRequestConfig,
   type InternalAxiosRequestConfig,
 } from "axios";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { ApiError } from "./errors";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  type MockInstance,
+  test,
+  vi,
+} from "vitest";
+import { ApiError, REQUEST_ID_HEADER } from "./errors";
 import { http } from "./http";
 import {
   listOrganizations,
@@ -45,8 +53,9 @@ beforeEach(() => {
 afterEach(() => {
   // biome-ignore lint/suspicious/noDocumentCookie: clears the cookie set above
   document.cookie = "csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-  vi.unstubAllGlobals();
 });
+
+const sentRequestId = () => sent[0].headers?.[REQUEST_ID_HEADER];
 
 describe("organizations", () => {
   test("lists the user's organisations", async () => {
@@ -116,7 +125,10 @@ describe("organizations", () => {
     expect(error).toMatchObject({
       kind: "session-ended",
       body: { code: "INS" },
+      cause: { kind: "client", status: 412 },
+      requestId: sentRequestId(),
     });
+    expect((error as Error).cause).toBeInstanceOf(ApiError);
   });
 
   test("a 403 on the list is not given a meaning", async () => {
@@ -127,8 +139,11 @@ describe("organizations", () => {
 
   test("a 403 on set is an access-removed error", async () => {
     reply = { status: 403, data: {} };
-    await expect(switchOrganization("org_1")).rejects.toMatchObject({
+    const error = await switchOrganization("org_1").catch((e: unknown) => e);
+    expect(error).toMatchObject({
       kind: "access-removed",
+      cause: { kind: "forbidden", status: 403 },
+      requestId: sentRequestId(),
     });
   });
 
@@ -138,6 +153,20 @@ describe("organizations", () => {
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ status });
   });
+});
+
+test.each([
+  ["listOrganizations", (signal: AbortSignal) => listOrganizations({ signal })],
+  [
+    "switchOrganization",
+    (signal: AbortSignal) => switchOrganization("org_1", { signal }),
+  ],
+  ["signOut", (signal: AbortSignal) => signOut({ signal })],
+])("%s passes its signal to the client", async (_, call) => {
+  reply.data = { organizations: [], redirect_url: "/landing" };
+  const { signal } = new AbortController();
+  await call(signal);
+  expect(sent[0].signal).toBe(signal);
 });
 
 describe("http CSRF cookie", () => {
@@ -180,20 +209,18 @@ describe("signOut", () => {
 });
 
 describe("signOutAndLeave", () => {
-  const assign = vi.fn();
+  let assign: MockInstance<Location["assign"]>;
   beforeEach(() => {
-    assign.mockReset();
-    // The spread drops the getter href, which the client's CSRF origin check reads.
-    vi.stubGlobal("location", {
-      ...window.location,
-      href: window.location.href,
-      assign,
-    });
+    assign = vi
+      .spyOn(window.location, "assign")
+      .mockImplementation(() => undefined);
   });
+  afterEach(() => assign.mockRestore());
 
   test("resets analytics and opens the returned URL", async () => {
     reply.data = { redirect_url: "https://id.example.com/v2/logout" };
     await signOutAndLeave();
+    expect(sent[0].headers?.["X-CSRFToken"]).toBe("tok123");
     expect(reset).toHaveBeenCalledTimes(1);
     expect(assign).toHaveBeenCalledWith("https://id.example.com/v2/logout");
   });

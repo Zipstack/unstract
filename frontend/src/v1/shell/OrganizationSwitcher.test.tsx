@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { ApiError } from "@v1/services/errors";
 import {
   type Organization,
   OrganizationError,
@@ -332,6 +333,34 @@ describe("OrganizationSwitcher", () => {
     expect(
       within(dialog).getByRole("button", { name: "Cancel" }),
     ).toBeEnabled();
+  });
+
+  const expired = () =>
+    new ApiError({ kind: "unauthenticated", message: "m", status: 401 });
+
+  test("a 401 on the list shows no error while the page leaves for sign-in", async () => {
+    list.mockRejectedValue(expired());
+    await open();
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      screen.queryByText("Could not load your organisations."),
+    ).not.toBeInTheDocument();
+  });
+
+  test("a 401 on switch shows no retry while the page leaves for sign-in", async () => {
+    switchTo.mockRejectedValue(expired());
+    const dialog = await openConfirm();
+    const confirm = within(dialog).getByRole("button", {
+      name: "Switch organisation",
+    });
+    await userEvent.click(confirm);
+    await waitFor(() => expect(switchTo).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      screen.queryByText("Could not switch. Try again."),
+    ).not.toBeInTheDocument();
+    expect(confirm).toBeDisabled();
   });
 
   test("a 412 with a known cause goes to the error page that explains it", async () => {

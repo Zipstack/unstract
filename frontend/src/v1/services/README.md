@@ -23,7 +23,8 @@ or error handling.
   plugin keeps its service modules in `plugins/<plugin>/services/`.
 - Every function takes typed params and `RequestOptions` (`{ signal, org }`),
   passes the signal to the client and the org to `orgPath()`, and returns a
-  typed response. Never accept a free-form query object.
+  typed response. Never accept a free-form query object. A call outside an
+  organisation (`organizations.ts`, `session.ts`) takes only `{ signal }`.
 - A paged endpoint takes `PageParams` (`page` from 1, `pageSize`), sends them
   with `pageQuery()`, and returns `Page<T>`. Its query sets
   `placeholderData: previousPageInOrg(queryKey)`, so the previous page stays on
@@ -60,6 +61,9 @@ Every failure becomes an `ApiError` with `kind`, `message` (for people),
 `status`, `fieldErrors`, `formErrors` and `requestId`. A cancelled request
 rejects with axios's `CanceledError` instead; check `isCancelled()` first
 (`toApiError()` calls it `unknown`, "The request was cancelled.").
+`organizations.ts` turns a 412 on the list and a 403 on set into an
+`OrganizationError` for the switcher, with the `ApiError` as its `cause` and
+its `requestId`.
 A download (`responseType: "blob"`) gets its error body as a Blob, which is not
 read: its 401 is session expiry and its 402 `subscription`. The first v1
 download service makes `http.ts` parse JSON Blob errors, with a test.
