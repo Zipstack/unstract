@@ -132,7 +132,7 @@ class AbortTransactionTests(TransactionTestCase):
         restore.assert_called_once_with(execution.id)
         self.assertEqual(self._cached_status(execution), ExecutionStatus.EXECUTING)
 
-    def test_a_failed_abort_adds_no_cache_entry(self) -> None:
+    def test_the_cache_restore_adds_no_entry(self) -> None:
         execution = self._execution()
         keys = {"workflow_id": str(self.workflow.id), "execution_id": str(execution.id)}
         ExecutionCacheUtils.delete_execution(**keys)
@@ -162,14 +162,22 @@ class AbortTransactionTests(TransactionTestCase):
             {str(bad.id): ("failed", None), str(good.id): ("aborted", "STOPPED")},
         )
 
-    def test_the_cache_restore_reads_the_row_under_its_lock(self) -> None:
+    def test_the_cache_restore_publishes_under_the_row_lock(self) -> None:
         execution = self._execution()
+        in_lock: list[bool] = []
 
-        with CaptureQueriesContext(connection) as queries:
+        def publish(**kwargs: Any) -> None:
+            in_lock.append(connection.in_atomic_block)
+
+        with (
+            CaptureQueriesContext(connection) as queries,
+            patch.object(ExecutionCacheUtils, "update_status", side_effect=publish),
+        ):
             _restore_cached_status(execution.id)
 
         sqls = [q["sql"].upper() for q in queries.captured_queries]
         self.assertEqual(sum("FOR NO KEY UPDATE" in sql for sql in sqls), 1, sqls)
+        self.assertEqual(in_lock, [True])
 
     def test_a_failing_report_keeps_the_abort_and_its_audit_event(self) -> None:
         deployment = APIDeployment.objects.create(

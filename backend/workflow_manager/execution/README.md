@@ -120,14 +120,14 @@ run in the organisation. Shared users who are not owners get `not_permitted`.
    file history, destination writes and usage are kept.
 2. Writes the run's file counts from its file rows: completed files are
    successful, and every other file is failed.
-3. Sets the execution to `STOPPED` with the same error, which also frees an API
-   deployment's rate-limit slot and sends the existing "was stopped" inbox
-   notice, unless the inbox item already shows a newer run.
+3. Sets the execution to `STOPPED` with the same error. Once the abort commits,
+   this also frees an API deployment's rate-limit slot and sends the existing
+   "was stopped" inbox notice, unless the inbox item already shows a newer run.
 
 `STOPPED` is written last because that write also publishes it to the Redis
 execution cache: a failure in step 1 or 2 then never caches `STOPPED`
 (`test_a_failure_before_the_stop_never_caches_stopped`). If the abort still fails
-after step 3, it rolls back and puts the stored status back in the cache.
+after step 3, it rolls back and tries to put the stored status back in the cache.
 
 Once that commits, it:
 
@@ -200,8 +200,11 @@ callback reports an aborted run with a completed file as completed.
   pick it up while the old worker finishes it: double LLM spend, and two writes to
   a database destination. Wait for that file to finish before re-running.
 - **A dead worker's run never gets its callback**, and neither does a run whose
-  batch fails and then can't write its status, or a workflow or ETL run aborted
-  before a worker picks it up (the worker then skips it). The pipeline status,
+  batch fails and then can't write its status, a workflow or ETL run aborted
+  before a worker picks it up (the worker then skips it), or an aborted run whose
+  queued batches wait longer than `WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS` (2.5
+  hours by default): the reaper removes its barrier, and each later batch logs
+  `PgBarrier decrement found no row` at `ERROR`. The pipeline status,
   notifications and file counts are still set by the abort, but usage for its
   completed files is not committed and its execution directory, which can hold
   uploaded documents, is not cleaned up. It stays in storage until something else
