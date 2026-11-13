@@ -114,6 +114,24 @@ is convention.
 - `CodeEditor` uses Monaco from its default CDN, as v0 does. Never call
   `loader.config()` in v1: the loader is shared with v0.
 
+## Text inputs
+
+- Text controls come from `components/ui/form/` (`Input`, `Textarea`,
+  `PromptTextarea`, `SearchField`, `SecretField`) inside a `Field`, which
+  ties the label, helper and error text to the control. A control the Field
+  cannot name with `<label for>` (a radiogroup) takes `labelId` from
+  `useFieldControl` as `aria-labelledby`. A trigger that is itself the frame
+  (a select) uses `fieldFrameVariants({ focus: "self" })`.
+- A Field holds one form control. Every control under it that reads the
+  Field's context takes the same id and description, and a control that does
+  not read it (a native `<select>`) is left unlabelled. Give a min/max pair a
+  Field each.
+- A control's own `invalid`, `disabled` and `readOnly` win over its Field's.
+- An overlay (Dialog, Popover, Menu) that can hold a `SearchField` must call
+  `event.preventDefault()` in `onEscapeKeyDown` when
+  `isEscapeClearTarget(event)` is true, so Escape clears the search before it
+  closes the overlay.
+
 ## Version switch and route registry
 
 v0's router (`routes/Router.jsx`) wraps its routes in `VersionSwitch`, which
