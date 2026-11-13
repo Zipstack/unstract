@@ -619,12 +619,19 @@ chart deploy) and not "should this org see `kv` yet" (rollout, per-org, runtime)
 Those are the two jobs one hand-set flag was doing before it was derived.
 
 What this costs, stated plainly so nobody rediscovers it as a surprise: there is
-**no staged rollout**. `global.pgWorkerFleet` is `enabled: true, except: []` in
-base values, so the pool deploys and the flag derives `"true"` everywhere —
-`kv` becomes available to **every org in prod.us and prod.eu at once** on the
-first deploy, and on every on-prem install. There is no way to enable one tenant,
-watch the OCR/LLM spend, and then widen. The spec's own phrase "before the first
-flag-on" presumes a per-org flag-on event that does not exist.
+**no staged rollout**. `global.pgWorkerFleet` is `enabled: true` in base values
+and `pg-agent-kv` is not in its `except` list, so the pool deploys and the flag
+derives `"true"` everywhere — `kv` becomes available to **every org in prod.us
+and prod.eu at once** on the first deploy, and on every on-prem install. There is
+no way to enable one tenant, watch the OCR/LLM spend, and then widen. The spec's
+own phrase "before the first flag-on" presumes a per-org flag-on event that does
+not exist.
+
+The paragraph above read `except: []` until UN-4044 put `pg-sandbox` in that
+list. Only `pg-sandbox` is listed, so `pg-agent-kv` is still on and none of the
+conclusions above change for `kv`. What that entry holds back is `calculations`:
+its sandbox pool does not render on-prem, and `cloud.values.yaml` takes it back
+with `except: []`.
 
 Why: key-value extraction became an on-prem feature after this spec was written
 (see the on-prem enablement in unstract-cloud#1816), and requiring an operator to
