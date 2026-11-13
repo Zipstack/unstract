@@ -31,6 +31,11 @@
   --sidebar-muted-foreground: #737373;
   --header: #fcfcfc;
   --header-foreground: #1a1a1a;
+  --chart-1: #86b6ef;
+  --chart-2: #5598e7;
+  --chart-3: #2a78d6;
+  --chart-4: #1c5cab;
+  --chart-5: #104281;
   --code-key: #b41b30;
   --code-string: #5b5bc0;
   --code-number: #147739;
@@ -119,6 +124,11 @@
   --sidebar-muted-foreground: #a1a1aa;
   --header: #0a0a0a;
   --header-foreground: #fafafa;
+  --chart-1: #9ec5f4;
+  --chart-2: #6da7ec;
+  --chart-3: #3987e5;
+  --chart-4: #256abf;
+  --chart-5: #184f95;
   --code-key: #fca5a5;
   --code-string: #c1c5fb;
   --code-number: #4ade80;
@@ -207,6 +217,11 @@
   --sidebar-muted-foreground: #a9c3da;
   --header: #072b4d;
   --header-foreground: #ffffff;
+  --chart-1: #86b6ef;
+  --chart-2: #5598e7;
+  --chart-3: #2a78d6;
+  --chart-4: #1c5cab;
+  --chart-5: #104281;
   --code-key: #b41b30;
   --code-string: #5d5dc4;
   --code-number: #147839;
