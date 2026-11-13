@@ -84,7 +84,7 @@ class DocumentsProcessedByOrgTests(_Seed, TestCase):
     def test_matches_the_per_org_query_at_every_granularity(self) -> None:
         start = self.now - timedelta(days=2)
         for granularity in (Granularity.HOUR, Granularity.DAY, Granularity.WEEK):
-            with self.subTest(granularity=granularity):
+            with self.subTest(granularity=str(granularity)):
                 by_org = MetricsQueryService.get_documents_processed_by_org(
                     self._org_ids(), start, self.now, granularity=granularity
                 )
@@ -149,7 +149,7 @@ class DocumentsProcessedByOrgTests(_Seed, TestCase):
             tasks.AggregationTier.ALL: [Granularity.DAY, Granularity.HOUR],
         }
         for tier, granularities in expected_windows.items():
-            with self.subTest(tier=tier):
+            with self.subTest(tier=tier.value):
                 per_org, patch_configs = self._spy_per_org()
                 with (
                     patch_configs,
@@ -277,7 +277,7 @@ class PrefetchedQueryWindowTests(SimpleTestCase):
             (other_start, Granularity.HOUR),
             (self.start, Granularity.DAY),
         ):
-            with self.subTest(start=start, granularity=granularity):
+            with self.subTest(start=start.isoformat(), granularity=str(granularity)):
                 self.fallback.reset_mock()
                 self.assertEqual(
                     self.query(7, start, self.end, granularity=granularity),
