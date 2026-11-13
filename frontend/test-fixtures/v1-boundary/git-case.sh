@@ -17,7 +17,7 @@ for entry in "$here"/* "$here"/.gitignore; do
 done
 ln -s "$here/node_modules" "$repo/frontend/node_modules"
 # The repository's own rule for the cloud overlay (D7).
-printf '%s\n' 'frontend/src/v1/plugins/*' '!frontend/src/v1/plugins/manifest.ts' \
+printf '%s\n' 'frontend/src/v1/plugins/*' '!frontend/src/v1/plugins/index.ts' \
   >"$repo/.gitignore"
 cd "$repo"
 git init -q
