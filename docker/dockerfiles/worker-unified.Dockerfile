@@ -31,8 +31,21 @@ RUN apt-get update \
 # Install uv package manager
 COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 
-# Create non-root user early to avoid ownership issues
-RUN groupadd -r worker && useradd -r -g worker worker && \
+# Create non-root user early to avoid ownership issues.
+#
+# UID/GID pinned to 999 EXPLICITLY. `useradd -r` without `-u` takes the next
+# free system id descending from 999, which on this base (python:3.12.9-slim)
+# is 999 today -- verified by running the same two commands in it -- so this
+# pin changes nothing now. What it buys is determinism: a future base image
+# that ships one more system user would silently shift this to 998, and any
+# manifest or volume ownership assuming 999 would break on a rebuild with no
+# code change.
+#
+# It is also what lets a pod set a numeric `runAsUser` at all. The sandbox
+# worker (templates/worker-sandbox) does, so that `runAsNonRoot: true` does not
+# have to depend on this Dockerfile keeping a `USER` line -- see the pod-level
+# securityContext there.
+RUN groupadd -r -g 999 worker && useradd -r -u 999 -g worker worker && \
     mkdir -p /home/worker && chown -R worker:worker /home/worker
 
 # Create working directory
@@ -87,13 +100,16 @@ RUN uv sync --group deploy --locked && \
     for plugin_dir in /app/plugins/*/; do \
       if [ -f "$plugin_dir/pyproject.toml" ] && \
          grep -qE 'unstract\.executor\.(executors|plugins)' "$plugin_dir/pyproject.toml" 2>/dev/null; then \
-        echo "Installing executor plugin: $(basename $plugin_dir)" && \
+        echo "Installing executor plugin: $(basename "$plugin_dir")" && \
         uv pip install -e "$plugin_dir" || true; \
       fi; \
     done
 
-# Switch to worker user
-USER worker
+# Switch to the worker user BY NUMERIC ID (DL3066). Equivalent to `USER worker`
+# now that the uid is pinned above, but it needs no /etc/passwd lookup and it is
+# the id a pod's `runAsUser` has to match -- see
+# templates/worker-sandbox/deployment.yaml in the cloud chart, which asserts 999.
+USER 999
 
 
 # Capture build version at the very end so it doesn't affect layer caching

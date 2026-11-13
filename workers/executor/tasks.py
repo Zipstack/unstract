@@ -62,6 +62,15 @@ _LLM_BEARING_OPS = frozenset(
         # records means the billing chain broke, never that there was nothing
         # to bill.
         "table_extract_api",
+        # The Agent-KV API's key-value extractor (cloud `agentic_kv`). Same
+        # reasoning, more so: the KV engine drives the advanced LLM for
+        # extraction, the lite one for per-page presence, and the advanced one
+        # again for the challenger, so a successful run emitting nothing is
+        # unambiguously a broken chain. Added when `kv` became routable in
+        # `EXTRACTOR_ROUTES`; `test_every_routed_operation_has_a_billing_backstop`
+        # derives this requirement from that table rather than from a list
+        # anyone has to remember to update.
+        "kv_extract",
     }
 )
 

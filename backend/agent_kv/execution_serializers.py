@@ -1,6 +1,7 @@
 """Submit-time validation: every §6.1 cap lives here, before any paid work."""
 
 import json
+import logging
 
 import pdfplumber
 from django.conf import settings
@@ -10,6 +11,8 @@ from agent_kv.constants import EXTRACTOR_ROUTES, TABLE_EXTRACTOR_NAME, V1_EXTRAC
 from unstract.agent_kv_schema import SchemaError, compile_schema
 from unstract.core.network.ssrf import webhook_url_refusal
 from unstract.sdk1.constants import AdapterTypes
+
+logger = logging.getLogger(__name__)
 
 # Images are deliberately ABSENT, and that is a cross-repo contract, not an
 # oversight. The cloud engine's `_build_agent_graph` (agentic_kv
@@ -33,6 +36,119 @@ EXTRACTION_MODES = ("whole-doc", "per-page")
 # these names, so a literal here that no route/stage list knows about would let
 # the serializer accept a name the responses file under something else.
 SUPPORTED_EXTRACTORS = tuple(EXTRACTOR_ROUTES)
+
+
+#: Sentinel for an extractor that needs no deployment flag.
+_UNGATED = object()
+
+#: Distinct from `_UNGATED`: "nobody decided", which refuses. Keeping them
+#: separate is the whole point -- one sentinel for both made a forgotten entry
+#: indistinguishable from a deliberate no-gate decision.
+_NO_DECISION = object()
+
+#: Which setting, if any, gates each ROUTED extractor's acceptance at submit.
+#:
+#: A TABLE rather than an `if`, for one reason: `constants.py`'s
+#: add-an-extractor checklist names "its entry in the acceptance gate" as a
+#: step, and an `if` on one hard-coded name gives that step nowhere to go. An
+#: earlier revision was exactly that `if`, subtracting `V1_EXTRACTOR_NAME` --
+#: so a third extractor was accepted by DEFAULT the moment it was routed,
+#: which is verbatim the 202-into-an-undrained-queue shape
+#: `settings/base.py` calls the worst available.
+#:
+#: `_UNGATED` is explicit, not an omission: `table` ships accepted everywhere
+#: and says so here. `test_every_routed_extractor_has_a_gate_entry` derives
+#: the requirement from `EXTRACTOR_ROUTES`, the way the queue wiring and the
+#: billing backstop already do, so adding a route without deciding its gate
+#: fails a test rather than silently defaulting to open.
+_EXTRACTOR_ENABLE_FLAGS: dict[str, object] = {
+    V1_EXTRACTOR_NAME: "AGENT_KV_KV_EXTRACTOR_ENABLED",
+    TABLE_EXTRACTOR_NAME: _UNGATED,
+}
+
+
+#: Wiring faults below are static properties of `_EXTRACTOR_ENABLE_FLAGS`, not
+#: of a request, but `enabled_extractors()` is called per submit -- so logging
+#: them unguarded emitted one ERROR per request, unbounded, straight into
+#: Sentry at request rate. Keyed by (extractor, kind) so a second, different
+#: fault is still reported. Same reasoning as `tasks._CAPS_LOGGED`, which this
+#: PR added for an equivalent operator message.
+_WIRING_FAULTS_LOGGED: set[tuple[str, str]] = set()
+
+
+def _log_wiring_fault_once(kind: str, name: str, *args) -> None:
+    key = (name, kind)
+    if key in _WIRING_FAULTS_LOGGED:
+        return
+    _WIRING_FAULTS_LOGGED.add(key)
+    logger.error(*args)
+
+
+def enabled_extractors() -> tuple[str, ...]:
+    """The routed extractors this deployment will ACCEPT at submit.
+
+    `SUPPORTED_EXTRACTORS` is what is ROUTED -- it says where an extractor's
+    work would be dispatched. That is not the same question as whether anything
+    DRAINS the queue it names, and the backend cannot see the worker fleet's
+    subscription list: `SubmitView`'s `get_plugin("agent_kv")` probe is
+    per-deployment, so it is already truthy wherever `table` shipped and tells
+    us nothing about `kv`.
+
+    Read per call rather than at import, so a deployment's setting -- and a
+    test's `override_settings` -- is the thing that decides, not the order the
+    module happened to be imported in.
+    """
+    enabled = []
+    for name in SUPPORTED_EXTRACTORS:
+        # One lookup, and a MISSING entry refuses. An earlier version used
+        # `.get(name, _UNGATED)`, which made the no-decision case accept
+        # everywhere -- and because `or` short-circuits, the `[name]` lookup
+        # that would have raised was unreachable. That is the
+        # 202-into-an-undrained-queue shape this table exists to prevent, so
+        # the structure has to carry it rather than the derived test alone.
+        gate = _EXTRACTOR_ENABLE_FLAGS.get(name, _NO_DECISION)
+        if gate is _NO_DECISION:
+            _log_wiring_fault_once(
+                "no-decision",
+                name,
+                "agent_kv: extractor %r is routed but has no entry in "
+                "_EXTRACTOR_ENABLE_FLAGS; refusing it at submit. Add a setting "
+                "name to gate it, or _UNGATED to accept it everywhere.",
+                name,
+            )
+            continue
+        if gate is _UNGATED:
+            enabled.append(name)
+            continue
+        # `getattr(settings, gate, False)` conflated two different things, one
+        # level below the conflation `_NO_DECISION` was introduced to end: a
+        # setting this deployment does not define read exactly like a flag
+        # deliberately set false. The operator then sets the variable, nothing
+        # changes, and the refusal message tells them the extractor "is not
+        # enabled" -- which is the opposite of the truth, because they did
+        # enable it.
+        #
+        # A derived test cannot close this: `override_settings` FABRICATES the
+        # attribute on the settings object whether or not the settings module
+        # defines it, so every `@override_settings(AGENT_KV_..._ENABLED=...)`
+        # case here passes against a settings module that never declares the
+        # name. Verified by probe. So the check has to be at runtime.
+        if not hasattr(settings, gate):
+            _log_wiring_fault_once(
+                "undefined-setting",
+                name,
+                "agent_kv: extractor %r is gated on setting %r, which this "
+                "deployment's settings do not define; refusing it at submit. "
+                "This is a wiring bug, NOT the operator's flag being off -- "
+                "setting %s in the environment will not change it.",
+                name,
+                gate,
+                gate,
+            )
+            continue
+        if getattr(settings, gate):
+            enabled.append(name)
+    return tuple(enabled)
 
 
 class KVOptionsSerializer(serializers.Serializer):
@@ -157,7 +273,33 @@ _OPTIONS_SERIALIZERS = {
 }
 
 
-class TableAdaptersSerializer(serializers.Serializer):
+class _ThreeRoleAdaptersSerializer(serializers.Serializer):
+    """Shared base: the three platform adapter roles both extractors run on.
+
+    `extractor_name` is only used to name the extractor in the unknown-field
+    error, so a knob aimed at the wrong extractor says which one it was aimed
+    at. Subclasses set it; the field set and the validate() below are
+    identical, because the two engines need the same three roles for the same
+    reasons (see `TableAdaptersSerializer` for those reasons in full).
+    """
+
+    extractor_name = ""
+
+    llm = serializers.UUIDField()
+    lite_llm = serializers.UUIDField()
+    x2text = serializers.UUIDField()
+
+    def validate(self, data):
+        unknown = set(self.initial_data) - set(self.fields)
+        if unknown:
+            raise serializers.ValidationError(
+                f"unknown adapters for extractor '{self.extractor_name}': "
+                f"{sorted(unknown)}"
+            )
+        return data
+
+
+class TableAdaptersSerializer(_ThreeRoleAdaptersSerializer):
     """The platform adapters the `table` extractor runs on.
 
     **Why the caller names adapters rather than the operator configuring env
@@ -182,26 +324,55 @@ class TableAdaptersSerializer(serializers.Serializer):
     highest-volume stage.
     """
 
-    llm = serializers.UUIDField()
-    lite_llm = serializers.UUIDField()
-    x2text = serializers.UUIDField()
+    extractor_name = TABLE_EXTRACTOR_NAME
 
-    def validate(self, data):
-        unknown = set(self.initial_data) - set(self.fields)
-        if unknown:
-            raise serializers.ValidationError(
-                f"unknown adapters for extractor '{TABLE_EXTRACTOR_NAME}': "
-                f"{sorted(unknown)}"
-            )
-        return data
+
+class KVAdaptersSerializer(_ThreeRoleAdaptersSerializer):
+    """The platform adapters the `kv` extractor runs on.
+
+    Identical to the table extractor's three roles, and for the same reason:
+    the KV engine needs an advanced LLM, a cheaper one for per-page work, and
+    an OCR source. The rationale in `TableAdaptersSerializer` applies verbatim.
+
+    **The KV path was env-credentialed until the adapter migration**, on one
+    operator LLM key and one operator LLMWhisperer key shared by every org.
+    It now resolves the caller's own adapters exactly as the table path does,
+    which is what lets both extractors live behind one API with one selector
+    rather than two credential models. The executor enforces the same three
+    roles on its side (`agentic_kv.constants.ParamKeys.REQUIRED_ADAPTERS`) and
+    fails the job naming whichever is missing; this serializer is what turns
+    that into a 400 at submit instead, before a concurrency slot is taken and
+    before staging is billed.
+    """
+
+    extractor_name = V1_EXTRACTOR_NAME
 
 
 #: Each extractor's own `adapters` validator, and which `AdapterTypes` each
-#: role must be. An extractor absent from this table takes no adapters -- `kv`
-#: is env-configured (`extraction_seams.ExtractionConfig`) and deliberately
-#: stays that way for now, so the two credential models coexist: one extractor
-#: per model, never both for one extractor.
+#: role must be. An extractor absent from this table takes no adapters at all
+#: and a supplied `adapters` block is a 400 (`_validated_adapter_shape`).
+#:
+#: Both shipped extractors are present, which is the point: there is no longer
+#: one env-credentialed extractor and one adapter-credentialed one. `kv` joined
+#: this table with the adapter migration. Note what the refusal actually was
+#: while it was absent: NOT "takes no adapters" -- `kv` was not in
+#: `EXTRACTOR_ROUTES` either, so `SUPPORTED_EXTRACTORS` was `('table',)` and
+#: `validate_name` rejected the entry as an unknown extractor before
+#: `_validated_adapter_shape` ever ran. The engine ran on operator credentials
+#: for callers who had it enabled by other means.
+#:
+#: The roles here must stay a superset of what each executor requires, or a
+#: submit passes and the job fails mid-run: `agentic_kv` enforces
+#: `ParamKeys.REQUIRED_ADAPTERS` and `agentic_table` its `API_REQUIRED_ADAPTERS`.
 _ADAPTERS_SERIALIZERS = {
+    V1_EXTRACTOR_NAME: (
+        KVAdaptersSerializer,
+        {
+            "llm": AdapterTypes.LLM,
+            "lite_llm": AdapterTypes.LLM,
+            "x2text": AdapterTypes.X2TEXT,
+        },
+    ),
     TABLE_EXTRACTOR_NAME: (
         TableAdaptersSerializer,
         {
@@ -264,11 +435,19 @@ class ExtractorSerializer(serializers.Serializer):
     options = serializers.DictField(required=False, default=dict)
 
     def validate_name(self, v):
-        if v not in SUPPORTED_EXTRACTORS:
+        enabled = enabled_extractors()
+        if v in enabled:
+            return v
+        # Routed but not enabled here. Say so rather than reporting it as
+        # unknown: "unknown" sends an integrator looking for a typo, and the
+        # deployment -- not the request -- is what has to change.
+        if v in SUPPORTED_EXTRACTORS:
             raise serializers.ValidationError(
-                f"unknown extractor '{v}'; supported: {list(SUPPORTED_EXTRACTORS)}"
+                f"extractor '{v}' is not enabled on this deployment"
             )
-        return v
+        raise serializers.ValidationError(
+            f"unknown extractor '{v}'; supported: {list(enabled)}"
+        )
 
     def _validated_keys(self, name: str, spec):
         """Validate `keys` for the extractor named by the VALIDATED `name`.
@@ -287,7 +466,7 @@ class ExtractorSerializer(serializers.Serializer):
         and then failed at the executor.
 
         Branching on `data["name"]` in ``validate()`` means the name is trimmed
-        and already checked against ``SUPPORTED_EXTRACTORS`` exactly once.
+        and already checked against ``enabled_extractors()`` exactly once.
         """
         keys_cls = _KEYS_SERIALIZERS.get(name)
         if keys_cls is not None:
