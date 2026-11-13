@@ -10,9 +10,9 @@ import {
   useState,
 } from "react";
 import {
+  describedRowProps,
   MENU_INDICATOR_SLOT,
   MENU_LABEL,
-  describedRowProps,
   MENU_SEPARATOR,
   MenuCheck,
   MenuItemBody,

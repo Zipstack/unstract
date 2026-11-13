@@ -3,11 +3,11 @@ import { getPortalContainer } from "@v1/lib/portal";
 import type { DropdownMenu as RadixDropdownMenu } from "radix-ui";
 import { type ComponentProps, type JSX, type ReactNode, useId } from "react";
 import {
+  describedRowProps,
   MENU_INDICATOR_SLOT,
   MENU_LABEL,
   MENU_SEPARATOR,
   MENU_SURFACE,
-  describedRowProps,
   MenuCheck,
   MenuItemBody,
   type MenuItemOptions,

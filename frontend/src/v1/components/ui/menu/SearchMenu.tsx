@@ -2,8 +2,8 @@ import { cn } from "@v1/lib/cn";
 import { getPortalContainer } from "@v1/lib/portal";
 import { Popover as RadixPopover } from "radix-ui";
 import { type JSX, type ReactElement, useState } from "react";
-import { MENU_SURFACE } from "./item";
 import { Command, type CommandItem, type CommandProps } from "./Command";
+import { MENU_SURFACE } from "./item";
 
 /*
  * A menu with a search box at the top: a popover holding a Command. Use it
