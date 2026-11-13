@@ -31,7 +31,8 @@ type ScopeSpec = {
 };
 
 const SCOPES: Record<Scope, ScopeSpec> = {
-  // Everything under src/v1 except plugins/, which the cloud overlay fills.
+  // Everything under src/v1 except the plugin folders the cloud overlay
+  // copies in; the public loader plugins/index.ts is core.
   core: {
     root: V1_ROOT,
     name: "frontend-v1",
@@ -40,8 +41,7 @@ const SCOPES: Record<Scope, ScopeSpec> = {
   },
   // Cloud v1 plugins only (`frontend-v1-unit-cloud`), so a cloud plugin
   // failure never reddens the OSS group. Coverage counts the plugin folders
-  // (plugins/<id>/), not OSS's placeholder plugins/manifest.ts, which no
-  // plugin test exercises.
+  // (plugins/<id>/), not the public loader plugins/index.ts, which core covers.
   plugins: {
     root: PLUGINS_ROOT,
     name: "frontend-v1-plugins",
@@ -60,7 +60,7 @@ const COVERAGE_THRESHOLDS = {
 
 export function defineV1Config(scope: Scope) {
   const { root, name, reports, covers } = SCOPES[scope];
-  const scopeExclude = scope === "core" ? [`${PLUGINS_ROOT}/**`] : [];
+  const scopeExclude = scope === "core" ? [`${PLUGINS_ROOT}/*/**`] : [];
   return defineConfig({
     plugins: [react(), svgr()],
     resolve: {
