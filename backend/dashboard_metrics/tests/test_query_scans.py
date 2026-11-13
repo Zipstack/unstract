@@ -1,7 +1,7 @@
-"""UN-4672: documents_processed stops scanning other orgs' rows.
+"""UN-4672: documents_processed reads all orgs' rows once per granularity per run.
 
-It is read for every active org in one grouped query per run, not one query per org.
-The rows must be exactly what the per-org query returns.
+It is read for every active org in one grouped query per granularity, not one query
+per org. The rows must be exactly what the per-org query returns.
 
 DB-backed Django ``TestCase`` → auto-marked ``integration`` by ``backend/conftest.py``.
 """
@@ -11,8 +11,9 @@ from datetime import timedelta
 from unittest import mock
 
 from account_v2.models import Organization
+from celery.exceptions import SoftTimeLimitExceeded
 from django.db import connection
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -123,34 +124,87 @@ class DocumentsProcessedByOrgTests(_Seed, TestCase):
             ),
         }
 
-    def _run(self) -> dict[str, set]:
+    def _run(self, tier=tasks.AggregationTier.ALL) -> dict[str, set]:
         with mock.patch("dashboard_metrics.tasks.timezone.now", return_value=self.now):
-            tasks._run_aggregation(tasks.AggregationTier.ALL)
+            self.result = tasks._run_aggregation(tier)
         return self._stored_documents()
 
-    def test_aggregation_queries_documents_once_per_granularity(self) -> None:
+    def _spy_per_org(self):
+        """Wrap the per-org query where the run actually reads it.
+
+        METRIC_CONFIGS holds the function object, so patching the class attribute
+        would leave the run calling the original and the spy never called.
+        """
+        spy = mock.Mock(wraps=MetricsQueryService.get_documents_processed)
+        configs = [
+            (name, spy if name == "documents_processed" else method, histogram)
+            for name, method, histogram in tasks.METRIC_CONFIGS
+        ]
+        return spy, mock.patch.object(tasks, "METRIC_CONFIGS", configs)
+
+    def test_each_tier_reads_documents_from_the_prefetch_only(self) -> None:
+        expected_windows = {
+            tasks.AggregationTier.HOURLY: [Granularity.HOUR],
+            tasks.AggregationTier.DAILY_MONTHLY: [Granularity.DAY],
+            tasks.AggregationTier.ALL: [Granularity.DAY, Granularity.HOUR],
+        }
+        for tier, granularities in expected_windows.items():
+            with self.subTest(tier=tier):
+                per_org, patch_configs = self._spy_per_org()
+                with (
+                    patch_configs,
+                    mock.patch.object(
+                        MetricsQueryService,
+                        "get_documents_processed_by_org",
+                        wraps=MetricsQueryService.get_documents_processed_by_org,
+                    ) as cross_org,
+                ):
+                    self._run(tier)
+                per_org.assert_not_called()
+                self.assertEqual(
+                    sorted(c.kwargs["granularity"] for c in cross_org.call_args_list),
+                    sorted(granularities),
+                )
+                self.assertEqual(self.result["errors"], 0)
+
+    def test_the_spy_sees_per_org_calls_when_the_prefetch_is_off(self) -> None:
+        # Proves the spy above is wired where the run reads the query.
+        per_org, patch_configs = self._spy_per_org()
         with (
-            mock.patch.object(
-                MetricsQueryService,
-                "get_documents_processed",
-                wraps=MetricsQueryService.get_documents_processed,
-            ) as per_org,
+            patch_configs,
+            mock.patch.object(tasks, "_prefetch_cross_org_metrics", return_value={}),
+        ):
+            self._run()
+        self.assertTrue(per_org.called)
+
+    def test_an_active_org_with_no_completed_files_is_not_an_error(self) -> None:
+        idle = self._org("idle")
+        workflow = self._workflow(idle)
+        self._file(self._execution(workflow, 1.5), 1, status=ERROR)
+        self._run()
+        self.assertEqual(self.result["errors"], 0)
+        self.assertNotIn(
+            str(idle.id),
+            {str(org) for org, _, _ in self._stored_documents()["hourly"]},
+        )
+
+    def test_the_soft_time_limit_is_not_swallowed_by_the_prefetch(self) -> None:
+        per_org, patch_configs = self._spy_per_org()
+        with (
+            patch_configs,
             mock.patch.object(
                 MetricsQueryService,
                 "get_documents_processed_by_org",
-                wraps=MetricsQueryService.get_documents_processed_by_org,
-            ) as cross_org,
+                side_effect=SoftTimeLimitExceeded(),
+            ),
+            self.assertRaises(SoftTimeLimitExceeded),
         ):
-            stored = self._run()
+            self._run()
         per_org.assert_not_called()
-        self.assertEqual(
-            sorted(c.kwargs["granularity"] for c in cross_org.call_args_list),
-            sorted([Granularity.HOUR, Granularity.DAY]),
-        )
-        self.assertTrue(stored["hourly"] and stored["daily"])
 
     def test_aggregation_writes_what_the_per_org_path_writes(self) -> None:
         cross_org = self._run()
+        self.assertTrue(cross_org["hourly"] and cross_org["daily"])
         EventMetricsHourly._base_manager.all().delete()
         EventMetricsDaily._base_manager.all().delete()
         with mock.patch.object(tasks, "_prefetch_cross_org_metrics", return_value={}):
@@ -159,6 +213,7 @@ class DocumentsProcessedByOrgTests(_Seed, TestCase):
 
     def test_a_failed_prefetch_falls_back_to_the_per_org_queries(self) -> None:
         expected = self._run()
+        self.assertTrue(expected["hourly"] and expected["daily"])
         EventMetricsHourly._base_manager.all().delete()
         EventMetricsDaily._base_manager.all().delete()
         with mock.patch.object(
@@ -172,6 +227,7 @@ class DocumentsProcessedByOrgTests(_Seed, TestCase):
         # Inside a request transaction (DJANGO_ATOMIC_REQUESTS) a failed statement
         # aborts the transaction; the fallback must still be able to query.
         expected = self._run()
+        self.assertTrue(expected["hourly"] and expected["daily"])
         EventMetricsHourly._base_manager.all().delete()
         EventMetricsDaily._base_manager.all().delete()
 
@@ -185,3 +241,48 @@ class DocumentsProcessedByOrgTests(_Seed, TestCase):
             side_effect=fail_in_the_database,
         ):
             self.assertEqual(self._run(), expected)
+
+
+class PrefetchedQueryWindowTests(SimpleTestCase):
+    """A call outside the prefetched windows must reach the real query, unchanged."""
+
+    def setUp(self) -> None:
+        now = timezone.now()
+        self.start, self.end = now - timedelta(hours=24), now
+        self.fallback = mock.Mock(return_value=["from fallback"])
+        self.query = tasks._prefetched_query(
+            {
+                Granularity.HOUR: {
+                    "start": self.start,
+                    "end": self.end,
+                    "rows": {"7": ["from prefetch"]},
+                }
+            },
+            self.fallback,
+        )
+
+    def test_matching_window_is_served_from_the_prefetch(self) -> None:
+        self.assertEqual(
+            self.query(7, self.start, self.end, granularity=Granularity.HOUR),
+            ["from prefetch"],
+        )
+        self.assertEqual(
+            self.query(8, self.start, self.end, granularity=Granularity.HOUR), []
+        )
+        self.fallback.assert_not_called()
+
+    def test_another_window_or_granularity_goes_to_the_fallback(self) -> None:
+        other_start = self.start - timedelta(hours=1)
+        for start, granularity in (
+            (other_start, Granularity.HOUR),
+            (self.start, Granularity.DAY),
+        ):
+            with self.subTest(start=start, granularity=granularity):
+                self.fallback.reset_mock()
+                self.assertEqual(
+                    self.query(7, start, self.end, granularity=granularity),
+                    ["from fallback"],
+                )
+                self.fallback.assert_called_once_with(
+                    7, start, self.end, granularity=granularity
+                )

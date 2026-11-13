@@ -783,18 +783,20 @@ def _prefetch_cross_org_metrics(
     end_date: datetime,
     tier: AggregationTier,
 ) -> dict[str, dict[str, dict]]:
-    """Query the metrics whose per-org form scans every org, once for all orgs.
+    """Read documents_processed for every org at once.
 
     documents_processed filters on the (status, created_at) index, which has no
     org column, so each per-org call reads every org's completed files in the
-    window. On prod that was ~6 s per org per run (UN-4672). One grouped query
-    per granularity reads them once.
+    window: ~6 s per org per run on prod when measured for UN-4672 (2026-11).
+    One grouped query per granularity reads them once. failed_pages has the same
+    shape but is not prefetched: it filters on ERROR, a small fraction of rows.
 
     Returns {} on failure, so the run falls back to the per-org queries and
     behaves exactly as before; the failure is logged, not counted, because the
-    fallback still produces the metric. The query runs in a savepoint, so a
-    database error inside a request transaction (DJANGO_ATOMIC_REQUESTS) is
-    rolled back rather than leaving the transaction aborted for the fallback.
+    fallback still produces the metric. The query runs in its own atomic block
+    (a savepoint inside a request transaction under DJANGO_ATOMIC_REQUESTS), so
+    a database error is rolled back rather than leaving the transaction aborted
+    for the fallback.
 
     Returns:
         {metric_name: {granularity: {"start", "end", "rows": {org_id: rows}}}}
@@ -824,7 +826,10 @@ def _prefetch_cross_org_metrics(
         raise
     except Exception:
         logger.exception(
-            "Cross-org documents_processed query failed; falling back to per-org"
+            "Cross-org documents_processed query failed (tier=%s, %d orgs); "
+            "falling back to per-org queries",
+            tier.value,
+            len(org_ids),
         )
         return {}
 

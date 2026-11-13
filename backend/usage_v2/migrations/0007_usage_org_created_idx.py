@@ -1,7 +1,7 @@
 """Index usage by (organization_id, created_at) for the dashboard queries (UN-4672).
 
 The dashboard aggregation queries usage per org over a short window (24 h for the
-hourly tier, 2 days for daily) about 5,000 times a day. The only full index leading
+hourly tier; for daily, 2 days by default and 7 in the reconciliation run) about 5,000 times a day. The only full index leading
 with organization_id is the plain FK index, so each call read the org's whole usage
 history and filtered it by created_at: 0.4-4.8 s per call on the prod replica, where
 one org holds 3.2M of the 8M rows.

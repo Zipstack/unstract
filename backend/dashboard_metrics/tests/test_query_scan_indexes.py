@@ -1,7 +1,7 @@
 """Shape guards for the two index migrations added by UN-4672.
 
-``usage`` (3.2 GB on prod) and ``platform_key`` both take live writes, so each index is
-built ``CONCURRENTLY`` in a hand-written, non-atomic migration whose ``AddIndex``
+``usage`` (3.2 GB on prod) takes constant writes, and ``platform_key`` follows the same
+pattern so both are safe to build at deploy time; each index is built ``CONCURRENTLY`` in a hand-written, non-atomic migration whose ``AddIndex``
 updates model state only. The suite runs with ``--no-migrations``, so the SQL is never
 executed in CI; regenerating either migration from ``Meta.indexes`` would land a
 write-blocking build with every other test green. These assertions fail instead.

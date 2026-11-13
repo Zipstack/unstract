@@ -263,8 +263,7 @@ class MetricsQueryService:
 
         The (status, created_at) index carries no org column, so every per-org
         call reads all orgs' completed files in the window and discards the
-        rest. Grouping by org once per aggregation run reads them once
-        (UN-4672).
+        rest. One grouped call reads them once (UN-4672).
 
         Args:
             organization_ids: Organization PKs to include
