@@ -62,6 +62,9 @@ def test_staging_failure_marks_execution_error(collaborators) -> None:
         timeout=-1,
     )
 
+    collaborators["logger"].exception.assert_any_call(
+        "Failed to stage files for execution %s", "exec-123"
+    )
     # The PENDING row is marked ERROR with the surfaced reason.
     collaborators[
         "WorkflowExecutionServiceHelper"
@@ -90,6 +93,35 @@ def test_staging_failure_cleanup_survives_db_marking_error(collaborators) -> Non
     # Cleanup still runs even though error-marking raised.
     collaborators["APIDeploymentRateLimiter"].release_slot.assert_called_once()
     collaborators["DestinationConnector"].delete_api_storage_dir.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("marked", "answer"),
+    [
+        (MagicMock(status="STOPPED"), "STOPPED"),
+        (MagicMock(status="ERROR"), "ERROR"),
+        (None, "ERROR"),
+    ],
+    ids=["aborted", "live", "missing"],
+)
+def test_staging_failure_answers_the_stored_status(
+    collaborators: dict[str, MagicMock], marked: MagicMock | None, answer: str
+) -> None:
+    """The answer matches the stored status."""
+    collaborators["WorkflowExecutionServiceHelper"].update_execution_err.return_value = (
+        marked
+    )
+
+    response = dh.DeploymentHelper.execute_workflow(
+        organization_name="org",
+        api=_api(),
+        file_objs=[],
+        timeout=-1,
+    )
+
+    assert response["execution_status"] == answer
+    # Only the staging failure is logged, not a failed status write.
+    assert collaborators["logger"].exception.call_count == 1
 
 
 @pytest.fixture
@@ -193,6 +225,27 @@ def test_all_files_rejected_acknowledges_and_notifies(
     mocks["PipelineUtils"].update_pipeline_status.assert_called_once_with(
         pipeline_id="pipe-1", workflow_execution=completed_row
     )
+
+
+def test_an_aborted_run_is_not_reported_again(
+    staging_rejects_everything: dict[str, MagicMock],
+) -> None:
+    """The abort already notified subscribers of a run it stopped."""
+    mocks = staging_rejects_everything
+    stopped_row = mocks[
+        "WorkflowExecutionServiceHelper"
+    ].update_execution_completed.return_value
+    stopped_row.status = "STOPPED"
+
+    response = dh.DeploymentHelper.execute_workflow(
+        organization_name="org",
+        api=_api(),
+        file_objs=[MagicMock()],
+        timeout=-1,
+    )
+
+    mocks["PipelineUtils"].update_pipeline_status.assert_not_called()
+    assert response["execution_status"] == "STOPPED"
 
 
 def test_notification_survives_a_failed_acknowledgement(

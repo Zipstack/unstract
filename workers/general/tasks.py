@@ -17,6 +17,7 @@ from scheduler.tasks import execute_pipeline_task_v2
 
 # Import shared worker infrastructure using new structure
 from shared.api import InternalAPIClient
+from shared.clients.execution_client import refused_as_stopped
 
 # Import worker-specific data models
 from shared.data.models import (
@@ -304,12 +305,14 @@ def async_execute_bin_general(
             # to test) a redelivery could reach here, win a fresh claim, and re-arm +
             # re-dispatch a finished execution — duplicate (costly) destination
             # writes when use_file_history=False. Skip if already terminal, keeping
-            # the freshly-won claim so it re-establishes the tombstone.
+            # the freshly-won claim so it re-establishes the tombstone. A run aborted
+            # before pickup is skipped here too.
             if current_status in ExecutionStatus.terminal_values():
                 logger.warning(
-                    f"Execution {execution_id} already terminal ({current_status}) "
-                    f"at orchestration entry — skipping re-orchestration (a "
-                    f"redelivery of a finished execution)."
+                    "Execution %s already terminal (%s) at orchestration entry — "
+                    "skipping (a redelivery, or a run aborted before pickup).",
+                    execution_id,
+                    current_status,
                 )
                 return {
                     "status": "skipped_terminal_execution",
@@ -424,14 +427,15 @@ def async_execute_bin_general(
             try:
                 with InternalAPIClient(config) as api_client:
                     api_client.set_organization_context(schema_name)
-                    api_client.update_workflow_execution_status(
+                    reply = api_client.update_workflow_execution_status(
                         execution_id=execution_id,
                         status=ExecutionStatus.ERROR.value,
                         error_message=str(e),
                     )
 
-                    # CRITICAL FIX: Also update pipeline status to FAILED for consistency
-                    if pipeline_id:
+                    # CRITICAL FIX: Also update pipeline status to FAILED for consistency.
+                    # An aborted run's pipeline status and notifications are the abort's.
+                    if pipeline_id and not refused_as_stopped(reply):
                         try:
                             api_client.update_pipeline_status(
                                 pipeline_id=pipeline_id,
@@ -776,30 +780,11 @@ def _execute_general_workflow(
                 "💤 No files to process - all files have been filtered out (already processed, active, or no matches)",
             )
 
-            # Send completion log to UI
-            workflow_logger.publish_execution_complete(
-                successful_files=0, failed_files=0, total_time=0.0
-            )
-
-            # Complete immediately with no files
-            try:
-                api_client.update_workflow_execution_status(
-                    execution_id=execution_id,
-                    status=ExecutionStatus.COMPLETED.value,
-                    total_files=0,
+            if _complete_without_files(api_client, execution_id, pipeline_id):
+                # Send completion log to UI
+                workflow_logger.publish_execution_complete(
+                    successful_files=0, failed_files=0, total_time=0.0
                 )
-            except Exception as status_error:
-                logger.warning(f"Failed to update execution status: {status_error}")
-
-            # Update pipeline status if needed
-            if pipeline_id:
-                try:
-                    api_client.update_pipeline_status(
-                        pipeline_id=pipeline_id,
-                        status=PipelineStatus.SUCCESS.value,
-                    )
-                except Exception as pipeline_error:
-                    logger.warning(f"Failed to update pipeline status: {pipeline_error}")
 
             execution_time = time.time() - start_time
             response = WorkerTaskResponse.success_response(
@@ -879,6 +864,34 @@ def _execute_general_workflow(
         execution_time = time.time() - start_time
         logger.error(f"General workflow failed after {execution_time:.2f}s: {e}")
         raise
+
+
+def _complete_without_files(
+    api_client: InternalAPIClient, execution_id: str, pipeline_id: str | None
+) -> bool:
+    """Mark a run with no files COMPLETED and its pipeline SUCCESS.
+
+    Returns False for a run aborted meanwhile: it stays STOPPED, and the abort
+    sets its pipeline status.
+    """
+    try:
+        reply = api_client.update_workflow_execution_status(
+            execution_id=execution_id,
+            status=ExecutionStatus.COMPLETED.value,
+            total_files=0,
+        )
+        if refused_as_stopped(reply):
+            return False
+    except Exception as status_error:
+        logger.warning("Failed to update execution status: %s", status_error)
+    if pipeline_id:
+        try:
+            api_client.update_pipeline_status(
+                pipeline_id=pipeline_id, status=PipelineStatus.SUCCESS.value
+            )
+        except Exception as pipeline_error:
+            logger.warning("Failed to update pipeline status: %s", pipeline_error)
+    return True
 
 
 def _orchestrate_file_processing_general(

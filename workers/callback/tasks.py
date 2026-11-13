@@ -12,6 +12,7 @@ from queue_backend.pg_barrier import PG_TRANSPORT_CALLBACK_KWARG
 
 # Import shared worker infrastructure
 from shared.api import InternalAPIClient
+from shared.clients.execution_client import refused_as_stopped
 
 # Import from shared worker modules
 from shared.enums import PipelineType
@@ -56,7 +57,7 @@ _performance_managers_initialized = False
 class CallbackContext:
     """Container for callback processing context data."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.task_id: str = ""
         self.execution_id: str = ""
         self.pipeline_id: str | None = None
@@ -255,6 +256,13 @@ def _get_performance_stats() -> dict:
     return stats
 
 
+def _was_stopped(execution_context: dict[str, Any] | None) -> bool:
+    """True when the run was already STOPPED (aborted) when this callback fetched it."""
+    execution = (execution_context or {}).get("execution") or {}
+    stopped: bool = execution.get("status") == ExecutionStatus.STOPPED.value
+    return stopped
+
+
 def _determine_execution_status_unified(
     file_batch_results: list[dict[str, Any]],
     api_client: InternalAPIClient,
@@ -323,6 +331,16 @@ def _determine_execution_status_unified(
     failed_files = aggregated_results.get("failed_files", 0)
     total_files = aggregated_results.get("total_files", 0)
     successful_files = aggregated_results.get("successful_files", 0)
+
+    # An abort ended this run, whatever its file counts say.
+    if _was_stopped(execution_context):
+        logger.warning(
+            "Execution %s was stopped - %s of %s files completed",
+            execution_id,
+            successful_files,
+            total_files,
+        )
+        return aggregated_results, ExecutionStatus.STOPPED.value, expected_files
 
     # Step 5: Unified status determination with timeout failure detection
 
@@ -395,16 +413,29 @@ def _update_execution_status_unified(
         successful_files = aggregated_results.get("successful_files", 0)
         failed_files = aggregated_results.get("failed_files", 0)
 
+        def post_status(status: str, error: str | None) -> Any:
+            return api_client.update_workflow_execution_status(
+                execution_id=execution_id,
+                status=status,
+                total_files=total_files,
+                successful_files=successful_files,
+                failed_files=failed_files,
+                organization_id=organization_id,
+                error_message=error,
+            )
+
         # Make the unified API call
-        api_client.update_workflow_execution_status(
-            execution_id=execution_id,
-            status=final_status,
-            total_files=total_files,
-            successful_files=successful_files,
-            failed_files=failed_files,
-            organization_id=organization_id,
-            error_message=error_message,
-        )
+        response = post_status(final_status, error_message)
+        if refused_as_stopped(response):
+            logger.warning(
+                "Execution %s was stopped during this callback; "
+                "reporting STOPPED instead of %s",
+                execution_id,
+                final_status,
+            )
+            final_status = ExecutionStatus.STOPPED.value
+            # The refused write saved no file counts.
+            post_status(final_status, None)
 
         # Return consistent result structure
         update_result = {
@@ -475,6 +506,15 @@ def _handle_pipeline_updates_unified(
             "status": "skipped",
             "reason": "api_deployment",
             "message": "Pipeline update skipped for API deployment",
+            "pipeline_id": context.pipeline_id,
+        }
+
+    # The abort wrote it, and only if this is the pipeline's newest run.
+    if final_status == ExecutionStatus.STOPPED.value:
+        return {
+            "status": "skipped",
+            "reason": "handled_by_abort",
+            "message": "The abort handles a stopped run's pipeline status",
             "pipeline_id": context.pipeline_id,
         }
 
@@ -605,6 +645,17 @@ def _handle_notifications_unified(
     Returns:
         Notification result dictionary
     """
+    # The abort handles these, so a run with a dead worker notifies too.
+    if status == ExecutionStatus.STOPPED.value:
+        logger.info(
+            "Execution %s was stopped - the abort handles notifying", execution_id
+        )
+        return {
+            "status": "skipped",
+            "reason": "handled_by_abort",
+            "message": "The abort handles a stopped run's notifications",
+        }
+
     try:
         if not pipeline_id:
             logger.warning("No pipeline_id provided - skipping notifications")
@@ -1305,11 +1356,12 @@ def _track_subscription_usage_if_available(
     """Track subscription usage for successful file executions if plugin available.
 
     This is a non-blocking operation - errors are logged but do not fail the workflow.
-    Only tracks usage for completed workflows with successful file executions.
+    Only tracks usage for completed or stopped workflows with successful file
+    executions; files that completed before an abort are billed.
 
     Args:
         context: Callback execution context with organization and execution IDs
-        execution_status: Final execution status (should be COMPLETED for tracking)
+        execution_status: Final execution status (COMPLETED or STOPPED for tracking)
         successful_files: Successful file count from the aggregated batch results,
             used only to flag a fetch that came back without file-execution rows
 
@@ -1317,8 +1369,11 @@ def _track_subscription_usage_if_available(
         dict with status, committed_count, message if tracking attempted
         None if plugin not available or workflow not completed
     """
-    # Only track for completed workflows
-    if execution_status != ExecutionStatus.COMPLETED.value:
+    # Only track for workflows whose finished files stand
+    if execution_status not in (
+        ExecutionStatus.COMPLETED.value,
+        ExecutionStatus.STOPPED.value,
+    ):
         logger.debug(
             f"Skipping subscription tracking for execution {context.execution_id} "
             f"with status {execution_status}"
@@ -1509,6 +1564,7 @@ def _process_batch_callback_core(
                     organization_id=context.organization_id,
                     error_message=None,
                 )
+                execution_status = execution_update_result["final_status"]
                 # Handle pipeline updates using unified function (non-API deployment)
                 pipeline_result = _handle_pipeline_updates_unified(
                     context, execution_status, is_api_deployment=False
@@ -1775,6 +1831,7 @@ def process_batch_callback_api(
                     aggregated_results=aggregated_results,
                     organization_id=organization_id,
                 )
+                execution_status = execution_update_result["final_status"]
 
                 # Create minimal context for unified pipeline handling
                 context = CallbackContext()
@@ -1898,6 +1955,26 @@ def process_batch_callback_api(
             logger.warning("api_client.close() failed during cleanup: %s", e)
 
 
+def _final_log_counts(
+    aggregated_results: dict[str, Any],
+    execution_data: dict[str, Any] | None,
+    execution_status: str,
+) -> tuple[int, int, int]:
+    """Total, successful and failed files for the final log line.
+
+    A stopped run logs the counts the backend saved from its file rows.
+    """
+    counts = aggregated_results
+    if execution_status == ExecutionStatus.STOPPED.value:
+        saved = (execution_data or {}).get("execution") or {}
+        counts = {**aggregated_results, **saved}
+    return (
+        counts.get("total_files") or 0,
+        counts.get("successful_files") or 0,
+        counts.get("failed_files") or 0,
+    )
+
+
 def _publish_final_workflow_ui_logs(
     context: "CallbackContext",
     aggregated_results: dict[str, Any],
@@ -1914,11 +1991,6 @@ def _publish_final_workflow_ui_logs(
         execution_status: Final execution status
     """
     try:
-        # Extract file statistics from aggregated results
-        total_files = aggregated_results.get("total_files", 0)
-        successful_files = aggregated_results.get("successful_files", 0)
-        failed_files = aggregated_results.get("failed_files", 0)
-
         # Get execution data to extract cost information (with cost calculation)
         execution_response = context.api_client.get_workflow_execution(
             context.execution_id, include_cost=True, file_execution=False
@@ -1931,6 +2003,9 @@ def _publish_final_workflow_ui_logs(
 
         # Cost data is at the top level of response when include_cost=True
         aggregated_usage_cost = execution_response.data.get("aggregated_usage_cost")
+        total_files, successful_files, failed_files = _final_log_counts(
+            aggregated_results, execution_response.data, execution_status
+        )
 
         # Create workflow logger for UI feedback
         # Use general workflow logger since this is called from general workflow callback
@@ -1954,6 +2029,7 @@ def _publish_final_workflow_ui_logs(
                 total_files=total_files,
                 successful_files=successful_files,
                 failed_files=failed_files,
+                stopped=execution_status == ExecutionStatus.STOPPED.value,
             )
 
             logger.info(
@@ -1988,11 +2064,6 @@ def _publish_final_workflow_ui_logs_api(
         execution_status: Final execution status
     """
     try:
-        # Extract file statistics from aggregated results
-        total_files = aggregated_results.get("total_files", 0)
-        successful_files = aggregated_results.get("successful_files", 0)
-        failed_files = aggregated_results.get("failed_files", 0)
-
         # Get execution data to extract cost information (with cost calculation)
         execution_response = context.api_client.get_workflow_execution(
             context.execution_id, include_cost=True, file_execution=False
@@ -2005,6 +2076,9 @@ def _publish_final_workflow_ui_logs_api(
 
         # Cost data is at the top level of response when include_cost=True
         aggregated_usage_cost = execution_response.data.get("aggregated_usage_cost")
+        total_files, successful_files, failed_files = _final_log_counts(
+            aggregated_results, execution_response.data, execution_status
+        )
 
         # Create workflow logger for UI feedback
         # Use API workflow logger since this is called from API workflow callback
@@ -2028,6 +2102,7 @@ def _publish_final_workflow_ui_logs_api(
                 total_files=total_files,
                 successful_files=successful_files,
                 failed_files=failed_files,
+                stopped=execution_status == ExecutionStatus.STOPPED.value,
             )
 
             logger.info(

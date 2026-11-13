@@ -96,6 +96,8 @@ class WorkflowExecutionSerializer(serializers.ModelSerializer):
             "status",
             "result_acknowledged",
             "total_files",
+            "successful_files",
+            "failed_files",
             "error_message",
             "attempts",
             "execution_time",

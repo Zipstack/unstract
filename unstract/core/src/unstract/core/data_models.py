@@ -582,6 +582,9 @@ def _protected_terminal_values(cls) -> frozenset[str]:
 
 ExecutionStatus.protected_terminal_values = classmethod(_protected_terminal_values)
 
+# Reason the backend gives when it refuses a status write over a protected status.
+ALREADY_FINAL_REASON = "already_final"
+
 
 # Add the is_completed method as a class method
 def _is_completed(cls, status: str) -> bool:

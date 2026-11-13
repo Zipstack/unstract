@@ -11,6 +11,7 @@ from unstract.core.data_models import ExecutionStatus, FileHashData
 
 from ..api.internal_client import InternalAPIClient
 from ..cache.cache_backends import RedisCacheBackend
+from ..clients.base_client import InternalAPIClientError
 from ..infrastructure.logging import WorkerLogger
 from ..workflow.execution.active_file_manager import ActiveFileManager
 
@@ -529,7 +530,7 @@ class FileHistoryFilter(FileFilter):
 class ActiveFileFilter(FileFilter):
     """Filter files that are currently being processed by other executions."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._cache_checked: set[str] = (
             set()
         )  # Track composite identifiers we've already checked
@@ -610,6 +611,31 @@ class ActiveFileFilter(FileFilter):
 
         return filtered
 
+    @staticmethod
+    def _marker_run_is_live(
+        run_id: str, identifier: str, api_client: Any, live_runs: dict[str, bool]
+    ) -> bool:
+        """False for a stopped run, whose queued files no longer hold their markers.
+
+        A failed status read keeps the marker in force.
+        """
+        if run_id not in live_runs:
+            try:
+                status = api_client.get_workflow_execution_status(run_id)
+            except InternalAPIClientError as error:
+                logger.warning(
+                    "[ActiveFileFilter] Status read for run %s failed: %s", run_id, error
+                )
+                status = None
+            live_runs[run_id] = status != ExecutionStatus.STOPPED.value
+        if not live_runs[run_id]:
+            logger.info(
+                "[ActiveFileFilter] Ignoring the marker of stopped run %s for file %s",
+                run_id,
+                identifier,
+            )
+        return live_runs[run_id]
+
     def _check_active_files_batch(
         self,
         file_identifiers: dict[str, dict[str, Any]],
@@ -640,6 +666,7 @@ class ActiveFileFilter(FileFilter):
         # 1. Check Redis cache for active files using precise cache keys
         try:
             cache = RedisCacheBackend()
+            live_runs: dict[str, bool] = {}
             for identifier in identifiers_to_check:
                 data = file_identifiers[identifier]
                 uuid = data["uuid"]
@@ -653,7 +680,13 @@ class ActiveFileFilter(FileFilter):
 
                 if cached_data and isinstance(cached_data, dict):
                     cached_exec_id = cached_data.get("data", {}).get("execution_id")
-                    if cached_exec_id and cached_exec_id != execution_id:
+                    if (
+                        cached_exec_id
+                        and cached_exec_id != execution_id
+                        and self._marker_run_is_live(
+                            cached_exec_id, identifier, api_client, live_runs
+                        )
+                    ):
                         active_identifiers.add(identifier)
                         logger.debug(
                             f"[ActiveFileFilter] File {identifier} active in cache (exec: {cached_exec_id})"
