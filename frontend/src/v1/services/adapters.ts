@@ -1,7 +1,12 @@
-import { keepPreviousData, queryOptions } from "@tanstack/react-query";
+import { queryOptions } from "@tanstack/react-query";
 import { currentOrganizationId } from "./context";
 import { http, orgPath, type RequestOptions } from "./http";
-import { type Page, type PageParams, pageQuery } from "./page";
+import {
+  type Page,
+  type PageParams,
+  pageQuery,
+  previousPageInOrg,
+} from "./page";
 
 /* Adapters (LLM, embedding, vector DB, text extractor, OCR) in the current organisation. */
 
@@ -83,11 +88,13 @@ export const adapterQueries = {
         listAdapters(params, { signal, org }),
     }),
   // The previous page stays on screen while the next one loads.
-  page: (params: ListAdaptersPageParams) =>
-    queryOptions({
-      queryKey: adapterKeys.page(params),
+  page: (params: ListAdaptersPageParams) => {
+    const queryKey = adapterKeys.page(params);
+    return queryOptions({
+      queryKey,
       queryFn: ({ queryKey: [org], signal }) =>
         listAdaptersPage(params, { signal, org }),
-      placeholderData: keepPreviousData,
-    }),
+      placeholderData: previousPageInOrg(queryKey),
+    });
+  },
 };

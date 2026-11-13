@@ -136,8 +136,8 @@ Each service module in `services/` exports its request and response types.
 Its fixtures live in `test/fixtures/<service>.ts`, typed against those types
 with `satisfies`, so a contract change breaks the fixture at typecheck. See
 `test/fixtures/adapters.ts`: `adapterFixtures` holds the rows and
-`adapterHandlers(session, rows, seen)` answers `GET adapter/` the way the
-backend does.
+`adapterHandlers(session, rows, seen)` answers `GET adapter/` with those
+rows, paged when the request asks for a page (it neither filters nor 404s).
 
 ## Accessibility
 

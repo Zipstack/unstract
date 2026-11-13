@@ -24,7 +24,8 @@ export function QueryView<T>({
   if (query.status === "pending") {
     return <>{loading ?? <SkeletonText />}</>;
   }
-  if (query.isLoadingError) {
+  // The first fetch failed: decided on the cache, as app/query.ts does, not on `select`'s result.
+  if (query.isError && query.dataUpdatedAt === 0) {
     const error = toApiError(query.error);
     return (
       <InlineAlert title={error.message} onRetry={() => void query.refetch()}>
@@ -37,5 +38,6 @@ export function QueryView<T>({
       </InlineAlert>
     );
   }
-  return <>{children(query.data)}</>;
+  // After a failed refresh, `data` is undefined only if `select` made it so, and T then allows it.
+  return <>{children(query.data as T)}</>;
 }

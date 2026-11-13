@@ -12,7 +12,7 @@ import {
   renderV1,
 } from "@v1/test";
 import { adapterFixtures, adapterHandlers } from "@v1/test/fixtures/adapters";
-import type { JSX } from "react";
+import { Component, type JSX, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { QueryView } from "./QueryView";
 
@@ -130,4 +130,72 @@ it("renders a successful query whose select gives undefined, not an alert", asyn
   renderV1(<Pick />);
   expect(await screen.findByText("No match")).toBeInTheDocument();
   expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("reports a failed refresh once, as a toast, when select gave undefined", async () => {
+  const toast = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  mockApi(...adapterHandlers(DEFAULT_SESSION));
+  function Pick(): JSX.Element {
+    const query = useQuery({
+      ...adapterQueries.list({ adapterType: "LLM" }),
+      select: (rows) => rows.find((row) => row.adapter_name === "Mistral"),
+    });
+    return (
+      <>
+        <p>Status {query.status}</p>
+        <button type="button" onClick={() => void query.refetch()}>
+          Refresh
+        </button>
+        <QueryView query={query}>
+          {(row) => <p>{row?.adapter_name ?? "No match"}</p>}
+        </QueryView>
+      </>
+    );
+  }
+  const { user } = renderV1(<Pick />);
+  expect(await screen.findByText("No match")).toBeInTheDocument();
+  mockApi(mock.get(ADAPTERS, () => HttpResponse.json({}, { status: 500 })));
+  await user.click(screen.getByRole("button", { name: "Refresh" }));
+  await waitFor(() =>
+    expect(screen.getByText("Status error")).toBeInTheDocument(),
+  );
+  expect(screen.getByText("No match")).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(toast).toHaveBeenCalledTimes(1);
+});
+
+class Boundary extends Component<{ children: ReactNode }, { error?: Error }> {
+  override state: { error?: Error } = {};
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  override render(): ReactNode {
+    return this.state.error ? (
+      <p>Caught {this.state.error.message}</p>
+    ) : (
+      this.props.children
+    );
+  }
+}
+
+it("leaves a select that throws to the error boundary", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  mockApi(...adapterHandlers(DEFAULT_SESSION));
+  function Broken(): JSX.Element {
+    const query = useQuery({
+      ...adapterQueries.list({ adapterType: "LLM" }),
+      select: (): never => {
+        throw new TypeError("bad select");
+      },
+    });
+    return <QueryView query={query}>{() => <p>Rows</p>}</QueryView>;
+  }
+  renderV1(
+    <Boundary>
+      <Broken />
+    </Boundary>,
+  );
+  expect(await screen.findByText("Caught bad select")).toBeInTheDocument();
 });

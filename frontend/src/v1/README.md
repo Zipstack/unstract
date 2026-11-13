@@ -141,8 +141,10 @@ only when a v1 page first renders.
   `REGISTERED_PAGES`. Its v0 URLs then redirect to v1; reverting is that line.
   v1 renders outside v0's `PersistentLogin` and `RequireAuth`, and its own
   session and guards come with P0-T06: a page registered before that ships
-  with no session load or org check, and leaves for sign-in only when a
-  service call gets a 401 (`services/http.ts`).
+  with no session load or org check. Until something sets the org
+  (`setOrganizationId()`), its queries throw and it shows the error fallback;
+  it leaves for sign-in only when a service call gets a 401
+  (`services/http.ts`).
 - `app/registry/validate.test.ts` fails CI on an invalid entry: overlapping
   patterns across pages, a v1 route and a different v0 route of one page that
   match the same URL (a page may keep its v0 URL), a route without a mapping
@@ -187,7 +189,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | `components/patterns/` | Composites built from core components | `components/ui/`, `lib/`, `services/`, `stores/`, `hooks/`, `assets/` |
 | `shell/` | Top bar, rail, context bar, tab bar | `components/ui/`, `components/patterns/`, `services/`, `stores/`, `hooks/`, `lib/`, `assets/` |
 | `pages/<page>/` | One folder per target page | `components/ui/`, `components/patterns/`, `shell/`, `services/`, `stores/`, `hooks/`, `lib/`, `styles/`, `assets/`, `plugins/` — not other pages, `app/`, `test/` or the entry |
-| `services/` | Typed service modules and the HTTP client; the only place a backend URL appears (see `services/README.md`) | `lib/` |
+| `services/` | Typed service modules and the HTTP client; with a cloud plugin's `plugins/<plugin>/services/`, the only place a backend URL appears (see `services/README.md`) | `lib/` |
 | `stores/` | Zustand stores | `lib/` |
 | `hooks/` | Shared hooks | `lib/` |
 | `lib/` | Pure helpers | — |

@@ -9,8 +9,9 @@
  * Part 2 runs on P0-T03's development-only demo pages, which the E2E image
  * registers (VITE_V1_DEV_ROUTES=true): the version switch and its redirect,
  * the theme matrix with an enforcing scan, and Human Review's old-version
- * round trip on its stand-in. The demo pages load no data, so the five-state
- * helper is proven by its self-tests (specs/harness/five-states.spec.ts).
+ * round trip on its stand-in. DemoPage's adapter list (UN-4313) renders none
+ * of the state components the five-state helper looks for (STATE_TEST_IDS), so
+ * the helper is proven by its self-tests (specs/harness/five-states.spec.ts).
  *
  * The redirect and the round trip also run in specs/harness/
  * registry-routes.spec.ts, once per registered page. They stay here too, at

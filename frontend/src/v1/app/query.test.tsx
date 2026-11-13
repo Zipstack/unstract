@@ -13,6 +13,7 @@ import {
   DEFAULT_SESSION,
   delay,
   HttpResponse,
+  makeSession,
   http as mock,
   mockApi,
   renderHookV1,
@@ -145,6 +146,29 @@ describe("reads", () => {
     ]);
   });
 
+  it("that cannot reach the server share one toast", async () => {
+    mockApi(...adapterHandlers(DEFAULT_SESSION));
+    const queryClient = createQueryClient({ queries: { retryDelay: 0 } });
+    const { result } = renderHookV1(
+      () => [
+        useQuery(adapterQueries.list(LLM)),
+        useQuery(adapterQueries.page({ ...LLM, page: 1, pageSize: 10 })),
+      ],
+      { queryClient },
+    );
+    await waitFor(() =>
+      expect(result.current.every((query) => query.isSuccess)).toBe(true),
+    );
+    mockApi(mock.get(ADAPTERS, () => HttpResponse.error()));
+    await act(() =>
+      Promise.all(result.current.map((query) => query.refetch())),
+    );
+    expect(shown.map((input) => input.id)).toEqual([
+      "v1-network",
+      "v1-network",
+    ]);
+  });
+
   it("are cancelled when the caller unmounts, and report nothing", async () => {
     const warn = vi.spyOn(console, "warn");
     const error = vi.spyOn(console, "error");
@@ -191,6 +215,23 @@ describe("paging", () => {
     expect(name(result.current.data)).toBe("OpenAI GPT-4o");
     await waitFor(() => expect(result.current.isPlaceholderData).toBe(false));
     expect(name(result.current.data)).toBe("Claude");
+  });
+
+  it("never keeps another organisation's page on screen", async () => {
+    const other = makeSession({ organization: { id: "org-2" } });
+    mockApi(...adapterHandlers(DEFAULT_SESSION), ...adapterHandlers(other));
+    const params = { ...LLM, page: 1, pageSize: 1 };
+    const { result, rerender } = renderHookV1(
+      ({ org }: { org: string }) => {
+        setOrganizationId(org);
+        return useQuery(adapterQueries.page(params));
+      },
+      { initialProps: { org: DEFAULT_SESSION.organization.id } },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    rerender({ org: other.organization.id });
+    expect(result.current.isPlaceholderData).toBe(false);
+    expect(result.current.data).toBeUndefined();
   });
 });
 
@@ -298,6 +339,18 @@ describe("offline", () => {
     });
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error).toMatchObject({ kind: "network" });
+  });
+
+  it("reads refetch when the connection returns", async () => {
+    const seen: URL[] = [];
+    mockApi(...adapterHandlers(DEFAULT_SESSION, adapterFixtures.llm, seen));
+    const { result } = renderHookV1(() => useQuery(adapterQueries.list(LLM)), {
+      queryClient: createQueryClient(),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    act(() => onlineManager.setOnline(false));
+    act(() => onlineManager.setOnline(true));
+    await waitFor(() => expect(seen).toHaveLength(2));
   });
 
   it("a save fails instead of being sent when the connection returns", async () => {

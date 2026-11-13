@@ -6,12 +6,14 @@ import {
   QueryCache,
   QueryClient,
 } from "@tanstack/react-query";
-import { isTransient } from "@v1/services/errors";
+import { isTransient, toApiError } from "@v1/services/errors";
 import { reportApiError } from "@v1/services/report";
 
 // Server state for v1; every failure is reported once, here (services/README.md).
 
 const MAX_READ_RETRIES = 2;
+// One toast for every query that cannot reach the server, not one each.
+const NETWORK_TOAST_ID = "v1-network";
 
 /** Reads retry only on transient failures; mutations never retry. */
 export function retryRead(failureCount: number, error: unknown): boolean {
@@ -24,8 +26,16 @@ function reportQueryError(
 ): void {
   // A failed refresh keeps stale data on screen, so only then a toast.
   const notify = query.state.data !== undefined;
-  reportApiError(error, { notify, id: query.queryHash });
+  const network = toApiError(error).kind === "network";
+  reportApiError(error, {
+    notify,
+    id: network ? NETWORK_TOAST_ID : query.queryHash,
+  });
 }
+
+// Only a `select` that threw (the cached query did not fail): a bug, for the error boundary.
+const throwSelectError = (_error: Error, query: Query) =>
+  query.state.status !== "error";
 
 function reportMutationError(
   error: Error,
@@ -40,12 +50,19 @@ function reportMutationError(
 export function createQueryClient(defaults: DefaultOptions = {}): QueryClient {
   // "always": offline fails fast as `network` instead of pausing, and a save is never sent later.
   const networkMode = "always";
+  // "always" turns refetch on reconnect off; reads still refresh when the connection returns.
+  const queries = {
+    retry: retryRead,
+    networkMode,
+    refetchOnReconnect: true,
+    throwOnError: throwSelectError,
+  } as const;
   return new QueryClient({
     queryCache: new QueryCache({ onError: reportQueryError }),
     mutationCache: new MutationCache({ onError: reportMutationError }),
     defaultOptions: {
       ...defaults,
-      queries: { retry: retryRead, networkMode, ...defaults.queries },
+      queries: { ...queries, ...defaults.queries },
       mutations: { retry: false, networkMode, ...defaults.mutations },
     },
   });

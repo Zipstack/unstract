@@ -80,8 +80,14 @@ const SUBSCRIPTION_TYPES = new Set([
   "subscription_inactive",
 ]);
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+// Plain objects only: a Blob body's `type` is its MIME type, not an error type.
+function isRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const proto: unknown = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
 
 const text = (value: unknown): string | undefined =>
   typeof value === "string" && value !== "" ? value : undefined;
@@ -110,8 +116,9 @@ function parseBody(data: unknown): ErrorBody {
   };
 }
 
+// A provider's 402 comes typed (`sdk_error`); Unstract's carries a subscription type or code.
 const isSubscription = (status: number, body: ErrorBody): boolean =>
-  status === 402 ||
+  (status === 402 && body.type === undefined) ||
   SUBSCRIPTION_TYPES.has(body.type ?? "") ||
   body.items.some((item) => SUBSCRIPTION_TYPES.has(item.code ?? ""));
 

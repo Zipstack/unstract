@@ -77,12 +77,27 @@ it("keys queries by organisation, so two organisations never share a cache entry
   ]);
 });
 
-it("fetches for the organisation in the key, even after the current one changes", async () => {
+// Each builds its query now and returns a run that fetches it later.
+const queries = {
+  list: () => {
+    const options = adapterQueries.list({ adapterType: "LLM" });
+    return () => new QueryClient().fetchQuery(options);
+  },
+  page: () => {
+    const params = { adapterType: "LLM", page: 1, pageSize: 10 } as const;
+    const options = adapterQueries.page(params);
+    return () => new QueryClient().fetchQuery(options);
+  },
+};
+
+it.each(
+  Object.entries(queries),
+)("%s fetches for the organisation in its key, even after the current one changes", async (_, build) => {
   setOrganizationId("org-1");
-  const options = adapterQueries.list({ adapterType: "LLM" });
+  const run = build();
   setOrganizationId("org-2");
   const seen: URL[] = [];
   mockApi(...adapterHandlers(DEFAULT_SESSION, adapterFixtures.llm, seen));
-  await new QueryClient().fetchQuery(options);
+  await run();
   expect(seen[0]?.pathname).toBe("/api/v1/unstract/org-1/adapter/");
 });

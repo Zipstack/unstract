@@ -551,7 +551,7 @@ function* notifyEntryPoints(ast, specs) {
   }
 }
 
-// P0-T05: backend URLs and requests only in services/; tests may name URLs for mocks.
+// P0-T05: backend URLs and requests only in services/ (and plugins' services/); tests may name URLs for mocks.
 const BACKEND_URL_HOMES = new Set(["services", "test"]);
 // A cloud plugin keeps its own service modules in plugins/<plugin>/services/.
 const PLUGIN_SERVICES = /^plugins\/[^/]+\/services\//;
@@ -565,11 +565,11 @@ const CODE_SUFFIX = /\.[cm]?[jt]sx?$/;
 const RAW_REQUESTS = new Set(["fetch", "XMLHttpRequest", "EventSource"]);
 const GLOBAL_OBJECTS = new Set(["window", "globalThis", "self"]);
 const BACKEND_URL_MSG =
-  "Backend URLs appear only in services/; call a typed service function instead.";
+  "Backend URLs appear only in services/ and plugins/<plugin>/services/; call a typed service function instead.";
 const HTTP_CLIENT_MSG =
-  "Only services/ imports the HTTP client (axios, @v1/services/http); call a typed service function instead.";
+  "Only services/ and plugins/<plugin>/services/ import the HTTP client (axios, @v1/services/http); call a typed service function instead.";
 const RAW_REQUEST_MSG =
-  "Only services/ sends requests (fetch, XMLHttpRequest, EventSource); call a typed service function instead.";
+  "Only services/ and plugins/<plugin>/services/ send requests (fetch, XMLHttpRequest, EventSource); call a typed service function instead.";
 
 const isBackendHome = (folder, rel) =>
   BACKEND_URL_HOMES.has(folder) || PLUGIN_SERVICES.test(rel);

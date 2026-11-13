@@ -26,10 +26,11 @@ or error handling.
   typed response. Never accept a free-form query object.
 - A paged endpoint takes `PageParams` (`page` from 1, `pageSize`), sends them
   with `pageQuery()`, and returns `Page<T>`. Its query sets
-  `placeholderData: keepPreviousData`, so the previous page stays on screen
-  while the next loads (see `adapterQueries.page`). A page past the end is a
-  404 ("Invalid page."), so whoever holds the page number steps back to the
-  last page (`count`) after a delete.
+  `placeholderData: previousPageInOrg(queryKey)`, so the previous page stays on
+  screen while the next loads, but never another organisation's (see
+  `adapterQueries.page`). A page past the end is a 404 ("Invalid page."), so
+  whoever holds the page number steps back to the last page,
+  `Math.ceil(count / pageSize)`, after a delete.
 - Export query keys and options per resource. Keys are
   `[org, resource, "list" | "page" | "detail", params | id]`, and each query
   fetches for the org in its key, so two organisations never share a cache
@@ -63,7 +64,7 @@ rejects with axios's `CanceledError` instead; check `isCancelled()` first
 | Kind | When |
 | --- | --- |
 | `validation` | `type: "validation_error"` (400); fields in `fieldErrors`, the rest in `formErrors` |
-| `subscription` | 402, or a `subscription_error` / `subscription_inactive` body |
+| `subscription` | A `subscription_error` / `subscription_inactive` type or code, or a 402 with no `type`; a provider's typed 402 (`sdk_error`) is `client` |
 | `unauthenticated` | The auth middleware's 401 (no `type` in the body); a typed 401, such as a provider rejecting its key, is `client` |
 | `forbidden` | 403 |
 | `not_found` | 404 |
@@ -79,8 +80,9 @@ rejects with axios's `CanceledError` instead; check `isCancelled()` first
 | Failure | Shown as |
 | --- | --- |
 | Mutation | A toast with the request id. Pass `meta: { notify: false }` when the form shows it; it is then logged. |
-| Read whose first fetch fails (also a next page shown with `keepPreviousData`) | Inline, by `QueryView` (`components/patterns/`): a skeleton, then an `InlineAlert` with Retry and the request id. Also logged. |
-| Refresh that fails while the query's data is on screen | A toast, replaced rather than stacked while the same query keeps failing. |
+| Read whose first fetch fails (also a next page) | Inline, by `QueryView` (`components/patterns/`): an `InlineAlert` with Retry and the request id, after a skeleton (or, for a next page, the previous page). Also logged. |
+| Refresh that fails while the query's data is on screen | A toast, replaced rather than stacked while the same query keeps failing. Every query that cannot reach the server shares one toast. |
+| A `select` that throws | The page's error boundary: it is a bug, not a failed request. |
 | 401 | One redirect to sign in; no toast. |
 | Subscription | A toast that stays until dismissed; inline like any other first-fetch failure. |
 | Cancellation | Nothing. |
@@ -88,6 +90,7 @@ rejects with axios's `CanceledError` instead; check `isCancelled()` first
 Reads retry twice on a network error, 502, 503 or 504. Mutations never retry.
 Offline, requests still go out (`networkMode: "always"`) and fail as
 `network`; nothing waits for the connection, and a save is never sent later.
+Reads refetch when the connection returns.
 
 ## Forms
 

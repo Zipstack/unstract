@@ -1,6 +1,6 @@
 import { CancelledError } from "@tanstack/react-query";
 import { HttpResponse, http as mock, mockApi } from "@v1/test";
-import { CanceledError } from "axios";
+import { AxiosError, type AxiosResponse, CanceledError } from "axios";
 import type { JsonBodyType } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { onSessionExpired } from "./context";
@@ -118,9 +118,35 @@ describe("each kind, from the backend's own error bodies", () => {
     });
   });
 
+  it("client, not subscription: a provider's 402 for exhausted credit", async () => {
+    const error = await failureFor(
+      json({ error: "Insufficient credits", type: "sdk_error" }, 402),
+    );
+    expect(error).toMatchObject({
+      kind: "client",
+      status: 402,
+      message: "Insufficient credits",
+    });
+  });
+
   it("unauthenticated: the auth middleware's 401", async () => {
     const error = await failureFor(json({ message: "Unauthorized" }, 401));
     expect(error).toMatchObject({ kind: "unauthenticated", status: 401 });
+  });
+
+  it("unauthenticated: the middleware's 401 read as a Blob (a download)", () => {
+    const body = new Blob(['{"message":"Unauthorized"}'], {
+      type: "application/json",
+    });
+    const response = { status: 401, data: body } as AxiosResponse;
+    const cause = new AxiosError(
+      "401",
+      "ERR_BAD_REQUEST",
+      undefined,
+      null,
+      response,
+    );
+    expect(toApiError(cause)).toMatchObject({ kind: "unauthenticated" });
   });
 
   it.each([
