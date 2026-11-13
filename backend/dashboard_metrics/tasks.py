@@ -756,6 +756,63 @@ LLM_COMBINED_FIELDS = {
 }
 
 
+def _prefetched_query(by_granularity: dict[str, dict[str, list]]) -> Callable:
+    """A query_method stand-in that serves one org's rows from a prefetch.
+
+    Accepts the same call shape _aggregate_single_metric uses, so a prefetched
+    metric goes through the same aggregation code as a queried one.
+    """
+
+    def query(org_id, _start, _end, granularity=Granularity.DAY, **_kwargs):
+        return by_granularity[granularity].get(str(org_id), [])
+
+    return query
+
+
+def _prefetch_cross_org_metrics(
+    org_ids: set,
+    *,
+    hourly_start: datetime,
+    daily_start: datetime,
+    end_date: datetime,
+    tier: AggregationTier,
+) -> dict[str, dict[str, dict[str, list]]]:
+    """Query the metrics whose per-org form scans every org, once for all orgs.
+
+    documents_processed filters on the (status, created_at) index, which has no
+    org column, so each per-org call reads every org's completed files in the
+    window. On prod that was ~6 s per org per run (UN-4672). One grouped query
+    per granularity reads them once.
+
+    Returns {} on failure, so the run falls back to the per-org queries and
+    behaves exactly as before; the failure is logged, not counted, because the
+    fallback still produces the metric.
+    """
+    window_by_granularity = {}
+    if _writes_hourly(tier):
+        window_by_granularity[Granularity.HOUR] = hourly_start
+    if _writes_daily_monthly(tier):
+        window_by_granularity[Granularity.DAY] = daily_start
+    if not org_ids or not window_by_granularity:
+        return {}
+    try:
+        return {
+            "documents_processed": {
+                granularity: MetricsQueryService.get_documents_processed_by_org(
+                    org_ids, start, end_date, granularity=granularity
+                )
+                for granularity, start in window_by_granularity.items()
+            }
+        }
+    except SoftTimeLimitExceeded:
+        raise
+    except Exception:
+        logger.exception(
+            "Cross-org documents_processed query failed; falling back to per-org"
+        )
+        return {}
+
+
 def _collect_org_metrics(
     org: Organization,
     *,
@@ -763,10 +820,12 @@ def _collect_org_metrics(
     daily_start: datetime,
     end_date: datetime,
     tier: AggregationTier,
+    prefetched: dict[str, dict[str, dict[str, list]]] | None = None,
 ) -> tuple[dict, dict, int]:
     """Query every metric for one org into hourly/daily aggregates.
 
     A failing metric is logged and counted, leaving the rest to proceed.
+    Metrics in ``prefetched`` are read from it rather than queried.
 
     Returns:
         Tuple of (hourly aggregations, daily aggregations, error count)
@@ -776,7 +835,10 @@ def _collect_org_metrics(
     daily_agg: dict[tuple, dict] = {}
     errors = 0
 
+    prefetched = prefetched or {}
     for metric_name, query_method, is_histogram in METRIC_CONFIGS:
+        if metric_name in prefetched:
+            query_method = _prefetched_query(prefetched[metric_name])
         metric_type = MetricType.HISTOGRAM if is_histogram else MetricType.COUNTER
         # Pre-resolved identifier spares PageUsage a lookup per call.
         extra_kwargs = (
@@ -834,6 +896,7 @@ def _aggregate_org(
     end_date: datetime,
     tier: AggregationTier,
     stats: dict[str, Any],
+    prefetched: dict[str, dict[str, dict[str, list]]] | None = None,
 ) -> None:
     """Aggregate one organization and upsert the tiers this run writes."""
     hourly_agg, daily_agg, errors = _collect_org_metrics(
@@ -842,6 +905,7 @@ def _aggregate_org(
         daily_start=daily_start,
         end_date=end_date,
         tier=tier,
+        prefetched=prefetched,
     )
     stats["errors"] += errors
 
@@ -1060,6 +1124,13 @@ def _run_aggregation(
     organizations = Organization.objects.filter(id__in=active_org_ids).only(
         "id", "organization_id"
     )
+    prefetched = _prefetch_cross_org_metrics(
+        active_org_ids,
+        hourly_start=hourly_start,
+        daily_start=daily_start,
+        end_date=end_date,
+        tier=tier,
+    )
 
     for org in organizations:
         try:
@@ -1070,6 +1141,7 @@ def _run_aggregation(
                 end_date=end_date,
                 tier=tier,
                 stats=stats,
+                prefetched=prefetched,
             )
         except SoftTimeLimitExceeded:
             raise

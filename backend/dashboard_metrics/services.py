@@ -8,12 +8,15 @@ Note: Uses _base_manager for models with DefaultOrganizationManagerMixin
 to bypass the UserContext filter when running from Celery tasks.
 """
 
+from collections import defaultdict
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 
 from account_usage.models import PageUsage
 from account_v2.models import Organization
 from api_v2.models import APIDeployment
+from django.db import connection
 from django.db.models import CharField, Count, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Cast, Coalesce, TruncDay, TruncHour, TruncWeek
 from pipeline_v2.models import Pipeline
@@ -81,6 +84,47 @@ def _org_file_executions(organization_id: str):
         "workflow_execution",
         "workflow_execution__workflow",
     )
+
+
+def _recent_file_execution_ids(organization_id: str, limit: int) -> list:
+    """Ids of the org's ``limit`` newest file executions, read through indexes.
+
+    Ordering the org's file executions by created_at directly has no index to
+    use: it joins every execution of the org's workflows, which on prod was a
+    sequential scan of the whole workflow_execution table (14-39 s, UN-4672).
+
+    Instead, for each of the org's workflows take its ``limit`` newest
+    executions that have files, through the (workflow_id, created_at) index,
+    and order only their files. The newest ``limit`` files overall are among
+    those unless an older execution of the same workflow kept creating files
+    after ``limit`` newer executions had started, which only overlapping
+    long-running executions do.
+    """
+    workflow = Workflow._meta.db_table
+    execution = WorkflowExecution._meta.db_table
+    file_execution = WorkflowFileExecution._meta.db_table
+    sql = f"""
+        SELECT wfe.id
+        FROM "{workflow}" w
+        CROSS JOIN LATERAL (
+            SELECT we.id
+            FROM "{execution}" we
+            WHERE we.workflow_id = w.id
+              AND EXISTS (
+                  SELECT 1 FROM "{file_execution}" f
+                  WHERE f.workflow_execution_id = we.id
+              )
+            ORDER BY we.created_at DESC
+            LIMIT %s
+        ) recent
+        JOIN "{file_execution}" wfe ON wfe.workflow_execution_id = recent.id
+        WHERE w.organization_id = %s
+        ORDER BY wfe.created_at DESC
+        LIMIT %s
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(sql, [limit, organization_id, limit])
+        return [row[0] for row in cursor.fetchall()]
 
 
 def _surface_filter(organization_id: str, surfaces: list[str]) -> Q:
@@ -246,6 +290,57 @@ class MetricsQueryService:
             .annotate(value=Count("id"))
             .order_by("period")
         )
+
+    @staticmethod
+    def get_documents_processed_by_org(
+        organization_ids: Iterable[Any],
+        start_date: datetime,
+        end_date: datetime,
+        granularity: str = Granularity.DAY,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Query documents processed for many organizations in one query.
+
+        Same rows as calling get_documents_processed once per org, keyed by
+        ``str(organization_id)``; an org with no rows is absent from the dict.
+
+        The (status, created_at) index carries no org column, so every per-org
+        call reads all orgs' completed files in the window and discards the
+        rest. Grouping by org once per aggregation run reads them once
+        (UN-4672).
+
+        Args:
+            organization_ids: Organization PKs to include
+            start_date: Start of date range
+            end_date: End of date range
+            granularity: Time granularity (hour, day, week)
+
+        Returns:
+            Dict of org id string to a list of dicts with 'period' and 'value'
+        """
+        org_ids = list(organization_ids)
+        if not org_ids:
+            return {}
+        trunc_func = MetricsQueryService._get_trunc_func(granularity)
+        org_field = "workflow_execution__workflow__organization_id"
+
+        rows = (
+            WorkflowFileExecution.objects.filter(
+                **{f"{org_field}__in": org_ids},
+                status=ExecutionStatus.COMPLETED,
+                created_at__gte=start_date,
+                created_at__lte=end_date,
+            )
+            .annotate(period=trunc_func("created_at"))
+            .values(org_field, "period")
+            .annotate(value=Count("id"))
+            .order_by(org_field, "period")
+        )
+        by_org: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in rows:
+            by_org[str(row[org_field])].append(
+                {"period": row["period"], "value": row["value"]}
+            )
+        return dict(by_org)
 
     @staticmethod
     def _resolve_org_identifier(
@@ -763,7 +858,11 @@ class MetricsQueryService:
             List of dicts with execution details including type
         """
         source_ids = _activity_source_ids(organization_id)
-        recent = _org_file_executions(organization_id).order_by("-created_at")[:limit]
+        recent = (
+            _org_file_executions(organization_id)
+            .filter(id__in=_recent_file_execution_ids(organization_id, limit))
+            .order_by("-created_at")
+        )
         return _activity_rows(recent, source_ids, with_surface=False)
 
     @staticmethod

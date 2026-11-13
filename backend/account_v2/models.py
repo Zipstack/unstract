@@ -307,6 +307,8 @@ class PlatformKey(models.Model):
         verbose_name = "Platform Key"
         verbose_name_plural = "Platform Keys"
         db_table = "platform_key"
+        # Bearer-token auth looks keys up by value. See migration 0012.
+        indexes = [models.Index(fields=["key"], name="platform_key_key_idx")]
         constraints = [
             models.UniqueConstraint(
                 fields=["key_name", "organization"],
