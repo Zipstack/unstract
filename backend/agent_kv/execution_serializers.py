@@ -70,10 +70,12 @@ def _classify_path(path: str) -> str:
     if mime_type == "application/zip":
         try:
             return identify_zip_container(path) or mime_type
-        except (RuntimeError, NotImplementedError):
-            # `zipfile` raises these for an encrypted member or an unsupported
-            # compression method, which `identify_zip_container` does not
-            # catch. Such an archive is a zip we cannot see into, not a 500.
+        except Exception:
+            # The archive is untrusted, and reading one raises more than any
+            # list keeps up with: RuntimeError for an encrypted member,
+            # NotImplementedError for an unknown compression method,
+            # `zlib.error` for corrupt data, EOFError for a truncated stream.
+            # Whatever it raises, it is a zip we cannot see into, not a 500.
             return mime_type
     return mime_type
 

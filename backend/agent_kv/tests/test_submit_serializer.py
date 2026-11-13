@@ -224,8 +224,9 @@ def test_a_pdf_renamed_to_a_spreadsheet_extension_is_rejected():
     [("table.xlsx", "table.xlsx"), ("table.xls", "table.xls")],
 )
 def test_real_spreadsheets_pass_the_content_check(fixture, name):
-    # `table.xls` reads as `application/CDFV2` from its first 8 KiB, like
-    # real-world workbooks do, so this also covers the path re-classification.
+    # `table.xls` reads as a wrapper type from its first 8 KiB (`CDFV2` or
+    # `x-ole-storage`, depending on the libmagic version), like real-world
+    # workbooks do, so this also covers the path re-classification.
     s = SubmitSerializer(data=_data(file=_fixture_upload(fixture, name)))
     assert s.is_valid(), s.errors
     assert s.validated_data["file"].tell() == 0
@@ -261,9 +262,24 @@ def _ooxml_shaped_zip_with_patched_headers(local_offset, central_offset, value):
     return bytes(body)
 
 
+def _ooxml_shaped_zip_with_corrupt_declaration():
+    """A zip naming the OOXML declaration members, whose deflated
+    `[Content_Types].xml` data is overwritten so `zlib` cannot inflate it.
+    """
+    body = bytearray(
+        _zip_bytes([("[Content_Types].xml", b"<Types/>" * 512), ("_rels/.rels", b"<x/>")])
+    )
+    name_length, extra_length = struct.unpack("<HH", body[26:30])
+    data_at = 30 + name_length + extra_length
+    body[data_at : data_at + 4] = b"\xff\xff\xff\xff"
+    return bytes(body)
+
+
 @pytest.mark.parametrize(
     "body",
     [
+        # Corrupt deflate data: reading the member raises `zlib.error`.
+        pytest.param(_ooxml_shaped_zip_with_corrupt_declaration(), id="corrupt-data"),
         # General-purpose flag bit 0: `zipfile` raises RuntimeError on open.
         pytest.param(_ooxml_shaped_zip_with_patched_headers(6, 8, 0x1), id="encrypted"),
         # Compression method 99: `zipfile` raises NotImplementedError on open.
@@ -276,6 +292,21 @@ def test_an_unreadable_package_is_a_file_error_not_a_server_error(body):
     upload = SimpleUploadedFile("table.xlsx", body)
     s = SubmitSerializer(data=_data(file=upload))
     assert not s.is_valid()
+    assert "does not match its '.xlsx' extension" in str(s.errors["file"])
+
+
+def test_any_error_reading_the_package_is_a_file_error():
+    # A truncated stream raises EOFError, and the next archive quirk will
+    # raise something else; none of them may surface as a 500.
+    upload = SimpleUploadedFile(
+        "table.xlsx", _ooxml_shaped_zip_with_patched_headers(6, 8, 0x0)
+    )
+    with mock.patch(
+        "agent_kv.execution_serializers.identify_zip_container",
+        side_effect=EOFError("truncated"),
+    ):
+        s = SubmitSerializer(data=_data(file=upload))
+        assert not s.is_valid()
     assert "does not match its '.xlsx' extension" in str(s.errors["file"])
 
 
