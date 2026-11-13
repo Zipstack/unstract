@@ -12,7 +12,10 @@ libmagic is the behaviour under test.
 """
 
 import io
+import lzma
+import struct
 import zipfile
+import zlib
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -705,6 +708,89 @@ def test_a_plain_zip_stays_rejected(collaborators) -> None:
 
     assert result == {}
     collaborators["storage"].write.assert_not_called()
+
+
+_DECLARATION = "[Content_Types].xml"
+
+
+def _unreadable_package(damage: str) -> bytes:
+    """A zip naming a package's declaration members, damaged so reading one fails.
+
+    `zipfile` will not write any of these shapes itself, so the declaration's
+    headers or data are patched after the fact. A junk member goes first so
+    libmagic only calls the result a zip and the archive gets inspected.
+    """
+    method = zipfile.ZIP_LZMA if damage == "lzma-stream" else zipfile.ZIP_DEFLATED
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr("junk.bin", bytes(range(256)) * 4)
+        archive.writestr(_DECLARATION, _OOXML_CONTENT_TYPES, compress_type=method)
+        archive.writestr("_rels/.rels", _OOXML_RELS, compress_type=method)
+        archive.writestr("word/document.xml", '<?xml version="1.0"?><document/>')
+    data = bytearray(buf.getvalue())
+
+    local = zipfile.ZipFile(io.BytesIO(bytes(data))).getinfo(_DECLARATION).header_offset
+    central = data.find(b"PK\x01\x02")
+    while data[central + 46 : central + 46 + len(_DECLARATION)] != _DECLARATION.encode():
+        central = data.find(b"PK\x01\x02", central + 4)
+    name_len, extra_len = struct.unpack("<HH", data[local + 26 : local + 30])
+    stream = local + 30 + name_len + extra_len
+
+    if damage == "encrypted":
+        # General-purpose flag bit 0, in both the local and central headers.
+        data[local + 6 : local + 8] = struct.pack("<H", 0x1)
+        data[central + 8 : central + 10] = struct.pack("<H", 0x1)
+    elif damage == "unknown-compression":
+        data[local + 8 : local + 10] = struct.pack("<H", 99)
+        data[central + 10 : central + 12] = struct.pack("<H", 99)
+    elif damage == "deflate-stream":
+        data[stream] ^= 0xFF  # an invalid block header
+    elif damage == "lzma-stream":
+        data[stream + 4] ^= 0xFF  # past the version, into the coder properties
+    return bytes(data)
+
+
+@pytest.mark.parametrize(
+    "damage,raised",
+    [
+        ("encrypted", RuntimeError),
+        ("unknown-compression", NotImplementedError),
+        ("deflate-stream", zlib.error),
+        ("lzma-stream", lzma.LZMAError),
+    ],
+)
+def test_an_unreadable_package_fails_alone_rather_than_the_request(
+    collaborators, damage, raised
+) -> None:
+    """A crafted archive is a bad file, not a platform fault.
+
+    `zipfile` raises these, not BadZipFile, for an archive it cannot read. Left
+    uncaught, a RuntimeError reads as the systemic failure the staging loop
+    deliberately re-raises, so one upload failed every file in the request.
+    """
+    data = _unreadable_package(damage)
+    # The shape this case exists for: reading the declaration really raises it.
+    with pytest.raises(raised):
+        zipfile.ZipFile(io.BytesIO(data)).read(_DECLARATION)
+    assert src_mod.magic.from_buffer(data, mime=True) in src_mod.INCONCLUSIVE_MIME_TYPES
+
+    result = _stage(
+        [
+            _upload("crafted.docx", data, "application/pdf"),
+            _upload("good.pdf", PDF_BYTES, "application/pdf"),
+        ]
+    )
+
+    assert set(result) == {"good.pdf"}
+    assert _staged_names(collaborators["storage"]) == {"good.pdf"}
+
+
+def test_a_truncated_member_stream_is_not_a_document(tmp_path) -> None:
+    """EOFError is what `zipfile` raises when a member's stream ends early."""
+    archive = tmp_path / "package.zip"
+    archive.write_bytes(_docx_bytes(pad_first_member=True))
+    with mock.patch.object(zipfile.ZipExtFile, "read", side_effect=EOFError):
+        assert src_mod.identify_zip_container(str(archive)) is None
 
 
 def test_container_prefix_triggers_a_full_file_sniff(collaborators) -> None:
