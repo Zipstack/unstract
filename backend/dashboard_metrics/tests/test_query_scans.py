@@ -1,10 +1,7 @@
-"""UN-4672: the two dashboard query paths rewritten to stop scanning other orgs' rows.
+"""UN-4672: documents_processed stops scanning other orgs' rows.
 
-* documents_processed is read for every active org in one grouped query per run, not
-  one query per org. The rows must be exactly what the per-org query returns.
-* recent activity reaches the org's file executions through each workflow's newest
-  executions, not by sorting all of them. The rows must be the ones the plain
-  ``ORDER BY created_at DESC`` returns.
+It is read for every active org in one grouped query per run, not one query per org.
+The rows must be exactly what the per-org query returns.
 
 DB-backed Django ``TestCase`` → auto-marked ``integration`` by ``backend/conftest.py``.
 """
@@ -24,7 +21,7 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from dashboard_metrics import tasks
 from dashboard_metrics.models import EventMetricsDaily, EventMetricsHourly, Granularity
-from dashboard_metrics.services import MetricsQueryService, _org_file_executions
+from dashboard_metrics.services import MetricsQueryService
 
 COMPLETED = ExecutionStatus.COMPLETED.value
 ERROR = ExecutionStatus.ERROR.value
@@ -188,64 +185,3 @@ class DocumentsProcessedByOrgTests(_Seed, TestCase):
             side_effect=fail_in_the_database,
         ):
             self.assertEqual(self._run(), expected)
-
-
-class RecentActivityTests(_Seed, TestCase):
-    def _expected(self, org: Organization, limit: int = 10) -> list:
-        """What the query returned before UN-4672: a plain sort of every file."""
-        return list(
-            _org_file_executions(str(org.id))
-            .order_by("-created_at")
-            .values_list("id", flat=True)[:limit]
-        )
-
-    def _actual(self, org: Organization, limit: int = 10) -> list:
-        return [
-            uuid.UUID(row["id"])
-            for row in MetricsQueryService.get_recent_activity(str(org.id), limit=limit)
-        ]
-
-    def test_interleaves_files_across_workflows(self) -> None:
-        workflows = [self._workflow(self.org_a) for _ in range(3)]
-        hour = 0.0
-        for _ in range(6):
-            for workflow in workflows:
-                hour += 1
-                execution = self._execution(workflow, hour + 0.5)
-                self._file(execution, hour)
-                self._file(execution, hour + 0.25)
-        self._file(self._execution(self._workflow(self.org_b), 0.1), 0.05)
-
-        self.assertEqual(len(self._expected(self.org_a)), 10)
-        self.assertEqual(self._actual(self.org_a), self._expected(self.org_a))
-        self.assertEqual(self._actual(self.org_a, 4), self._expected(self.org_a, 4))
-
-    def test_newer_executions_without_files_do_not_hide_older_files(self) -> None:
-        # A scheduled pipeline that keeps finding no files creates file-less
-        # executions; they must not push its last real files out of view.
-        workflow = self._workflow(self.org_a)
-        older = [self._file(self._execution(workflow, 50 + i), 49 + i) for i in range(3)]
-        for i in range(15):
-            self._execution(workflow, i + 1)
-
-        self.assertEqual(self._actual(self.org_a), self._expected(self.org_a))
-        self.assertEqual(set(self._actual(self.org_a)), {f.id for f in older})
-
-    def test_a_running_older_execution_still_shows_its_newest_files(self) -> None:
-        # A long batch keeps creating files while newer runs of the same
-        # workflow start and finish.
-        workflow = self._workflow(self.org_a)
-        batch = self._execution(workflow, 48)
-        WorkflowExecution.objects.filter(pk=batch.pk).update(
-            status=ExecutionStatus.EXECUTING.value
-        )
-        for i in range(12):
-            self._file(self._execution(workflow, 20 + i), 19 + i)
-        newest = [self._file(batch, 0.1 * (i + 1)) for i in range(3)]
-
-        self.assertEqual(self._actual(self.org_a), self._expected(self.org_a))
-        self.assertEqual(self._actual(self.org_a)[:3], [f.id for f in newest])
-
-    def test_an_org_with_no_files_gets_no_rows(self) -> None:
-        self._execution(self._workflow(self.org_a), 1)
-        self.assertEqual(self._actual(self.org_a), [])

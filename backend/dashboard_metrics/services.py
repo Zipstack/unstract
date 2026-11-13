@@ -16,7 +16,6 @@ from typing import Any
 from account_usage.models import PageUsage
 from account_v2.models import Organization
 from api_v2.models import APIDeployment
-from django.db import connection
 from django.db.models import CharField, Count, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Cast, Coalesce, TruncDay, TruncHour, TruncWeek
 from pipeline_v2.models import Pipeline
@@ -84,74 +83,6 @@ def _org_file_executions(organization_id: str):
         "workflow_execution",
         "workflow_execution__workflow",
     )
-
-
-# Statuses an execution can no longer create files in. Written into the SQL as
-# literals, not parameters, so the planner can match we_active_by_workflow_idx,
-# whose predicate is this same list (workflow_v2 migration 0023).
-_TERMINAL_EXECUTION_STATUSES = ", ".join(
-    f"'{s.value}'"
-    for s in (ExecutionStatus.COMPLETED, ExecutionStatus.STOPPED, ExecutionStatus.ERROR)
-)
-
-
-def _recent_file_execution_ids(organization_id: str, limit: int) -> list:
-    """Ids of the org's ``limit`` newest file executions, read through indexes.
-
-    Ordering the org's file executions by created_at directly has no index to
-    use: it joins every execution of the org's workflows, which on prod was a
-    sequential scan of the whole workflow_execution table (14-39 s, UN-4672).
-
-    Instead the candidates are the files of two sets of executions, both
-    reached through indexes:
-
-    * per workflow, its ``limit`` newest executions that have files, through
-      the (workflow_id, created_at) index. Executions without files are
-      skipped, so a scheduled pipeline's empty runs cannot hide its last files;
-    * every execution still running, through we_active_by_workflow_idx. An
-      older execution that is still creating files can be newer, by file, than
-      ``limit`` executions started after it.
-
-    The one case left out: an execution that has finished, whose newest file
-    is among the org's newest ``limit`` although ``limit`` executions of the
-    same workflow started after it and each has only older files. That needs
-    those executions processed ahead of it.
-    """
-    workflow = Workflow._meta.db_table
-    execution = WorkflowExecution._meta.db_table
-    file_execution = WorkflowFileExecution._meta.db_table
-    sql = f"""
-        WITH candidates AS (
-            SELECT recent.id
-            FROM "{workflow}" w
-            CROSS JOIN LATERAL (
-                SELECT we.id
-                FROM "{execution}" we
-                WHERE we.workflow_id = w.id
-                  AND EXISTS (
-                      SELECT 1 FROM "{file_execution}" f
-                      WHERE f.workflow_execution_id = we.id
-                  )
-                ORDER BY we.created_at DESC
-                LIMIT %s
-            ) recent
-            WHERE w.organization_id = %s
-            UNION
-            SELECT we.id
-            FROM "{execution}" we
-            JOIN "{workflow}" w ON w.id = we.workflow_id
-            WHERE w.organization_id = %s
-              AND we.status NOT IN ({_TERMINAL_EXECUTION_STATUSES})
-        )
-        SELECT wfe.id
-        FROM candidates
-        JOIN "{file_execution}" wfe ON wfe.workflow_execution_id = candidates.id
-        ORDER BY wfe.created_at DESC
-        LIMIT %s
-    """
-    with connection.cursor() as cursor:
-        cursor.execute(sql, [limit, organization_id, organization_id, limit])
-        return [row[0] for row in cursor.fetchall()]
 
 
 def _surface_filter(organization_id: str, surfaces: list[str]) -> Q:
@@ -885,11 +816,7 @@ class MetricsQueryService:
             List of dicts with execution details including type
         """
         source_ids = _activity_source_ids(organization_id)
-        recent = (
-            _org_file_executions(organization_id)
-            .filter(id__in=_recent_file_execution_ids(organization_id, limit))
-            .order_by("-created_at")
-        )
+        recent = _org_file_executions(organization_id).order_by("-created_at")[:limit]
         return _activity_rows(recent, source_ids, with_surface=False)
 
     @staticmethod
