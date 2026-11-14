@@ -109,13 +109,16 @@ def baseline_problems(project: compat.Project) -> list[str]:
 
 def new_migrations_failure(project: compat.Project) -> str | None:
     """The failure text for the new migrations, or None when they are all fine."""
-    if project.problems:
+    try:
+        problems = compat.new_migration_problems(project)
+    except ValueError as error:
+        # A released migration does not apply on top of the released ones alone, so
+        # there is no released state to check against. The baseline problems say why.
         return (
-            "\nThe baselines have problems, so released and new migrations cannot be "
-            "told apart. Fix these first (test_the_guard_is_not_inert reports them "
-            "too):\n" + "\n".join(project.problems)
+            "\nThe released migrations do not apply on their own, so new migrations "
+            "cannot be checked. Fix the baseline first (test_the_guard_is_not_inert "
+            "reports the same):\n" + "\n".join(project.problems or [str(error)])
         )
-    problems = compat.new_migration_problems(project)
     if not problems:
         return None
     text = (
@@ -1992,15 +1995,27 @@ class NewMigrationReportTests(SimpleTestCase):
         self.assertIsNone(new_migrations_failure(project))
         project.problems.append("probe/tests/migration_baseline.txt:4: x is listed twice")
         self.assertEqual(baseline_problems(project), project.problems)
-        # Released and new cannot be told apart then, so nothing is linted: a released
-        # migration whose dependency is not released would not even apply.
-        with mock.patch.object(compat, "lint", side_effect=AssertionError("linted")):
-            failure = new_migrations_failure(project)
-        self.assertEqual(
-            failure.splitlines()[-1],
-            "probe/tests/migration_baseline.txt:4: x is listed twice",
+        # A wrong line does not stop the new migrations from being checked.
+        self.assertIsNone(new_migrations_failure(project))
+
+    def test_released_migrations_that_do_not_apply_are_reported_without_a_traceback(
+        self,
+    ) -> None:
+        """A released migration whose dependency is not released: lint cannot start."""
+        orphan = _migration(
+            "0001_orphan", [migrations.RemoveField("widget", "code")], app_label="extra"
         )
-        self.assertIn("Fix these first", failure)
+        project = _in_memory_project(orphan, released={("extra", "0001_orphan")})
+        failure = new_migrations_failure(project)
+        self.assertIn("The released migrations do not apply on their own", failure)
+        self.assertIn("extra.0001_orphan is in a baseline but does not apply", failure)
+        dependency = (
+            "extra.0001_orphan is in a baseline but its dependency probe.0001_initial "
+            "is not. Advance the baseline that should list the dependency first."
+        )
+        project.problems.append(dependency)
+        self.assertEqual(new_migrations_failure(project).splitlines()[-1], dependency)
+        self.assertNotIn("KeyError", new_migrations_failure(project))
 
     def test_a_missing_baseline_names_the_directories_and_the_files_read(self) -> None:
         many = [
