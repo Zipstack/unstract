@@ -116,7 +116,16 @@ class Migration(migrations.Migration):
     ]
 ```
 
+One break the check does not look for, so look for it yourself: a new table with a
+`ForeignKey` to an existing table. The previous release does not know the new table, so
+when it deletes a row the new table points at, nothing cascades and the delete fails on
+the constraint. If the previous release deletes rows of that table, declare the key with
+`db_constraint=False`.
+
 Run the check from the repository root: `tox -e groups -- unit-backend --no-coverage`.
+That runs the whole backend unit group. The check is the
+`backend/tests/test_migration_compat.py` lines of its report; a failure in another file
+is not this check's.
 
 ## Authentication
 
