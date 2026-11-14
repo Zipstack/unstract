@@ -1,4 +1,8 @@
-"""Tests for migration_baseline, the Lint PR check that the migration baseline is current. Run: python test_migration_baseline.py"""
+"""Tests for migration_baseline, the Lint PR check that the migration baseline is current. Run: python test_migration_baseline.py
+
+A repository that adds its own migrations to this backend keeps a copy of this file; the baseline path, the advance
+command and one migration path differ.
+"""
 
 import contextlib
 import io
@@ -14,6 +18,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..", "..")
 
 FRESH = "# Released migrations.\n# released-through: origin/release/0.187 @ 3a76b8544\nab  account_v2/migrations/0001_initial.py\n"
+# The newest branch's tree, as the trees API lists it: the one migration FRESH lists, plus
+# what the baseline leaves out by design.
+TREE = [
+    "backend/account_v2/migrations/__init__.py",
+    "backend/account_v2/migrations/0001_initial.py",
+    "backend/account_v2/models.py",
+]
+PICKED = "backend/account_v2/migrations/0002_picked.py"
 BRANCHES = [
     "main",
     "release/0.186",
@@ -71,10 +83,53 @@ class TouchesMigrations(unittest.TestCase):
         self.assertFalse(mb.touches_migrations([]))
 
 
+class Unlisted(unittest.TestCase):
+    def test_only_migration_modules_the_baseline_lacks(self):
+        self.assertEqual(mb.unlisted(FRESH, TREE), [])
+        self.assertEqual(mb.unlisted(FRESH, [*TREE, PICKED]), [PICKED])
+        helper = "backend/a/b/migrations/_helper.py"
+        self.assertEqual(
+            mb.unlisted(FRESH, [helper, "backend/a/migrations/README.md"]), [helper]
+        )
+        self.assertEqual(
+            mb.unlisted("", ["backend/a/migrations/0001_x.py"]),
+            ["backend/a/migrations/0001_x.py"],
+        )
+
+    def test_comment_and_third_party_lines_list_nothing(self):
+        # The third-party line is the real baseline's shape (backend/backend/tests/migration_baseline.txt).
+        text = "# ab  account_v2/migrations/0002_picked.py\nthird-party  admin.0001_initial\n"
+        self.assertEqual(mb.unlisted(text, [PICKED]), [PICKED])
+
+
 class StaleError(unittest.TestCase):
     def test_current(self):
         self.assertIsNone(mb.stale_error(FRESH, BRANCHES))
         self.assertIsNone(mb.stale_error(FRESH.replace("origin/", ""), BRANCHES))
+        self.assertIsNone(mb.stale_error(FRESH, BRANCHES, released=lambda ref: TREE))
+
+    def test_a_migration_picked_onto_the_newest_line_after_the_baseline(self):
+        asked = []
+        err = mb.stale_error(
+            FRESH, BRANCHES, released=lambda ref: asked.append(ref) or [*TREE, PICKED]
+        )
+        self.assertEqual(asked, ["release/0.187"])
+        self.assertEqual(
+            err,
+            "backend/backend/tests/migration_baseline.txt is at release/0.187, but does not list "
+            f"1 migration(s) that release/0.187 and this branch have: {PICKED}. Their tables are still "
+            "treated as new, so the migration guard would pass changes that break them. Regenerate the "
+            "baseline: python backend/backend/tests/update_migration_baseline.py --ref origin/release/0.187",
+        )
+
+    def test_names_at_most_five_picked_migrations(self):
+        picked = [f"backend/x/migrations/000{i}_p.py" for i in range(7)]
+        err = mb.stale_error(FRESH, BRANCHES, released=lambda ref: picked)
+        self.assertIn("does not list 7 migration(s)", err)
+        self.assertIn("0004_p.py .... Their", err)
+        self.assertNotIn("0005_p.py", err)
+        five = mb.stale_error(FRESH, BRANCHES, released=lambda ref: picked[:5])
+        self.assertIn("0004_p.py. Their", five)
 
     def test_behind_the_newest_line(self):
         err = mb.stale_error(FRESH, [*BRANCHES, "release/0.188"])
@@ -132,9 +187,11 @@ class StaleError(unittest.TestCase):
 
 
 class FakeGh:
-    """Answers the three API reads main() makes; anything else is a test failure."""
+    """Answers the API reads main() makes; anything else is a test failure."""
 
-    def __init__(self, files, branches=BRANCHES, baseline=FRESH, fail=None):
+    def __init__(
+        self, files, branches=BRANCHES, baseline=FRESH, fail=None, tree=TREE, head=None
+    ):
         self.files, self.branches, self.baseline, self.fail, self.calls = (
             files,
             branches,
@@ -142,6 +199,10 @@ class FakeGh:
             fail,
             [],
         )
+        self.trees = {
+            "release/0.187": tree,
+            "refs/pull/7/head": tree if head is None else head,
+        }
 
     def __call__(self, *args):
         url = next(a for a in args if a.startswith("repos/"))
@@ -159,6 +220,13 @@ class FakeGh:
             if self.baseline is None:
                 raise RuntimeError("gh api (exit 1): gh: Not Found (HTTP 404)")
             return self.baseline
+        for ref, tree in self.trees.items():
+            if url == f"repos/Zipstack/example/git/trees/{ref}?recursive=1":
+                assert args[-2:] == (
+                    "--jq",
+                    'if .truncated then error("the tree is truncated") else .tree[].path end',
+                ), args
+                return "\n".join(tree) + "\n"
         raise AssertionError(f"unexpected gh call: {args}")
 
 
@@ -192,6 +260,40 @@ class Main(unittest.TestCase):
         self.assertEqual((code, summary), (0, ""))
         self.assertNotIn("::error", out)
 
+    def test_the_trees_of_the_newest_line_and_the_head_are_read(self):
+        gh = FakeGh(self.MIGRATION)
+        self.run_main(gh)
+        self.assertEqual(
+            sorted(gh.calls[-2:]),
+            [
+                "repos/Zipstack/example/git/trees/refs/pull/7/head?recursive=1",
+                "repos/Zipstack/example/git/trees/release/0.187?recursive=1",
+            ],
+        )
+
+    def test_a_released_migration_the_head_lacks_is_not_required(self):
+        # The generator, run on the head, leaves out a file the head lacks (a squash), so the check must not ask for it.
+        code, out, _ = self.run_main(
+            FakeGh(self.MIGRATION, tree=[*TREE, PICKED], head=TREE)
+        )
+        self.assertEqual(code, 0, out)
+
+    def test_an_unreleased_migration_on_the_head_is_not_required(self):
+        unreleased = "backend/account_v2/migrations/0003_unreleased.py"
+        code, out, _ = self.run_main(FakeGh(self.MIGRATION, head=[*TREE, unreleased]))
+        self.assertEqual(code, 0, out)
+
+    def test_a_migration_picked_after_the_baseline_fails(self):
+        code, out, summary = self.run_main(FakeGh(self.MIGRATION, tree=[*TREE, PICKED]))
+        self.assertEqual(code, 1)
+        self.assertIn(
+            "::error title=Lint PR::backend/backend/tests/migration_baseline.txt is at release/0.187, "
+            f"but does not list 1 migration(s) that release/0.187 and this branch have: {PICKED}.",
+            out,
+        )
+        self.assertEqual(out.count("\n"), 1)
+        self.assertIn(PICKED, summary)
+
     def test_a_migration_with_a_stale_baseline_fails(self):
         gh = FakeGh(self.MIGRATION, branches=[*BRANCHES, "release/0.188"])
         code, out, summary = self.run_main(gh)
@@ -222,7 +324,7 @@ class Main(unittest.TestCase):
         self.assertNotIn("Advance the baseline", out)
 
     def test_a_failed_read_fails_the_check_and_says_so(self):
-        for part in ("/files", "/branches", "/contents/"):
+        for part in ("/files", "/branches", "/contents/", "/git/trees/"):
             code, out, summary = self.run_main(FakeGh(self.MIGRATION, fail=part))
             self.assertEqual((code, summary), (1, ""), part)
             self.assertIn(
@@ -270,11 +372,15 @@ case "$*" in
   *"/contents/backend/backend/tests/migration_baseline.txt?ref=refs/pull/7/head")
     [ -f "$FIXTURE/baseline" ] && cat "$FIXTURE/baseline" && exit 0
     echo "gh: Not Found (HTTP 404)" >&2; exit 1;;
+  *"/git/trees/release/0.187?recursive=1 --jq if .truncated then error("*"the tree is truncated"*") else .tree[].path end")
+    cat "$FIXTURE/tree";;
+  *"/git/trees/refs/pull/7/head?recursive=1 --jq if .truncated then error("*"the tree is truncated"*") else .tree[].path end")
+    cat "$FIXTURE/tree";;
   *) echo "unexpected gh call: $*" >&2; exit 2;;
 esac
 """
 
-    def lint(self, files, branches, baseline, cwd=ROOT):
+    def lint(self, files, branches, baseline, cwd=ROOT, tree="\n".join(TREE) + "\n"):
         condition, script = step("lint-pr.yaml", "Migration baseline is current")
         self.assertEqual(
             condition, "if: ${{ !cancelled() && github.base_ref == 'main' }}"
@@ -284,6 +390,7 @@ esac
                 ("files", files),
                 ("branches", branches),
                 ("baseline", baseline),
+                ("tree", tree),
             ):
                 if text is not None:
                     with open(os.path.join(d, name), "w") as fh:
@@ -329,7 +436,19 @@ esac
     def test_a_current_baseline_passes(self):
         rc, out = self.lint(self.MIGRATION, self.BRANCHES, FRESH)
         self.assertEqual(
-            (rc, out), (0, "backend/backend/tests/migration_baseline.txt is current.\n")
+            (rc, out),
+            (0, "backend/backend/tests/migration_baseline.txt is current.\n"),
+        )
+
+    def test_a_migration_picked_after_the_baseline_fails(self):
+        rc, out = self.lint(
+            self.MIGRATION, self.BRANCHES, FRESH, tree="\n".join([*TREE, PICKED]) + "\n"
+        )
+        self.assertEqual(rc, 1, out)
+        self.assertIn(
+            "::error title=Lint PR::backend/backend/tests/migration_baseline.txt is at release/0.187, "
+            f"but does not list 1 migration(s) that release/0.187 and this branch have: {PICKED}.",
+            out,
         )
 
     def test_a_head_without_a_baseline_fails(self):
@@ -357,6 +476,22 @@ esac
             "::notice title=Lint PR::migration baseline check skipped: No module named",
             out,
         )
+
+    def test_a_module_on_main_that_fails_to_import_fails_the_step(self):
+        # Only the module's own absence is the bootstrap case; anything else it raises is a broken check.
+        for body in (
+            "import a_module_that_is_not_installed\n",
+            "raise ImportError('broken')\n",
+        ):
+            with self.subTest(body), tempfile.TemporaryDirectory() as main:
+                os.makedirs(os.path.join(main, ".github", "release"))
+                with open(
+                    os.path.join(main, ".github", "release", "migration_baseline.py"), "w"
+                ) as fh:
+                    fh.write(body)
+                rc, out = self.lint(self.MIGRATION, self.BRANCHES, FRESH, cwd=main)
+                self.assertNotEqual(rc, 0, out)
+                self.assertNotIn("::notice", out)
 
 
 class ReleaseBranchCiStep(unittest.TestCase):

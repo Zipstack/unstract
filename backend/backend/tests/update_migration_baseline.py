@@ -9,9 +9,9 @@ migration is backported to the newest release branch:
 
     python backend/backend/tests/update_migration_baseline.py --ref origin/release/0.187
 
-Lint PR checks only the first: it compares the release line the baseline names with the
-newest release branch. Nothing checks the second. Until it is done, the guard treats
-whatever a backported migration created as new, and passes a drop or rename of it.
+Lint PR checks both, on a PR that changes a migration: it fails when the baseline names
+an older release line than the newest release branch, or does not list a migration that
+the newest release branch and the PR's branch both have.
 
 A repository that adds its own migrations to this backend keeps its own baseline. Run
 this copy of the script against it with ``--repo`` and ``--out``, after this
@@ -32,6 +32,7 @@ import sys
 from pathlib import Path
 
 SCRIPT = "backend/backend/tests/update_migration_baseline.py"
+TEST = "backend/backend/tests/test_migration_compat.py"
 DEFAULT_OUT = "backend/backend/tests/migration_baseline.txt"
 # Only a release branch says what is released. Any other ref (HEAD, main) would list
 # migrations that no release has, and the guard would stop checking them. The branch
@@ -42,7 +43,7 @@ RELEASE_REF = re.compile(r"origin/release/(\d+)\.(\d+)")
 MIGRATION = re.compile(r"^backend/(.+/migrations/(?!__init__\.py$)[^/]+\.py)$")
 HEADER = """\
 # Released migrations: the migration files on the newest release branch.
-# backend/backend/tests/test_migration_compat.py checks every migration that is NOT
+# {test} checks every migration that is NOT
 # listed here, and fails when a listed file changes.
 # Regenerate after a release cut:
 #   {command}
@@ -123,9 +124,11 @@ def main(argv: list[str] | None = None) -> int:
     third_party = sorted(line for line in before if line.startswith("third-party "))
     body = sorted(lines, key=lambda line: line.split("  ", 1)[1]) + third_party
     command = f"python {SCRIPT} --ref origin/release/X.Y"
+    test = TEST
     if args.out != DEFAULT_OUT:  # another repository's baseline, written by this copy
         command = f"python <unstract>/{SCRIPT} --repo . --ref origin/release/X.Y --out {args.out}"
-    header = HEADER.format(command=command, ref=args.ref, commit=commit)
+        test = f"<unstract>/{TEST}"
+    header = HEADER.format(command=command, test=test, ref=args.ref, commit=commit)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(header + "\n".join(body) + "\n")
 

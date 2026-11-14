@@ -108,6 +108,8 @@ jobs:
       # A baseline left behind after a release cut makes that release's tables "new" to the backend's migration
       # guard, which then passes changes that break it. Nothing on main names the newest release line, so this
       # job checks it. The check is read from main too, so it starts once main has it.
+      # Accepted gap: a green run is not repeated at merge (required checks are not strict, and there is no merge
+      # queue), so a PR checked before a release cut can merge after it. The next migration PR then fails here.
       - name: Migration baseline is current
         if: ${{ !cancelled() && github.base_ref == 'main' }}
         env:
@@ -119,7 +121,9 @@ jobs:
           sys.path.insert(0, ".github/release")
           try:
               import migration_baseline
-          except ImportError as e:
+          except ModuleNotFoundError as e:
+              if e.name != "migration_baseline":  # only main predating the check skips it; a broken module fails
+                  raise
               print(f"::notice title=Lint PR::migration baseline check skipped: {e}")
               sys.exit(0)
           sys.exit(migration_baseline.main())

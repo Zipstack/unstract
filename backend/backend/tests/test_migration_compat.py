@@ -2477,6 +2477,7 @@ class BaselineScriptTests(SimpleTestCase):
                 "--ref origin/release/X.Y\n",
                 header,
             )
+            self.assertIn("\n# backend/backend/tests/test_migration_compat.py ", header)
             self.assertEqual(
                 body.splitlines(),
                 [
@@ -2525,6 +2526,9 @@ class BaselineScriptTests(SimpleTestCase):
             self.assertNotIn("_helper.py", other)
             self.assertIn(
                 "--repo . --ref origin/release/X.Y --out other/baseline.txt\n", other
+            )
+            self.assertIn(
+                "\n# <unstract>/backend/backend/tests/test_migration_compat.py ", other
             )
 
             # A branch the clone does not have is not the newest one it knows.
