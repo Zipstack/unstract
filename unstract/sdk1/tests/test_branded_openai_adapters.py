@@ -47,7 +47,7 @@ def test_nvidia_llm_prefixes_model_via_custom_openai() -> None:
     assert validated["api_base"] == _NVIDIA_BUILD_API_BASE
 
 
-@pytest.mark.parametrize("model", ["MiniMax-M3", "MiniMax-M2.7"])
+@pytest.mark.parametrize("model", ["MiniMax-M3.1-Flash", "MiniMax-M3", "MiniMax-M2.7"])
 @pytest.mark.parametrize(
     ("api_base", "provider"),
     [
@@ -70,7 +70,10 @@ def test_minimax_llm_routes_by_api_protocol(
     assert validated["api_base"] == api_base
     assert validated["cost_model"] == f"minimax/{model}"
     assert get_llm_provider(validated["model"])[1] == provider
-    assert validated["allowed_openai_params"] == ["service_tier", "thinking"]
+    expected_params = (
+        ["thinking"] if model == "MiniMax-M3.1-Flash" else ["service_tier", "thinking"]
+    )
+    assert validated["allowed_openai_params"] == expected_params
 
 
 @pytest.mark.parametrize("api_base", [_MINIMAX_API_BASE, _MINIMAX_ANTHROPIC_API_BASE])
@@ -186,10 +189,30 @@ def test_minimax_m2_rejects_disabling_thinking() -> None:
         )
 
 
-def test_minimax_m2_defaults_to_adaptive_thinking() -> None:
+def test_minimax_m2_uses_always_on_thinking_without_request_parameter() -> None:
     validated = MiniMaxLLMParameters.validate({"model": "MiniMax-M2.7", "api_key": "k"})
 
-    assert validated["thinking"] == {"type": "adaptive"}
+    assert validated["thinking"] is None
+    assert MiniMaxLLMParameters.validate(dict(validated))["thinking"] is None
+
+    explicitly_enabled = MiniMaxLLMParameters.validate(
+        {"model": "MiniMax-M2.7", "api_key": "k", "enable_thinking": True}
+    )
+    assert explicitly_enabled["thinking"] is None
+
+
+def test_minimax_m2_strips_explicit_thinking_payload() -> None:
+    # The provider accepts a thinking payload for M2.x but ignores it, so drop it
+    # instead of failing a call that works today.
+    validated = MiniMaxLLMParameters.validate(
+        {
+            "model": "MiniMax-M2.7",
+            "api_key": "k",
+            "thinking": {"type": "disabled"},
+        }
+    )
+
+    assert validated["thinking"] is None
 
 
 def test_minimax_m2_thinking_rules_require_model_family_boundary() -> None:
@@ -311,10 +334,13 @@ def test_branded_llm_schema_exposes_api_base_with_default(
 def test_minimax_schema_covers_models_thinking_and_regions() -> None:
     schema = json.loads(MiniMaxLLMAdapter.get_json_schema())
 
+    assert schema["properties"]["model"]["default"] == "MiniMax-M3.1-Flash"
     assert schema["properties"]["model"]["examples"] == [
+        "MiniMax-M3.1-Flash",
         "MiniMax-M3",
-        "MiniMax-M2.7",
     ]
+    assert "enum" not in schema["properties"]["model"]
+    assert "default" not in schema["properties"]["service_tier"]
     assert "default" not in schema["properties"]["enable_thinking"]
     assert schema["properties"]["api_base"]["default"] == _MINIMAX_API_BASE
     assert schema["properties"]["service_tier"]["enum"] == [
@@ -346,6 +372,8 @@ def test_minimax_schema_descriptions_link_out_instead_of_quoting_provider_facts(
 @pytest.mark.parametrize(
     ("model", "api_base", "context_window"),
     [
+        ("MiniMax-M3.1-Flash", _MINIMAX_API_BASE, 1_000_000),
+        ("MiniMax-M3.1-Flash", _MINIMAX_ANTHROPIC_API_BASE, 1_000_000),
         ("MiniMax-M3", _MINIMAX_API_BASE, 1_000_000),
         ("MiniMax-M2.7", _MINIMAX_ANTHROPIC_API_BASE, 204_800),
         # LiteLLM overstates the M2.x window; the adapter rule must win.
