@@ -25,6 +25,7 @@ waive a finding, is in backend/README.md under "Writing migrations".
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import sys
 from collections.abc import Collection, Iterator, Sequence
@@ -221,11 +222,12 @@ SAFE_OPERATIONS = (
 )
 
 
-def _is_safe(op) -> bool:
-    """One of SAFE_OPERATIONS as Django ships it. A subclass defined in the project can
-    run any SQL from database_forwards, so it does not inherit the exemption.
+def _from_django(op) -> bool:
+    """An operation class as Django ships it. A subclass defined in the project can run
+    any SQL from database_forwards, so it gets neither the exemption nor the rule of
+    its base class.
     """
-    return isinstance(op, SAFE_OPERATIONS) and type(op).__module__.startswith(
+    return type(op).__module__.startswith(
         ("django.db.migrations.", "django.contrib.postgres.")
     )
 
@@ -296,13 +298,21 @@ def _column_type(state: ProjectState, model_key: Key, name: str, depth: int = 0)
         target = state.models.get(target_key)
         if target is None:
             return f"reference to {target_key[0]}.{target_key[1]}"
-        to_field = getattr(field.remote_field, "field_name", None) or next(
-            (n for n, f in target.fields.items() if f.primary_key), "id"
-        )
+        to_field = _referenced_field(state, field, model_key)
         if to_field in target.fields:
             return _column_type(state, target_key, to_field, depth + 1)
         return f"reference to {target_key[0]}.{target_key[1]}"
     return str(field.db_type(connection))
+
+
+def _referenced_field(state: ProjectState, field, model_key: Key) -> str:
+    """The name of the field a ForeignKey points at: to_field, or the primary key."""
+    name = getattr(field.remote_field, "field_name", None)
+    if name:
+        return name
+    target = state.models.get(resolve_relation(field.remote_field.model, *model_key))
+    fields = target.fields if target else {}
+    return next((n for n, f in fields.items() if f.primary_key), "id")
 
 
 def _widens(old: str, new: str) -> bool:
@@ -359,8 +369,13 @@ _ADD_TABLE_CONSTRAINT = re.compile(
 )
 _CREATE_INDEX = re.compile(
     rf"CREATE\s+(UNIQUE\s+)?INDEX\s+(CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?"
-    rf"(?:{_ID}\s+)?ON\s+(?:ONLY\s+)?{_NAME}",
+    rf"(?:({_ID})\s+)?ON\s+(?:ONLY\s+)?{_NAME}",
     re.I,
+)
+_DROP_INDEX = re.compile(
+    r"DROP\s+INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+EXISTS\s+)?(.+?)"
+    r"(?:\s+(?:CASCADE|RESTRICT))?",
+    re.I | re.S,
 )
 # Without IF NOT EXISTS the statement fails on an existing table, so the table is new.
 _CREATE_TABLE = re.compile(rf"CREATE\s+TABLE\s+(?!IF\b){_NAME}", re.I)
@@ -372,21 +387,26 @@ _DATA_TARGET = re.compile(
     rf"(?:UPDATE|INSERT\s+INTO|DELETE\s+FROM)\s+(?:ONLY\s+)?{_NAME}", re.I
 )
 # What lets an INSERT that omits the column succeed. SET DEFAULT NULL does not.
-_KEEPS_INSERTS_WORKING = re.compile(
-    r"SET\s+DEFAULT\s+(?!NULL\b)|DROP\s+NOT\s+NULL\b", re.I
-)
+_SETS_DEFAULT = re.compile(r"SET\s+DEFAULT\s+(?!NULL\b)", re.I)
+_DROPS_NOT_NULL = re.compile(r"DROP\s+NOT\s+NULL\b", re.I)
 _REMOVES_DEFAULT = re.compile(r"(DROP\s+DEFAULT|SET\s+DEFAULT\s+NULL)\b", re.I)
+# What a DO block may not contain to count as read-only. An assignment or a sequence
+# function writes without any statement keyword: v := setval(...). SELECT ... INTO a
+# variable stays allowed, because the index checks use it (workflow_v2 0029).
 _WRITES = re.compile(
-    r"\b(ALTER|CREATE|DROP|UPDATE|INSERT|DELETE|TRUNCATE|EXECUTE|PERFORM|CALL|GRANT|REVOKE)\b",
+    r"\b(ALTER|CREATE|DROP|UPDATE|INSERT|DELETE|TRUNCATE|EXECUTE|PERFORM|CALL|GRANT|REVOKE"
+    r"|SETVAL|NEXTVAL|LOCK|COPY)\b|:=",
     re.I,
 )
 _HARMLESS = re.compile(
-    r"(DROP\s+INDEX|CREATE\s+TABLE|CREATE\s+EXTENSION|COMMENT\s+ON"
+    r"(CREATE\s+TABLE|CREATE\s+EXTENSION|COMMENT\s+ON"
     r"|SET\s+(LOCAL\s+)?(lock_timeout|statement_timeout))\b",
     re.I,
 )
 _DO_BLOCK = re.compile(r"DO\s+\$(\w*)\$(.*)\$\1\$", re.I | re.S)
-_LITERAL = re.compile(r"'(?:[^']|'')*'|\$(\w*)\$.*?\$\1\$", re.S)
+# A quoted identifier comes first so that an apostrophe inside one ("it's") does not
+# start a string; it is matched only to be skipped.
+_LITERAL = re.compile(r""""[^"]*"|'(?:[^']|'')*'|\$(\w*)\$.*?\$\1\$""", re.S)
 
 
 def _statements(sql) -> Iterator[str]:
@@ -405,9 +425,14 @@ def _without_literals(text: str) -> str:
     """The text with the inside of every '...' and $tag$...$tag$ replaced by spaces, so
     that a comma, bracket, semicolon or keyword in a string is not read as SQL.
     """
-    return _LITERAL.sub(
-        lambda m: m.group(0)[0] + " " * (len(m.group(0)) - 2) + m.group(0)[-1], text
-    )
+
+    def blank(match: re.Match) -> str:
+        found = match.group(0)
+        if found.startswith('"'):
+            return found
+        return found[0] + " " * (len(found) - 2) + found[-1]
+
+    return _LITERAL.sub(blank, text)
 
 
 def _read_only_block(statement: str) -> bool:
@@ -467,12 +492,33 @@ def kept_defaults(operations, after: str | None = None) -> set[tuple[str, str]]:
     """(table, column) pairs that RunSQL in these operations gives a database default
     (or makes nullable), so an INSERT that omits the column succeeds.
     """
-    kept = set()
+    with_default, nullable = set(), set()
     for table, action in _alter_table_actions(operations, after):
         column = _ALTER_COLUMN.fullmatch(action)
-        if column and _KEEPS_INSERTS_WORKING.match(column.group(2)):
-            kept.add((table, _norm(column.group(1))))
-    return kept
+        if not column:
+            continue
+        pair, change = (table, _norm(column.group(1))), column.group(2)
+        if _SETS_DEFAULT.match(change):
+            with_default.add(pair)
+        elif _REMOVES_DEFAULT.match(change):
+            with_default.discard(pair)  # a later statement took the default away
+        elif _DROPS_NOT_NULL.match(change):
+            nullable.add(pair)
+    return with_default | nullable
+
+
+def _built_indexes(operations) -> set[str]:
+    """The names of the indexes that these operations build in the database."""
+    built = set()
+    for _path, op in _walk_database_operations(operations):
+        if isinstance(op, migrations.AddIndex):  # AddIndexConcurrently too
+            built.add(_norm(op.index.name))
+        elif isinstance(op, migrations.RunSQL):
+            for statement in _statements(op.sql):
+                index = _CREATE_INDEX.match(_without_literals(statement))
+                if index and index.group(3):
+                    built.add(_norm(index.group(3)))
+    return built
 
 
 def _dropped_columns(operations) -> set[tuple[str, str]]:
@@ -494,12 +540,22 @@ class _Linter:
     def __init__(self, state: ProjectState):
         self.state = state  # running state; mutated as operations are applied
         self.schema = released_schema(state)  # the previous release's tables and columns
+        # Meta.indexes of the previous release's models: never unique.
+        self.released_plain_indexes = {
+            _norm(index.name)
+            for model_state in state.models.values()
+            for index in model_state.options.get("indexes", ())
+        }
         # What new migrations created. Models and fields are kept by name and not
         # looked up in `schema`, so a state-only rename in a new migration does not
         # hide a released table.
         self.new_models: set[Key] = set()
         self.new_fields: set[tuple[Key, str]] = set()
         self.new_sql_tables: set[str] = set()  # CREATE TABLE in RunSQL
+        # Indexes that this release builds in the database, in the migration being
+        # checked or an earlier new one. A state-only AddIndex is not one: it can
+        # name an index that exists already.
+        self.new_indexes: set[str] = set()
         self.findings: list[Finding] = []
         self._migration = None
         self._kept: set[tuple[str, str]] = set()  # in the migration being checked
@@ -540,12 +596,25 @@ class _Linter:
         return key not in self.new_models or _table(model_state) in self.schema
 
     def _released_field(self, key: Key, name: str) -> bool:
-        return self._released_model(key) and (key, name) not in self.new_fields
+        if not self._released_model(key):
+            return False
+        if (key, name) not in self.new_fields:
+            return True
+        # A state-only AddField can adopt a column an earlier release created (a
+        # field declared again after a state-only RemoveField). The field is new
+        # then, but the column is not.
+        model_state = self.state.models[key]
+        model_field = model_state.fields.get(name)
+        if model_field is None or model_field.many_to_many:
+            return False
+        return _column(model_field, name) in self.schema.get(_table(model_state), {})
 
     def _born_new(self, table: str, column: str | None = None) -> bool:
         """True when only new migrations created this table (or this column of it)."""
         if table in self.new_sql_tables:
             return True
+        if column is not None and column in self.schema.get(table, {}):
+            return False  # the previous release has the column, whoever declares it now
         for key, model_state in self.state.models.items():
             if not _has_table(model_state) or _table(model_state) != table:
                 continue
@@ -564,11 +633,14 @@ class _Linter:
         self._migration = migration
         self._kept = kept_defaults(migration.operations)
         self._kept_so_far |= self._kept
+        self.new_indexes |= _built_indexes(migration.operations)
         for i, op in enumerate(migration.operations):
             self._operation(migration.app_label, op, str(i))
 
     def _operation(self, app_label: str, op, path: str) -> None:
         if isinstance(op, migrations.SeparateDatabaseAndState):
+            if not _from_django(op):
+                self._report_project_class(op, path)
             # database_operations reach the database only. Django evolves a private
             # copy of the state through them; the real state changes through
             # state_operations.
@@ -658,17 +730,24 @@ class _Linter:
     # -- rules on operations that reach the database --
     def _check(self, app_label: str, op, path: str) -> None:
         """Check one operation against the state as it is before the operation."""
-        if _is_safe(op) or isinstance(op, migrations.CreateModel):
-            return  # a new table is never a finding; _track records it
-        # The exact class: as with SAFE_OPERATIONS, a subclass could run anything.
-        if type(op) is migrations.RemoveConstraint:
-            self._remove_constraint(app_label, op, path)
+        if not _from_django(op):
+            self._report_project_class(op, path)
             return
+        if isinstance(op, (*SAFE_OPERATIONS, migrations.CreateModel)):
+            return  # a new table is never a finding; _track records it
         for operation_class, rule in self._RULES:
             if isinstance(op, operation_class):
                 rule(self, app_label, op, path)
                 return
         self._report(path, "unclassified-operation", type(op).__qualname__)
+
+    def _report_project_class(self, op, path: str) -> None:
+        self._report(
+            path,
+            "unclassified-operation",
+            f"{type(op).__qualname__} is defined outside Django, so the guard cannot "
+            "tell what its database_forwards runs",
+        )
 
     def _run_python(self, app_label: str, op, path: str) -> None:
         if op.code is not migrations.RunPython.noop:
@@ -761,17 +840,21 @@ class _Linter:
         op.state_forwards(app_label, after)
         old_type = _column_type(self.state, key, op.name)
         new_type = _column_type(after, key, op.name)
+        changes = []
         if old_type != new_type and not _widens(old_type, new_type):
-            self._report(
-                path, "alter-column-type", f"{where}: {old_type} -> {new_type}", table
-            )
+            changes.append(f"{old_type} -> {new_type}")
         # The suffix carries the identity default: BigAutoField -> BigIntegerField keeps
         # the type and drops it, and INSERTs that leave the key out then fail.
         old_suffix = old.db_type_suffix(connection)
         new_suffix = new.db_type_suffix(connection)
         if old_suffix != new_suffix:
+            changes.append(
+                f"{old_suffix or 'no identity'} -> {new_suffix or 'no identity'}"
+            )
+        if changes:
+            # One finding for both, so that one waiver can answer for the operation.
             self._report(
-                path, "alter-column-type", f"{where}: {old_suffix} -> {new_suffix}", table
+                path, "alter-column-type", f"{where}: {'; '.join(changes)}", table
             )
         if old.null and not new.null and not new.primary_key:
             self._report(path, "set-not-null", f"{where} becomes NOT NULL", table)
@@ -790,7 +873,11 @@ class _Linter:
             if new_check and new_check != old_check:
                 self._report(path, "add-constraint", f"{where} gains CHECK ({new_check})")
         elif was_relation and is_relation:
-            retargeted = _target(old, key) != _target(new, key)
+            # Another model, or another unique column of the same model (to_field).
+            retargeted = (
+                _target(old, key),
+                _referenced_field(self.state, old, key),
+            ) != (_target(new, key), _referenced_field(self.state, new, key))
             if retargeted or (constrained and not getattr(old, "db_constraint", True)):
                 self._report(
                     path, "add-constraint", f"{where}: new foreign key constraint"
@@ -988,7 +1075,7 @@ class _Linter:
                 self._alter_table_action(_norm(alter.group(1)), action, detail, path)
         elif index := _CREATE_INDEX.match(bare):
             unique, concurrently = index.group(1), index.group(2)
-            table = _norm(index.group(3))
+            table = _norm(index.group(4))
             if table not in self.schema:
                 if not self._born_new(table):
                     self._report(path, "raw-sql", _unknown_table(detail, table))
@@ -999,6 +1086,9 @@ class _Linter:
         elif drop := _DROP_TABLE.fullmatch(bare):
             for item in drop.group(1).split(","):
                 self._drop_table(re.fullmatch(_NAME, item.strip()), detail, path)
+        elif drop := _DROP_INDEX.fullmatch(bare):
+            for item in drop.group(1).split(","):
+                self._drop_index(re.fullmatch(_NAME, item.strip()), detail, path)
         elif _DATA.match(bare):
             target = _DATA_TARGET.match(bare)
             # Rows of a table created in this release: the previous release has none.
@@ -1018,6 +1108,23 @@ class _Linter:
         if not self._born_new(table):
             rule = "drop-table" if table in self.schema else "contract-drop"
             self._report(path, rule, detail, table)
+
+    def _drop_index(self, name: re.Match | None, detail: str, path: str) -> None:
+        """DROP INDEX names no table and does not say whether the index is unique. It
+        is harmless for an index that this release builds: one it built earlier, or
+        one that the same migration builds after the drop (DROP INDEX IF EXISTS
+        before CREATE INDEX CONCURRENTLY clears a build that was interrupted).
+        """
+        if name is None:
+            self._report(path, "raw-sql", detail)
+            return
+        index = _norm(name.group(1))
+        if index not in self.new_indexes and index not in self.released_plain_indexes:
+            self._report(
+                path,
+                "drop-unique",
+                f"{detail} (the guard cannot tell whether the index is unique)",
+            )
 
     def _alter_table_action(
         self, table: str, action: str, detail: str, path: str
@@ -1057,12 +1164,20 @@ class _Linter:
                 table, _norm(column.group(1)), column.group(2), detail, path
             )
         elif add := _ADD_COLUMN.fullmatch(action):
-            definition = add.group(2)
+            # Without quoted names: COLLATE pg_catalog."default" is not a DEFAULT.
+            definition = re.sub(r'"[^"]*"', " ", add.group(2))
             not_null = re.search(r"\bNOT\s+NULL\b", definition, re.I)
             default = re.search(r"\bDEFAULT\b", definition, re.I)
             kept = (table, _norm(add.group(1))) in self._kept
-            if released is not None and not_null and not default and not kept:
+            if released is None:
+                return  # a table of this release
+            if not_null and not default and not kept:
                 self._report(path, "add-not-null", detail)
+            # A column constraint in the definition, as AddField and AddConstraint.
+            if not_null and re.search(r"\b(UNIQUE|PRIMARY\s+KEY)\b", definition, re.I):
+                self._report(path, "add-unique", detail)
+            if re.search(r"\bCHECK\b", definition, re.I):
+                self._report(path, "add-constraint", detail)
         else:
             self._report(path, "raw-sql", detail)
 
@@ -1092,8 +1207,8 @@ class _Linter:
             # Another writer's INSERT may leave the column out and rely on the default.
             self._report_if_shared(path, table, detail)
 
-    # Operation class -> rule, first match wins. A subclass gets the rule of its base
-    # (AddConstraintNotValid is an AddConstraint).
+    # Operation class -> rule, first match wins. A subclass that Django ships gets the
+    # rule of its base (AddConstraintNotValid is an AddConstraint).
     _RULES = (
         (migrations.RunPython, _run_python),
         (migrations.RunSQL, _run_sql),
@@ -1106,6 +1221,7 @@ class _Linter:
         (migrations.AlterModelTable, _alter_model_table),
         (migrations.AddIndex, _add_index),
         (migrations.AddConstraint, _add_constraint),
+        (migrations.RemoveConstraint, _remove_constraint),
         (migrations.AlterUniqueTogether, _alter_together),
         (migrations.AlterIndexTogether, _alter_together),
     )
@@ -1318,6 +1434,29 @@ def load_project(backend_root: Path) -> Project:
         project.add_baseline(name, baseline_file.read_text())
     project.problems += unreleased_dependencies(graph, project.released)
     return project
+
+
+def migrations_not_loaded(project: Project) -> list[str]:
+    """Migration files under the root that are in neither the graph nor a baseline.
+
+    Django loads the migrations of installed apps only. A migration in an app that the
+    test settings do not install is neither released nor new, so no rule would see it.
+    """
+    known = set(project.files.values()) | set(project.baseline)
+    found = []
+    for directory, subdirectories, names in os.walk(project.root):
+        subdirectories[:] = [
+            d
+            for d in subdirectories
+            if not d.startswith(".") and d not in ("site-packages", "node_modules")
+        ]
+        if Path(directory).name != "migrations":
+            continue
+        for name in names:
+            path = (Path(directory) / name).relative_to(project.root).as_posix()
+            if re.fullmatch(r"\d.*\.py", name) and path not in known:
+                found.append(path)
+    return sorted(found)
 
 
 def new_migration_problems(project: Project) -> list[str]:

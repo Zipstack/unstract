@@ -30,8 +30,9 @@ from pathlib import Path
 SCRIPT = "backend/backend/tests/update_migration_baseline.py"
 DEFAULT_OUT = "backend/backend/tests/migration_baseline.txt"
 # Only a release branch says what is released. Any other ref (HEAD, main) would list
-# migrations that no release has, and the guard would stop checking them.
-RELEASE_REF = re.compile(r"(?:origin/)?release/\d+\.\d+")
+# migrations that no release has, and the guard would stop checking them. The branch
+# is read from the remote: a local release/X.Y can be behind it.
+RELEASE_REF = re.compile(r"origin/release/(\d+)\.(\d+)")
 # Every module in a migrations package: the migrations, and the helper modules they
 # import, which change what a released migration does just the same.
 MIGRATION = re.compile(r"^backend/(.+/migrations/(?!__init__\.py$)[^/]+\.py)$")
@@ -58,6 +59,21 @@ def git(repo: Path, *args: str) -> str:
     return result.stdout
 
 
+def newest_release(repo: Path) -> str:
+    """The highest origin/release/X.Y this clone knows of (as of its last fetch)."""
+    refs = git(
+        repo, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/release"
+    )
+    lines = [
+        (int(m[1]), int(m[2]), m[0])
+        for ref in refs.split()
+        if (m := RELEASE_REF.fullmatch(ref))
+    ]
+    if not lines:
+        sys.exit("no origin/release/X.Y branch in this clone; run git fetch origin")
+    return max(lines)[2]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -70,10 +86,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not RELEASE_REF.fullmatch(args.ref):
         parser.error(
-            f"--ref must be a release branch (origin/release/X.Y), not {args.ref!r}"
+            "--ref must be a release branch on the remote (origin/release/X.Y), "
+            f"not {args.ref!r}"
         )
     repo = args.repo.resolve()
     out = repo / args.out
+    newest = newest_release(repo)
+    if newest != args.ref:
+        # The tables of every release after --ref would count as new, and exempt.
+        parser.error(f"--ref {args.ref} is not the newest release branch: {newest} is")
 
     commit = git(repo, "rev-parse", "--short", f"{args.ref}^{{commit}}").strip()
     lines, notes = [], []

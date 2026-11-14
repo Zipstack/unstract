@@ -41,6 +41,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from collections import Counter
 from functools import cache
 from pathlib import Path
 from unittest import mock, skipUnless
@@ -52,7 +53,10 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
 if not apps.ready:
     django.setup()
 
-from django.contrib.postgres.operations import AddIndexConcurrently  # noqa: E402
+from django.contrib.postgres.operations import (  # noqa: E402
+    AddConstraintNotValid,
+    AddIndexConcurrently,
+)
 from django.db import migrations, models  # noqa: E402
 from django.db.migrations.graph import MigrationGraph  # noqa: E402
 from django.test import SimpleTestCase  # noqa: E402
@@ -66,12 +70,67 @@ UPDATE = (
 )
 # The largest release so far carried 18 new migrations. Far more than that means a
 # baseline is missing, not that a release is large.
+LARGEST_RELEASE = 18
 MAX_NEW_MIGRATIONS = 40
 
 
 @cache
 def _project() -> compat.Project:
     return compat.load_project(BACKEND_ROOT)
+
+
+def baseline_problems(project: compat.Project) -> list[str]:
+    """What is wrong with the baselines themselves. No waiver clears any of it."""
+    problems = list(project.problems)
+    unloaded = compat.migrations_not_loaded(project)
+    if unloaded:
+        problems.append(
+            "These migration files are in neither the migration graph nor a baseline, "
+            "so no rule sees them. Their app is not installed in the test settings, or "
+            "a squash replaces them. Install the app, or delete the files:\n"
+            + "\n".join(f"    {path}" for path in unloaded)
+        )
+    # A table created by a new migration is exempt from every rule. Without a
+    # baseline that exemption covers tables the previous release does use.
+    if len(project.new) > MAX_NEW_MIGRATIONS:
+        where = Counter(
+            project.files[(m.app_label, m.name)].split("/", 1)[0] for m in project.new
+        )
+        problems.append(
+            f"{len(project.new)} migrations are not in a baseline: "
+            + ", ".join(f"{count} under {top}/" for top, count in sorted(where.items()))
+            + f". Baseline files read: {', '.join(project.baseline_files) or 'none'}. "
+            "A baseline is missing or was never generated. The repository that owns "
+            f"those directories writes its own: `{UPDATE}` here, and with --repo and "
+            "--out for a baseline that another repository keeps (see that script)."
+        )
+    return problems
+
+
+def new_migrations_failure(project: compat.Project) -> str | None:
+    """The failure text for the new migrations, or None when they are all fine."""
+    if project.problems:
+        return (
+            "\nThe baselines have problems, so released and new migrations cannot be "
+            "told apart. Fix these first (test_the_guard_is_not_inert reports them "
+            "too):\n" + "\n".join(project.problems)
+        )
+    problems = compat.new_migration_problems(project)
+    if not problems:
+        return None
+    text = (
+        f"\n{len(problems)} problem(s) in new migrations (new = not listed in a "
+        "migration_baseline.txt, so not on the newest release branch)."
+    )
+    if len(project.new) > LARGEST_RELEASE:
+        # Only then: for one finding the way out is in the finding, not here.
+        text += (
+            f"\n{len(project.new)} migrations count as new, more than any release has "
+            "carried. If a release branch was cut since the baselines were written, "
+            "advance them first; the command is in the header of each "
+            f"({', '.join(project.baseline_files)})."
+        )
+    return text + "\n\n" + "\n\n".join(problems)
 
 
 class ReleasedMigrationTests(SimpleTestCase):
@@ -81,15 +140,9 @@ class ReleasedMigrationTests(SimpleTestCase):
         project = _project()
         self.assertTrue(project.files, "no first-party migrations loaded")
         self.assertTrue(project.baseline, "no migration_baseline.txt found")
-        self.assertEqual(project.problems, [])
-        # A table created by a new migration is exempt from every rule. Without a
-        # baseline that exemption covers tables the previous release does use.
-        self.assertLessEqual(
-            len(project.new),
-            MAX_NEW_MIGRATIONS,
-            f"{len(project.new)} migrations are not in a baseline. A baseline is "
-            f"missing, or was never generated: `{UPDATE}`",
-        )
+        problems = baseline_problems(project)
+        if problems:
+            self.fail("\n" + "\n".join(problems))
 
     def test_released_migrations_are_unchanged(self) -> None:
         """A released migration has already run everywhere; an edit never reaches
@@ -138,13 +191,9 @@ class ReleasedMigrationTests(SimpleTestCase):
 
 class NewMigrationTests(SimpleTestCase):
     def test_new_migrations_keep_the_previous_release_working(self) -> None:
-        problems = compat.new_migration_problems(_project())
-        if problems:
-            self.fail(
-                f"\n{len(problems)} problem(s) in new migrations (new = not on the newest "
-                f"release branch; after a cut run `{UPDATE}`):\n\n"
-                + "\n\n".join(problems)
-            )
+        failure = new_migrations_failure(_project())
+        if failure:
+            self.fail(failure)
 
 
 # ── The rules themselves, on migrations built in memory ───────────────────────────
@@ -463,6 +512,8 @@ class RuleTests(SimpleTestCase):
                 ),
                 migrations.RemoveField("owner", "label"),
                 migrations.RunSQL("ALTER TABLE owner DROP COLUMN label"),
+                migrations.RunSQL("UPDATE owner SET label = 'x'"),
+                migrations.RunSQL("DROP TABLE owner"),
             ],
             app_label="probe2",
         )
@@ -473,6 +524,8 @@ class RuleTests(SimpleTestCase):
                 ("0002_owner_region", "0", "add-not-null"),
                 ("0002_owner_region", "1", "drop-column"),
                 ("0002_owner_region", "2", "drop-column"),
+                ("0002_owner_region", "3", "data-migration"),
+                ("0002_owner_region", "4", "drop-table"),
             ],
         )
 
@@ -891,7 +944,6 @@ class RuleTests(SimpleTestCase):
             _sql("CREATE UNIQUE INDEX CONCURRENTLY w_name_uq ON widget (name)"),
             [("0", "add-unique")],
         )
-        self.assertEqual(_sql("DROP INDEX CONCURRENTLY IF EXISTS w_name_idx"), [])
         foreign_key = migrations.AddField(
             "widget",
             "keeper",
@@ -1032,9 +1084,7 @@ class RuleTests(SimpleTestCase):
             "REVOKE SELECT ON widget FROM PUBLIC",
         ):
             with self.subTest(write):
-                self.assertEqual(
-                    _sql(f"DO $$ BEGIN {write}; END $$"), [("0", "raw-sql")]
-                )
+                self.assertEqual(_sql(f"DO $$ BEGIN {write}; END $$"), [("0", "raw-sql")])
         # The body is code even when it is written as a quoted string.
         self.assertEqual(
             _sql("DO 'BEGIN ALTER TABLE widget DROP COLUMN note; END'"),
@@ -1124,7 +1174,413 @@ class RuleTests(SimpleTestCase):
         )
         self.assertEqual(_lint(both), [("0.db.0", "drop-column")])
 
+    # -- found by the independent verification --
+    def test_a_state_only_addfield_does_not_make_a_released_column_new(self) -> None:
+        """A foreign key detached state-only keeps its column; the column is released."""
+        detach = migrations.SeparateDatabaseAndState(
+            state_operations=[
+                migrations.RemoveField("widget", "owner"),
+                migrations.AddField(
+                    "widget", "owner_id", models.BigIntegerField(null=True)
+                ),
+            ]
+        )
+        for label, operation, finding in (
+            ("RemoveField", migrations.RemoveField("widget", "owner_id"), "drop-column"),
+            (
+                "AlterField",
+                migrations.AlterField(
+                    "widget", "owner_id", models.CharField(max_length=8, null=True)
+                ),
+                "alter-column-type",
+            ),
+            (
+                "RenameField",
+                migrations.RenameField("widget", "owner_id", "keeper_id"),
+                "rename-column",
+            ),
+            (
+                "RunSQL",
+                migrations.RunSQL("ALTER TABLE widget DROP COLUMN owner_id"),
+                "drop-column",
+            ),
+        ):
+            with self.subTest(label):
+                self.assertEqual(_lint(detach, operation), [("1", finding)])
+        # A state-only RemoveField taken back later in the release.
+        forget = migrations.SeparateDatabaseAndState(
+            state_operations=[migrations.RemoveField("widget", "note")]
+        )
+        recall = migrations.RunSQL(
+            migrations.RunSQL.noop,
+            state_operations=[
+                migrations.AddField("widget", "note", models.TextField(null=True))
+            ],
+        )
+        self.assertEqual(
+            _lint(forget, recall, migrations.RemoveField("widget", "note")),
+            [("2", "drop-column")],
+        )
+        labels = migrations.AddField(
+            "widget", "labels", models.ManyToManyField("probe.Tag", related_name="+")
+        )
+        self.assertEqual(_lint(labels, migrations.RemoveField("widget", "labels")), [])
+        # A many-to-many is its own new table, even under the name of an old column.
+        note = migrations.AddField("widget", "note", models.ManyToManyField("probe.Tag"))
+        self.assertEqual(
+            _lint(forget, note, migrations.RemoveField("widget", "note")), []
+        )
+        # A column that a new migration did create stays exempt, by either name.
+        size = migrations.AddField("widget", "size", models.IntegerField(null=True))
+        for drop in (
+            migrations.RemoveField("widget", "size"),
+            migrations.RunSQL("ALTER TABLE widget DROP COLUMN size"),
+        ):
+            self.assertEqual(_lint(size, drop), [])
+
+    def test_new_fields_are_followed_through_renames(self) -> None:
+        size = migrations.AddField("owner", "size", models.IntegerField(null=True))
+        self.assertEqual(
+            _lint(
+                size,
+                migrations.RenameModel("Owner", "Holder"),
+                migrations.RemoveField("holder", "size"),
+            ),
+            [],
+        )
+        self.assertEqual(
+            _lint(
+                size,
+                migrations.RenameField("owner", "size", "bulk"),
+                migrations.RemoveField("owner", "bulk"),
+            ),
+            [],
+        )
+
+    def test_runsql_drop_index(self) -> None:
+        """It names no table and does not say whether the index is unique."""
+        drop = "DROP INDEX CONCURRENTLY IF EXISTS w_idx"
+        self.assertEqual(_sql(drop), [("0", "drop-unique")])
+        self.assertEqual(_sql("DROP INDEX public.w_idx CASCADE"), [("0", "drop-unique")])
+        self.assertEqual(
+            _sql("DROP INDEX w_idx, w_other"),
+            [("0", "drop-unique"), ("0", "drop-unique")],
+        )
+        self.assertEqual(_sql("DROP INDEX (w_idx)"), [("0", "raw-sql")])
+        new = _migration("0002_new", [migrations.RunSQL(drop)])
+        [finding] = compat.lint([_released(), new], RELEASED)
+        self.assertEqual(
+            finding.detail,
+            f"RunSQL: {drop} (the guard cannot tell whether the index is unique)",
+        )
+        # The house pattern: clear an interrupted build, then build it again.
+        build = "CREATE INDEX CONCURRENTLY IF NOT EXISTS w_idx ON widget (name)"
+        self.assertEqual(_lint(migrations.RunSQL([drop, build]), atomic=False), [])
+        self.assertEqual(
+            _lint(migrations.RunSQL(drop), migrations.RunSQL(build), atomic=False), []
+        )
+        index = models.Index(fields=["name"], name="w_idx")
+        again = migrations.SeparateDatabaseAndState(
+            database_operations=[AddIndexConcurrently("widget", index)],
+            state_operations=[migrations.AddIndex("widget", index)],
+        )
+        self.assertEqual(_lint(migrations.RunSQL(drop), again, atomic=False), [])
+        self.assertEqual(_sql("CREATE INDEX CONCURRENTLY ON widget (name)"), [])
+        # Built under another name: not that pattern.
+        other = "CREATE INDEX CONCURRENTLY w_other ON widget (name)"
+        self.assertEqual(
+            _lint(migrations.RunSQL([other, drop]), atomic=False), [("0", "drop-unique")]
+        )
+        # An index this release built is the release's own to drop.
+        self.assertEqual(_lint(migrations.RunSQL([build, drop]), atomic=False), [])
+        self.assertEqual(
+            _lint(AddIndexConcurrently("widget", index), migrations.RunSQL(drop)), []
+        )
+        # A state-only AddIndex builds nothing: the name may be a released unique index.
+        adopt = migrations.SeparateDatabaseAndState(
+            state_operations=[migrations.AddIndex("widget", index)]
+        )
+        self.assertEqual(_lint(adopt, migrations.RunSQL(drop)), [("1", "drop-unique")])
+        # Meta.indexes of the previous release's models are never unique.
+        released = _released(migrations.AddIndex("widget", index))
+        self.assertEqual(_lint(migrations.RunSQL(drop), released=released), [])
+
+    def test_alterfield_that_points_a_foreign_key_at_another_column(self) -> None:
+        """to_field: Django drops the constraint and adds one on the other column."""
+        released = _released(
+            migrations.AddField(
+                "owner", "alt", models.BigIntegerField(null=True, unique=True)
+            )
+        )
+
+        def owner(**options):
+            key = models.ForeignKey("probe.Owner", models.CASCADE, null=True, **options)
+            return migrations.AlterField("widget", "owner", key)
+
+        self.assertEqual(
+            _lint(owner(to_field="alt"), released=released), [("0", "add-constraint")]
+        )
+        # The primary key, named or not, is the column it points at already.
+        self.assertEqual(_lint(owner(to_field="id"), released=released), [])
+        depot = migrations.CreateModel(
+            "Depot", [("code", models.CharField(max_length=8, primary_key=True))]
+        )
+
+        def depot_key(**options):
+            return models.ForeignKey("probe.Depot", models.CASCADE, null=True, **options)
+
+        with_depot = _released(depot, migrations.AddField("widget", "depot", depot_key()))
+        named = migrations.AlterField("widget", "depot", depot_key(to_field="code"))
+        self.assertEqual(_lint(named, released=with_depot), [])
+        self.assertEqual(_lint(owner(related_name="widgets"), released=released), [])
+
+    def test_runsql_add_column_definition(self) -> None:
+        add = "ALTER TABLE widget ADD COLUMN"
+        # pgAdmin spelling: the quoted name "default" is not a DEFAULT.
+        self.assertEqual(
+            _sql(
+                f'{add} region character varying(50) COLLATE pg_catalog."default" NOT NULL'
+            ),
+            [("0", "add-not-null")],
+        )
+        self.assertEqual(_sql(f'{add} "default" integer'), [])
+        self.assertEqual(_sql(f'{add} "not null" integer'), [])
+        # A column constraint can name a column the previous release writes.
+        self.assertEqual(
+            _sql(f"{add} discount integer CHECK (weight > 0)"), [("0", "add-constraint")]
+        )
+        self.assertEqual(
+            _sql(f"{add} size integer NOT NULL DEFAULT 0 CHECK (size >= 0)"),
+            [("0", "add-constraint")],
+        )
+        self.assertEqual(_sql(f"{add} kind text DEFAULT 'CHECK (x)'"), [])
+        # Every INSERT of the previous release gets the same default.
+        for unique in ("UNIQUE", "PRIMARY KEY"):
+            with self.subTest(unique):
+                self.assertEqual(
+                    _sql(f"{add} serial integer NOT NULL DEFAULT 0 {unique}"),
+                    [("0", "add-unique")],
+                )
+        self.assertEqual(_sql(f"{add} token text UNIQUE"), [])
+        # A table of this release is exempt.
+        on_new = "ALTER TABLE probe_gadget ADD COLUMN size integer NOT NULL UNIQUE CHECK (size > 0)"
+        self.assertEqual(_lint(GADGET, migrations.RunSQL(on_new)), [])
+
+    def test_an_apostrophe_in_a_quoted_name_does_not_start_a_string(self) -> None:
+        statement = """ALTER TABLE widget ADD COLUMN "it's" integer, DROP COLUMN note, ADD COLUMN "x'y" integer"""
+        self.assertEqual(_sql(statement), [("0", "drop-column")])
+        # A quote inside a string is still part of the string.
+        self.assertEqual(
+            _sql(
+                """ALTER TABLE widget ALTER COLUMN code SET DEFAULT 'a "b', ALTER COLUMN name SET DEFAULT 'c" d'"""
+            ),
+            [],
+        )
+
+    def test_a_do_block_that_writes_without_a_statement_keyword(self) -> None:
+        for body in (
+            "v := setval(pg_get_serial_sequence('widget', 'id'), 1, false)",
+            "SELECT setval('widget_id_seq', 1) INTO v",
+            "SELECT nextval('widget_id_seq') INTO v",
+            "v := tidy()",
+            "LOCK TABLE widget IN ACCESS EXCLUSIVE MODE",
+            "COPY widget FROM '/tmp/rows'",
+        ):
+            with self.subTest(body):
+                self.assertEqual(
+                    _sql(f"DO $$ DECLARE v bigint; BEGIN {body}; END $$"),
+                    [("0", "raw-sql")],
+                )
+        # The index check that follows CREATE INDEX CONCURRENTLY (workflow_v2 0029)
+        # reads the catalog into variables. That stays read-only.
+        house = """
+            DO $$
+            DECLARE idx_def text; idx_valid boolean;
+            BEGIN
+                SELECT pg_get_indexdef(i.indexrelid), i.indisvalid INTO idx_def, idx_valid
+                FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid
+                WHERE c.relname = 'w_idx';
+                IF idx_def IS NULL THEN RAISE EXCEPTION 'w_idx is missing'; END IF;
+                IF NOT idx_valid THEN
+                    RAISE EXCEPTION 'w_idx is INVALID: DROP INDEX w_idx; v := 1';
+                END IF;
+            END $$;
+        """
+        self.assertEqual(_sql(house), [])
+
+    def test_a_default_that_is_removed_again_is_not_kept(self) -> None:
+        def then(*changes: str) -> list:
+            statements = [
+                migrations.RunSQL(f"ALTER TABLE widget ALTER COLUMN active {change}")
+                for change in changes
+            ]
+            return _lint(ADD_ACTIVE, *statements)
+
+        self.assertEqual(
+            then("SET DEFAULT true", "SET DEFAULT NULL"), [("0", "add-not-null")]
+        )
+        self.assertEqual(
+            then("SET DEFAULT true", "DROP DEFAULT"),
+            [("0", "add-not-null"), ("2", "raw-sql")],
+        )
+        self.assertEqual(
+            then("SET DEFAULT true", "SET DEFAULT NULL", "SET DEFAULT false"), []
+        )
+        # A nullable column needs no default.
+        self.assertEqual(then("DROP NOT NULL", "SET DEFAULT NULL"), [])
+        self.assertEqual(
+            then("SET DEFAULT true", "DROP NOT NULL", "SET DEFAULT NULL"), []
+        )
+        one_statement = migrations.RunSQL(
+            "ALTER TABLE widget ALTER COLUMN active SET DEFAULT true, "
+            "ALTER COLUMN active SET DEFAULT NULL"
+        )
+        self.assertEqual(_lint(ADD_ACTIVE, one_statement), [("0", "add-not-null")])
+
+    def test_one_alterfield_gives_one_type_finding(self) -> None:
+        """Type and identity both change; one waiver has to be able to clear it."""
+        plain_key = migrations.AlterField(
+            "tag", "id", models.IntegerField(primary_key=True)
+        )
+        new = _migration("0002_new", [plain_key])
+        [finding] = compat.lint([_released(), new], RELEASED)
+        self.assertEqual(
+            (finding.rule, finding.detail),
+            (
+                "alter-column-type",
+                "AlterField probe_tag.id: bigint -> integer; "
+                "GENERATED BY DEFAULT AS IDENTITY -> no identity",
+            ),
+        )
+        waiver = {"op": "0", "rule": "alter-column-type", "reason": REASON}
+        self.assertEqual(_lint(plain_key, backward_compat_waivers=[waiver]), [])
+
+    def test_exemptions_that_keep_safe_changes_quiet(self) -> None:
+        unbounded = migrations.AlterField("widget", "name", models.CharField())
+        self.assertEqual(_lint(unbounded), [])
+        # Still NOT NULL, as it was: Django sets and drops no default here.
+        size = migrations.AddField("widget", "size", models.IntegerField(default=1))
+        keep = migrations.RunSQL("ALTER TABLE widget ALTER COLUMN size SET DEFAULT 1")
+        same = migrations.AlterField("widget", "size", models.IntegerField(default=2))
+        self.assertEqual(_lint(size, keep, same), [])
+        # A check that goes away constrains nobody.
+        positive = _released(
+            migrations.AlterField(
+                "widget", "weight", models.PositiveIntegerField(default=0)
+            )
+        )
+        relax = migrations.AlterField("widget", "weight", models.IntegerField(default=0))
+        self.assertEqual(_lint(relax, released=positive), [])
+        # A foreign key without a database constraint adds none.
+        loose = migrations.AlterField(
+            "widget",
+            "weight",
+            models.ForeignKey(
+                "probe.Owner",
+                models.CASCADE,
+                db_column="weight",
+                db_index=False,
+                db_constraint=False,
+            ),
+        )
+        self.assertEqual(_lint(loose), [("0", "alter-column-type")])
+        # A primary key that stops being one: the identity is the finding.
+        self.assertEqual(
+            _lint(migrations.AlterField("widget", "id", models.BigIntegerField())),
+            [("0", "alter-column-type")],
+        )
+        # A unique column has its index already.
+        unique = _released(
+            migrations.AlterField(
+                "widget", "name", models.CharField(max_length=64, unique=True)
+            )
+        )
+        indexed = migrations.AlterField(
+            "widget", "name", models.CharField(max_length=64, unique=True, db_index=True)
+        )
+        self.assertEqual(_lint(indexed, released=unique), [])
+
+    def test_renamemodel_and_the_many_to_many_tables_that_point_at_it(self) -> None:
+        """Owner keeps its table (db_table), but tag_owners.owner_id is renamed."""
+        pointed_at = _released(
+            migrations.AddField("tag", "owners", models.ManyToManyField("probe.Owner"))
+        )
+        rename = migrations.RenameModel("Owner", "Holder")
+        self.assertEqual(_lint(rename, released=pointed_at), [("0", "rename-table")])
+        # A through model names its own columns; RenameModel leaves them alone.
+        link = migrations.CreateModel(
+            "Link",
+            [
+                ("id", models.BigAutoField(primary_key=True)),
+                ("tag", models.ForeignKey("probe.Tag", models.CASCADE)),
+                ("owner", models.ForeignKey("probe.Owner", models.CASCADE)),
+            ],
+        )
+        through = migrations.AddField(
+            "tag", "owners", models.ManyToManyField("probe.Owner", through="probe.Link")
+        )
+        explicit = _released(link, through)
+        self.assertEqual(_lint(rename, released=explicit), [])
+        retarget = migrations.AlterField(
+            "tag", "owners", models.ManyToManyField("probe.Widget", through="probe.Link")
+        )
+        self.assertEqual(_lint(retarget, released=explicit), [])
+
+    def test_altermodeltable_back_to_the_default_name(self) -> None:
+        self.assertEqual(
+            _lint(migrations.AlterModelTable("owner", None)), [("0", "rename-table")]
+        )
+        self.assertEqual(_lint(migrations.AlterModelTable("tag", None)), [])
+
+    def test_only_the_listed_settings_may_be_set(self) -> None:
+        for statement in (
+            "SET search_path TO elsewhere",
+            "SET session_replication_role = replica",
+            "SET LOCAL row_security = off",
+        ):
+            with self.subTest(statement):
+                self.assertEqual(_sql(statement), [("0", "raw-sql")])
+
     # -- operations without a rule --
+    def test_a_project_subclass_of_an_operation_with_a_rule_is_not_trusted(self) -> None:
+        """Its database_forwards can run anything, whatever the base class does."""
+
+        class QuietSQL(migrations.RunSQL):
+            def database_forwards(self, app_label, schema_editor, from_state, to_state):
+                schema_editor.execute("ALTER TABLE widget DROP COLUMN note")
+
+        class QuietAddField(migrations.AddField):
+            pass
+
+        class QuietSplit(migrations.SeparateDatabaseAndState):
+            pass
+
+        unclassified = [("0", "unclassified-operation")]
+        self.assertEqual(_lint(QuietSQL(migrations.RunSQL.noop)), unclassified)
+        nullable = models.IntegerField(null=True)
+        self.assertEqual(_lint(QuietAddField("widget", "size", nullable)), unclassified)
+        self.assertEqual(_lint(QuietSplit()), unclassified)
+        self.assertEqual(
+            _lint(
+                QuietSplit(database_operations=[migrations.RemoveField("widget", "note")])
+            ),
+            [("0", "unclassified-operation"), ("0.db.0", "drop-column")],
+        )
+        self.assertEqual(
+            _lint(
+                migrations.SeparateDatabaseAndState(database_operations=[QuietSQL("")])
+            ),
+            [("0.db.0", "unclassified-operation")],
+        )
+        new = _migration("0002_new", [QuietSQL(migrations.RunSQL.noop)])
+        [finding] = compat.lint([_released(), new], RELEASED)
+        self.assertIn("QuietSQL is defined outside Django", finding.detail)
+        # The subclasses Django ships keep the rule of their base.
+        check = models.CheckConstraint(check=models.Q(weight__gte=0), name="w_ck")
+        self.assertEqual(
+            _lint(AddConstraintNotValid("widget", check)), [("0", "add-constraint")]
+        )
+
     def test_an_unknown_operation_is_not_waved_through(self) -> None:
         class Custom(migrations.operations.base.Operation):
             def state_forwards(self, app_label, state):
@@ -1526,6 +1982,105 @@ class NewMigrationReportTests(SimpleTestCase):
             ],
         )
 
+    def _empty(self) -> Path:
+        """A root with no migration files, for projects that exist only in memory."""
+        return Path(self.enterContext(tempfile.TemporaryDirectory()))
+
+    def test_baseline_problems_are_printed_one_per_line(self) -> None:
+        project = _in_memory_project(_released(), root=self._empty())
+        self.assertEqual(baseline_problems(project), [])
+        self.assertIsNone(new_migrations_failure(project))
+        project.problems.append("probe/tests/migration_baseline.txt:4: x is listed twice")
+        self.assertEqual(baseline_problems(project), project.problems)
+        # Released and new cannot be told apart then, so nothing is linted: a released
+        # migration whose dependency is not released would not even apply.
+        with mock.patch.object(compat, "lint", side_effect=AssertionError("linted")):
+            failure = new_migrations_failure(project)
+        self.assertEqual(
+            failure.splitlines()[-1],
+            "probe/tests/migration_baseline.txt:4: x is listed twice",
+        )
+        self.assertIn("Fix these first", failure)
+
+    def test_a_missing_baseline_names_the_directories_and_the_files_read(self) -> None:
+        many = [
+            _migration(f"{n:04}_more", [], app_label="extra" if n % 2 else "probe")
+            for n in range(2, MAX_NEW_MIGRATIONS + 3)
+        ]
+        project = _in_memory_project(_released(), *many, root=self._empty())
+        project.baseline_files.append("probe/tests/migration_baseline.txt")
+        [problem] = baseline_problems(project)
+        self.assertEqual(
+            problem,
+            "41 migrations are not in a baseline: 20 under extra/, 21 under probe/. "
+            "Baseline files read: probe/tests/migration_baseline.txt. A baseline is "
+            "missing or was never generated. The repository that owns those "
+            "directories writes its own: `python backend/backend/tests/"
+            "update_migration_baseline.py --ref origin/release/X.Y` here, and with "
+            "--repo and --out for a baseline that another repository keeps (see that "
+            "script).",
+        )
+        fewer = _in_memory_project(_released(), *many[:-1], root=self._empty())
+        self.assertEqual(baseline_problems(fewer), [])
+
+    def test_the_advance_hint_is_printed_only_when_many_migrations_are_new(self) -> None:
+        bad = _migration("0002_bad", [migrations.RemoveField("widget", "code")])
+        failure = new_migrations_failure(_in_memory_project(_released(), bad))
+        self.assertTrue(
+            failure.startswith(
+                "\n1 problem(s) in new migrations (new = not listed in a "
+                "migration_baseline.txt, so not on the newest release branch).\n\n"
+                "probe/migrations/0002_bad.py\n"
+            ),
+            failure,
+        )
+        self.assertNotIn("advance", failure)
+        more = [_migration(f"{n:04}_more", []) for n in range(3, 21)]
+        project = _in_memory_project(_released(), bad, *more[:-1])
+        self.assertNotIn("advance", new_migrations_failure(project))
+        project = _in_memory_project(_released(), bad, *more)
+        project.baseline_files += [
+            "a/tests/migration_baseline.txt",
+            "b/tests/migration_baseline.txt",
+        ]
+        self.assertIn(
+            "\n19 migrations count as new, more than any release has carried. If a "
+            "release branch was cut since the baselines were written, advance them "
+            "first; the command is in the header of each "
+            "(a/tests/migration_baseline.txt, b/tests/migration_baseline.txt).\n\n",
+            new_migrations_failure(project),
+        )
+
+    def test_a_migration_that_django_does_not_load_is_reported(self) -> None:
+        """An app missing from the test settings, or a file that a squash replaces."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for path in (
+                "probe/migrations/0001_initial.py",
+                "probe/migrations/__init__.py",
+                "legacy/migrations/0001_initial.py",
+                "nested/app/migrations/0002_more.py",
+                "nested/app/migrations/_helper.py",
+                "nested/app/migrations/data/0001_rows.py",
+                "nested/app/models.py",
+                "probe/migrations/0002_new.py",
+                ".scratch/app/migrations/0001_initial.py",
+                ".venv/lib/site-packages/pkg/migrations/0001_initial.py",
+                "node_modules/pkg/migrations/0001_initial.py",
+            ):
+                (root / path).parent.mkdir(parents=True, exist_ok=True)
+                (root / path).write_text("")
+            new = _migration("0002_new", [])
+            project = _in_memory_project(_released(), new, root=root)
+            project.baseline["legacy/migrations/0001_initial.py"] = "0" * 64
+            self.assertEqual(
+                compat.migrations_not_loaded(project),
+                ["nested/app/migrations/0002_more.py"],
+            )
+            [problem] = baseline_problems(project)
+            self.assertIn("in neither the migration graph nor a baseline", problem)
+            self.assertTrue(problem.endswith("\n    nested/app/migrations/0002_more.py"))
+
     def test_every_rule_has_a_message(self) -> None:
         self.assertEqual(len(compat.RULES), 18)
         for rule, texts in compat.RULES.items():
@@ -1607,7 +2162,8 @@ class BaselineTests(SimpleTestCase):
         return project
 
     def test_a_baseline_lists_hashes_and_reviewed_third_party_migrations(self) -> None:
-        project = self._read(BASELINE.format(digest="ab" * 32))
+        text = BASELINE.format(digest="ab" * 32) + "\n  # an indented comment\n"
+        project = self._read(text)
         self.assertEqual(project.problems, [])
         self.assertEqual(
             project.baseline, {"probe/migrations/0001_initial.py": "ab" * 32}
@@ -1636,12 +2192,33 @@ class BaselineTests(SimpleTestCase):
             "# released-through: origin/release/v0.90 @ 3a76b8544",
             "# released-through: origin/release/0.187",
             "#  released-through: origin/release/0.187 @ 3a76b8544 and more",
+            "## released-through: origin/release/0.187 @ 3a76b8544",
         ):
             with self.subTest(header):
                 [problem] = self._read(f"{header}\n{body}").problems
                 self.assertIn(
                     "probe/tests/migration_baseline.txt: no '# released-through:", problem
                 )
+
+    def test_only_a_baseline_one_directory_down_is_read(self) -> None:
+        """Deeper files are not baselines: an app's tests directory cannot add one."""
+        header = "# released-through: origin/release/0.187 @ 3a76b8544\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            for path in (
+                "probe/tests/migration_baseline.txt",
+                "other/tests/migration_baseline.txt",
+                "probe/app/tests/migration_baseline.txt",
+                "tests/migration_baseline.txt",
+            ):
+                (root / path).parent.mkdir(parents=True, exist_ok=True)
+                (root / path).write_text(header)
+            project = compat.load_project(root)
+        self.assertEqual(
+            project.baseline_files,
+            ["other/tests/migration_baseline.txt", "probe/tests/migration_baseline.txt"],
+        )
+        self.assertEqual(project.files, {})  # nothing of the real tree is under tmp
 
     def test_malformed_and_duplicate_lines_are_reported(self) -> None:
         text = BASELINE.format(digest="ab" * 32) + (
@@ -1751,11 +2328,18 @@ class BaselineScriptTests(SimpleTestCase):
                 "origin/release/0.187-rc.1",
                 "origin/release/0.187/x",
                 "v0.187.0",
+                # A local branch can be behind the one on the remote.
+                "release/0.187",
+                "upstream/release/0.187",
             ):
                 with self.subTest(ref):
                     code, output = self._run("--ref", ref, "--repo", repo)
                     self.assertEqual(code, 2)
-                    self.assertIn("--ref must be a release branch", output)
+                    self.assertIn(
+                        "--ref must be a release branch on the remote "
+                        "(origin/release/X.Y)",
+                        output,
+                    )
             self.assertEqual(os.listdir(repo), [])
 
     @skipUnless(shutil.which("git"), "needs git")
@@ -1793,7 +2377,12 @@ class BaselineScriptTests(SimpleTestCase):
                     "docs/migrations/0001_initial.py": "outside backend\n",
                 }
             )
-            git("branch", "release/0.1")
+            code, output = self._run("--ref", "origin/release/0.1", "--repo", tmp)
+            self.assertEqual(
+                code, "no origin/release/X.Y branch in this clone; run git fetch origin"
+            )
+            git("update-ref", "refs/remotes/origin/release/0.1", "HEAD")
+            git("update-ref", "refs/remotes/origin/release/v0.90", "HEAD")
             commit({"backend/app/migrations/0002_unreleased.py": "two\n"})
             out = repo / baseline_script.DEFAULT_OUT
             out.parent.mkdir(parents=True)
@@ -1801,9 +2390,9 @@ class BaselineScriptTests(SimpleTestCase):
                 "third-party  auth.0001_initial\nab  gone/migrations/0001_initial.py\n"
             )
 
-            code, output = self._run("--ref", "release/0.1", "--repo", tmp)
+            code, output = self._run("--ref", "origin/release/0.1", "--repo", tmp)
             self.assertEqual((code, output.count("\n")), (0, 1), output)
-            self.assertIn("2 migrations at release/0.1", output)
+            self.assertIn("2 migrations at origin/release/0.1", output)
             one, helper, edited = (
                 hashlib.sha256(text.encode()).hexdigest()
                 for text in ("one\n", "helper\n", "one, edited\n")
@@ -1817,7 +2406,7 @@ class BaselineScriptTests(SimpleTestCase):
             self.assertEqual(
                 body.splitlines(),
                 [
-                    f"release/0.1 @ {git('rev-parse', '--short', 'release/0.1')}",
+                    f"origin/release/0.1 @ {git('rev-parse', '--short', 'HEAD~1')}",
                     f"{one}  app/migrations/0001_initial.py",
                     f"{helper}  app/migrations/_helper.py",
                     "third-party  auth.0001_initial",
@@ -1834,10 +2423,11 @@ class BaselineScriptTests(SimpleTestCase):
 
             # Hashes follow the working tree, which is what the guard reads.
             (repo / "backend/app/migrations/0001_initial.py").write_text("one, edited\n")
-            code, output = self._run("--ref", "release/0.1", "--repo", tmp)
+            code, output = self._run("--ref", "origin/release/0.1", "--repo", tmp)
             self.assertEqual(code, 0)
             self.assertIn(
-                "note: differs from release/0.1, pinned as it is in the working tree",
+                "note: differs from origin/release/0.1, pinned as it is in the working "
+                "tree",
                 output,
             )
             self.assertIn(
@@ -1846,10 +2436,16 @@ class BaselineScriptTests(SimpleTestCase):
             )
             (repo / "backend/app/migrations/_helper.py").unlink()
             code, output = self._run(
-                "--ref", "release/0.1", "--repo", tmp, "--out", "other/baseline.txt"
+                "--ref",
+                "origin/release/0.1",
+                "--repo",
+                tmp,
+                "--out",
+                "other/baseline.txt",
             )
             self.assertIn(
-                "note: on release/0.1 but not in the working tree, left out", output
+                "note: on origin/release/0.1 but not in the working tree, left out",
+                output,
             )
             other = (repo / "other/baseline.txt").read_text()
             self.assertNotIn("_helper.py", other)
@@ -1857,5 +2453,31 @@ class BaselineScriptTests(SimpleTestCase):
                 "--repo . --ref origin/release/X.Y --out other/baseline.txt\n", other
             )
 
-            code, output = self._run("--ref", "release/9.9", "--repo", tmp)
-            self.assertIn("git rev-parse --short release/9.9^{commit} failed", str(code))
+            # A branch the clone does not have is not the newest one it knows.
+            code, output = self._run("--ref", "origin/release/9.9", "--repo", tmp)
+            self.assertEqual(code, 2)
+            self.assertIn("origin/release/0.1 is", output)
+            with tempfile.TemporaryDirectory() as not_a_repository:
+                code, output = self._run(
+                    "--ref", "origin/release/0.1", "--repo", not_a_repository
+                )
+            self.assertIn("git for-each-ref", str(code))
+            self.assertIn("failed: ", str(code))
+
+            # Only the newest release line says what is released.
+            git("update-ref", "refs/remotes/origin/release/0.9", "HEAD")
+            git("update-ref", "refs/remotes/origin/release/0.10", "HEAD")
+            written = out.read_text()
+            for older in ("origin/release/0.1", "origin/release/0.9"):
+                with self.subTest(older):
+                    code, output = self._run("--ref", older, "--repo", tmp)
+                    self.assertEqual(code, 2)
+                    self.assertIn(
+                        f"--ref {older} is not the newest release branch: "
+                        "origin/release/0.10 is",
+                        output,
+                    )
+            self.assertEqual(out.read_text(), written)
+            code, output = self._run("--ref", "origin/release/0.10", "--repo", tmp)
+            self.assertEqual(code, 0, output)
+            self.assertIn("\n# released-through: origin/release/0.10 @ ", out.read_text())
