@@ -45,7 +45,7 @@ HEADER = """\
 # Released migrations: the migration files on the newest release branch.
 # {test} checks every migration that is NOT
 # listed here, and fails when a listed file changes.
-# Regenerate after a release cut:
+# Regenerate after a release cut, and after a migration is backported to it:
 #   {command}
 # A line added by hand exempts that migration from every rule, so it needs a code
 # owner's review.

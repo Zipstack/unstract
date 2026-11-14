@@ -105,11 +105,11 @@ jobs:
               summary.write("\nKeep this PR to the fix; a bundled fix cannot be cherry-picked.\n")
           PY
 
-      # A baseline left behind after a release cut makes that release's tables "new" to the backend's migration
-      # guard, which then passes changes that break it. Nothing on main names the newest release line, so this
-      # job checks it. The check is read from main too, so it starts once main has it.
+      # A baseline left behind after a release cut or a backport makes that release's tables "new" to the backend's
+      # migration guard, which then passes changes that break it. Nothing on main names the newest release line, so
+      # this job checks it. The check is read from main too, so it starts once main has it.
       # Accepted gap: a release cut or a backport does not re-run this check on open PRs, so a PR checked before
-      # one can merge after it. The next migration PR then fails here.
+      # one can merge after it. A later migration PR then fails here (which one: see stale_error).
       - name: Migration baseline is current
         if: ${{ !cancelled() && github.base_ref == 'main' }}
         env:
