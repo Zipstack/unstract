@@ -104,3 +104,23 @@ jobs:
           if cls != "none":
               summary.write("\nKeep this PR to the fix; a bundled fix cannot be cherry-picked.\n")
           PY
+
+      # A baseline left behind after a release cut makes that release's tables "new" to the backend's migration
+      # guard, which then passes changes that break it. Nothing on main names the newest release line, so this
+      # job checks it. The check is read from main too, so it starts once main has it.
+      - name: Migration baseline is current
+        if: ${{ !cancelled() && github.base_ref == 'main' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          python3 -I - <<'PY'  # isolated: no working-directory module shadows the stdlib
+          import sys
+          sys.path.insert(0, ".github/release")
+          try:
+              import migration_baseline
+          except ImportError as e:
+              print(f"::notice title=Lint PR::migration baseline check skipped: {e}")
+              sys.exit(0)
+          sys.exit(migration_baseline.main())
+          PY
