@@ -40,7 +40,13 @@ def stale_error(baseline_text, branches, path=BASELINE):
     newest = newest_release(branches)
     if newest is None:
         return None
-    m = HEADER.search(baseline_text or "")
+    if not baseline_text:
+        # A branch cut before the baseline existed. Advancing is not the way out.
+        return (
+            f"{path} is not in this PR's branch, so nothing says which migrations are released. "
+            "Merge main into this branch: main has the file."
+        )
+    m = HEADER.search(baseline_text)
     have = m[1] if m else None
     if have == newest:
         return None

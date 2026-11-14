@@ -99,11 +99,10 @@ class StaleError(unittest.TestCase):
 
     def test_no_usable_header(self):
         for text in (
-            "",
-            None,
             "ab  x/migrations/0001.py\n",
             "# released-through: HEAD @ abc\n",
             "x # released-through: origin/release/0.187 @ abc\n",
+            "# released-through: origin/release/0.187rc @ abc\n",
         ):
             self.assertIn(
                 "says released-through nothing,", mb.stale_error(text, BRANCHES), text
@@ -113,12 +112,23 @@ class StaleError(unittest.TestCase):
         self.assertIsNone(mb.stale_error("", ["main", "release/v0.90"]))
         self.assertIsNone(mb.stale_error(FRESH, ["main"]))
 
-    def test_names_the_file_it_read(self):
-        self.assertTrue(
-            mb.stale_error("", BRANCHES, "some/other/baseline.txt").startswith(
-                "some/other/baseline.txt says"
+    def test_a_branch_without_the_file_is_told_to_merge_main(self):
+        for text in ("", None):
+            self.assertEqual(
+                mb.stale_error(text, BRANCHES),
+                "backend/backend/tests/migration_baseline.txt is not in this PR's branch, so nothing says which "
+                "migrations are released. Merge main into this branch: main has the file.",
             )
-        )
+        self.assertIsNone(mb.stale_error("", ["main", "release/v0.90"]))
+
+    def test_names_the_file_it_read(self):
+        for text in ("", "no header\n"):
+            self.assertTrue(
+                mb.stale_error(text, BRANCHES, "some/other/baseline.txt").startswith(
+                    "some/other/baseline.txt "
+                ),
+                text,
+            )
 
 
 class FakeGh:
@@ -136,6 +146,8 @@ class FakeGh:
     def __call__(self, *args):
         url = next(a for a in args if a.startswith("repos/"))
         self.calls.append(url)
+        # A list read without --paginate stops at 100 files or branches.
+        assert ("--paginate" in args) == ("?per_page=100" in url), args
         if self.fail and self.fail in url:
             raise RuntimeError("gh api (exit 1): HTTP 502")
         if url == "repos/Zipstack/example/pulls/7/files?per_page=100":
@@ -203,9 +215,11 @@ class Main(unittest.TestCase):
         code, out, _ = self.run_main(FakeGh(self.MIGRATION, baseline=None))
         self.assertEqual(code, 1)
         self.assertIn(
-            "says released-through nothing, but the newest release branch is release/0.187",
+            "::error title=Lint PR::backend/backend/tests/migration_baseline.txt is not in this PR's branch",
             out,
         )
+        self.assertIn("Merge main into this branch", out)
+        self.assertNotIn("Advance the baseline", out)
 
     def test_a_failed_read_fails_the_check_and_says_so(self):
         for part in ("/files", "/branches", "/contents/"):
@@ -277,8 +291,11 @@ esac
             with open(os.path.join(d, "gh"), "w") as fh:
                 fh.write(self.GH)
             os.chmod(os.path.join(d, "gh"), 0o755)
+            # -I ignores PYTHONDONTWRITEBYTECODE, and the step imports the module from the checkout.
+            isolated = "python3 -I - <<"
+            self.assertIn(isolated, script)
             r = subprocess.run(
-                ["bash", "-e", "-c", script],
+                ["bash", "-e", "-c", script.replace(isolated, "python3 -I -B - <<")],
                 cwd=cwd,
                 env={
                     **os.environ,
@@ -318,7 +335,8 @@ esac
     def test_a_head_without_a_baseline_fails(self):
         rc, out = self.lint(self.MIGRATION, self.BRANCHES, None)
         self.assertEqual(rc, 1, out)
-        self.assertIn("says released-through nothing", out)
+        self.assertIn("is not in this PR's branch", out)
+        self.assertIn("Merge main into this branch", out)
 
     def test_a_pr_without_a_migration_passes_whatever_the_baseline_says(self):
         rc, out = self.lint(
