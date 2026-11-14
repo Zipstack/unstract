@@ -119,14 +119,16 @@ RULES: dict[str, tuple[str, str]] = {
         "does not handle. The migration itself fails if duplicates already exist, and "
         "building the index blocks writes.",
         "Release 1: stop creating duplicates and clean up existing ones. Release 2: "
-        "build the unique index CONCURRENTLY and attach the constraint.",
+        "build the unique index CONCURRENTLY and attach the constraint. Release 2 is "
+        "reported too: add a waiver naming the release that stopped creating them.",
     ),
     "add-constraint": (
         "The previous release can still write rows that violate the constraint and "
         "gets an IntegrityError it does not handle. Validating it scans the table under "
         "a lock.",
         "Release 1: make the code obey the rule and fix existing rows. Release 2: add "
-        "the constraint.",
+        "the constraint. Release 2 is reported too: add a waiver naming the release "
+        "that stopped writing violating rows.",
     ),
     "state-drop-not-null": (
         "The field leaves the model but its column stays NOT NULL with no database "
@@ -164,14 +166,16 @@ RULES: dict[str, tuple[str, str]] = {
         "every write to the table from the pods still serving waits.",
         "Use AddIndexConcurrently (django.contrib.postgres.operations) in a migration "
         "with atomic = False; see "
-        "workflow_manager/workflow_v2/migrations/0029_we_created_at_idx.py.",
+        "account_usage/migrations/0003_add_performance_indexes.py.",
     ),
     "implicit-index": (
         "Adding a column with unique=True, db_index=True or a ForeignKey builds an "
         "index (and validates the foreign key) inside the ALTER TABLE. Writes to the "
         "table wait while it runs.",
         "On a small table, waive it and state the row count. On a large table add the "
-        "field with db_index=False and build the index with AddIndexConcurrently.",
+        "field with db_index=False and build the index with AddIndexConcurrently. For "
+        "a ForeignKey that also takes db_constraint=False (the database then does not "
+        "enforce it); otherwise waive it. A unique column always needs the waiver.",
     ),
     "data-migration": (
         "The data change runs while the previous release is serving. The guard cannot "

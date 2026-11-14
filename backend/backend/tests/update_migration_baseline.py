@@ -9,6 +9,10 @@ migration is backported to the newest release branch:
 
     python backend/backend/tests/update_migration_baseline.py --ref origin/release/0.187
 
+Lint PR checks only the first: it compares the release line the baseline names with the
+newest release branch. Nothing checks the second. Until it is done, the guard treats
+whatever a backported migration created as new, and passes a drop or rename of it.
+
 A repository that adds its own migrations to this backend keeps its own baseline. Run
 this copy of the script against it with ``--repo`` and ``--out``, after this
 repository's baseline has been advanced.
