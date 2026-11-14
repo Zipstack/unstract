@@ -61,7 +61,7 @@ DB_NAME='unstract_db'
 DB_PORT=5432
 ```
 
-- If you've made changes to the model, run `uv run manage.py makemigrations`, else ignore this step
+- If you've made changes to the model, run `uv run manage.py makemigrations`, else ignore this step. A migration has to keep the previous release working: see [Writing migrations](#writing-migrations)
 - Run the following to apply any migrations to the DB and start the server
 
 ```bash
@@ -70,6 +70,53 @@ uv run manage.py runserver localhost:8000
 ```
 
 - Server will start and run at port 8000. (<http://localhost:8000>)
+
+## Writing migrations
+
+During an upgrade the schema changes while pods of the previous release are still
+serving, and rolling back the image puts that release back on the new schema. So every
+migration has to leave the previous release working. CI checks this in
+`backend/tests/test_migration_compat.py`. It fails a new migration that:
+
+- adds a NOT NULL column without a database default. Django 4.2 drops the default it
+  used to fill existing rows, so keep one in the same migration:
+
+  ```python
+  migrations.AddField("user", "language", models.CharField(default="en-US", max_length=16)),
+  migrations.RunSQL(
+      """ALTER TABLE "user" ALTER COLUMN "language" SET DEFAULT 'en-US'""",
+      reverse_sql="""ALTER TABLE "user" ALTER COLUMN "language" DROP DEFAULT""",
+  ),
+  ```
+
+- drops or renames a column or table, changes a column type, makes a column NOT NULL,
+  or adds a unique, check or foreign-key constraint, on a table an earlier release
+  created. Split the change over two releases: first stop using the old shape, then
+  remove it.
+- removes a unique constraint without saying which `ON CONFLICT` users were checked.
+- builds an index on an existing table without `AddIndexConcurrently` (which needs
+  `atomic = False`).
+- runs `RunPython`, or SQL the check does not recognise, without saying why the previous
+  release is unaffected.
+
+"New" means not listed in `backend/tests/migration_baseline.txt`, which holds the
+migrations on the newest release branch. A table created by a new migration is exempt.
+Do not edit a migration that is listed there; add a new one. A squash may only replace
+migrations that are listed there.
+
+If a finding is a deliberate, safe exception, say so in the migration. `op` is the
+position in `operations` that the failure message prints, and one entry clears one
+finding:
+
+```python
+class Migration(migrations.Migration):
+    backward_compat_waivers = [
+        {"op": "1", "rule": "data-migration",
+         "reason": "Backfills a table created in this release; older code never reads it."},
+    ]
+```
+
+Run the check from the repository root: `tox -e groups -- unit-backend --no-coverage`.
 
 ## Authentication
 
