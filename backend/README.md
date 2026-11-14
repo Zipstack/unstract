@@ -92,10 +92,12 @@ migration has to leave the previous release working. CI checks this in
 - drops or renames a column or table, changes a column type, makes a column NOT NULL,
   or adds a unique, check or foreign-key constraint, on a table an earlier release
   created. Split the change over two releases: first stop using the old shape, then
-  remove it. Except for NOT NULL, the second step is still reported, and is cleared by
-  a waiver naming the release that stopped using the old shape; the failure message
-  says which. On a table another service also uses (`SHARED_TABLES` in
-  `backend/tests/migration_compat.py`), waiting a release does not make it safe.
+  remove it. Except for NOT NULL, the second step is still reported; clear it with a
+  waiver naming the release that stopped using the old shape (the failure message
+  shows the waiver to add). On a table another service also uses (`SHARED_TABLES` in
+  `backend/tests/migration_compat.py`), waiting a release does not make it safe: a
+  drop, rename, type change or NOT NULL is reported for that service as well, and the
+  waiver for a new constraint there has to say what that service writes.
 - removes a unique constraint without saying which `ON CONFLICT` users were checked.
 - builds an index on an existing table without `AddIndexConcurrently` (which needs
   `atomic = False`).

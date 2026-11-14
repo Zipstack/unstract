@@ -120,7 +120,9 @@ RULES: dict[str, tuple[str, str]] = {
         "building the index blocks writes.",
         "Release 1: stop creating duplicates and clean up existing ones. Release 2: "
         "build the unique index CONCURRENTLY and attach the constraint. Release 2 is "
-        "reported too: add a waiver naming the release that stopped creating them.",
+        "reported too, once per statement: waive each, naming the release that stopped "
+        "creating duplicates. On a table in SHARED_TABLES the waiver also says what the "
+        "other service writes.",
     ),
     "add-constraint": (
         "The previous release can still write rows that violate the constraint and "
@@ -128,7 +130,8 @@ RULES: dict[str, tuple[str, str]] = {
         "a lock.",
         "Release 1: make the code obey the rule and fix existing rows. Release 2: add "
         "the constraint. Release 2 is reported too: add a waiver naming the release "
-        "that stopped writing violating rows.",
+        "that stopped writing violating rows. On a table in SHARED_TABLES the waiver "
+        "also says what the other service writes.",
     ),
     "state-drop-not-null": (
         "The field leaves the model but its column stays NOT NULL with no database "
@@ -173,9 +176,11 @@ RULES: dict[str, tuple[str, str]] = {
         "index (and validates the foreign key) inside the ALTER TABLE. Writes to the "
         "table wait while it runs.",
         "On a small table, waive it and state the row count. On a large table add the "
-        "field with db_index=False and build the index with AddIndexConcurrently. For "
-        "a ForeignKey that also takes db_constraint=False (the database then does not "
-        "enforce it); otherwise waive it. A unique column always needs the waiver.",
+        "field with db_index=False and build the index with AddIndexConcurrently. A "
+        "ForeignKey is still reported, because its constraint is validated in the "
+        "ALTER TABLE: waive it with the row count, or set db_constraint=False only if "
+        "the database need not enforce the relation. A unique column always needs the "
+        "waiver.",
     ),
     "data-migration": (
         "The data change runs while the previous release is serving. The guard cannot "
@@ -200,6 +205,8 @@ RULES: dict[str, tuple[str, str]] = {
 
 # On a table in SHARED_TABLES a finding of one of these rules brings a shared-table
 # finding with it: the other service is affected whatever the previous release does.
+# add-unique and add-constraint are not listed: their own waiver has to say what the
+# other service writes (see their "Do instead").
 _UNSAFE_FOR_OTHER_WRITERS = frozenset(
     {
         "drop-column",
