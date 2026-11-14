@@ -61,9 +61,7 @@ RELEASED_THROUGH = re.compile(
 # release does not make a change safe for it. table -> who else uses it.
 SHARED_TABLES = {"user": "Unstract ID inserts and reads this table"}
 
-# rule id -> (why it breaks, what to do instead). The first ten are certain to break
-# the previous release if it uses the object (state-drop-not-null breaks the new one).
-# For the rest the guard cannot tell, and the waiver states the fact it lacks.
+# rule id -> (why it breaks, what to do instead).
 RULES: dict[str, tuple[str, str]] = {
     "add-not-null": (
         "Django 4.2 drops the default it used to fill existing rows, so the column is "
@@ -120,7 +118,8 @@ RULES: dict[str, tuple[str, str]] = {
         "building the index blocks writes.",
         "Release 1: stop creating duplicates and clean up existing ones. Release 2: "
         "build the unique index CONCURRENTLY (atomic = False) and attach the "
-        "constraint. Release 2 is "
+        "constraint, in the database_operations of a SeparateDatabaseAndState whose "
+        "state_operations make the same change to the model. Release 2 is "
         "reported too, once per statement: put each statement in its own RunSQL and "
         "waive each, naming the release that stopped creating duplicates. If the table "
         "is in SHARED_TABLES (backend/backend/tests/migration_compat.py), the waiver "
@@ -150,7 +149,9 @@ RULES: dict[str, tuple[str, str]] = {
         "Grep backend/, workers/ and platform-service/ for ON CONFLICT and "
         "update_conflicts on this table. If nothing in the previous release targets "
         "the constraint, add a waiver that says so; otherwise drop it a release after "
-        "the code stopped using it.",
+        "the code stopped using it. A raw DROP INDEX names no table, so if the index "
+        "is on a table in SHARED_TABLES (backend/backend/tests/migration_compat.py), "
+        "the waiver should also say whether the other service relies on it.",
     ),
     "shared-table": (
         "A service outside this repository also uses this table. It is not released "
@@ -208,8 +209,8 @@ RULES: dict[str, tuple[str, str]] = {
 
 # On a table in SHARED_TABLES a finding of one of these rules brings a shared-table
 # finding with it: the other service is affected whatever the previous release does.
-# add-unique and add-constraint are not listed, so their findings do not mark a table
-# as shared. Their "Do instead" asks the waiver to say what the other service writes;
+# add-unique and add-constraint are not listed, so their findings bring no
+# shared-table finding. Their "Do instead" asks the waiver to say what the other service writes;
 # nothing checks that but the reviewer of the waiver. A raw DROP INDEX names no
 # table, so it brings no shared-table finding either.
 _UNSAFE_FOR_OTHER_WRITERS = frozenset(
