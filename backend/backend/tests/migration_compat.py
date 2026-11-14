@@ -119,7 +119,8 @@ RULES: dict[str, tuple[str, str]] = {
         "does not handle. The migration itself fails if duplicates already exist, and "
         "building the index blocks writes.",
         "Release 1: stop creating duplicates and clean up existing ones. Release 2: "
-        "build the unique index CONCURRENTLY and attach the constraint. Release 2 is "
+        "build the unique index CONCURRENTLY (atomic = False) and attach the "
+        "constraint. Release 2 is "
         "reported too, once per statement: put each statement in its own RunSQL and "
         "waive each, naming the release that stopped creating duplicates. If the table "
         "is in SHARED_TABLES (backend/backend/tests/migration_compat.py), the waiver "
@@ -180,8 +181,7 @@ RULES: dict[str, tuple[str, str]] = {
         "table wait while it runs.",
         "On a small table, waive it and state the row count. On a large table add the "
         "field with db_index=False and build the index with AddIndexConcurrently. A "
-        "ForeignKey is still reported, because the ALTER TABLE validates its constraint "
-        "by scanning the table under the lock: waive it with the row count, or, with "
+        "ForeignKey is still reported: waive it with the row count, or, with "
         "db_index=False, set db_constraint=False if the database need not enforce the "
         "relation. A unique column always needs the waiver.",
     ),
@@ -208,9 +208,10 @@ RULES: dict[str, tuple[str, str]] = {
 
 # On a table in SHARED_TABLES a finding of one of these rules brings a shared-table
 # finding with it: the other service is affected whatever the previous release does.
-# add-unique and add-constraint are not listed, and their findings do not name a
-# shared table. Their "Do instead" asks the waiver to say what the other service
-# writes; nothing checks that but the reviewer of the waiver.
+# add-unique and add-constraint are not listed, so their findings do not mark a table
+# as shared. Their "Do instead" asks the waiver to say what the other service writes;
+# nothing checks that but the reviewer of the waiver. A raw DROP INDEX names no
+# table, so it brings no shared-table finding either.
 _UNSAFE_FOR_OTHER_WRITERS = frozenset(
     {
         "drop-column",

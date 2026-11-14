@@ -96,8 +96,9 @@ migration has to leave the previous release working. CI checks this in
   waiver naming the release that stopped using the old shape (the failure message
   shows the waiver to add). On a table another service also uses (`SHARED_TABLES` in
   `backend/tests/migration_compat.py`), waiting a release does not make it safe: a
-  drop, rename, type change or NOT NULL is reported for that service as well. A new
-  constraint there is not, so its waiver should say what that service writes.
+  drop, rename, type change or NOT NULL is reported for that service as well (a raw
+  `DROP INDEX` is not: it names no table). A new constraint there is not reported for
+  it either, so its waiver should say what that service writes.
 - removes a unique constraint without saying which `ON CONFLICT` users were checked.
 - builds an index on an existing table without `AddIndexConcurrently` (which needs
   `atomic = False`).
