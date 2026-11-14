@@ -16,7 +16,8 @@
 
 ## Database Migrations
 
-- 
+- [ ] No migration in this PR.
+- [ ] Migrations keep the previous release working on the new schema ([how](https://github.com/Zipstack/unstract/blob/main/backend/README.md#writing-migrations)). Each `backward_compat_waivers` entry I added, and why it is safe:
 
 ## Env Config
 

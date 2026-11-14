@@ -1,1 +1,6 @@
 /unstract/sdk1/src/unstract/sdk1/utils/image_limits/limits.json @Zipstack/unstract-maintainers @praveen-formido
+
+# A line added here exempts a migration from the backward-compatibility guard.
+migration_baseline.txt                          @Zipstack/unstract-maintainers
+/backend/backend/tests/migration_compat.py      @Zipstack/unstract-maintainers
+/backend/backend/tests/test_migration_compat.py @Zipstack/unstract-maintainers
