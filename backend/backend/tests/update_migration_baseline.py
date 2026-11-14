@@ -18,7 +18,8 @@ Accepted, until the release tooling runs this script itself:
   backport the next migration PR that has the file fails Lint PR, and its author
   regenerates. If main already has the regenerated baseline, merging main is enough.
 - The script reads --ref as this clone last fetched it. Run ``git fetch origin`` first,
-  or a backport made since the last fetch is left out and Lint PR fails again.
+  or a release cut or backport made since the last fetch is missed and Lint PR fails
+  again.
 
 A repository that adds its own migrations to this backend keeps its own baseline. Run
 this copy of the script against it with ``--repo`` and ``--out``, after this
@@ -52,7 +53,8 @@ HEADER = """\
 # Released migrations: the migration files on the newest release branch.
 # {test} checks every migration that is NOT
 # listed here, and fails when a listed file changes.
-# Regenerate after a release cut, and after a backport to the newest release branch:
+# Regenerate after a release cut, and after a migration is backported to the newest
+# release branch:
 #   {command}
 # A line added by hand exempts that migration from every rule, so it needs a code
 # owner's review.
