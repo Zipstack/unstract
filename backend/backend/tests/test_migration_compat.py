@@ -136,6 +136,47 @@ def new_migrations_failure(project: compat.Project) -> str | None:
     return text + "\n\n" + "\n\n".join(problems)
 
 
+def released_hash_problems(project: compat.Project) -> list[str]:
+    """Released migrations whose file is missing or differs from its pinned hash."""
+    problems = []
+    for path, digest in sorted(project.baseline.items()):
+        file = project.root / path
+        if not file.is_file():
+            problems.append(f"{path}: listed in the baseline but missing")
+        elif compat.sha256(file) != digest:
+            problems.append(
+                f"{path}: changed after release. Revert it and add a new "
+                "migration. If the edit is deliberate (it only matters to fresh "
+                "installs, and no rule has looked at it), replace its baseline "
+                f"line with:\n    {project.baseline_line(path)}"
+            )
+    return problems
+
+
+def third_party_problems(project: compat.Project) -> list[str]:
+    """Installed-package migrations nobody listed, and listed ones that are gone."""
+    problems = []
+    unlisted = sorted(project.third_party - set(project.listed_third_party))
+    stale = sorted(set(project.listed_third_party) - project.third_party)
+    if unlisted:
+        lines = "\n".join(f"    {compat.THIRD_PARTY}  {a}.{n}" for a, n in unlisted)
+        problems.append(
+            f"{len(unlisted)} migration(s) in installed packages are not listed. "
+            "Read each one for changes the previous release cannot live with, then "
+            "add these lines to the baseline of the repository whose dependencies "
+            f"bring the package ({', '.join(project.baseline_files)}):\n{lines}"
+        )
+    if stale:
+        lines = "\n".join(
+            f"    {project.listed_third_party[key]}: {compat.THIRD_PARTY}  {'.'.join(key)}"
+            for key in stale
+        )
+        problems.append(
+            f"third-party lines for migrations that are gone; remove them:\n{lines}"
+        )
+    return problems
+
+
 class ReleasedMigrationTests(SimpleTestCase):
     """The baseline is intact, so 'new' means what it should. No waiver clears these."""
 
@@ -151,19 +192,7 @@ class ReleasedMigrationTests(SimpleTestCase):
         """A released migration has already run everywhere; an edit never reaches
         those databases, and a fresh install would then differ from an upgraded one.
         """
-        project = _project()
-        problems = []
-        for path, digest in sorted(project.baseline.items()):
-            file = BACKEND_ROOT / path
-            if not file.is_file():
-                problems.append(f"{path}: listed in the baseline but missing")
-            elif compat.sha256(file) != digest:
-                problems.append(
-                    f"{path}: changed after release. Revert it and add a new "
-                    "migration. If the edit is deliberate (it only matters to fresh "
-                    "installs, and no rule has looked at it), replace its baseline "
-                    f"line with:\n    {project.baseline_line(path)}"
-                )
+        problems = released_hash_problems(_project())
         if problems:
             self.fail("\n" + "\n".join(problems))
 
@@ -171,25 +200,9 @@ class ReleasedMigrationTests(SimpleTestCase):
         """A dependency bump can bring a migration that breaks the previous release.
         Nothing can waive it in the package, so it is listed after a human read it.
         """
-        project = _project()
-        unlisted = sorted(project.third_party - set(project.listed_third_party))
-        stale = sorted(set(project.listed_third_party) - project.third_party)
-        if unlisted:
-            lines = "\n".join(f"    {compat.THIRD_PARTY}  {a}.{n}" for a, n in unlisted)
-            self.fail(
-                f"\n{len(unlisted)} migration(s) in installed packages are not listed. "
-                "Read each one for changes the previous release cannot live with, then "
-                "add these lines to the baseline of the repository whose dependencies "
-                f"bring the package ({', '.join(project.baseline_files)}):\n{lines}"
-            )
-        if stale:
-            lines = "\n".join(
-                f"    {project.listed_third_party[key]}: {compat.THIRD_PARTY}  {key[0]}.{key[1]}"
-                for key in stale
-            )
-            self.fail(
-                f"\nthird-party lines for migrations that are gone; remove them:\n{lines}"
-            )
+        problems = third_party_problems(_project())
+        if problems:
+            self.fail("\n" + "\n".join(problems))
 
 
 class NewMigrationTests(SimpleTestCase):
@@ -2294,6 +2307,52 @@ class BaselineTests(SimpleTestCase):
         self.assertEqual(
             compat.unreleased_dependencies(graph, skipped | {("probe", "0002_second")}),
             [],
+        )
+
+    def test_a_released_migration_is_pinned_by_its_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = "probe/migrations/0001_initial.py"
+            (root / path).parent.mkdir(parents=True)
+            (root / path).write_text("operations = []\n")
+            project = compat.Project(root, [], {}, set())
+            project.add_baseline(
+                "probe/tests/migration_baseline.txt",
+                BASELINE.format(digest=compat.sha256(root / path)),
+            )
+            self.assertEqual(released_hash_problems(project), [])
+
+            (root / path).write_text("operations = [1]\n")
+            [problem] = released_hash_problems(project)
+            self.assertTrue(problem.startswith(f"{path}: changed after release"))
+            self.assertIn(project.baseline_line(path), problem)
+
+            (root / path).unlink()
+            self.assertEqual(
+                released_hash_problems(project),
+                [f"{path}: listed in the baseline but missing"],
+            )
+
+    def test_third_party_migrations_are_listed_exactly(self) -> None:
+        project = compat.Project(
+            BACKEND_ROOT, [], {}, third_party={("auth", "0001_initial")}
+        )
+        project.add_baseline(
+            "probe/tests/migration_baseline.txt", BASELINE.format(digest="ab" * 32)
+        )
+        self.assertEqual(third_party_problems(project), [])
+
+        project.third_party.add(("auth", "0002_more"))
+        [problem] = third_party_problems(project)
+        self.assertIn("1 migration(s) in installed packages are not listed", problem)
+        self.assertIn(f"    {compat.THIRD_PARTY}  auth.0002_more", problem)
+
+        project.third_party = set()
+        [problem] = third_party_problems(project)
+        self.assertIn("migrations that are gone", problem)
+        self.assertIn(
+            f"probe/tests/migration_baseline.txt: {compat.THIRD_PARTY}  auth.0001_initial",
+            problem,
         )
 
     def test_released_and_new_are_split_by_the_baseline(self) -> None:
