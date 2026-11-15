@@ -1,10 +1,5 @@
 from enum import Enum
 
-from unstract.core.mime_gate import (  # noqa: F401  re-exported
-    INCONCLUSIVE_MIME_TYPES,
-    resolve_inconclusive_mime_type,
-)
-
 
 class FileProcessingStatus(Enum):
     SUCCESS = "SUCCESS"

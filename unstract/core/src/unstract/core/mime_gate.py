@@ -1,27 +1,57 @@
 """Shared rules for deciding whether a file may enter a workflow.
 
 Lives here because the backend and the workers must answer the same question
-identically. Keep in sync with LLMWhisperer's supported types.
+identically. A file LLMWhisperer would accept must not be rejected here, so
+`classify_file_path` copies its gate (`Util.is_valid_file_type_from_path` in
+unstract-llm-whisperer) step by step.
 """
 
-import re
+import tempfile
 import xml.etree.ElementTree as ElementTree
 import zipfile
+import zlib
+from collections.abc import Iterator
+from contextlib import contextmanager
+from functools import partial
+from itertools import chain
+from typing import BinaryIO
 
 import magic
 
-# libmagic reports these when it recognises a wrapper but not its contents, so
-# they are never a verdict on their own.
-RECOGNISED_WRAPPERS = frozenset({"application/zip", "application/x-ole-storage"})
-INCONCLUSIVE_MIME_TYPES = RECOGNISED_WRAPPERS | {"application/octet-stream"}
+# libmagic reports these when a prefix is not enough to name the file, so a
+# prefix answer of one of them is never a verdict.
+INCONCLUSIVE_MIME_TYPES = frozenset(
+    {"application/zip", "application/x-ole-storage", "application/octet-stream"}
+)
 
-# libmagic matches the PDF header only at offset 0, while extractors tolerate
-# bytes before it, so a wrapped PDF needs the header looked for.
-PDF_HEADER_SCAN_BYTES = 1024
+# LLMWhisperer asks Magika about these two. Magika is not a dependency here, so
+# the zip reader below stands in for it; LLMWhisperer can still name some files
+# this cannot, but never the other way round.
+SECOND_OPINION_MIME_TYPES = frozenset({"application/octet-stream", "application/zip"})
 
-# `%PDF-` alone appears in plenty of content that is not a PDF; a real header
-# carries a version, so require one before promoting anything on its strength.
-PDF_HEADER_PATTERN = re.compile(rb"%PDF-\d\.\d")
+# LLMWhisperer's last resort for stream-wrapped PDFs, copied as is: any `%PDF-`
+# in the first 1024 bytes makes the file a PDF.
+PDF_MARKER = b"%PDF-"
+PDF_MARKER_SCAN_BYTES = 1024
+PDF_MIME_TYPE = "application/pdf"
+
+# LLMWhisperer's default MAX_FILE_SIZE. A larger file is refused there anyway,
+# so it is not worth spilling to local disk just to classify it.
+MAX_SPILL_BYTES = 300 * 1024 * 1024
+
+# What zipfile raises for an archive it cannot read: encrypted members raise
+# RuntimeError, unknown compression methods NotImplementedError, damaged streams
+# zlib.error or EOFError. Any of them means "not a package", never a crash.
+ZIP_READ_ERRORS = (
+    zipfile.BadZipFile,
+    OSError,
+    KeyError,
+    ValueError,
+    RuntimeError,
+    NotImplementedError,
+    EOFError,
+    zlib.error,
+)
 
 # A package's declaration members are small; anything larger is not one.
 PACKAGE_MEMBER_LIMIT = 65536
@@ -89,7 +119,7 @@ def _read_member(archive: zipfile.ZipFile, name: str) -> bytes | None:
             return None
         with archive.open(info) as member:
             return member.read(PACKAGE_MEMBER_LIMIT)
-    except (KeyError, OSError, zipfile.BadZipFile, ValueError):
+    except ZIP_READ_ERRORS:
         return None
 
 
@@ -209,25 +239,56 @@ def identify_zip_container(path: str) -> str | None:
                     return _identify_odf(archive, declared)
             if {"[Content_Types].xml", "_rels/.rels"} <= set(names):
                 return _identify_ooxml(archive, names)
-    except (zipfile.BadZipFile, OSError, KeyError, ValueError):
+    except ZIP_READ_ERRORS:
         return None
     return None
 
 
-def resolve_inconclusive_mime_type(mime_type: str, head: bytes) -> str:
-    """Give a wrapper-only classification a second chance from the leading bytes.
+def classify_file_path(path: str) -> str:
+    """Classify a file the way LLMWhisperer's upload gate does."""
+    mime_type = magic.from_file(path, mime=True)
+    if mime_type in SECOND_OPINION_MIME_TYPES:
+        mime_type = identify_zip_container(path) or mime_type
+    if mime_type in SECOND_OPINION_MIME_TYPES:
+        with open(path, "rb") as file:
+            if PDF_MARKER in file.read(PDF_MARKER_SCAN_BYTES):
+                return PDF_MIME_TYPE
+    return mime_type
 
-    This promotes a file into the allow-list, so it stays narrow: a recognised
-    wrapper keeps its own answer, and the marker must look like a real header.
+
+@contextmanager
+def classify_stream(
+    stream: BinaryIO, chunk_size: int, max_spill_bytes: int = MAX_SPILL_BYTES
+) -> Iterator[tuple[str | None, Iterator[bytes]]]:
+    """Classify a stream, then hand back its bytes to be copied.
+
+    The first chunk decides when libmagic can name it. Otherwise the stream is
+    spilled to a local file and classified whole, because libmagic resolves
+    zip and OLE2 containers from the end of the file and names a zip container
+    only from a path. A stream longer than `max_spill_bytes` keeps the first
+    chunk's inconclusive verdict. An empty stream yields no type.
     """
+    head = stream.read(chunk_size)
+    if not head:
+        yield None, iter(())
+        return
+
+    mime_type = magic.from_buffer(head, mime=True)
+    rest = iter(partial(stream.read, chunk_size), b"")
     if mime_type not in INCONCLUSIVE_MIME_TYPES:
-        return mime_type
-    # A wrapper libmagic positively identified keeps its own answer; only bytes
-    # it could not name at all are open to being read this way.
-    if mime_type in RECOGNISED_WRAPPERS:
-        return mime_type
-    match = PDF_HEADER_PATTERN.search(head[:PDF_HEADER_SCAN_BYTES])
-    if match is None:
-        return mime_type
-    # Classified from the header's own offset rather than trusted as a substring.
-    return magic.from_buffer(head[match.start() :], mime=True)
+        yield mime_type, chain([head], rest)
+        return
+
+    with tempfile.NamedTemporaryFile(suffix=".sniff") as spill:
+        spill.write(head)
+        spilled = len(head)
+        for chunk in rest:
+            spill.write(chunk)
+            spilled += len(chunk)
+            if spilled > max_spill_bytes:
+                break
+        else:
+            spill.flush()
+            mime_type = classify_file_path(spill.name)
+        spill.seek(0)
+        yield mime_type, chain(iter(partial(spill.read, chunk_size), b""), rest)

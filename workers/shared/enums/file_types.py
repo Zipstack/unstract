@@ -7,11 +7,6 @@ validation rules from workflow_manager/endpoint_v2/enums.py.
 from enum import Enum
 from typing import Any
 
-from unstract.core.mime_gate import (  # noqa: F401  re-exported
-    INCONCLUSIVE_MIME_TYPES,
-    resolve_inconclusive_mime_type,
-)
-
 
 class AllowedFileTypes(Enum):
     """Allowed MIME types for file processing.
