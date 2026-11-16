@@ -164,7 +164,7 @@ do_git_pull() {
   git fetch --quiet --tags
 
   if [[ "$opt_version" == "latest" ]]; then
-    target_branch=`git ls-remote --tags origin | awk -F/ '{print $3}' | sort -V | tail -n1`
+    target_branch=`git ls-remote --tags origin | awk -F/ '{print $3}' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1`
   elif [[ "$opt_version" == "main" ]]; then
     target_branch="main"
     opt_build_local=true

@@ -12,6 +12,7 @@ js_escape() {
 }
 
 APP_VERSION=$(js_escape "${UNSTRACT_APPS_VERSION:-}")
+FLOW_URL=$(js_escape "${VITE_FLOW_URL:-}")
 
 cat > /usr/share/nginx/html/config/runtime-config.js << EOF
 // This file is auto-generated at runtime. Do not modify manually.
@@ -19,7 +20,8 @@ window.RUNTIME_CONFIG = {
   faviconPath: "${VITE_FAVICON_PATH:-${REACT_APP_FAVICON_PATH}}",
   logoUrl: "${VITE_CUSTOM_LOGO_URL:-${REACT_APP_CUSTOM_LOGO_URL}}",
   enablePosthog: "${VITE_ENABLE_POSTHOG:-${REACT_APP_ENABLE_POSTHOG}}",
-  version: "${APP_VERSION}"
+  version: "${APP_VERSION}",
+  flowUrl: "${FLOW_URL}"
 };
 EOF
 

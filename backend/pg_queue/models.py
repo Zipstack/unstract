@@ -257,12 +257,11 @@ class PgBatchDedup(models.Model):
 
 
 class PgBarrierState(models.Model):
-    """Per-execution fan-in barrier state for ``PgBarrier`` (the Postgres
-    ``WORKER_BARRIER_BACKEND``).
+    """Per-execution fan-in barrier state for ``PgBarrier``.
 
-    One row per in-flight barrier (keyed by ``execution_id``). The worker-side
-    ``barrier_pg_decr_and_check`` link task atomically decrements ``remaining``
-    and appends to ``results`` in a single ``UPDATE … RETURNING``; the task that
+    One row per in-flight barrier (keyed by ``execution_id``). Each header task
+    atomically decrements ``remaining`` in-body and appends to ``results`` in a
+    single ``UPDATE … RETURNING``; the task that
     drives ``remaining`` to 0 dispatches the aggregating callback and deletes the
     row. A header-task failure aborts the barrier by deleting the row outright
     (``DELETE … RETURNING`` — atomic claim+teardown), so the callback can never
@@ -484,7 +483,13 @@ class PgTaskResult(models.Model):
     # caller waits on it, the consumer stores the result under it.
     task_id = models.TextField(primary_key=True)
     # "completed" = task returned (``result`` holds ExecutionResult.to_dict());
-    # "failed" = task raised (``error`` holds the message).
+    # "failed" = task raised (``error`` holds the message), OR a payload could not
+    # be stored (``error`` holds one of the writer's two "unstorable" texts).
+    # Recovery logic must match the text before retrying a reply key, because the
+    # two unstorable cases point opposite ways: PAYLOAD_UNSTORABLE_ERROR means the
+    # task already ran to completion (a retry is a second full LLM spend — don't),
+    # ERROR_TEXT_UNSTORABLE means it raised (retrying is correct). See
+    # PgResultBackend's module docstring.
     status = models.TextField()
     result = models.JSONField(null=True, blank=True)
     # No-NULL text convention: "" on a completed row (no error), the message on a
@@ -541,8 +546,7 @@ class PgOrchestrationClaim(models.Model):
     ``organization_id`` is stamped below — the reaper needs it for the org-scoped
     status/mark API, exactly like ``pg_barrier_state``.
 
-    Only written on the PG transport (``is_pg_transport``) — the Celery path never
-    touches it. Managed=True / generated migration, extension-free — same posture
+    Managed=True / generated migration, extension-free — same posture
     as the siblings.
     """
 

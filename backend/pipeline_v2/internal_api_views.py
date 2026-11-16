@@ -124,7 +124,7 @@ class PipelineInternalViewSet(ViewSet):
                     )
 
             except Exception as e:
-                logger.error(f"Error updating pipeline status: {e}")
+                logger.exception(f"Error updating pipeline status: {e}")
                 return Response(
                     {"status": "error", "message": f"Failed to update pipeline: {e}"},
                     status=500,
@@ -150,7 +150,7 @@ class PipelineInternalViewSet(ViewSet):
                     )
 
             except Exception as e:
-                logger.error(f"Error updating API deployment status: {e}")
+                logger.exception(f"Error updating API deployment status: {e}")
                 return Response(
                     {
                         "status": "error",
@@ -166,7 +166,9 @@ class PipelineInternalViewSet(ViewSet):
             )
 
         except Exception as e:
-            logger.error(f"Error updating pipeline/API deployment status for {pk}: {e}")
+            logger.exception(
+                f"Error updating pipeline/API deployment status for {pk}: {e}"
+            )
             return Response(
                 {"status": "error", "message": "Internal server error"}, status=500
             )

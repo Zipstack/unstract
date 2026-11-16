@@ -257,7 +257,9 @@ class ClientPluginRegistry:
                 logger.debug(f"Created instance for client plugin: {name}")
                 return instance
             except Exception as e:
-                logger.error(f"Failed to create instance for client plugin {name}: {e}")
+                logger.exception(
+                    f"Failed to create instance for client plugin {name}: {e}"
+                )
                 return None
 
         return None

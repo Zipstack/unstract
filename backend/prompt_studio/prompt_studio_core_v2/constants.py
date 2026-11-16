@@ -99,6 +99,12 @@ class ToolStudioPromptKeys:
     VARIABLE_MAP = "variable_map"
     RECORD = "record"
     FILE_PATH = "file_path"
+    # Extract-file path that never gets rewritten by summarize-as-source /
+    # smart-table overrides — the page-image reader keys on this.
+    EXTRACT_FILE_PATH = "extract_file_path"
+    # Per-prompt stamp of the x2text adapter's output mode (LLMWhisperer
+    # only), so the executor detects image mode without a platform call.
+    X2TEXT_OUTPUT_MODE = "x2text_output_mode"
     ENABLE_HIGHLIGHT = "enable_highlight"
     ENABLE_WORD_CONFIDENCE = "enable_word_confidence"
     REQUIRED = "required"
@@ -163,6 +169,9 @@ class IndexingConstants:
     EMBEDDING_INSTANCE_ID = "embedding_instance_id"
     VECTOR_DB_INSTANCE_ID = "vector_db_instance_id"
     X2TEXT_INSTANCE_ID = "x2text_instance_id"
+    # LLM adapter instance ids that will read an image-mode extraction; the
+    # executor checks their image-request limits before the billed conversion.
+    LLM_INSTANCE_IDS = "llm_instance_ids"
     FILE_PATH = "file_path"
     CHUNK_SIZE = "chunk_size"
     CHUNK_OVERLAP = "chunk_overlap"

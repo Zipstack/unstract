@@ -5,12 +5,14 @@ import { useEffect, useState } from "react";
 import { Select } from "@/components/ui/shims/antd-inputs";
 import { Modal, Tooltip } from "@/components/ui/shims/antd-overlays";
 import { Tabs } from "@/components/ui/shims/antd-structure";
+import { useAlertStore } from "../../../store/alert-store";
 
 import CodeSnippet from "./CodeSnippet.jsx";
 import "./DisplayCode.css";
 
 const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
   const [copied, setCopied] = useState(false);
+  const { setAlertDetails } = useAlertStore();
   const [language, setLanguage] = useState("python");
   const [code, setCode] = useState("");
   const [activeTabKey, setActiveTabKey] = useState("POST");
@@ -119,10 +121,27 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
     setCode(jsCode);
   };
 
+  // Not useCopyToClipboard: success here is shown by the icon, not a toast.
   const handleCopyClick = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    if (!navigator.clipboard) {
+      setAlertDetails({
+        type: "error",
+        content: "Clipboard not available in this browser",
+      });
+      return;
+    }
+    navigator.clipboard.writeText(code).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      },
+      (err) => {
+        setAlertDetails({
+          type: "error",
+          content: `Failed to copy: ${err?.message || "Unknown error"}`,
+        });
+      },
+    );
   };
 
   const handleTabKey = (key) => {

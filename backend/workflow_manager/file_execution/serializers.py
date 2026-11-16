@@ -34,6 +34,8 @@ class FileCentricExecutionSerializer(serializers.ModelSerializer):
             return self.INIT_STATUS_MSG
         elif obj.status == ExecutionStatus.ERROR.value:
             return obj.execution_error
+        elif obj.status == ExecutionStatus.STOPPED.value and obj.execution_error:
+            return obj.execution_error
 
         # Use pre-annotated field from viewset queryset to avoid N+1 queries
         if hasattr(obj, "latest_log_data") and obj.latest_log_data:

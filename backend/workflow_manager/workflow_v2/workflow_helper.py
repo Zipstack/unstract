@@ -11,7 +11,7 @@ from celery import chord, current_task
 from celery.result import AsyncResult
 from configuration.enums import ConfigKey
 from configuration.models import Configuration
-from django.db import IntegrityError
+from django.db import IntegrityError, connections
 from pg_queue.producer import DEFAULT_PRIORITY as PG_DEFAULT_PRIORITY
 from pg_queue.producer import enqueue_task as pg_enqueue_task
 from pipeline_v2.models import Pipeline
@@ -27,7 +27,11 @@ from utils.local_context import StateStore
 from utils.user_context import UserContext
 
 from backend.celery_service import app as celery_app
-from unstract.core.data_models import WorkflowTransport, WorkloadType
+from unstract.core.data_models import (
+    LEGACY_TRANSPORT_KEY,
+    LEGACY_TRANSPORT_VALUE,
+    WorkloadType,
+)
 from unstract.workflow_execution.enums import LogStage
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.dto import FileHash
@@ -71,7 +75,11 @@ EXECUTION_EXCLUDED_PARAMS = {
     "hitl_queue_name",
     "hitl_packet_id",
     "custom_data",
-    "transport",
+    # Still carried on the dispatch payload as a rolling-deploy shim
+    # (LEGACY_TRANSPORT_KEY), so it must never reach the legacy
+    # ``execute_workflow`` signature, where it would raise as an unexpected kwarg.
+    # Named through the constant so the shim's removal checklist finds this site.
+    LEGACY_TRANSPORT_KEY,
 }
 
 
@@ -275,7 +283,9 @@ class WorkflowHelper:
                     execution_id=str(workflow_execution.id),
                 )
             except Exception as e:
-                logger.error(f"Error in subscription usage plugin failure handler: {e}")
+                logger.exception(
+                    f"Error in subscription usage plugin failure handler: {e}"
+                )
 
         logger.error(
             f"Execution {workflow_execution.id} failed: {str(error)}", exc_info=True
@@ -412,7 +422,7 @@ class WorkflowHelper:
             task_result = ResultCacheUtils.get_api_results(
                 workflow_id=str(execution.workflow.id), execution_id=execution_id
             )
-            cls._set_result_acknowledge(execution)
+            cls.set_result_acknowledge(execution)
 
         result_response = ExecutionResponse(
             workflow_id=str(execution.workflow.id),
@@ -424,7 +434,7 @@ class WorkflowHelper:
         return result_response
 
     @staticmethod
-    def _set_result_acknowledge(execution: WorkflowExecution) -> None:
+    def set_result_acknowledge(execution: WorkflowExecution) -> None:
         """Mark the result as acknowledged and update the database.
 
         This method is called once the task has completed and its result is forgotten.
@@ -478,6 +488,56 @@ class WorkflowHelper:
                 execution=execution_cache,
             )
         return execution_cache.status
+
+    @staticmethod
+    def _release_db_connection(*, quiet: bool = False) -> None:
+        """Hand the request's DB connections back before a long sleep-poll.
+
+        Django holds a connection for the whole request, and behind pgbouncer's
+        session pool that pins a server connection for as long as the sync wait
+        runs — up to the API timeout, doing nothing. The next ORM call
+        reconnects lazily (and ``custom_db`` re-applies ``search_path``).
+
+        Uses Django's own expiry check rather than a hard close, so it closes
+        exactly what ``close_old_connections`` would: with no ``CONN_MAX_AGE``
+        (today) every connection, and with persistent connections only expired
+        ones. Unlike ``close_old_connections`` it never touches a connection
+        with work in flight — an atomic block (e.g. ``ATOMIC_REQUESTS``) or
+        autocommit turned off — since closing would discard that work.
+
+        Args:
+            quiet (bool): Log a skipped or failed release at DEBUG instead of
+                WARNING. Callers pass it after the first poll, so one wait logs
+                once rather than every 2 s.
+        """
+        level = logging.DEBUG if quiet else logging.WARNING
+        for conn in connections.all(initialized_only=True):
+            # `.autocommit`, not get_autocommit(): that one ensure_connection()s,
+            # i.e. would open a connection only to close it.
+            if conn.connection is None:
+                continue
+            if conn.in_atomic_block or not conn.autocommit:
+                # WARNING on a wait's first poll: this undoes the release (e.g.
+                # under ATOMIC_REQUESTS), and a capped session pool would then
+                # starve. Later polls of the same wait log at DEBUG.
+                logger.log(
+                    level,
+                    f"Keeping DB connection '{conn.alias}' through the sync wait: "
+                    "a transaction is open, so it stays pinned for the whole wait",
+                )
+                continue
+            # Never let the release abort the wait it is there to serve: a raise
+            # here would land in the post-dispatch handler and return EXECUTING
+            # without waiting (the UN-3602 failure mode).
+            try:
+                conn.close_if_unusable_or_obsolete()
+            except Exception:
+                logger.log(
+                    level,
+                    f"Could not release DB connection '{conn.alias}' before the "
+                    "sync wait; continuing with it held",
+                    exc_info=True,
+                )
 
     @staticmethod
     def _dispatch_orchestrator_task(
@@ -620,9 +680,8 @@ class WorkflowHelper:
                 "hitl_queue_name": hitl_queue_name,
                 "hitl_packet_id": hitl_packet_id,
                 "custom_data": custom_data,
-                # Wire field the workers still branch on. PG is the only
-                # transport now; the field goes when those branches do.
-                "transport": WorkflowTransport.PG_QUEUE.value,
+                # Rolling-deploy shim: see LEGACY_TRANSPORT_KEY.
+                LEGACY_TRANSPORT_KEY: LEGACY_TRANSPORT_VALUE,
             }
             dispatch_handle = cls._dispatch_orchestrator_task(
                 queue=queue,
@@ -681,7 +740,12 @@ class WorkflowHelper:
 
             execution_status = workflow_execution.status
             if timeout > -1:
+                first_poll = True
                 while not ExecutionStatus.is_completed(execution_status) and timeout > 0:
+                    # Before every sleep, not just the first: a cache miss in
+                    # _get_execution_status reads the row and reopens one.
+                    cls._release_db_connection(quiet=not first_poll)
+                    first_poll = False
                     time.sleep(2)
                     timeout -= 2
 
@@ -694,7 +758,7 @@ class WorkflowHelper:
                 task_result = ResultCacheUtils.get_api_results(
                     workflow_id=workflow_id, execution_id=execution_id
                 )
-                cls._set_result_acknowledge(workflow_execution)
+                cls.set_result_acknowledge(workflow_execution)
             else:
                 task_result = None
             return ExecutionResponse(
@@ -719,7 +783,9 @@ class WorkflowHelper:
                 return ExecutionResponse(
                     workflow_id, execution_id, ExecutionStatus.EXECUTING.value
                 )
-            WorkflowExecutionServiceHelper.update_execution_err(execution_id, str(error))
+            marked = WorkflowExecutionServiceHelper.update_execution_err(
+                execution_id, str(error)
+            )
             logger.exception(
                 f"Error while enqueuing async job for WF '{workflow_id}', "
                 f"execution '{execution_id}'"
@@ -727,7 +793,8 @@ class WorkflowHelper:
             return ExecutionResponse(
                 workflow_id,
                 execution_id,
-                ExecutionStatus.ERROR.value,
+                # An aborted run stays STOPPED.
+                marked.status if marked else ExecutionStatus.ERROR.value,
                 error=str(error),
             )
 
@@ -982,7 +1049,10 @@ class WorkflowHelper:
         workflow_id = result.workflow_id
         execution_id = result.execution_id
         if timeout > 0:
+            first_poll = True
             while not ExecutionStatus.is_completed(execution_status) and timeout > 0:
+                cls._release_db_connection(quiet=not first_poll)
+                first_poll = False
                 time.sleep(2)
                 timeout -= 2
 
@@ -1113,7 +1183,7 @@ class WorkflowHelper:
             response["status"] = 200
             return response
         except Exception as exc:
-            logger.error(f"Error occurred while clearing file marker : {exc}")
+            logger.exception(f"Error occurred while clearing file marker : {exc}")
             response["message"] = WorkflowMessages.FILE_MARKER_CLEAR_FAILED
             response["status"] = 400
             return response

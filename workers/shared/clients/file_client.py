@@ -382,7 +382,7 @@ class FileAPIClient(BaseAPIClient):
             )
 
         except Exception as e:
-            logger.error(f"Failed to update file execution status: {str(e)}")
+            logger.exception(f"Failed to update file execution status: {str(e)}")
             return APIResponse(success=False, error=str(e))
 
     def update_workflow_file_execution_status(
@@ -426,7 +426,7 @@ class FileAPIClient(BaseAPIClient):
             )
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to update WorkflowFileExecution status for {file_execution_id}: {str(e)}"
             )
             # Don't raise exception to avoid breaking worker flow
@@ -510,7 +510,7 @@ class FileAPIClient(BaseAPIClient):
                 status_code=response.get("status_code"),
             )
         except Exception as e:
-            logger.error(f"Failed to create WorkflowFileExecution: {str(e)}")
+            logger.exception(f"Failed to create WorkflowFileExecution: {str(e)}")
             return APIResponse(success=False, error=str(e))
 
     def batch_create_file_executions(
@@ -839,7 +839,7 @@ class FileAPIClient(BaseAPIClient):
                 status_code=response.get("status_code"),
             )
         except Exception as e:
-            logger.error(f"Failed to create file history record: {str(e)}")
+            logger.exception(f"Failed to create file history record: {str(e)}")
             logger.debug(f"Request data was: {data}")
             return APIResponse(success=False, error=str(e))
 

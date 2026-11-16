@@ -202,7 +202,7 @@ const Space = React.forwardRef<HTMLDivElement, SpaceProps>(function Space(
     >
       {items.map((child, i) => (
         // The wrapper div is the whole point: existing CSS selects it.
-        // eslint-disable-next-line react/no-array-index-key
+        // biome-ignore lint/suspicious/noArrayIndexKey: children carry no identity of their own; a wrapper's position is its identity, as in antd's Space
         <div key={i} className="ant-space-item">
           {child}
           {split && i < items.length - 1 ? split : null}

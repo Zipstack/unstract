@@ -72,7 +72,6 @@ const resolveCopyText = (promptOutputId, fallbackText) => {
     const enriched = getEnrichedCopyText(promptOutputId);
     return typeof enriched === "string" && enriched ? enriched : fallbackText;
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.warn("[PromptOutput] getEnrichedCopyText threw:", err);
     return fallbackText;
   }

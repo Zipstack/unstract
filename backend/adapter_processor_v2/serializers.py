@@ -1,11 +1,14 @@
 import json
+import logging
 from typing import Any
 
 from account_v2.serializer import UserSerializer
+from connection_check.serializers import profile_status_fields
 from cryptography.fernet import Fernet
 from django.conf import settings
+from permissions.permission import IsOwner
 from rest_framework import serializers
-from rest_framework.serializers import ModelSerializer
+from rest_framework.serializers import ModelSerializer, ValidationError
 from tenant_account_v2.sharing_helpers import (
     serialize_group_refs,
     serialize_owner_refs,
@@ -14,6 +17,13 @@ from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.constants import AdapterKeys
+from adapter_processor_v2.deprecated_adapters import (
+    get_deprecation_message,
+    get_deprecation_metadata,
+    is_adapter_deprecated,
+)
+from adapter_processor_v2.exceptions import InValidAdapterId
+from adapter_processor_v2.image_output_gating import validate_image_output_allowed
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
 from unstract.sdk1.constants import AdapterTypes
@@ -21,11 +31,33 @@ from unstract.sdk1.constants import Common as common
 
 from .models import AdapterInstance, UserDefaultAdapter
 
+logger = logging.getLogger(__name__)
+
 
 class TestAdapterSerializer(serializers.Serializer):
     adapter_id = serializers.CharField(max_length=FLC.ADAPTER_ID_LENGTH)
     adapter_metadata = serializers.JSONField()
     adapter_type = serializers.JSONField()
+
+
+def _add_deprecation_info(rep: dict[str, Any], instance: AdapterInstance) -> bool:
+    """Stamp availability keys onto ``rep``; returns whether the adapter is usable.
+
+    The registry is consulted alongside the stored flag so a newly deprecated
+    adapter reads as deprecated before its backfill migration has run.
+    """
+    is_available = instance.is_available and not is_adapter_deprecated(
+        instance.adapter_id
+    )
+    rep[AdapterKeys.IS_AVAILABLE] = is_available
+    rep[AdapterKeys.IS_DEPRECATED] = not is_available
+    if not is_available:
+        metadata = (
+            get_deprecation_metadata(instance.adapter_id) or instance.deprecation_metadata
+        )
+        if metadata:
+            rep[AdapterKeys.DEPRECATION_METADATA] = metadata
+    return is_available
 
 
 class BaseAdapterSerializer(AuditSerializer):
@@ -71,8 +103,62 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
     Used for CRUD other than listing
     """
 
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """Reject a deprecated adapter_id.
+
+        Sits on the serializer rather than the create view because
+        ``adapter_id`` is writable, so update/partial_update reach it too.
+        """
+        adapter_id = attrs.get(AdapterKeys.ADAPTER_ID)
+        if is_adapter_deprecated(adapter_id):
+            raise ValidationError(
+                {AdapterKeys.ADAPTER_ID: get_deprecation_message(adapter_id)}
+            )
+        self._reject_type_mismatch(attrs)
+        return attrs
+
+    def _reject_type_mismatch(self, attrs: dict[str, Any]) -> None:
+        """Reject an ``adapter_type`` that is not the type of ``adapter_id``.
+
+        The create capability is chosen from ``adapter_type`` (UN-4399), so a
+        mislabelled pair would let a member past "Create LLM adapters" or
+        "Create other adapters". On update either field may be absent, so each
+        falls back to the stored one. An id the registry does not know is left
+        to the existing paths, which already fail it when it is used.
+        """
+        instance = self.instance
+        adapter_id = attrs.get(AdapterKeys.ADAPTER_ID) or getattr(
+            instance, "adapter_id", None
+        )
+        declared = attrs.get(AdapterKeys.ADAPTER_TYPE) or getattr(
+            instance, "adapter_type", None
+        )
+        if not adapter_id or not declared:
+            return
+        try:
+            actual = AdapterProcessor.get_adapter_data_with_key(
+                adapter_id, AdapterKeys.ADAPTER_TYPE
+            )
+        except InValidAdapterId:
+            return
+        if actual and actual != declared:
+            raise ValidationError(
+                {
+                    AdapterKeys.ADAPTER_TYPE: (
+                        f"Adapter '{adapter_id}' has type {actual}, not {declared}."
+                    )
+                }
+            )
+
     def to_internal_value(self, data: dict[str, Any]) -> dict[str, Any]:
         if data.get(AdapterKeys.ADAPTER_METADATA, None):
+            # Reject image output mode on deployments without the cloud
+            # consumer plugin, before the metadata is encrypted away.
+            validate_image_output_allowed(
+                data[AdapterKeys.ADAPTER_METADATA],
+                data.get(AdapterKeys.ADAPTER_ID)
+                or getattr(self.instance, "adapter_id", None),
+            )
             encryption_secret: str = settings.ENCRYPTION_KEY
             f: Fernet = Fernet(encryption_secret.encode("utf-8"))
             json_string: str = json.dumps(data.pop(AdapterKeys.ADAPTER_METADATA))
@@ -99,15 +185,11 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
 
         rep[AdapterKeys.ADAPTER_METADATA] = adapter_metadata
 
-        # Add deprecation information
-        rep[AdapterKeys.IS_AVAILABLE] = instance.is_available
-        rep[AdapterKeys.IS_DEPRECATED] = not instance.is_available
-        if not instance.is_available and instance.deprecation_metadata:
-            rep[AdapterKeys.DEPRECATION_METADATA] = instance.deprecation_metadata
+        is_available = _add_deprecation_info(rep, instance)
 
         # Only retrieve context window and icon for available adapters
         # Avoid SDK calls for deprecated adapters
-        if instance.is_available:
+        if is_available:
             # Retrieve context window if adapter is a LLM
             # For other adapter types, context_window is not relevant.
             if instance.adapter_type == AdapterTypes.LLM.value:
@@ -121,9 +203,6 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
                 )
             except Exception as e:
                 # Log error but don't fail serialization
-                import logging
-
-                logger = logging.getLogger(__name__)
                 logger.warning(
                     f"Failed to retrieve icon for adapter {instance.adapter_id}: {e}"
                 )
@@ -173,16 +252,13 @@ class AdapterListSerializer(BaseAdapterSerializer):
             "created_at",
             "modified_at",
             "description",
+            "is_friction_less",
         )  # type: ignore
 
     def to_representation(self, instance: AdapterInstance) -> dict[str, str]:
         rep: dict[str, str] = super().to_representation(instance)
 
-        # Add deprecation information
-        rep[AdapterKeys.IS_AVAILABLE] = instance.is_available
-        rep[AdapterKeys.IS_DEPRECATED] = not instance.is_available
-        if not instance.is_available and instance.deprecation_metadata:
-            rep[AdapterKeys.DEPRECATION_METADATA] = instance.deprecation_metadata
+        _add_deprecation_info(rep, instance)
 
         rep[common.ICON] = AdapterProcessor.get_icon(instance)
 
@@ -203,6 +279,36 @@ class AdapterListSerializer(BaseAdapterSerializer):
         rep["is_owner"] = instance.is_owner(request.user) if request else False
         rep["co_owners_count"] = instance.co_owners_count()
 
+        return rep
+
+
+def _status_fields(adapter: AdapterInstance, context: dict[str, Any]) -> dict[str, Any]:
+    """Stored-test keys, with the failure reason only for callers who can edit."""
+    fields = profile_status_fields(adapter)
+    request = context.get("request")
+    # The reason can quote provider text, and viewers are kept from the settings.
+    if not request or not IsOwner().has_object_permission(
+        request, context.get("view"), adapter
+    ):
+        fields["last_failure_reason"] = None
+    return fields
+
+
+class AdapterInstanceWithStatusSerializer(AdapterInstanceSerializer):
+    """Adapter CRUD response plus the stored connection-test status."""
+
+    def to_representation(self, instance: AdapterInstance) -> dict[str, Any]:
+        rep: dict[str, Any] = super().to_representation(instance)
+        rep.update(_status_fields(instance, self.context))
+        return rep
+
+
+class AdapterListWithStatusSerializer(AdapterListSerializer):
+    """Adapter list row plus the stored connection-test status."""
+
+    def to_representation(self, instance: AdapterInstance) -> dict[str, Any]:
+        rep: dict[str, Any] = super().to_representation(instance)
+        rep.update(_status_fields(instance, self.context))
         return rep
 
 

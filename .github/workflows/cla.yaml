@@ -1,0 +1,43 @@
+# Requires every contributor to have signed the Zipstack CLA, and records
+# signatures posted as a PR comment. Replaces cla-assistant.io; it sets the same
+# `license/cla` status that branch protection requires.
+# See https://github.com/Zipstack/cla-action
+#
+# pull_request_target runs in the context of the base repository, so it gets
+# secrets even for PRs from forks. That is safe here only because this workflow
+# never checks out or runs the PR's code. Do not add a checkout step.
+name: CLA
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+  statuses: write
+
+concurrency:
+  group: cla-${{ github.event.pull_request.number || github.event.issue.number }}
+
+jobs:
+  cla:
+    # Comments on issues (not PRs) never need a CLA check.
+    if: github.event_name == 'pull_request_target' || github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint signatures token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.CLA_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CLA_APP_PRIVATE_KEY }}
+          owner: Zipstack
+          repositories: cla-signatures
+
+      - uses: Zipstack/cla-action@b68f7dda08f8e4d075b2c357609e20e5ef6f646e # v1.0.0
+        with:
+          cla-document-url: https://gist.github.com/arun-venkataswamy/0dec44b8e5155c43461caf62c38ddac3
+          signatures-repository: Zipstack/cla-signatures
+          signatures-token: ${{ steps.app-token.outputs.token }}

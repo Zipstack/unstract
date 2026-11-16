@@ -68,7 +68,6 @@ try {
 // Sibling plugin loaded but this hook didn't — surface so the no-op fallback
 // doesn't silently disable the run gate.
 if (lookupPluginLoadError && LookupMenuItem) {
-  // eslint-disable-next-line no-console
   console.warn(
     "[Header] lookup-studio plugin loaded but usePromptRunGate failed to import",
     lookupPluginLoadError,
@@ -369,7 +368,6 @@ function Header({
     }
 
     return dropdownItems;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDisablePrompt, required, enforceType, webhookEnabled, webhookUrl]);
 
   return (

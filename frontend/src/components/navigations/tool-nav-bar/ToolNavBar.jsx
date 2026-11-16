@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/shims/antd-button";
 import { Input } from "@/components/ui/shims/antd-inputs";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
 import { Segmented } from "@/components/ui/shims/antd-structure";
 import { Typography } from "@/components/ui/shims/antd-typography";
 
@@ -15,6 +16,7 @@ function ToolNavBar({
   titleAdornment,
   subtitle,
   onEditTitle,
+  editTitleDisabled = false,
   enableSearch,
   customButtons,
   setSearchList,
@@ -80,14 +82,23 @@ function ToolNavBar({
                 </Typography.Text>
                 {titleAdornment}
                 {onEditTitle && (
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<Pencil />}
-                    className="tool-nav-bar__edit-icon"
-                    onClick={onEditTitle}
-                    aria-label="Edit title"
-                  />
+                  <Tooltip
+                    title={
+                      editTitleDisabled
+                        ? "Only the owner can change this"
+                        : undefined
+                    }
+                  >
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<Pencil />}
+                      className="tool-nav-bar__edit-icon"
+                      onClick={onEditTitle}
+                      disabled={editTitleDisabled}
+                      aria-label="Edit title"
+                    />
+                  </Tooltip>
                 )}
               </div>
               {subtitle && (
@@ -134,6 +145,7 @@ ToolNavBar.propTypes = {
   titleAdornment: PropTypes.node,
   subtitle: PropTypes.string,
   onEditTitle: PropTypes.func,
+  editTitleDisabled: PropTypes.bool,
   enableSearch: PropTypes.bool,
   customButtons: PropTypes.node,
   setSearchList: PropTypes.func,

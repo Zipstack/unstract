@@ -2,6 +2,7 @@ import logging
 from collections import OrderedDict
 from typing import Any
 
+from connection_check.serializers import profile_status_fields
 from connector_auth_v2.constants import OAUTH_TOKEN_KEYS
 from connector_auth_v2.models import ConnectorAuth
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
@@ -178,6 +179,15 @@ class ConnectorInstanceSerializer(AuditSerializer):
         rep["co_owners_count"] = instance.co_owners_count()
         rep["owner_emails"] = instance.owner_emails()
 
+        return rep
+
+
+class ConnectorInstanceWithStatusSerializer(ConnectorInstanceSerializer):
+    """Connector CRUD response plus the stored connection-test status."""
+
+    def to_representation(self, instance: ConnectorInstance) -> dict[str, Any]:
+        rep: dict[str, Any] = super().to_representation(instance)
+        rep.update(profile_status_fields(instance))
         return rep
 
 

@@ -9,6 +9,7 @@ given deployment (e.g. the cloud-only agentic app in pure OSS).
 """
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -22,8 +23,8 @@ class ShareableResource:
     id_field: str  # primary-key field name
 
 
-# ``agentic_studio_v1`` is cloud-only; consumers resolve it lazily and skip it
-# when the app is not installed.
+# ``agentic_studio_v1`` and ``lookups`` are cloud-only; consumers resolve them
+# lazily and skip them when the app is not installed.
 SHAREABLE_RESOURCES: tuple[ShareableResource, ...] = (
     ShareableResource("workflow_v2", "Workflow", "workflow", "workflow_name", "id"),
     ShareableResource("pipeline_v2", "Pipeline", "pipeline", "pipeline_name", "id"),
@@ -48,4 +49,28 @@ SHAREABLE_RESOURCES: tuple[ShareableResource, ...] = (
         "name",
         "id",
     ),
+    ShareableResource("lookups", "LookupDefinition", "lookup", "name", "lookup_id"),
 )
+
+
+def descriptor_for_kind(kind: str) -> ShareableResource | None:
+    """Look up a descriptor by its ``kind`` key."""
+    return next((r for r in SHAREABLE_RESOURCES if r.kind == kind), None)
+
+
+def kind_for_instance(instance: Any) -> str | None:
+    """Reverse lookup: the ``kind`` of a resource instance, ``None`` if unlisted.
+
+    Matches on the model's app label + class name so callers holding an
+    instance (e.g. the share endpoint) don't hardcode a type check per
+    resource.
+    """
+    meta = instance._meta
+    return next(
+        (
+            r.kind
+            for r in SHAREABLE_RESOURCES
+            if r.app_label == meta.app_label and r.model_name == meta.object_name
+        ),
+        None,
+    )

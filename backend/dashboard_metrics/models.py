@@ -25,6 +25,19 @@ class MetricType(models.TextChoices):
     HISTOGRAM = "histogram", "Histogram"
 
 
+class ActivitySurface(models.TextChoices):
+    """Where a run in recent activity came from (DG-03).
+
+    Unlike the older ``type`` field, which reports Task pipeline runs as
+    ``workflow``, this tells Task pipelines apart.
+    """
+
+    API = "api", "API deployment"
+    ETL = "etl", "ETL pipeline"
+    TASK = "task", "Task pipeline"
+    WORKFLOW = "workflow", "Workflow"
+
+
 class EventMetricsHourlyManager(DefaultOrganizationManagerMixin, BaseModelManager):
     """Manager for EventMetricsHourly with organization filtering."""
 

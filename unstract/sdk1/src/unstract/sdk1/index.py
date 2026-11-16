@@ -210,7 +210,7 @@ class Index:
                 else:
                     logger.warning("'process_text' is expected to return an 'str'")
             except Exception as e:
-                logger.error(
+                logger.exception(
                     f"Error occured inside callable 'process_text': {e}\n"
                     "continuing processing..."
                 )
@@ -310,10 +310,13 @@ class Index:
                     self.tool.stream_log(f"Found {len(n.nodes)} nodes for {doc_id}")
                 else:
                     self.tool.stream_log(f"No nodes found for {doc_id}")
-            except Exception as e:
+            except VectorDBError as e:
+                if e.status_code != 404:
+                    raise
                 self.tool.stream_log(
-                    f"Error querying {vector_db_instance_id}: {e}, proceeding to index",
-                    level=LogLevel.ERROR,
+                    f"Index for {vector_db_instance_id} might not exist yet: {e},"
+                    " proceeding to index",
+                    level=LogLevel.INFO,
                 )
 
             if doc_id_found and not reindex:

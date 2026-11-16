@@ -29,29 +29,23 @@ from queue_backend.pg_barrier import (
 )
 from queue_backend.pg_queue.connection import create_pg_connection
 
-# --- Layer 1: transport-gated gate (no DB) ---
+# --- Layer 1: the duplicate-orchestration gate (no DB) ---
 
 
 class TestOrchestrationGate:
-    """``_should_skip_duplicate_orchestration`` — Celery never claims; on PG the
-    first delivery proceeds and a duplicate skips.
+    """``_should_skip_duplicate_orchestration`` — the first delivery proceeds and
+    a duplicate skips. The gate used to be transport-conditional (a no-op on
+    Celery, which had no redelivery); with PG the only transport it always runs.
     """
-
-    def test_celery_transport_never_claims(self):
-        # The whole guard is PG-only: on Celery it must not even consult the claim
-        # (proves the Celery path is behaviorally untouched).
-        with patch("general.tasks.try_claim_orchestration") as claim:
-            assert _should_skip_duplicate_orchestration("e1", "org1", "celery") is False
-            claim.assert_not_called()
 
     def test_pg_first_delivery_proceeds(self):
         with patch("general.tasks.try_claim_orchestration", return_value=True) as claim:
-            assert _should_skip_duplicate_orchestration("e1", "org1", "pg_queue") is False
+            assert _should_skip_duplicate_orchestration("e1", "org1") is False
             claim.assert_called_once_with("e1", "org1")  # org stamped for the reaper
 
     def test_pg_duplicate_delivery_skips(self):
         with patch("general.tasks.try_claim_orchestration", return_value=False):
-            assert _should_skip_duplicate_orchestration("e1", "org1", "pg_queue") is True
+            assert _should_skip_duplicate_orchestration("e1", "org1") is True
 
     def test_claim_error_propagates(self):
         # A DB error in the claim must PROPAGATE, not be swallowed — a swallow-and-
@@ -62,7 +56,7 @@ class TestOrchestrationGate:
             side_effect=psycopg2.OperationalError("db down"),
         ):
             with pytest.raises(psycopg2.OperationalError):
-                _should_skip_duplicate_orchestration("e1", "org1", "pg_queue")
+                _should_skip_duplicate_orchestration("e1", "org1")
 
     def test_skip_on_retry_logs_error_with_errorid(self, caplog):
         # A skip when retries > 0 is a SUPPRESSED retry (a prior attempt claimed
@@ -71,7 +65,7 @@ class TestOrchestrationGate:
         with patch("general.tasks.try_claim_orchestration", return_value=False):
             with caplog.at_level(logging.ERROR, logger="general.tasks"):
                 assert (
-                    _should_skip_duplicate_orchestration("e1", "org1", "pg_queue", 2)
+                    _should_skip_duplicate_orchestration("e1", "org1", 2)
                     is True
                 )
         assert "ORCH_CLAIM_SUPPRESSED_RETRY" in caplog.text
@@ -105,7 +99,6 @@ class TestOrchestratorShortCircuit:
                 workflow_id="wf",
                 execution_id="e-dup",
                 hash_values_of_files={},
-                transport="pg_queue",
             )
         assert out == {
             "status": "skipped_duplicate_orchestration",
@@ -142,7 +135,6 @@ class TestOrchestratorShortCircuit:
                     workflow_id="wf",
                     execution_id="e-x",
                     hash_values_of_files={},
-                    transport="pg_queue",
                 )
         assert released == []  # claim never acquired → nothing released
 
@@ -168,7 +160,6 @@ class TestOrchestratorShortCircuit:
                         workflow_id="wf",
                         execution_id="e-y",
                         hash_values_of_files={},
-                        transport="pg_queue",
                     )
         assert released == ["e-y"]  # claimed then failed → released
 
@@ -205,49 +196,16 @@ class TestOrchestratorShortCircuit:
                     workflow_id="wf",
                     execution_id="e-term",
                     hash_values_of_files={},
-                    transport="pg_queue",
                 )
         assert out["status"] == "skipped_terminal_execution"
         assert released == []  # claim kept → tombstone re-established
         api_client.update_workflow_execution_status.assert_not_called()  # never re-armed
 
-    def test_terminal_execution_not_skipped_on_celery(self):
-        # Celery has no redelivery, so the terminal guard is is_pg-gated → a no-op.
-        # A terminal status on the Celery path must NOT short-circuit: we prove the
-        # task runs PAST the guard by making the next step (tool validation, called
-        # right after the guard) raise a sentinel. Patched via the task's own
-        # globals — the bare-``tasks`` module the worker bootstrap loads, not
-        # ``general.tasks`` (the sys.path quirk; a module-attr patch would miss it).
-        api_client = MagicMock()
-        api_client.get_workflow_execution.return_value = MagicMock(
-            success=True,
-            data={
-                "execution": {
-                    "status": tasks.ExecutionStatus.COMPLETED.value,
-                    "workflow_id": "wf",
-                }
-            },
-        )
-
-        def _sentinel(**_kwargs):
-            raise RuntimeError("reached past the guard")
-
-        with patch.dict(
-            self._task_globals(), {"validate_workflow_tool_instances": _sentinel}
-        ):
-            with patch.object(
-                tasks.WorkerExecutionContext,
-                "setup_execution_context",
-                return_value=(MagicMock(), api_client),
-            ):
-                with pytest.raises(RuntimeError, match="reached past the guard"):
-                    tasks.async_execute_bin_general(
-                        schema_name="org",
-                        workflow_id="wf",
-                        execution_id="e-term-celery",
-                        hash_values_of_files={},
-                        transport="celery",
-                    )
+    # ``test_terminal_execution_not_skipped_on_celery`` is gone with the
+    # transport: the terminal guard used to be is_pg-gated so the Celery path ran
+    # past it. There is no un-guarded path left — the guard above
+    # (``test_terminal_execution_skips_and_keeps_claim``) is now the only
+    # behaviour.
 
 
 # --- Layer 2: claim primitive against real Postgres ---

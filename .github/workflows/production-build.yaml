@@ -18,6 +18,11 @@ on:
 
 run-name: "[${{ github.event.release.tag_name || github.event.inputs.tag }}] Docker Image Build and Push (Production)"
 
+# The repo default token is write. Docker Hub and Slack are reached via
+# secrets, so the token only reads: checkout and `gh release list`.
+permissions:
+  contents: read
+
 jobs:
   # Validates tag format and version monotonicity within the same major.minor line.
   # This guards the workflow_dispatch tag input and any release event.
@@ -112,26 +117,29 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
 
       - name: Checkout code for branch
         if: github.event_name != 'release'
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       # Set up QEMU for ARM64 emulation
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
         with:
           platforms: linux/amd64,linux/arm64/v8
 
       # Set up Docker Buildx for better caching and multi-arch builds
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
           platforms: linux/amd64,linux/arm64/v8
 
       # Log in to Docker Hub
       - name: Login to Docker Hub
-        uses: docker/login-action@v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -167,7 +175,7 @@ jobs:
 
       # Build and push using Docker Bake
       - name: Build and push image
-        uses: docker/bake-action@v7
+        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
         env:
           VERSION: ${{ env.DOCKER_VERSION_TAG }}
         with:
@@ -352,7 +360,7 @@ jobs:
       # Send summary notification to Slack
       - name: Send Slack summary notification
         if: always()
-        uses: slackapi/slack-github-action@v3.0.1
+        uses: slackapi/slack-github-action@af78098f536edbc4de71162a307590698245be95 # v3.0.1
         with:
           webhook-type: incoming-webhook
           payload: |
