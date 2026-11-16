@@ -487,17 +487,17 @@ class TestIdePromptComplete:
 
     @patch(_PATCH_EMIT_WS)
     @patch(_PATCH_GET_CLIENT)
-    def test_output_api_failure_returns_empty_response(self, mock_get_client, mock_emit_ws, mock_api, base_prompt_kwargs):
-        """When update_prompt_output returns success=False, response is []."""
+    def test_output_api_failure_omits_result_from_ws(self, mock_get_client, mock_emit_ws, mock_api, base_prompt_kwargs):
+        """When update_prompt_output returns success=False, result is not in WS event."""
         mock_get_client.return_value = mock_api
         mock_api.update_prompt_output.return_value = {"success": False}
 
         result = self._call(self._make_result(), base_prompt_kwargs)
 
         assert result["status"] == "completed"
-        # The emitted result should be the empty list
+        # result intentionally omitted from WS event — frontend refetches
         ws_data = mock_emit_ws.call_args[1]["data"]
-        assert ws_data["result"] == []
+        assert "result" not in ws_data
 
 
 # ---------------------------------------------------------------------------

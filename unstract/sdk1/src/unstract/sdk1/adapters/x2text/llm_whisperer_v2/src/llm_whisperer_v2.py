@@ -4,13 +4,19 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any
 
-from unstract.sdk1.adapters.x2text.constants import X2TextConstants
+from unstract.sdk1.adapters.exceptions import ExtractorError
+from unstract.sdk1.adapters.x2text.constants import (
+    ImageOutputConstants,
+    X2TextConstants,
+)
 from unstract.sdk1.adapters.x2text.dto import (
     TextExtractionMetadata,
     TextExtractionResult,
 )
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.constants import (
+    ImageOutputConfig,
     Modes,
+    OutputModes,
     WhispererConfig,
     WhispererEndpoint,
 )
@@ -22,7 +28,7 @@ from unstract.sdk1.adapters.x2text.x2text_adapter import X2TextAdapter
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 
 if TYPE_CHECKING:
-    import requests
+    from unstract.sdk1.utils.image_limits.policy import ImageModePolicy
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +175,88 @@ class LLMWhispererV2(X2TextAdapter):
         )
         return True
 
+    @staticmethod
+    def _validate_pdf_only(input_file_path: str, fs: FileStorage | None = None) -> None:
+        """Enforce the PDF-only constraint for image output mode (v1).
+
+        Checks the filename extension first; when the storage name carries no
+        ``.pdf`` suffix, falls back to content sniffing — workflow executions
+        store the source file under an extension-less name (e.g. ``SOURCE``),
+        so an extension-only check would false-reject every deployment input.
+        Fail-closed: if the content cannot be verified either, reject.
+
+        The message is sourced from ``ImageOutputConfig`` so it stays identical
+        to the UI-layer validation surfaced in ``adapter_processor_v2``.
+        """
+        if ImageOutputConfig.is_pdf(input_file_path):
+            return
+        if fs is not None:
+            try:
+                header = fs.read(path=input_file_path, mode="rb", length=5)
+            except Exception:
+                header = b""
+            if ImageOutputConstants.is_pdf_bytes(header):
+                return
+        raise ExtractorError(
+            ImageOutputConfig.PDF_ONLY_ERROR,
+            status_code=400,
+        )
+
+    def _process_image_mode(
+        self,
+        input_file_path: str,
+        output_file_path: str | None,
+        fs: FileStorage,
+        tag: str | list[str] | None = None,
+        image_limits: ImageModePolicy | None = None,
+    ) -> TextExtractionResult:
+        """Image output mode branch of ``process()``.
+
+        Validates PDF-only input, delegates the submit/download/persist flow to
+        the helper, and returns a ``TextExtractionResult`` whose ``page_images``
+        metadata carries the per-page references. ``extracted_text`` is a short
+        human-readable summary (never JSON / never image data): image mode has
+        no OCR text, but a non-empty extract keeps the Prompt Studio extraction
+        cache from re-submitting the remote conversion on a re-run and keeps the
+        indexed document meaningful. The per-page references live in
+        ``extraction_metadata.page_images`` — never inside ``extracted_text``.
+        ``tag`` is forwarded for service-side usage reporting; ``image_limits``
+        (an ``ImageModePolicy`` for the consuming LLM, or None) drives the
+        page-budget and size checks in the helper.
+        """
+        logger.info("Image mode: processing %s in image output mode", input_file_path)
+        self._validate_pdf_only(input_file_path, fs=fs)
+        whisper_hash, page_images = LLMWhispererHelper.get_page_images(
+            config=self.config,
+            input_file_path=input_file_path,
+            output_file_path=output_file_path,
+            fs=fs,
+            tag=tag,
+            image_limits=image_limits,
+        )
+        summary = LLMWhispererHelper.build_image_output_summary(page_images)
+        # Persist the summary to the extract file so the extraction is
+        # cache-consistent (no re-submit on re-run). Skipped when no output
+        # path was requested.
+        if output_file_path:
+            LLMWhispererHelper.write_image_output(
+                fs=fs,
+                output_file_path=output_file_path,
+                summary=summary,
+            )
+        logger.info(
+            "Image mode: returning %d page image reference(s) for %s",
+            len(page_images),
+            input_file_path,
+        )
+        return TextExtractionResult(
+            extracted_text=summary,
+            extraction_metadata=TextExtractionMetadata(
+                whisper_hash=whisper_hash,
+                page_images=page_images,
+            ),
+        )
+
     def process(
         self,
         input_file_path: str,
@@ -185,11 +273,37 @@ class LLMWhispererV2(X2TextAdapter):
                 Defaults to None.
 
         Returns:
-            str: Extracted text
+            TextExtractionResult: Extracted text, metadata and, when
+                LLMWhisperer reports it, the processed page count (None in
+                image output mode).
         """
         if fs is None:
             fs = FileStorage(provider=FileStorageProvider.LOCAL)
+
+        # Branch on the configured output mode. Image mode routes to a dedicated
+        # path (PDF-only); every other mode follows the unchanged text path.
+        output_mode = self.config.get(
+            WhispererConfig.OUTPUT_MODE, OutputModes.LAYOUT_PRESERVING.value
+        )
         enable_highlight = kwargs.get(X2TextConstants.ENABLE_HIGHLIGHT, False)
+        if output_mode == OutputModes.IMAGE.value:
+            # Highlighting produces line-level source references over extracted
+            # text; image mode yields no text, so the combination is rejected
+            # explicitly rather than silently returning empty highlight data.
+            if enable_highlight:
+                raise ExtractorError(
+                    "Highlighting is not supported in image output mode; disable "
+                    "highlight or select a text output mode.",
+                    status_code=400,
+                )
+            return self._process_image_mode(
+                input_file_path,
+                output_file_path,
+                fs,
+                tag=kwargs.get(X2TextConstants.TAGS),
+                image_limits=kwargs.get(X2TextConstants.IMAGE_LIMITS),
+            )
+
         logger.info(
             "HIGHLIGHT_DEBUG LLMWhispererV2.process: enable_highlight=%s",
             enable_highlight,
@@ -198,7 +312,7 @@ class LLMWhispererV2(X2TextAdapter):
             tag=kwargs.get(X2TextConstants.TAGS),
             enable_highlight=enable_highlight,
         )
-        response: requests.Response = LLMWhispererHelper.send_whisper_request(
+        response = LLMWhispererHelper.send_whisper_request(
             input_file_path=input_file_path,
             config=self.config,
             fs=fs,
@@ -268,4 +382,5 @@ class LLMWhispererV2(X2TextAdapter):
                 fs=fs,
             ),
             extraction_metadata=metadata,
+            page_count=LLMWhispererHelper.get_processed_page_count(response),
         )

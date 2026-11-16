@@ -76,3 +76,12 @@ class HasMembersMixin:
             m.user_id == user.id and m.role == ResourceRole.OWNER
             for m in self.memberships.all()  # type: ignore[attr-defined]
         )
+
+    def grant_owner(self, user: Any) -> None:
+        """Grant OWNER on create, resolving a platform key to its creator."""
+        # Lazy: platform_api.services imports models at import time.
+        from platform_api.services import owner_user_for
+
+        self.memberships.get_or_create(  # type: ignore[attr-defined]
+            user=owner_user_for(user), defaults={"role": ResourceRole.OWNER}
+        )

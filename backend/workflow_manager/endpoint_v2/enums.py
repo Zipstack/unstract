@@ -1,5 +1,10 @@
 from enum import Enum
 
+from unstract.core.mime_gate import (  # noqa: F401  re-exported
+    INCONCLUSIVE_MIME_TYPES,
+    resolve_inconclusive_mime_type,
+)
+
 
 class FileProcessingStatus(Enum):
     SUCCESS = "SUCCESS"
@@ -7,6 +12,12 @@ class FileProcessingStatus(Enum):
 
 
 class AllowedFileTypes(Enum):
+    """MIME types accepted into a workflow.
+
+    Keep in sync with LLMWhisperer's supported types, and with the copy in the
+    workers package.
+    """
+
     PLAIN_TEXT = "text/plain"
     PDF = "application/pdf"
     JPEG = "image/jpeg"
@@ -19,7 +30,6 @@ class AllowedFileTypes(Enum):
     DOC = "application/msword"
     XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     XLS = "application/vnd.ms-excel"
-    XLSM = "application/vnd.ms-excel.sheet.macroenabled.12"
     PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     PPT = "application/vnd.ms-powerpoint"
     ODT = "application/vnd.oasis.opendocument.text"
@@ -28,8 +38,14 @@ class AllowedFileTypes(Enum):
     CDFV2 = "application/CDFV2"
     JSON = "application/json"
     CSV = "text/csv"
-    OCTET_STREAM = "application/octet-stream"
 
     @classmethod
     def is_allowed(cls, mime_type: str) -> bool:
+        """Whether LLMWhisperer would accept this type.
+
+        Any `text/*` passes; html, xml, tsv and the like reach the extractor as
+        text rather than as listed formats.
+        """
+        if mime_type.startswith("text/"):
+            return True
         return mime_type in cls._value2member_map_

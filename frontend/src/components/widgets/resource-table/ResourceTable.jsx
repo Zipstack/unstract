@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronUp,
   CircleHelp,
+  Copy,
   Eraser,
   Pencil,
   Share2,
@@ -22,6 +23,8 @@ import { Table } from "@/components/ui/shims/antd-structure";
 import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { formattedDateTime, timeAgo } from "../../../helpers/GetStaticData";
+import { canEditResource } from "../../../helpers/resourceAccess";
+import { resolveOwnerDisplay } from "../owner-display";
 import "./ResourceTable.css";
 
 // Stable, distinct avatar swatch per owner (seeded on email/name) like the
@@ -144,6 +147,7 @@ function ResourceTable({
   extraColumns = [],
   handleEdit,
   handleShare,
+  handleCopyId,
   handleDelete,
   handleCoOwner,
   onRowClick,
@@ -217,20 +221,11 @@ function ResourceTable({
   };
 
   const renderOwner = (item) => {
-    // owner_emails is earliest-first; [0] is the primary shown owner.
-    // Fall back to created_by_email so rows with no live OWNER membership
-    // (platform API-key sessions, pre-backfill rows) don't render "Unknown".
-    const ownerEmails = item?.[ownerEmailsProp];
-    const email =
-      (Array.isArray(ownerEmails) ? ownerEmails[0] : undefined) ??
-      item?.created_by_email;
-    // "Me" must track the DISPLAYED owner, not the viewer's own membership —
-    // else a co-owner sees "Me" over the primary owner's avatar/email. Match on
-    // the shown email so the creator viewing their own resource still reads "Me".
-    const isMe = Boolean(email) && email === sessionDetails?.email;
-    const name = isMe ? "Me" : email?.split("@")[0] || "Unknown";
-    const extra =
-      item?.co_owners_count > 1 ? ` +${item.co_owners_count - 1}` : "";
+    const { email, name, extra } = resolveOwnerDisplay(
+      item,
+      sessionDetails,
+      ownerEmailsProp,
+    );
     const initials = (email || name).slice(0, 2).toUpperCase();
     const swatch = colorForSeed(email || name);
 
@@ -288,6 +283,16 @@ function ResourceTable({
   const renderActions = (item) => {
     const deprecated = item?.is_deprecated;
     const disabledTitle = deprecated ? "This adapter is deprecated" : "";
+    // Edit and delete are the owner's on every resource this renders. What
+    // else sharing allows differs per resource, so it is not stated here.
+    // Both controls stay on screen but disabled, so it is obvious they exist
+    // and why they are not available. Sharing onward stays open.
+    const canEdit = canEditResource(item, sessionDetails);
+    const locked = !canEdit;
+    // Frictionless adapters are platform-provisioned: any org member may
+    // delete them, so the ownership lock covers Edit but not Delete.
+    const deleteLocked = locked && !item?.is_friction_less;
+    const lockedTitle = "Only the owner can change this";
     return (
       <Space
         size={18}
@@ -295,14 +300,16 @@ function ResourceTable({
         onClick={(event) => event.stopPropagation()}
         role="none"
       >
-        <Tooltip title={disabledTitle}>
+        <Tooltip title={locked ? lockedTitle : disabledTitle}>
           <button
             type="button"
             className="action-icon-btn"
             aria-label={`Edit ${type}`}
             data-testid={rowTestId(item, "edit")}
-            aria-disabled={deprecated}
-            onClick={(event) => !deprecated && handleEdit?.(event, item)}
+            aria-disabled={deprecated || locked}
+            onClick={(event) =>
+              !deprecated && canEdit && handleEdit?.(event, item)
+            }
           >
             <Pencil className="action-icon-buttons edit-icon" />
           </button>
@@ -322,12 +329,38 @@ function ResourceTable({
           </Tooltip>
         )}
         {/*
+         * Opt-in, like Share: most resources are reached by name and their id
+         * is an implementation detail. Adapters are the exception — the
+         * Agent-KV API makes the caller name their `llm` / `lite_llm` /
+         * `x2text` adapters by instance id, and that id was in no screen at
+         * all, so the first API call answered `Must be a valid UUID` with no
+         * way forward but the network tab.
+         *
+         * Deliberately NOT gated on `deprecated` or `locked`: copying an
+         * identifier changes nothing, and a caller debugging a deprecated or
+         * someone else's adapter is exactly who needs to read its id.
+         */}
+        {handleCopyId && (
+          <Tooltip title={`Copy ${type} ID`}>
+            <button
+              type="button"
+              className="action-icon-btn"
+              aria-label={`Copy ${type} ID`}
+              data-testid={rowTestId(item, "copy-id")}
+              onClick={(event) => handleCopyId(event, item)}
+            >
+              <Copy className="action-icon-buttons" />
+            </button>
+          </Tooltip>
+        )}
+        {/*
          * The confirm panel is NOT keyed by row: only one can be open at a
          * time, so a per-row id would just make the locator longer without
          * making it more specific. The button that opens it is per-row,
          * because every row has one.
          */}
         <Popconfirm
+          disabled={deleteLocked}
           title={`Delete the ${type}`}
           description={`Are you sure to delete ${item?.[titleProp]}`}
           okText="Yes"
@@ -341,6 +374,8 @@ function ResourceTable({
             className="action-icon-btn"
             aria-label={`Delete ${type}`}
             data-testid={rowTestId(item, "delete")}
+            aria-disabled={deleteLocked}
+            title={deleteLocked ? lockedTitle : undefined}
           >
             <Trash2 className="action-icon-buttons delete-icon" />
           </button>
@@ -495,6 +530,7 @@ ResourceTable.propTypes = {
   extraColumns: PropTypes.array,
   handleEdit: PropTypes.func,
   handleShare: PropTypes.func,
+  handleCopyId: PropTypes.func,
   handleDelete: PropTypes.func,
   handleCoOwner: PropTypes.func,
   onRowClick: PropTypes.func,

@@ -73,7 +73,6 @@
   position: fixed;
   transform: translate(-50%, 100%);
   z-index: 1;
-  transition: "left 0.1s linear";
 }
 
 .tool-ide-collapse-panel {

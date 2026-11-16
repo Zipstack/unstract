@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "unstract/dashboard-metrics/attribution-response/v1",
+  "type": "object",
+  "required": ["start_date", "end_date", "total_failed_pages", "sources", "days"],
+  "additionalProperties": false,
+  "properties": {
+    "start_date": {"type": "string", "format": "date-time"},
+    "end_date": {"type": "string", "format": "date-time"},
+    "total_failed_pages": {"type": "integer", "minimum": 0},
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "type", "failed_pages", "share"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string"},
+          "name": {"type": ["string", "null"]},
+          "type": {
+            "enum": [
+              "api_deployment",
+              "etl_pipeline",
+              "task_pipeline",
+              "pipeline",
+              "workflow",
+              "deleted"
+            ]
+          },
+          "failed_pages": {"type": "integer", "minimum": 0},
+          "share": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      }
+    },
+    "days": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["date", "failed_pages", "sources"],
+        "additionalProperties": false,
+        "properties": {
+          "date": {"type": "string", "format": "date"},
+          "failed_pages": {"type": "integer", "minimum": 0},
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "failed_pages"],
+              "additionalProperties": false,
+              "properties": {
+                "id": {"type": "string"},
+                "failed_pages": {"type": "integer", "minimum": 0}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

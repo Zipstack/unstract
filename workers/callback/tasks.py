@@ -12,6 +12,7 @@ from queue_backend.pg_barrier import PG_TRANSPORT_CALLBACK_KWARG
 
 # Import shared worker infrastructure
 from shared.api import InternalAPIClient
+from shared.clients.execution_client import refused_as_stopped
 
 # Import from shared worker modules
 from shared.enums import PipelineType
@@ -56,7 +57,7 @@ _performance_managers_initialized = False
 class CallbackContext:
     """Container for callback processing context data."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.task_id: str = ""
         self.execution_id: str = ""
         self.pipeline_id: str | None = None
@@ -71,6 +72,9 @@ class CallbackContext:
         # here) — lets the PG duplicate guard skip a redelivered callback without a
         # second round-trip.
         self.execution_status: str | None = None
+        # The full execution context from that same fetch, reused by the status
+        # determination step instead of fetching the execution again.
+        self.execution_context: dict[str, Any] | None = None
 
 
 def _initialize_performance_managers():
@@ -252,11 +256,19 @@ def _get_performance_stats() -> dict:
     return stats
 
 
+def _was_stopped(execution_context: dict[str, Any] | None) -> bool:
+    """True when the run was already STOPPED (aborted) when this callback fetched it."""
+    execution = (execution_context or {}).get("execution") or {}
+    stopped: bool = execution.get("status") == ExecutionStatus.STOPPED.value
+    return stopped
+
+
 def _determine_execution_status_unified(
     file_batch_results: list[dict[str, Any]],
     api_client: InternalAPIClient,
     execution_id: str,
     organization_id: str,
+    execution_context: dict[str, Any] | None,
 ) -> tuple[dict[str, Any], str, int]:
     """Unified status determination logic with timeout detection for all callback types.
 
@@ -269,6 +281,9 @@ def _determine_execution_status_unified(
         api_client: Internal API client for workflow execution queries
         execution_id: Workflow execution ID
         organization_id: Organization context
+        execution_context: Execution context the callback already fetched,
+            reused here instead of fetching the execution again; None if
+            that fetch failed
 
     Returns:
         Tuple of (aggregated_results, final_status, expected_files)
@@ -282,6 +297,7 @@ def _determine_execution_status_unified(
         execution_id,
         organization_id,
         aggregated_results.get("file_results", []),
+        execution_context=execution_context,
     )
 
     # Update aggregated results with wall-clock time
@@ -297,29 +313,34 @@ def _determine_execution_status_unified(
         logger.warning(f"Execution time is 0! File results for execution {execution_id}")
 
     # Step 3: Get expected file count from workflow execution details for timeout detection
-    expected_files = 0
-    try:
-        execution_response = api_client.get_workflow_execution(
-            execution_id, file_execution=False
+    if not execution_context:
+        logger.warning(
+            f"No execution context for execution {execution_id}; "
+            "expected file count unavailable"
         )
-        if execution_response.success:
-            execution_data = execution_response.data
-            expected_files = execution_data.get("total_files", 0)
-            logger.info(
-                f"Expected files from execution details: {expected_files} for execution {execution_id}"
-            )
-        else:
-            logger.warning(
-                f"Could not fetch execution details for {execution_id}: {execution_response.error}"
-            )
-    except Exception as e:
-        logger.warning(f"Could not fetch execution details for {execution_id}: {e}")
+    # Reads a top-level key, which the serializer does not return (it is nested
+    # under "execution"), so this is always 0. Pre-existing; fixing it changes
+    # final statuses, so it is tracked separately.
+    expected_files = (execution_context or {}).get("total_files", 0)
+    logger.info(
+        f"Expected files from execution details: {expected_files} for execution {execution_id}"
+    )
 
     # Step 4: Extract file processing metrics for status determination
     total_files_processed = aggregated_results.get("total_files_processed", 0)
     failed_files = aggregated_results.get("failed_files", 0)
     total_files = aggregated_results.get("total_files", 0)
     successful_files = aggregated_results.get("successful_files", 0)
+
+    # An abort ended this run, whatever its file counts say.
+    if _was_stopped(execution_context):
+        logger.warning(
+            "Execution %s was stopped - %s of %s files completed",
+            execution_id,
+            successful_files,
+            total_files,
+        )
+        return aggregated_results, ExecutionStatus.STOPPED.value, expected_files
 
     # Step 5: Unified status determination with timeout failure detection
 
@@ -365,7 +386,7 @@ def _update_execution_status_unified(
     aggregated_results: dict[str, Any],
     organization_id: str,
     error_message: str | None = None,
-    is_pg: bool = False,
+    raise_on_failure: bool = True,
 ) -> dict[str, Any]:
     """Unified workflow execution status update for all callback types.
 
@@ -379,6 +400,9 @@ def _update_execution_status_unified(
         aggregated_results: Aggregated file processing results
         organization_id: Organization context
         error_message: Optional error message for failed executions
+        raise_on_failure: Re-raise a failed status write (the default) so PG's
+            at-least-once redelivery retries it. Pass ``False`` only where the
+            caller is already handling a failure and a raise would mask it.
 
     Returns:
         Execution update result dictionary
@@ -389,16 +413,29 @@ def _update_execution_status_unified(
         successful_files = aggregated_results.get("successful_files", 0)
         failed_files = aggregated_results.get("failed_files", 0)
 
+        def post_status(status: str, error: str | None) -> Any:
+            return api_client.update_workflow_execution_status(
+                execution_id=execution_id,
+                status=status,
+                total_files=total_files,
+                successful_files=successful_files,
+                failed_files=failed_files,
+                organization_id=organization_id,
+                error_message=error,
+            )
+
         # Make the unified API call
-        api_client.update_workflow_execution_status(
-            execution_id=execution_id,
-            status=final_status,
-            total_files=total_files,
-            successful_files=successful_files,
-            failed_files=failed_files,
-            organization_id=organization_id,
-            error_message=error_message,
-        )
+        response = post_status(final_status, error_message)
+        if refused_as_stopped(response):
+            logger.warning(
+                "Execution %s was stopped during this callback; "
+                "reporting STOPPED instead of %s",
+                execution_id,
+                final_status,
+            )
+            final_status = ExecutionStatus.STOPPED.value
+            # The refused write saved no file counts.
+            post_status(final_status, None)
 
         # Return consistent result structure
         update_result = {
@@ -420,17 +457,16 @@ def _update_execution_status_unified(
         logger.error(
             f"Failed to update execution status for {execution_id}: {e}", exc_info=True
         )
-        # On the PG path this finalization write is the single terminalizing step.
-        # Swallowing a failure here strands the execution in EXECUTING forever: the
-        # consumer acks/deletes the message, the barrier row is already gone, and
-        # the reaper has no handle — every safety net is silently defeated. Re-raise
-        # so PG's at-least-once vt-redelivery retries the write and, if it keeps
-        # failing, poison-drops the batch to a terminal ERROR. A post-success
-        # redelivery is idempotency-guarded by _callback_already_ran (skips once
-        # COMPLETED; ERROR/STOPPED are intentionally re-run, so a failed-write
-        # ERROR execution simply retries the write). The Celery path keeps the
-        # legacy swallow (its chord retry covers it) so this is a PG-only change.
-        if is_pg:
+        # This finalization write is the single terminalizing step. Swallowing a
+        # failure here strands the execution in EXECUTING forever: the consumer
+        # acks/deletes the message, the barrier row is already gone, and the reaper
+        # has no handle — every safety net is silently defeated. Re-raise so PG's
+        # at-least-once vt-redelivery retries the write and, if it keeps failing,
+        # poison-drops the batch to a terminal ERROR. A post-success redelivery is
+        # idempotency-guarded by _callback_already_ran (skips once COMPLETED;
+        # ERROR/STOPPED are intentionally re-run, so a failed-write ERROR execution
+        # simply retries the write).
+        if raise_on_failure:
             raise
         # Return error result instead of re-raising to maintain callback flow
         return {
@@ -470,6 +506,15 @@ def _handle_pipeline_updates_unified(
             "status": "skipped",
             "reason": "api_deployment",
             "message": "Pipeline update skipped for API deployment",
+            "pipeline_id": context.pipeline_id,
+        }
+
+    # The abort wrote it, and only if this is the pipeline's newest run.
+    if final_status == ExecutionStatus.STOPPED.value:
+        return {
+            "status": "skipped",
+            "reason": "handled_by_abort",
+            "message": "The abort handles a stopped run's pipeline status",
             "pipeline_id": context.pipeline_id,
         }
 
@@ -600,6 +645,17 @@ def _handle_notifications_unified(
     Returns:
         Notification result dictionary
     """
+    # The abort handles these, so a run with a dead worker notifies too.
+    if status == ExecutionStatus.STOPPED.value:
+        logger.info(
+            "Execution %s was stopped - the abort handles notifying", execution_id
+        )
+        return {
+            "status": "skipped",
+            "reason": "handled_by_abort",
+            "message": "The abort handles a stopped run's notifications",
+        }
+
     try:
         if not pipeline_id:
             logger.warning("No pipeline_id provided - skipping notifications")
@@ -726,8 +782,9 @@ def _extract_callback_parameters(
                 f"Fetching complete context from workflow execution {context.execution_id}"
             )
 
+            # file_execution=True: subscription billing reads context.file_executions.
             execution_response = api_client.get_workflow_execution(
-                context.execution_id, file_execution=False
+                context.execution_id, file_execution=True
             )
 
             if not execution_response.success:
@@ -760,9 +817,10 @@ def _extract_callback_parameters(
             temp_config = WorkerConfig()
             temp_api_client = InternalAPIClient(temp_config)
             try:
+                # file_execution=True: subscription billing reads context.file_executions.
                 execution_response = temp_api_client.get_workflow_execution(
                     context.execution_id,
-                    file_execution=False,
+                    file_execution=True,
                 )
 
                 if not execution_response.success:
@@ -808,6 +866,7 @@ def _extract_callback_parameters(
         ) or workflow_definition.get("workflow_id")
         # Status from the same fetch, for the PG duplicate guard (no extra call).
         context.execution_status = execution_info.get("status")
+        context.execution_context = execution_data
 
         # Use existing API detection from source_config (no additional API calls needed)
         is_api_deployment = source_config.get("is_api", False)
@@ -1292,22 +1351,29 @@ def _cleanup_execution_resources(context: CallbackContext) -> dict[str, Any]:
 def _track_subscription_usage_if_available(
     context: CallbackContext,
     execution_status: str,
+    successful_files: int = 0,
 ) -> dict[str, Any] | None:
     """Track subscription usage for successful file executions if plugin available.
 
     This is a non-blocking operation - errors are logged but do not fail the workflow.
-    Only tracks usage for completed workflows with successful file executions.
+    Only tracks usage for completed or stopped workflows with successful file
+    executions; files that completed before an abort are billed.
 
     Args:
         context: Callback execution context with organization and execution IDs
-        execution_status: Final execution status (should be COMPLETED for tracking)
+        execution_status: Final execution status (COMPLETED or STOPPED for tracking)
+        successful_files: Successful file count from the aggregated batch results,
+            used only to flag a fetch that came back without file-execution rows
 
     Returns:
         dict with status, committed_count, message if tracking attempted
         None if plugin not available or workflow not completed
     """
-    # Only track for completed workflows
-    if execution_status != ExecutionStatus.COMPLETED.value:
+    # Only track for workflows whose finished files stand
+    if execution_status not in (
+        ExecutionStatus.COMPLETED.value,
+        ExecutionStatus.STOPPED.value,
+    ):
         logger.debug(
             f"Skipping subscription tracking for execution {context.execution_id} "
             f"with status {execution_status}"
@@ -1336,6 +1402,15 @@ def _track_subscription_usage_if_available(
             and file_exec.get("id")
             and not file_exec.get("execution_error")
         ]
+
+        if successful_files and not context.file_executions:
+            # The rows come only from a fetch with file_execution=True; without
+            # them this usage would go unbilled with no other sign.
+            logger.warning(
+                f"{successful_files} successful files but no file executions in the "
+                f"callback context for execution {context.execution_id}; "
+                "subscription usage not committed"
+            )
 
         if not successful_file_exec_ids:
             logger.debug(
@@ -1430,9 +1505,10 @@ def _process_batch_callback_core(
     # Initialize performance optimizations
     _initialize_performance_managers()
 
-    # PG at-least-once duplicate guard (see _callback_already_ran).
-    # Popped BEFORE parameter extraction so the marker never flows into the context.
-    is_pg = bool(kwargs.pop(PG_TRANSPORT_CALLBACK_KWARG, False))
+    # Wire-compat only: PgBarrier stamps this marker on every callback it fires.
+    # Nothing branches on it since UN-4078 (PG is the only transport), but it is
+    # popped BEFORE parameter extraction so it never flows into the context.
+    kwargs.pop(PG_TRANSPORT_CALLBACK_KWARG, None)
 
     # Extract and validate all parameters using single source of truth
     context = _extract_callback_parameters(task_instance, results, kwargs)
@@ -1460,7 +1536,7 @@ def _process_batch_callback_core(
             # completed — don't re-fire webhooks / re-count billing. Reuses the
             # status from _extract_callback_parameters' fetch (no extra call).
             # (Returns through the outer finally, which closes the api_client.)
-            if is_pg and _callback_already_ran(context.execution_status):
+            if _callback_already_ran(context.execution_status):
                 logger.warning(
                     f"PG callback: execution {context.execution_id} already COMPLETED "
                     f"— a previous callback finalized it; skipping duplicate side "
@@ -1476,6 +1552,7 @@ def _process_batch_callback_core(
                         api_client=context.api_client,
                         execution_id=context.execution_id,
                         organization_id=context.organization_id,
+                        execution_context=context.execution_context,
                     )
                 )
                 # Update workflow execution status using unified function
@@ -1486,8 +1563,8 @@ def _process_batch_callback_core(
                     aggregated_results=aggregated_results,
                     organization_id=context.organization_id,
                     error_message=None,
-                    is_pg=is_pg,
                 )
+                execution_status = execution_update_result["final_status"]
                 # Handle pipeline updates using unified function (non-API deployment)
                 pipeline_result = _handle_pipeline_updates_unified(
                     context, execution_status, is_api_deployment=False
@@ -1497,6 +1574,7 @@ def _process_batch_callback_core(
                 subscription_tracking_result = _track_subscription_usage_if_available(
                     context=context,
                     execution_status=execution_status,
+                    successful_files=aggregated_results.get("successful_files", 0),
                 )
 
                 # Add missing UI logs for cost and final workflow status (matching backend behavior)
@@ -1566,6 +1644,9 @@ def _process_batch_callback_core(
                         {"error": str(e)[:500]},
                         context.organization_id,
                         error_message=str(e)[:500],
+                        # Already handling a failure: a raise here would replace
+                        # the original error with the status-write error.
+                        raise_on_failure=False,
                     )
                     logger.info(
                         f"Marked execution {context.execution_id} as failed using unified function"
@@ -1643,8 +1724,9 @@ def process_batch_callback_api(
     execution_id = kwargs.get("execution_id")
     pipeline_id = kwargs.get("pipeline_id")
     organization_id = kwargs.get("organization_id")
-    # PG at-least-once duplicate guard marker (see _callback_already_ran).
-    is_pg = bool(kwargs.pop(PG_TRANSPORT_CALLBACK_KWARG, False))
+    # Wire-compat only: stamped by PgBarrier on every callback it fires. Nothing
+    # branches on it since UN-4078; popped so it never flows into the context.
+    kwargs.pop(PG_TRANSPORT_CALLBACK_KWARG, None)
 
     if not execution_id:
         raise ValueError("execution_id is required in kwargs")
@@ -1662,8 +1744,9 @@ def process_batch_callback_api(
     logger.info(f"Created organization-scoped API client: {organization_id}")
 
     try:
+        # file_execution=True: subscription billing reads context.file_executions.
         execution_response = api_client.get_workflow_execution(
-            execution_id, file_execution=False
+            execution_id, file_execution=True
         )
         if not execution_response.success:
             raise RuntimeError(
@@ -1677,7 +1760,7 @@ def process_batch_callback_api(
         # prior delivery already completed must skip its side effects. Reuses the
         # status just fetched — no extra round-trip. (Returns through the finally
         # below, which closes the api_client.)
-        if is_pg and _callback_already_ran(workflow_execution.get("status")):
+        if _callback_already_ran(workflow_execution.get("status")):
             logger.warning(
                 f"PG API callback: execution {execution_id} already COMPLETED — a "
                 f"previous callback finalized it; skipping duplicate side effects "
@@ -1736,6 +1819,7 @@ def process_batch_callback_api(
                         api_client=api_client,
                         execution_id=execution_id,
                         organization_id=organization_id,
+                        execution_context=execution_context,
                     )
                 )
 
@@ -1746,8 +1830,8 @@ def process_batch_callback_api(
                     final_status=execution_status,
                     aggregated_results=aggregated_results,
                     organization_id=organization_id,
-                    is_pg=is_pg,
                 )
+                execution_status = execution_update_result["final_status"]
 
                 # Create minimal context for unified pipeline handling
                 context = CallbackContext()
@@ -1794,6 +1878,7 @@ def process_batch_callback_api(
                 subscription_tracking_result = _track_subscription_usage_if_available(
                     context=context,
                     execution_status=execution_status,
+                    successful_files=aggregated_results.get("successful_files", 0),
                 )
 
                 # Handle notifications using unified function
@@ -1870,6 +1955,26 @@ def process_batch_callback_api(
             logger.warning("api_client.close() failed during cleanup: %s", e)
 
 
+def _final_log_counts(
+    aggregated_results: dict[str, Any],
+    execution_data: dict[str, Any] | None,
+    execution_status: str,
+) -> tuple[int, int, int]:
+    """Total, successful and failed files for the final log line.
+
+    A stopped run logs the counts the backend saved from its file rows.
+    """
+    counts = aggregated_results
+    if execution_status == ExecutionStatus.STOPPED.value:
+        saved = (execution_data or {}).get("execution") or {}
+        counts = {**aggregated_results, **saved}
+    return (
+        counts.get("total_files") or 0,
+        counts.get("successful_files") or 0,
+        counts.get("failed_files") or 0,
+    )
+
+
 def _publish_final_workflow_ui_logs(
     context: "CallbackContext",
     aggregated_results: dict[str, Any],
@@ -1886,11 +1991,6 @@ def _publish_final_workflow_ui_logs(
         execution_status: Final execution status
     """
     try:
-        # Extract file statistics from aggregated results
-        total_files = aggregated_results.get("total_files", 0)
-        successful_files = aggregated_results.get("successful_files", 0)
-        failed_files = aggregated_results.get("failed_files", 0)
-
         # Get execution data to extract cost information (with cost calculation)
         execution_response = context.api_client.get_workflow_execution(
             context.execution_id, include_cost=True, file_execution=False
@@ -1903,6 +2003,9 @@ def _publish_final_workflow_ui_logs(
 
         # Cost data is at the top level of response when include_cost=True
         aggregated_usage_cost = execution_response.data.get("aggregated_usage_cost")
+        total_files, successful_files, failed_files = _final_log_counts(
+            aggregated_results, execution_response.data, execution_status
+        )
 
         # Create workflow logger for UI feedback
         # Use general workflow logger since this is called from general workflow callback
@@ -1926,6 +2029,7 @@ def _publish_final_workflow_ui_logs(
                 total_files=total_files,
                 successful_files=successful_files,
                 failed_files=failed_files,
+                stopped=execution_status == ExecutionStatus.STOPPED.value,
             )
 
             logger.info(
@@ -1960,11 +2064,6 @@ def _publish_final_workflow_ui_logs_api(
         execution_status: Final execution status
     """
     try:
-        # Extract file statistics from aggregated results
-        total_files = aggregated_results.get("total_files", 0)
-        successful_files = aggregated_results.get("successful_files", 0)
-        failed_files = aggregated_results.get("failed_files", 0)
-
         # Get execution data to extract cost information (with cost calculation)
         execution_response = context.api_client.get_workflow_execution(
             context.execution_id, include_cost=True, file_execution=False
@@ -1977,6 +2076,9 @@ def _publish_final_workflow_ui_logs_api(
 
         # Cost data is at the top level of response when include_cost=True
         aggregated_usage_cost = execution_response.data.get("aggregated_usage_cost")
+        total_files, successful_files, failed_files = _final_log_counts(
+            aggregated_results, execution_response.data, execution_status
+        )
 
         # Create workflow logger for UI feedback
         # Use API workflow logger since this is called from API workflow callback
@@ -2000,6 +2102,7 @@ def _publish_final_workflow_ui_logs_api(
                 total_files=total_files,
                 successful_files=successful_files,
                 failed_files=failed_files,
+                stopped=execution_status == ExecutionStatus.STOPPED.value,
             )
 
             logger.info(

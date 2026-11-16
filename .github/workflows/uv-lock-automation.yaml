@@ -38,7 +38,7 @@ jobs:
           ref: ${{ github.head_ref }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           # Install a specific version of uv.
           version: "0.6.14"
@@ -72,7 +72,7 @@ jobs:
         shell: bash
 
       - name: Commit uv.lock changes
-        uses: stefanzweifel/git-auto-commit-action@v7
+        uses: stefanzweifel/git-auto-commit-action@d0b01107b5db882071f96de5dd4b54961ea93f4c # v7.2.1
         with:
           commit_message: Commit uv.lock changes
           commit_user_name: uv-lock-automation[bot]

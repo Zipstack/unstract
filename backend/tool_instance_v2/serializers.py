@@ -52,6 +52,20 @@ class ToolInstanceSerializer(AuditSerializer):
             },
         }
 
+    def validate_workflow(self, value):
+        """Refuse reparenting: the gate authorises against the stored parent."""
+        if self.instance and value != self.instance.workflow:
+            raise ValidationError("A tool cannot be moved to another workflow.")
+        return value
+
+    def validate_workflow_id(self, value):
+        """Same guard for the declared alias -- ``workflow_id`` is the FK's
+        attname, so DRF writes the column through it directly.
+        """
+        if self.instance and str(value) != str(self.instance.workflow_id):
+            raise ValidationError("A tool cannot be moved to another workflow.")
+        return value
+
     def to_representation(self, instance: ToolInstance) -> dict[str, str]:
         rep: dict[str, Any] = super().to_representation(instance)
         tool_function = rep.get(TIKey.TOOL_ID)

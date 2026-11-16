@@ -432,3 +432,16 @@ class TestRetryabilityIsClassifiedOnce:
         assert safe_host("https://example.com/hook?token=secret") == "example.com"
         assert safe_host("http://[::1") == "<unparseable>"
         assert safe_host(None) == "<none>"
+
+
+@pytest.mark.parametrize("resolve", [True, False])
+@pytest.mark.parametrize(
+    "url", ["http://\x00/", "http://a\x00b/", "http://127.0.0.1\x00.example.com/", "http://a\x7fb/"]
+)
+def test_control_character_in_host_is_unparseable_not_raised(url, resolve):
+    # inet_aton raises on a NUL and the resolver truncates at one, so neither
+    # can judge such a host; refused before either sees it, and not as the
+    # retryable UNRESOLVABLE.
+    with patch("socket.getaddrinfo") as resolver:
+        assert webhook_url_refusal(url, resolve=resolve) == REFUSED_UNPARSEABLE
+    resolver.assert_not_called()

@@ -52,15 +52,32 @@ groups:
     # runner points vitest's own JUnit reporter at the group's junit.xml, so
     # results come through per-test rather than as one synthetic row.
     #
-    # `optional` because CI images without `node_modules` should skip this
-    # rather than fail: the runner exits 5 ("nothing collected") when npx is
-    # absent, and optional keeps that from gating the overall result.
+    # Required: a red test gates the unit tier. It needs `node_modules`, so
+    # ci-test.yaml installs frontend deps on the unit leg; with them missing,
+    # `npx --no-install vitest` fails and turns the group red. A host with no
+    # npx at all (cloud's self-hosted runner) still skips via the runner's
+    # exit 5, which folds green for non-pytest groups.
+    #
+    # Excludes src/v1, which vitest.config.mjs leaves to `frontend-v1-unit`.
     tier: unit
     runner: vitest
     workdir: frontend
     paths: [src]
     timeout_seconds: 900
-    optional: true
+
+  frontend-v1-unit:
+    # The v1 frontend's unit tests (epic UN-4257, D10 prefix): src/v1 minus
+    # plugins/, under its own config (vitest.v1.config.mts), so a v1 result
+    # never changes the `frontend` group's and the reverse. The config also
+    # enforces v1's own coverage threshold, reported to frontend/coverage/v1.
+    # Cloud v1 plugins run in the cloud overlay's `frontend-v1-unit-cloud`.
+    # Same Node prerequisites as `frontend`.
+    tier: unit
+    runner: vitest
+    workdir: frontend
+    vitest_config: vitest.v1.config.mts
+    paths: [src/v1]
+    timeout_seconds: 900
 
   unit-rig:
     # Rig self-tests. Run from repo root so the `tests.rig` import resolves.
@@ -85,10 +102,20 @@ groups:
     coverage_source: src
     optional: true   # service has only a couple of tests today
 
+  unit-x2text-service:
+    tier: unit
+    workdir: x2text-service
+    paths: [tests]
+    uv_sync_group: test
+    coverage_source: app
+
   unit-workers:
     tier: unit
     workdir: workers
-    paths: [tests, shared/tests]
+    # executor/tests: the executor's own unit tests (image-limit resolution,
+    # the vlm_image_answer bridge); no lane collected them before UN-4427.
+    paths: [tests, shared/tests, shared/infrastructure/config/tests,
+            ide_callback/tests, executor/tests]
     # Negative filter: worker unit tests aren't tagged `unit` (~1100 of them),
     # so select by exclusion. `conftest.py` marks real-Postgres tests
     # `integration` (routed to the `integration-workers` group); `slow` tests are
@@ -127,6 +154,25 @@ groups:
     install_editable: true
     coverage_source: src
 
+  # Both of these had tests but NO group, so nothing collected them. For
+  # agent-kv-schema that mattered specifically: test_compile.py is the
+  # regression net for the schema depth/ReDoS caps, so the caps were asserted
+  # only on a developer's machine. A PR reporting "165 passed" for this package
+  # was reporting a local figure, not a CI one.
+  unit-agent-kv-schema:
+    tier: unit
+    workdir: unstract/agent-kv-schema
+    paths: [tests]
+    install_editable: true
+    coverage_source: src
+
+  unit-filesystem:
+    tier: unit
+    workdir: unstract/filesystem
+    paths: [tests]
+    install_editable: true
+    coverage_source: src
+
   # runner/tests was registered in NO group, so it was collected by nothing. Its
   # only suite guards that LOG_TRANSPORT and LOG_STREAM_QUEUE_NAME reach the tool
   # sidecar's hand-picked env allowlist — a list that drops anything not named in
@@ -139,6 +185,15 @@ groups:
     workdir: runner
     paths: [tests]
     uv_sync_group: test
+    install_editable: true
+    coverage_source: src
+
+  # Guards that the sidecar's startup check asks for the Celery broker only on the
+  # Celery log transport. No `test` uv group in tool-sidecar; rig injects pytest.
+  unit-tool-sidecar:
+    tier: unit
+    workdir: tool-sidecar
+    paths: [tests]
     install_editable: true
     coverage_source: src
 
@@ -253,6 +308,29 @@ groups:
     depends_on: [e2e-smoke]
     optional: true
 
+  # Agent-KV product API (/agent-kv/...). Needs the cloud `agentic_kv`
+  # executor plugin installed (docs/agent-kv-api.md §11) -- an OSS-only image
+  # 501s every submit, so this is optional: an OSS-only CI run must not go
+  # red just because the plugin isn't there. The module itself additionally
+  # self-gates on AGENT_KV_E2E=1 so it never runs by accident even when the
+  # platform happens to be up (see tests/e2e/agent_kv/test_agent_kv_e2e.py).
+  # Longer budget than the other platform groups: the happy-path and delete
+  # scenarios poll a real extraction job through to COMPLETED.
+  e2e-agent-kv:
+    tier: e2e
+    paths: [tests/e2e/agent_kv]
+    requires_platform: true
+    depends_on: [e2e-smoke]
+    optional: true
+    timeout_seconds: 1200
+    # Serial, not xdist-parallel: the concurrency scenario deliberately
+    # saturates the org's AgentKVConcurrencyLimiter slots, which
+    # JobCancelView never releases (only a finalize callback does, by
+    # design -- see the scenario's own docstring). Running sibling
+    # submit-based tests on other xdist workers at the same moment would
+    # let that saturation 429 them too.
+    parallel: false
+
   ui:
     # Playwright browser e2e over the real UI. Scaffolding only for now — the
     # spec directory holds a single smoke test; extend it here.
@@ -277,3 +355,24 @@ groups:
     depends_on: [e2e-smoke]
     timeout_seconds: 1800
     optional: true
+
+  # ── Frontend v1 (epic UN-4257) ─────────────────────────────────────────────
+  # `frontend-v1` prefix (D10): v1 results sort together and apart from
+  # `frontend` and `ui`, so v1 never pollutes v0 results.
+  frontend-v1-e2e:
+    # Playwright over the v1 pages: one spec per page task in specs/, the
+    # P8-T01 journeys in journeys/. Self-contained like `ui` (own package.json,
+    # lock and Playwright). Tests tagged for UNSTRACT_DISTRIBUTION (default
+    # oss) run, tests tagged only for another are not collected, and untagged
+    # ones fail; see tests/e2e/ui-v1/fixtures/tags.ts.
+    # Gating in OSS CI: ci-test.yaml's e2e job installs its node_modules and
+    # browser, so a red run fails the build. Locally, install them first
+    # (tests/e2e/ui-v1/README.md). Like every Node group, it reads as skipped
+    # (exit 5) on a machine with no `npx` at all.
+    tier: e2e
+    runner: playwright
+    workdir: tests/e2e/ui-v1
+    paths: ["."]
+    requires_platform: true
+    depends_on: [e2e-smoke]
+    timeout_seconds: 1800

@@ -20,6 +20,12 @@ class PromptServiceConstants:
     VECTOR_DB = "vector-db"
     EMBEDDING = "embedding"
     X2TEXT_ADAPTER = "x2text_adapter"
+    # Extract-file path that is never rewritten by summarize-as-source /
+    # smart-table overrides — the page-image reader keys on this.
+    EXTRACT_FILE_PATH = "extract_file_path"
+    # Per-prompt stamp of the x2text adapter's output mode (LLMWhisperer
+    # only); lets image-mode detection skip the platform-service call.
+    X2TEXT_OUTPUT_MODE = "x2text_output_mode"
     CHUNK_OVERLAP = "chunk-overlap"
     LLM = "llm"
     IS_ASSERT = "is_assert"
@@ -195,6 +201,9 @@ class IndexingConstants:
     EMBEDDING_INSTANCE_ID = "embedding_instance_id"
     VECTOR_DB_INSTANCE_ID = "vector_db_instance_id"
     X2TEXT_INSTANCE_ID = "x2text_instance_id"
+    # LLM adapter instance ids that will consume an image-mode extraction;
+    # their image-request limits are checked before the billed conversion.
+    LLM_INSTANCE_IDS = "llm_instance_ids"
     FILE_PATH = "file_path"
     CHUNK_SIZE = "chunk_size"
     CHUNK_OVERLAP = "chunk_overlap"

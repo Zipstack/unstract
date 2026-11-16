@@ -7,6 +7,7 @@ from account_v2.views import (
     get_session_data,
     login,
     logout,
+    product_preference,
     set_organization,
     signup,
 )
@@ -20,4 +21,9 @@ urlpatterns = [
     path("organization", get_organizations, name="get_organizations"),
     path("organization/<str:id>/set", set_organization, name="set_organization"),
     path("organization/create", create_organization, name="create_organization"),
+    path(
+        "users/me/product-preference/",
+        product_preference,
+        name="product_preference",
+    ),
 ]

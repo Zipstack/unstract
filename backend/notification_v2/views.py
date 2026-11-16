@@ -8,8 +8,14 @@ from pipeline_v2.exceptions import PipelineNotFound
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from platform_api.permissions import IsOrganizationAdmin
+from platform_audit.actions import Action, TargetType
+from platform_audit.recorder import (
+    BEFORE_UNAVAILABLE,
+    best_effort,
+    record_platform_event,
+)
 from rest_framework import status, viewsets
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -53,6 +59,19 @@ class NotificationViewSet(viewsets.ModelViewSet):
         return queryset
 
 
+class CanChangePlatformDefaults(BasePermission):
+    message = "Change platform defaults is restricted to organisation admins."
+
+    def has_permission(self, request, view):
+        from tenant_account_v2.capabilities import Capability, opened_to_members
+
+        return IsOrganizationAdmin().has_permission(request, view) or opened_to_members(
+            request.user,
+            UserContext.get_organization(),
+            Capability.CHANGE_PLATFORM_DEFAULTS,
+        )
+
+
 class NotificationSettingsView(APIView):
     """Org-scoped notification batching settings — currently just the club interval.
 
@@ -64,7 +83,10 @@ class NotificationSettingsView(APIView):
     flush_after.
     """
 
-    permission_classes = [IsAuthenticated, IsOrganizationAdmin]
+    # Admins, or members when the org lets members change platform defaults
+    # (UN-4399). Platform defaults are otherwise per-user; this is the only
+    # organisation-level setting the capability governs.
+    permission_classes = [IsAuthenticated, CanChangePlatformDefaults]
 
     def get(self, request: Request) -> Response:
         organization = UserContext.get_organization()
@@ -89,9 +111,47 @@ class NotificationSettingsView(APIView):
             ConfigKey.NOTIFICATION_CLUB_INTERVAL.cast_value(new_value)
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        before = _club_interval(organization)
         Configuration.objects.update_or_create(
             organization=organization,
             key=ConfigKey.NOTIFICATION_CLUB_INTERVAL.name,
             defaults={"value": str(new_value), "enabled": True},
         )
+        # ``before`` is None only when it could not be read: record the change
+        # without a before side rather than claim the setting was unset.
+        if before != int(new_value):
+            record_platform_event(
+                action=Action.PLATFORM_SETTING_CHANGED,
+                target_type=TargetType.PLATFORM_SETTING,
+                target_id="club_interval_seconds",
+                target_name="club_interval_seconds",
+                changes={
+                    "before": None
+                    if before is None
+                    else {"club_interval_seconds": before},
+                    "after": {"club_interval_seconds": int(new_value)},
+                },
+                summary=f"club_interval_seconds: {before} → {int(new_value)}"
+                if before is not None
+                else f"club_interval_seconds → {int(new_value)} {BEFORE_UNAVAILABLE}",
+                request=request,
+            )
         return Response({"club_interval_seconds": int(new_value)})
+
+
+@best_effort
+def _club_interval(organization) -> int:
+    """The interval in effect, or ``None`` (via ``best_effort``) if unreadable.
+
+    Reads the override itself: ``get_value_by_organization`` returns the
+    default on any error, a failed query included, which would be recorded as
+    the previous value.
+    """
+    key = ConfigKey.NOTIFICATION_CLUB_INTERVAL
+    override = Configuration.objects.filter(
+        organization=organization, key=key.name
+    ).first()
+    if override is not None and override.enabled and override.typed_value is not None:
+        return int(override.typed_value)
+    # No usable override: the default is what was in effect.
+    return int(Configuration.get_value_by_organization(key, None))

@@ -76,7 +76,7 @@ function useMetricsOverview(startDate = null, endDate = null) {
       setLoading(false);
       setError(null);
     }
-  }, [orgId, startDate, endDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [orgId, startDate, endDate]);
 
   // refetch bypasses cache
   const refetch = useCallback(() => fetchOverview(true), [fetchOverview]);
@@ -127,7 +127,7 @@ function useRecentActivity(limit = 10) {
       setLoading(false);
       setError(null);
     }
-  }, [orgId, limit]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [orgId, limit]);
 
   return { data, loading, error, refetch: fetchActivity };
 }
@@ -204,7 +204,7 @@ function useDeploymentUsage(deploymentType, startDate, endDate) {
       setLoading(false);
       setError(null);
     }
-  }, [orgId, deploymentType, startDate, endDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [orgId, deploymentType, startDate, endDate]);
 
   // refetch bypasses both frontend and backend caches
   const refetch = useCallback(() => fetchUsage(true), [fetchUsage]);
@@ -275,7 +275,7 @@ function useSubscriptionUsage() {
       setLoading(false);
       setError(null);
     }
-  }, [orgId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [orgId]);
 
   return { data, loading, error, refetch: fetchUsage };
 }

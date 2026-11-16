@@ -84,7 +84,7 @@ class TestUpdateQueueMessageIdWriteShape:
     has advanced status, it reverts the cache to the stale value with no later
     corrector and the API-deployment sync-poll blocks to its full timeout. The
     codebase already uses the queryset-``.update()`` pattern for the same reason
-    in ``_set_result_acknowledge``; this pins it for the marker write too.
+    in ``set_result_acknowledge``; this pins it for the marker write too.
     """
 
     def test_write_uses_queryset_update_not_save(self):

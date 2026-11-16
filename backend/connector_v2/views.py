@@ -2,26 +2,37 @@ import logging
 from typing import Any
 
 from account_v2.custom_exceptions import DuplicateData
+from connection_check.filters import filter_by_test_status
+from connection_check.models import ConnectorTestResult
+from connection_check.schema import LIST_FILTER_PARAMETERS, connection_test_schema
+from connection_check.serializers import ConnectionCheckResultSerializer
+from connection_check.services import run_and_record
 from connector_auth_v2.constants import ConnectorAuthKey
 from connector_auth_v2.exceptions import CacheMissException, MissingParamException
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
+from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.exceptions import OAuthTimeOut
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
+from django.utils import timezone
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
-from permissions.roles import ResourceRole
+from platform_audit.actions import Action
+from platform_audit.resources import record_resource_event, resource_ref
 from plugins import get_plugin
+from resource_usage.constants import ProfileKind
+from resource_usage.pagination import UsageCountPagination
+from resource_usage.schema import USAGE_LIST_PARAMETERS, usage_schema
+from resource_usage.views import ProfileUsageMixin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
-from tenant_account_v2.organization_member_service import OrganizationMemberService
+from tenant_account_v2.capabilities import Capability, enforce_capability
 from utils.filtering import FilterHelper
-from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 
 from backend.constants import RequestKey
@@ -31,22 +42,33 @@ from unstract.connectors.enums import ConnectorMode
 
 from .exceptions import DeleteConnectorInUseError
 from .models import ConnectorInstance
-from .serializers import ConnectorInstanceSerializer, SharedUserListSerializer
+from .serializers import (
+    ConnectorInstanceSerializer,
+    ConnectorInstanceWithStatusSerializer,
+    SharedUserListSerializer,
+)
 
 notification_plugin = get_plugin("notification")
 if notification_plugin:
     from plugins.notification.constants import ResourceType
-    from plugins.notification.sharing_notification import SharingNotificationService
 
 logger = logging.getLogger(__name__)
 
 
+@extend_schema_view(
+    list=extend_schema(parameters=LIST_FILTER_PARAMETERS + USAGE_LIST_PARAMETERS),
+    usage=usage_schema(ProfileKind.CONNECTOR),
+)
 class ConnectorInstanceViewSet(
-    OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+    ProfileUsageMixin,
+    OwnerManagementMixin,
+    ResourceShareManagementMixin,
+    viewsets.ModelViewSet,
 ):
+    usage_kind = ProfileKind.CONNECTOR
     versioning_class = URLPathVersioning
-    serializer_class = ConnectorInstanceSerializer
-    pagination_class = OptionalPagination
+    serializer_class = ConnectorInstanceWithStatusSerializer
+    pagination_class = UsageCountPagination
     # `pk` tiebreaker keeps paging deterministic when modified_at collides.
     ordering = ["-modified_at", "pk"]
     ordering_fields = ["connector_name", "created_at", "modified_at"]
@@ -64,6 +86,7 @@ class ConnectorInstanceViewSet(
             "partial_update",
             "add_co_owner",
             "remove_co_owner",
+            "test_and_record",
         ]:
             return [IsOwner()]
 
@@ -77,24 +100,24 @@ class ConnectorInstanceViewSet(
         for everyone. Applies to all connector types (all connect to external
         systems).
         """
-        if getattr(request.user, "is_service_account", False):
-            return
-        organization = UserContext.get_organization()
-        if (
-            organization
-            and organization.restrict_connector_creation
-            and not OrganizationMemberService.is_user_organization_admin(request.user)
-        ):
-            raise PermissionDenied(
-                "Connector creation is restricted to organization admins. "
-                "Please contact your organization admin."
-            )
+        enforce_capability(request, Capability.CREATE_CONNECTORS)
 
     def get_queryset(self) -> QuerySet | None:
+        queryset = self.get_status_base_queryset()
+        # The test-status filters are for the list only.
+        if self.action == "list":
+            queryset = filter_by_test_status(queryset, self.request.query_params)
+            queryset = self.filter_by_usage(queryset)
+        return queryset
+
+    def get_status_base_queryset(self) -> QuerySet:
+        """Visible connectors with every list filter except the test-status and
+        usage ones.
+        """
         # Avoid per-row queries for owner/co-owner + creator fields in list views
         queryset = (
             ConnectorInstance.objects.for_user(self.request.user)
-            .select_related("created_by")
+            .select_related("created_by", "test_result")
             .prefetch_related("memberships__user")
         )
 
@@ -258,9 +281,8 @@ class ConnectorInstanceViewSet(
             )
         # ``created_by`` is audit-only; the creator's access flows through an
         # OWNER membership row (UN-2202 co-owners).
-        serializer.instance.memberships.get_or_create(
-            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
-        )
+        serializer.instance.grant_owner(request.user)
+        record_resource_event(request, Action.RESOURCE_CREATED, serializer.instance)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -268,6 +290,24 @@ class ConnectorInstanceViewSet(
     def list_of_shared_users(self, request: Request, pk: Any = None) -> Response:
         connector = self.get_object()
         return Response(SharedUserListSerializer(connector).data)
+
+    @connection_test_schema("connector")
+    @action(detail=True, methods=["post"])
+    def test_and_record(self, request: Request, pk: str | None = None) -> Response:
+        """Test the saved connector and return the result."""
+        # Taken before loading, so an edit saved meanwhile reads as untested.
+        tested_at = timezone.now()
+        connector = self.get_object()
+        result = run_and_record(
+            ConnectorTestResult,
+            connector,
+            lambda: ConnectorProcessor.test_connectors(
+                connector_id=connector.connector_id,
+                credentials=connector.connector_metadata or {},
+            ),
+            tested_at,
+        )
+        return Response(ConnectionCheckResultSerializer(result).data)
 
     def perform_destroy(self, instance: ConnectorInstance) -> None:
         """Override perform_destroy to handle ProtectedError gracefully.
@@ -278,6 +318,7 @@ class ConnectorInstanceViewSet(
         Raises:
             DeleteConnectorInUseError: If the connector is being used in workflows
         """
+        deleted = resource_ref(instance)
         try:
             super().perform_destroy(instance)
         except ProtectedError:
@@ -286,45 +327,4 @@ class ConnectorInstanceViewSet(
                 f" named {instance.connector_name}"
             )
             raise DeleteConnectorInUseError(connector_name=instance.connector_name)
-
-    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        """Override to handle sharing notifications."""
-        instance = self.get_object()
-        before = self.snapshot_share_axes(instance)
-
-        response = super().partial_update(request, *args, **kwargs)
-        if response.status_code == 200 and notification_plugin:
-            self._notify_shared_users(instance, before, request.data, request.user)
-        return response
-
-    def _notify_shared_users(
-        self,
-        instance: ConnectorInstance,
-        before: dict[str, set[Any]],
-        request_data: dict[str, Any],
-        actor: Any,
-    ) -> None:
-        """Email users newly added to ``shared_users`` (best-effort)."""
-        users_diff = self.diff_share_axes(instance, before, request_data).get(
-            "shared_users"
-        )
-        if not (users_diff and users_diff.added):
-            return
-        try:
-            SharingNotificationService().send_sharing_notification(
-                resource_type=ResourceType.CONNECTOR.value,
-                resource_name=instance.connector_name,
-                resource_id=str(instance.id),
-                shared_by=actor,
-                shared_to=list(users_diff.added),
-                resource_instance=instance,
-            )
-            logger.info(
-                "Sent sharing notifications for connector to %d users",
-                len(users_diff.added),
-            )
-        except Exception as e:
-            logger.exception(
-                "Failed to send sharing notification, continuing update though: %s",
-                str(e),
-            )
+        record_resource_event(self.request, Action.RESOURCE_DELETED, deleted)

@@ -30,6 +30,7 @@ const CreateApiDeploymentModal = ({
   workflowEndpointList = [],
   setDeploymentName,
   onDeploymentCreated,
+  refreshList,
 }) => {
   const workflowStore = useWorkflowStore();
   const { updateWorkflow } = workflowStore;
@@ -109,8 +110,9 @@ const CreateApiDeploymentModal = ({
             onDeploymentCreated();
           }
         } else {
-          // Add new deployment to list
-          setTableData((prev) => [res?.data, ...prev]);
+          // Refetch: the create response is a summary without the owner
+          // fields the list renders.
+          refreshList?.();
           setSelectedRow(res?.data);
           openCodeModal(true);
         }
@@ -294,6 +296,7 @@ CreateApiDeploymentModal.propTypes = {
   workflowEndpointList: PropTypes.object,
   setDeploymentName: PropTypes.func,
   onDeploymentCreated: PropTypes.func,
+  refreshList: PropTypes.func,
 };
 
 export { CreateApiDeploymentModal };

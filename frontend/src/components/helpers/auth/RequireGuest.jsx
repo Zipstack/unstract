@@ -6,6 +6,7 @@ import {
   publicRoutes,
 } from "../../../helpers/GetStaticData";
 import { useSessionStore } from "../../../store/session-store";
+import { ExternalRedirect } from "./ExternalRedirect";
 
 let selectedProductStore;
 let isLlmWhisperer;
@@ -17,6 +18,30 @@ try {
 } catch {
   // do nothing
 }
+
+/*
+ * A product whose home is not a route in this app.
+ *
+ * Every destination below resolves to a path this SPA serves, which is
+ * fine while every product IS one of this SPA's. A deployment can pair
+ * this app with a separate one, though — `config.flowUrl` is the existing
+ * example — and a visitor whose chosen product is that separate app has no
+ * address here. Without this they fall through to the last branch and land
+ * on Document Studio, which is not what they chose.
+ *
+ * The plugin store answers, because the set of products and where each one
+ * lives is its knowledge, not this file's. Absent plugin, absent hook or
+ * absent answer all mean "this product is one of ours", which is the
+ * behaviour this file had before the hook existed and is what an OSS-only
+ * build gets.
+ */
+const externalProductHome = () => {
+  try {
+    return selectedProductStore.externalHomeForSelectedProduct() || null;
+  } catch {
+    return null;
+  }
+};
 
 const RequireGuest = () => {
   const { sessionDetails } = useSessionStore();
@@ -40,6 +65,10 @@ const RequireGuest = () => {
     // Do nothing
   }
 
+  // Checked before the in-app destinations below: a separate app's home is
+  // not one of them, so none of those branches can express it.
+  const externalHome = externalProductHome();
+
   let navigateTo = `/${orgName}/onboard`;
   if (isLlmWhisperer) {
     navigateTo = `/llm-whisperer/${orgName}/playground`;
@@ -55,11 +84,16 @@ const RequireGuest = () => {
     navigateTo = `/${orgName}/review`;
   }
 
-  return !sessionDetails?.isLoggedIn && publicRoutes.includes(pathname) ? (
-    <Outlet />
-  ) : (
-    <Navigate to={navigateTo} />
-  );
+  if (!sessionDetails?.isLoggedIn && publicRoutes.includes(pathname)) {
+    return <Outlet />;
+  }
+  // `<Navigate>` cannot leave this app — it would ask the router for a
+  // path that is not registered here — so a separate app's home needs a
+  // real navigation.
+  if (externalHome) {
+    return <ExternalRedirect to={externalHome} />;
+  }
+  return <Navigate to={navigateTo} />;
 };
 
 export { RequireGuest };

@@ -63,6 +63,8 @@ class UserSessionInfo:
     provider: str
     is_staff: bool = False
     disable_sso_idp_authorization: bool = False
+    last_product: str | None = None
+    has_chosen: bool = False
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "UserSessionInfo":
@@ -77,6 +79,10 @@ class UserSessionInfo:
             disable_sso_idp_authorization=data.get(
                 "disable_sso_idp_authorization", False
             ),
+            last_product=data.get("last_product"),
+            # Derived from the product when absent, never defaulted to False:
+            # a stored product means the user has chosen.
+            has_chosen=data.get("has_chosen", data.get("last_product") is not None),
         )
 
     def to_dict(self) -> Any:
@@ -88,6 +94,8 @@ class UserSessionInfo:
             "role": self.role,
             "is_staff": self.is_staff,
             "disable_sso_idp_authorization": self.disable_sso_idp_authorization,
+            "last_product": self.last_product,
+            "has_chosen": self.has_chosen,
         }
 
 

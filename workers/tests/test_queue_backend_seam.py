@@ -183,32 +183,20 @@ class TestPublicSurface:
     def test_all_exports(self):
         import queue_backend
 
-        # Phase 6a added Barrier / BarrierHandle / CeleryChordBarrier.
-        # Phase 6b adds RedisDecrBarrier + barrier_decr_and_check
-        # (registered as a Celery task on import) + the BarrierBackend
-        # enum + the get_barrier factory that the WORKER_BARRIER_BACKEND
-        # env flag drives.
-        # Phase 8a adds QueueBackend + select_backend — the queue-transport
-        # routing gate that the WORKER_PG_QUEUE_ENABLED_TASKS allow-list
-        # drives.
-        # The PG-queue barrier work adds the Postgres barrier surface:
-        # PgBarrier + its barrier_pg_decr_and_check / barrier_pg_abort tasks,
-        # selected when WORKER_BARRIER_BACKEND routes to the PG backend.
+        # The surface after UN-4078 removed the Celery transport. What went:
+        # CeleryChordBarrier / RedisDecrBarrier (the two other substrates),
+        # BarrierBackend + get_barrier (the WORKER_BARRIER_BACKEND factory),
+        # barrier_abort / barrier_decr_and_check (the Redis link tasks), and
+        # barrier_pg_decr_and_check (the PG link-task wrapper — the decrement
+        # now runs in-body, so only the abort is still a task).
         assert set(queue_backend.__all__) == {
             "Barrier",
-            "BarrierBackend",
             "BarrierHandle",
-            "CeleryChordBarrier",
             "FairnessKey",
             "PgBarrier",
             "QueueBackend",
-            "RedisDecrBarrier",
-            "barrier_abort",
-            "barrier_decr_and_check",
             "barrier_pg_abort",
-            "barrier_pg_decr_and_check",
             "dispatch",
-            "get_barrier",
             "select_backend",
             "worker_task",
         }

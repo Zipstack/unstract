@@ -5,7 +5,7 @@ from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import cache, lru_cache
-from typing import Any, NoReturn, cast
+from typing import TYPE_CHECKING, Any, NoReturn, cast
 
 import litellm
 
@@ -15,7 +15,7 @@ from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.constants import Common as SdkCommon
 from unstract.sdk1.constants import ToolEnv
-from unstract.sdk1.exceptions import LLMError, SdkError, strip_litellm_prefix
+from unstract.sdk1.exceptions import LLMError, SdkError, format_provider_error
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.utils.common import (
@@ -25,10 +25,14 @@ from unstract.sdk1.utils.common import (
 from unstract.sdk1.utils.retry_utils import (
     acall_with_retry,
     call_with_retry,
+    collect_with_retry,
     is_retryable_litellm_error,
     iter_with_retry,
     pop_litellm_retry_kwargs,
 )
+
+if TYPE_CHECKING:
+    from unstract.sdk1.utils.image_limits import ImageRequestLimits, LimitsTable
 
 logger = logging.getLogger(__name__)
 
@@ -291,7 +295,10 @@ class LLM:
 
             self.kwargs = self.adapter.validate(self._adapter_metadata)
             self._cost_model = self.kwargs.pop("cost_model", None)
-            self.kwargs.pop("context_window", None)
+            # Adapters that know their model's context window better than
+            # litellm (MiniMax) report it here; kept for the image-mode token
+            # budget, never forwarded to litellm.
+            self._context_window = self.kwargs.pop("context_window", None)
             # Opt-in provider prompt caching (Anthropic / Bedrock-Anthropic).
             # Enabled either via adapter metadata (from the stored adapter
             # config) or the explicit constructor arg (for callers that build
@@ -301,6 +308,12 @@ class LLM:
                 bool(self.kwargs.pop("enable_prompt_caching", False))
                 or enable_prompt_caching
                 or is_prompt_caching_enabled()
+            )
+            # Per-adapter streaming switch. Read from the raw metadata because
+            # the provider validators drop keys they do not model, so it never
+            # reaches litellm as a completion param.
+            self._enable_streaming = self._resolve_enable_streaming(
+                self._adapter_metadata
             )
 
             # REF: https://docs.litellm.ai/docs/completion/input#translated-openai-params
@@ -436,6 +449,20 @@ class LLM:
         """
         return self._prompt_caching_active()
 
+    def _revalidate(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        """Re-validate the stored kwargs merged with per-call overrides.
+
+        ``cost_model`` was set aside at construction, so it is passed back here
+        -- after the per-call kwargs, so a caller cannot displace it. For
+        adapters whose routing id need not name the model (an Azure OpenAI
+        deployment name), it is the only surviving record of the real model id,
+        and the adapter needs it to decide which params the model accepts.
+        """
+        merged = {**self.kwargs, **kwargs}
+        if self._cost_model:
+            merged["cost_model"] = self._cost_model
+        return self.adapter.validate(merged)
+
     def _build_messages(
         self, prompt: str, cache_prefix: str | None = None
     ) -> list[dict[str, object]]:
@@ -496,6 +523,86 @@ class LLM:
             {"role": "user", "content": user_content},
         ]
 
+    # Streaming under the hood is on by default and a per-adapter choice
+    # (``enable_streaming`` in the adapter metadata, surfaced as "Enable
+    # Streaming" in every LLM adapter form). Adapters stored before the field
+    # existed carry no value and stream too; the switch exists to opt an
+    # endpoint out when it cannot stream.
+    #
+    # Why streaming: a non-streaming endpoint keeps the socket silent until the
+    # last token, so a reply that takes longer than the read timeout, or than
+    # an intermediary tolerates on an idle connection, never arrives (observed
+    # on Anthropic as ``litellm.Timeout`` after 900 s and 1800 s on generations
+    # the Anthropic console finishes in 16 minutes; Anthropic's own SDK refuses
+    # non-streaming requests that may exceed 10 minutes). With streaming,
+    # ``complete()`` collects the chunks and rebuilds the full response, so
+    # callers see the same shape as before.
+    _STREAM_BY_DEFAULT = True
+
+    @classmethod
+    def _resolve_enable_streaming(cls, adapter_metadata: Mapping[str, object]) -> bool:
+        """Adapter flag if stored, else the platform default (on)."""
+        flag = adapter_metadata.get("enable_streaming")
+        if flag is None:
+            return cls._STREAM_BY_DEFAULT
+        return bool(flag)
+
+    def _streams_under_the_hood(self) -> bool:
+        return self._enable_streaming
+
+    @staticmethod
+    def _chunk_has_content(chunk: object) -> bool:
+        """Whether a stream chunk carries generated text or reasoning.
+
+        Bookkeeping chunks (``message_start``, usage-only tails) do not count:
+        a failure before the first content chunk is still a failed request.
+        """
+        get = getattr(chunk, "get", None)
+        if not callable(get):
+            return False
+        choices = get("choices")
+        if not choices:
+            return False
+        delta = choices[0].get("delta") or {}
+        return bool(delta.get("content") or delta.get("reasoning_content"))
+
+    def _complete_via_stream(
+        self,
+        messages: list[dict[str, object]],
+        completion_kwargs: dict[str, object],
+        max_retries: int,
+    ) -> dict[str, object]:
+        """Run a streamed completion and rebuild the non-streaming response.
+
+        Retries follow ``collect_with_retry``: a failure before the first
+        content chunk is retried like a non-streaming call; a failure after
+        content started is raised as-is so a long generation is never
+        replayed. ``litellm.stream_chunk_builder`` reassembles content,
+        thinking blocks, ``finish_reason``, usage (including cache tokens)
+        and the provider response headers.
+        """
+        chunks = collect_with_retry(
+            lambda: litellm.completion(
+                messages=messages,
+                stream=True,
+                stream_options={"include_usage": True},
+                **completion_kwargs,
+            ),
+            max_retries=max_retries,
+            retry_predicate=is_retryable_litellm_error,
+            is_content=self._chunk_has_content,
+            description=self._get_adapter_info(),
+        )
+        response = litellm.stream_chunk_builder(chunks, messages=messages)
+        if response is None:
+            raise LLMError(
+                message=(
+                    f"Error from LLM adapter '{self._get_adapter_info()}': "
+                    "provider returned an empty stream"
+                )
+            )
+        return cast("dict[str, object]", response)
+
     @capture_metrics
     def complete(
         self,
@@ -527,7 +634,7 @@ class LLM:
                 f"[sdk1][LLM]Invoking {self.adapter.get_provider()} completion API"
             )
 
-            completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs = self._revalidate(kwargs)
             _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
             completion_kwargs.pop("enable_prompt_caching", None)
@@ -541,12 +648,23 @@ class LLM:
             max_retries = pop_litellm_retry_kwargs(
                 completion_kwargs, self._get_adapter_info()
             )
-            response: dict[str, object] = call_with_retry(
-                lambda: litellm.completion(messages=messages, **completion_kwargs),
-                max_retries=max_retries,
-                retry_predicate=is_retryable_litellm_error,
-                description=self._get_adapter_info(),
-            )
+            # A mocked completion (UNSTRACT_LLM_MOCK_RESPONSE, used by the e2e
+            # rig) never touches the network, so streaming buys nothing there,
+            # and litellm's mock reports fixed usage (10/20/30) only on the
+            # non-streaming path. The rig counts calls with that contract.
+            mocked = "mock_response" in completion_kwargs
+            response: dict[str, object]
+            if self._streams_under_the_hood() and not mocked:
+                response = self._complete_via_stream(
+                    messages, completion_kwargs, max_retries
+                )
+            else:
+                response = call_with_retry(
+                    lambda: litellm.completion(messages=messages, **completion_kwargs),
+                    max_retries=max_retries,
+                    retry_predicate=is_retryable_litellm_error,
+                    description=self._get_adapter_info(),
+                )
 
             response_text = response["choices"][0]["message"]["content"]
             finish_reason = response["choices"][0].get("finish_reason")
@@ -603,7 +721,7 @@ class LLM:
 
             error_msg = (
                 f"Error from LLM adapter '{self._get_adapter_info()}': "
-                f"{strip_litellm_prefix(str(e))}"
+                f"{format_provider_error(e)}"
             )
 
             raise LLMError(
@@ -652,7 +770,7 @@ class LLM:
                 f"[sdk1][LLM]Invoking {self.adapter.get_provider()} vision completion API"
             )
 
-            completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs = self._revalidate(kwargs)
             _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
             completion_kwargs.pop("enable_prompt_caching", None)
@@ -696,7 +814,7 @@ class LLM:
 
             error_msg = (
                 f"Error from LLM adapter '{self._get_adapter_info()}': "
-                f"{strip_litellm_prefix(str(e))}"
+                f"{format_provider_error(e)}"
             )
 
             raise LLMError(
@@ -715,6 +833,13 @@ class LLM:
         Chunks arrive as they stream from the provider. ``cache_prefix`` behaves
         as in :meth:`complete` — a stable prefix cached ahead of ``prompt`` when
         prompt caching is active for a supported provider.
+
+        A caller that stops iterating early, on purpose or because its own
+        code raised, must close the generator, e.g. with
+        ``contextlib.closing(llm.stream_complete(...))``. Otherwise the
+        provider's HTTP response is released only when the garbage collector
+        finalises it, which can deadlock the connection pool (see
+        ``retry_utils.close_stream``).
         """
         try:
             messages = self._build_messages(prompt, cache_prefix=cache_prefix)
@@ -722,7 +847,7 @@ class LLM:
                 f"[sdk1][LLM]Invoking {self.adapter.get_provider()} stream completion API"
             )
 
-            completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs = self._revalidate(kwargs)
             _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
             completion_kwargs.pop("enable_prompt_caching", None)
@@ -778,7 +903,7 @@ class LLM:
 
             error_msg = (
                 f"Error from LLM adapter '{self._get_adapter_info()}': "
-                f"{strip_litellm_prefix(str(e))}"
+                f"{format_provider_error(e)}"
             )
 
             raise LLMError(
@@ -803,7 +928,7 @@ class LLM:
                 f"[sdk1][LLM]Invoking {self.adapter.get_provider()} async completion API"
             )
 
-            completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs = self._revalidate(kwargs)
             _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
             completion_kwargs.pop("enable_prompt_caching", None)
@@ -858,7 +983,7 @@ class LLM:
 
             error_msg = (
                 f"Error from LLM adapter '{self._get_adapter_info()}': "
-                f"{strip_litellm_prefix(str(e))}"
+                f"{format_provider_error(e)}"
             )
 
             raise LLMError(
@@ -916,6 +1041,83 @@ class LLM:
             LLM model name
         """
         return self.kwargs["model"]
+
+    def get_cost_model_name(self) -> str:
+        """The real model id: ``cost_model`` when the routed id is an alias.
+
+        For Azure OpenAI the routed id is ``azure/<deployment>``, which no
+        capability or price registry knows; ``cost_model`` (``azure/gpt-4o``)
+        is the model actually served. Same id usage tracking prices with.
+        """
+        return self._cost_model or self.kwargs["model"]
+
+    def get_image_request_limits(
+        self, *, table: "LimitsTable | None" = None
+    ) -> "ImageRequestLimits":
+        """Vision image-request limits for this adapter's provider and model.
+
+        Keyed on the adapter provider and the validated model string (so a
+        Bedrock Mantle model resolves to the Mantle entry and MiniMax never
+        resolves as Anthropic), matched on the real model id when the routed
+        one is an alias (Azure ``cost_model``, Bedrock ``model_id``).
+        ``table`` defaults to the effective (possibly refreshed) table.
+        """
+        from unstract.sdk1.utils.image_limits import resolve_image_limits
+
+        model_id = self.kwargs.get("model_id")
+        return resolve_image_limits(
+            self.adapter.get_provider(),
+            self.kwargs["model"],
+            cost_model=self._cost_model,
+            extra_model_ids=[str(model_id)] if model_id else (),
+            table=table,
+        )
+
+    def get_image_input_token_budget(
+        self, *, table: "LimitsTable | None" = None
+    ) -> int | None:
+        """Context window for the image-mode token advisory, or None if unknown.
+
+        Order: the limits table's ``max_input_tokens`` override, the
+        adapter's own ``context_window``, then litellm's in-process registry
+        (``local_max_input_tokens``; no network call). Never
+        ``get_model_info`` (network, and a made-up fallback value). The
+        result feeds the warn-only context-window advisory.
+        """
+        from unstract.sdk1.utils.image_limits import local_max_input_tokens
+
+        override = self.get_image_request_limits(table=table).max_input_tokens.value
+        if override:
+            return override
+        if isinstance(self._context_window, int) and self._context_window > 0:
+            return self._context_window
+        return local_max_input_tokens(self.kwargs["model"], self._cost_model)
+
+    @classmethod
+    def image_input_limits_for(
+        cls,
+        adapter_id: str,
+        adapter_metadata: Mapping[str, object],
+        *,
+        refresh_table: bool = True,
+    ) -> "tuple[ImageRequestLimits, int | None]":
+        """``(limits, token_budget)`` for an adapter id + stored metadata.
+
+        Builds a metadata-only ``LLM`` (the adapter's local ``validate``; no
+        platform-service call, no provider network), so the backend can check
+        a profile's LLM from its stored adapter row. Never waits on GitHub:
+        the limits table is served from memory, and with ``refresh_table``
+        True (the default) a due refresh starts in the background; False
+        never starts one.
+        """
+        from unstract.sdk1.utils.image_limits import get_limits_table
+
+        table = None if refresh_table else get_limits_table(refresh=False)
+        llm = cls(adapter_id=adapter_id, adapter_metadata=dict(adapter_metadata))
+        return (
+            llm.get_image_request_limits(table=table),
+            llm.get_image_input_token_budget(table=table),
+        )
 
     def get_metrics(self) -> dict[str, object]:
         return self._metrics
@@ -1210,7 +1412,7 @@ class LLM:
                 # Needed as the text is modified in place.
                 response_text = response_compat.text
             except Exception as e:
-                logger.error(
+                logger.exception(
                     f"[sdk1][LLM][complete] Failed to post process response: {e}"
                 )
                 post_processed_output = {}

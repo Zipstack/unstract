@@ -14,11 +14,37 @@ try {
   // Plugin not available (OSS version)
 }
 
+/*
+ * The products a `selectedProduct` may name, from whoever defines them.
+ *
+ * This used to be a literal pair here, which made this file the place a
+ * deployment's product set was decided — and it is not: the plugin owns
+ * that set, and already does for the product chooser and the session
+ * check. A product the plugin knows but this literal did not was silently
+ * dropped from the login URL, so the backend never learned which product
+ * the visitor came for and the identity provider showed them the wrong
+ * branding.
+ *
+ * Falls back to the pair this file always had, which is what an OSS-only
+ * build (no plugins) gets and is exactly its previous behaviour.
+ */
+const FALLBACK_PRODUCTS = ["unstract", "llm-whisperer"];
+let knownProducts = FALLBACK_PRODUCTS;
+try {
+  const helpers = await import("../../plugins/helpers/common");
+  const names = Object.values(helpers.PRODUCT_NAMES ?? {});
+  if (names.length) {
+    knownProducts = names;
+  }
+} catch {
+  // Plugin not available (OSS version): keep the fallback.
+}
+
 function Login() {
   const baseUrl = getBaseUrl();
   const selectedProduct = localStorage.getItem("selectedProduct");
   const isValidProduct =
-    selectedProduct && ["unstract", "llm-whisperer"].includes(selectedProduct);
+    selectedProduct && knownProducts.includes(selectedProduct);
 
   const handleLogin = () => {
     const loginUrl = isValidProduct

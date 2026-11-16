@@ -3,10 +3,17 @@ import uuid
 from typing import Any
 
 from account_v2.models import User
+from connection_check.filters import filter_by_test_status
+from connection_check.models import AdapterTestResult
+from connection_check.schema import LIST_FILTER_PARAMETERS, connection_test_schema
+from connection_check.serializers import ConnectionCheckResultSerializer
+from connection_check.services import run_and_record
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from django.http import HttpRequest
 from django.http.response import HttpResponse
+from django.utils import timezone
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import (
     IsFrictionLessAdapter,
@@ -15,27 +22,42 @@ from permissions.permission import (
     IsOwnerOrSharedUserOrSharedToOrg,
 )
 from permissions.resource_share_views import ResourceShareManagementMixin
-from permissions.roles import ResourceRole
+from platform_audit.actions import Action, TargetType
+from platform_audit.recorder import (
+    BEFORE_UNAVAILABLE,
+    best_effort,
+    diff,
+    record_platform_event,
+)
+from platform_audit.resources import record_resource_event, resource_ref
 from plugins import get_plugin
+from resource_usage.constants import ProfileKind
+from resource_usage.pagination import UsageCountPagination
+from resource_usage.schema import USAGE_LIST_PARAMETERS, usage_schema
+from resource_usage.views import ProfileUsageMixin
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import ModelSerializer
 from rest_framework.versioning import URLPathVersioning
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
+from tenant_account_v2.capabilities import Capability, enforce_capability
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from tool_instance_v2.models import ToolInstance
 from utils.filtering import FilterHelper
-from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.constants import AdapterKeys
+from adapter_processor_v2.deprecated_adapters import (
+    get_deprecation_message,
+    is_adapter_deprecated,
+)
 from adapter_processor_v2.exceptions import (
     CannotDeleteDefaultAdapter,
     DeleteAdapterInUseError,
+    DeprecatedAdapter,
     DuplicateAdapterNameError,
     IdIsMandatory,
     InValidType,
@@ -43,7 +65,8 @@ from adapter_processor_v2.exceptions import (
 from adapter_processor_v2.serializers import (
     AdapterInfoSerializer,
     AdapterInstanceSerializer,
-    AdapterListSerializer,
+    AdapterInstanceWithStatusSerializer,
+    AdapterListWithStatusSerializer,
     DefaultAdapterSerializer,
     SharedUserListSerializer,
     TestAdapterSerializer,
@@ -54,8 +77,6 @@ from .constants import AdapterKeys as constant
 from .models import AdapterInstance, UserDefaultAdapter
 
 notification_plugin = get_plugin("notification")
-if notification_plugin:
-    from plugins.notification.constants import ResourceType
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +92,9 @@ class DefaultAdapterViewSet(ModelViewSet):
         serializer.is_valid(raise_exception=True)
         # Convert request data to json
         default_triad = request.data
+        before = _default_adapter_names(request.user)
         AdapterProcessor.set_default_triad(default_triad, request.user)
+        _record_defaults_changed(request, before)
         return Response(status=status.HTTP_200_OK)
 
     def get_default_triad(
@@ -130,6 +153,8 @@ class AdapterViewSet(GenericViewSet):
         serializer: AdapterInstanceSerializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         adapter_id = serializer.validated_data.get(AdapterKeys.ADAPTER_ID)
+        if is_adapter_deprecated(adapter_id):
+            raise DeprecatedAdapter(get_deprecation_message(adapter_id))
         adapter_metadata = serializer.validated_data.get(AdapterKeys.ADAPTER_METADATA)
         adapter_metadata[AdapterKeys.ADAPTER_TYPE] = serializer.validated_data.get(
             AdapterKeys.ADAPTER_TYPE
@@ -143,11 +168,17 @@ class AdapterViewSet(GenericViewSet):
         )
 
 
+@extend_schema_view(
+    list=extend_schema(parameters=LIST_FILTER_PARAMETERS + USAGE_LIST_PARAMETERS),
+    usage=usage_schema(ProfileKind.ADAPTER),
+)
 class AdapterInstanceViewSet(
-    OwnerManagementMixin, ResourceShareManagementMixin, ModelViewSet
+    ProfileUsageMixin, OwnerManagementMixin, ResourceShareManagementMixin, ModelViewSet
 ):
+    usage_kind = ProfileKind.ADAPTER
+    usage_fields = ("id", "organization", "adapter_name")
     serializer_class = AdapterInstanceSerializer
-    pagination_class = OptionalPagination
+    pagination_class = UsageCountPagination
     # `pk` tiebreaker keeps paging deterministic when modified_at collides.
     ordering = ["-modified_at", "pk"]
     ordering_fields = ["adapter_name", "created_at", "modified_at"]
@@ -156,17 +187,16 @@ class AdapterInstanceViewSet(
     def get_notification_resource_type(self, resource: Any) -> str | None:
         if not notification_plugin:
             return None
-        return {
-            "LLM": ResourceType.LLM.value,
-            "EMBEDDING": ResourceType.EMBEDDING.value,
-            "VECTOR_DB": ResourceType.VECTOR_DB.value,
-            "X2TEXT": ResourceType.X2TEXT.value,
-        }.get(resource.adapter_type, ResourceType.LLM.value)
+        from tenant_account_v2.notification_resource_types import (
+            adapter_notification_type,
+        )
+
+        return adapter_notification_type(resource.adapter_type)
 
     def get_permissions(self) -> list[Any]:
-        # Frictionless adapters: hidden from non-owners (update/retrieve),
+        # Frictionless adapters: blocked for everyone (update/retrieve/test),
         # deletable by any org member. Others use owner / shared-user gating.
-        if self.action in ["update", "partial_update", "retrieve"]:
+        if self.action in ["update", "partial_update", "retrieve", "test_and_record"]:
             return [IsFrictionLessAdapter()]
         if self.action == "destroy":
             return [IsFrictionLessAdapterDelete()]
@@ -175,15 +205,27 @@ class AdapterInstanceViewSet(
             "adapter_info",
             "share",
             "effective_members",
+            "usage",
         ]:
             return [IsOwnerOrSharedUserOrSharedToOrg()]
         return [IsOwner()]
 
     def get_queryset(self) -> QuerySet | None:
+        queryset = self.get_status_base_queryset()
+        # The test-status filters are for the list only.
+        if self.action == "list":
+            queryset = filter_by_test_status(queryset, self.request.query_params)
+            queryset = self.filter_by_usage(queryset)
+        return queryset
+
+    def get_status_base_queryset(self) -> QuerySet:
+        """Visible adapters with every list filter except the test-status and
+        usage ones.
+        """
         # Avoid per-row queries for owner/co-owner + creator fields in list views
         queryset = (
             AdapterInstance.objects.for_user(self.request.user)
-            .select_related("created_by")
+            .select_related("created_by", "test_result")
             .prefetch_related("memberships__user")
         )
         if filter_args := FilterHelper.build_filter_args(
@@ -211,30 +253,21 @@ class AdapterInstanceViewSet(
         self,
     ) -> ModelSerializer:
         if self.action == "list":
-            return AdapterListSerializer
-        return AdapterInstanceSerializer
+            return AdapterListWithStatusSerializer
+        return AdapterInstanceWithStatusSerializer
 
     @staticmethod
-    def _enforce_llm_creation_restriction(request: Any, adapter_type: str) -> None:
-        """Controlled mode (UN-3584): only org admins may create LLM adapters
-        when the org has enabled the restriction. Service accounts (platform
-        API-key sessions) and non-LLM adapter types bypass; the default
-        (flag off) keeps creation open for everyone.
+    def _enforce_adapter_creation_capability(request: Any, adapter_type: str) -> None:
+        """Capability permissions (UN-3584, UN-4399): LLM adapters fall under
+        "Create LLM adapters", every other type under "Create other adapters".
+        Service accounts bypass; the defaults keep creation open for everyone.
         """
-        if adapter_type != AdapterKeys.LLM:
-            return
-        if getattr(request.user, "is_service_account", False):
-            return
-        organization = UserContext.get_organization()
-        if (
-            organization
-            and organization.restrict_llm_adapter_creation
-            and not OrganizationMemberService.is_user_organization_admin(request.user)
-        ):
-            raise PermissionDenied(
-                "LLM adapter creation is restricted to organization admins. "
-                "Please contact your organization admin."
-            )
+        enforce_capability(
+            request,
+            Capability.CREATE_LLM_ADAPTERS
+            if adapter_type == AdapterKeys.LLM
+            else Capability.CREATE_OTHER_ADAPTERS,
+        )
 
     def create(self, request: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
@@ -246,9 +279,11 @@ class AdapterInstanceViewSet(
         ):
             use_platform_unstract_key = True
 
+        # Deprecated adapter_ids are rejected in AdapterInstanceSerializer.validate,
+        # which also covers update/partial_update.
         serializer.is_valid(raise_exception=True)
         adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
-        self._enforce_llm_creation_restriction(request, adapter_type)
+        self._enforce_adapter_creation_capability(request, adapter_type)
 
         try:
             if adapter_type == AdapterKeys.X2TEXT and use_platform_unstract_key:
@@ -271,9 +306,7 @@ class AdapterInstanceViewSet(
             instance = serializer.save(organization=UserContext.get_organization())
             # ``created_by`` is audit-only; the creator's access flows through
             # an OWNER membership row (UN-2202 co-owners).
-            instance.memberships.get_or_create(
-                user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
-            )
+            instance.grant_owner(request.user)
             organization_member = OrganizationMemberService.get_user_by_id(
                 request.user.id
             )
@@ -316,6 +349,7 @@ class AdapterInstanceViewSet(
             raise DuplicateAdapterNameError(
                 name=serializer.validated_data.get(AdapterKeys.ADAPTER_NAME)
             )
+        record_resource_event(request, Action.RESOURCE_CREATED, instance)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -393,6 +427,7 @@ class AdapterInstanceViewSet(
             )
             raise DeleteAdapterInUseError(adapter_name=adapter_instance.adapter_name)
 
+        deleted = resource_ref(adapter_instance)
         try:
             super().perform_destroy(adapter_instance)
         except ProtectedError:
@@ -402,18 +437,8 @@ class AdapterInstanceViewSet(
             )
             # TODO: Provide details of adpter usage with exception object
             raise DeleteAdapterInUseError(adapter_name=adapter_instance.adapter_name)
+        record_resource_event(request, Action.RESOURCE_DELETED, deleted)
         return Response(status=status.HTTP_204_NO_CONTENT)
-
-    def partial_update(
-        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
-    ) -> Response:
-        adapter = self.get_object()
-        before = self.snapshot_share_axes(adapter)
-
-        response = super().partial_update(request, *args, **kwargs)
-        if response.status_code == 200 and notification_plugin:
-            self._notify_shared_users(adapter, before, request.data, request.user)
-        return response
 
     @action(detail=True, methods=["post"], url_path="share")
     def share(self, request: Request, pk: str | None = None) -> Response:
@@ -460,42 +485,6 @@ class AdapterInstanceViewSet(
         if user.pk in self._effective_member_ids(resource):
             return
         self._clear_default_adapter_for_removed_users(resource, {user.pk})
-
-    def _notify_shared_users(
-        self,
-        adapter: AdapterInstance,
-        before: dict[str, set[Any]],
-        request_data: dict[str, Any],
-        actor: Any,
-    ) -> None:
-        """Email users newly added to ``shared_users`` (best-effort)."""
-        users_diff = self.diff_share_axes(adapter, before, request_data).get(
-            "shared_users"
-        )
-        if not (users_diff and users_diff.added):
-            return
-        try:
-            adapter_type_to_resource = {
-                "LLM": ResourceType.LLM.value,
-                "EMBEDDING": ResourceType.EMBEDDING.value,
-                "VECTOR_DB": ResourceType.VECTOR_DB.value,
-                "X2TEXT": ResourceType.X2TEXT.value,
-            }
-            resource_type = adapter_type_to_resource.get(
-                adapter.adapter_type, ResourceType.LLM.value
-            )
-            service_class = notification_plugin["service_class"]
-            notification_service = service_class()
-            notification_service.send_sharing_notification(
-                resource_type=resource_type,
-                resource_name=adapter.adapter_name,
-                resource_id=str(adapter.id),
-                shared_by=actor,
-                shared_to=list(users_diff.added),
-                resource_instance=adapter,
-            )
-        except Exception as e:
-            logger.exception("Failed to send sharing notification: %s", e)
 
     def _clear_default_adapter_for_removed_users(
         self,
@@ -552,6 +541,21 @@ class AdapterInstanceViewSet(
 
         return Response(serialized_instances)
 
+    @connection_test_schema("adapter")
+    @action(detail=True, methods=["post"])
+    def test_and_record(self, request: Request, pk: str | None = None) -> Response:
+        """Test the saved adapter and return the result."""
+        # Taken before loading, so an edit saved meanwhile reads as untested.
+        tested_at = timezone.now()
+        adapter = self.get_object()
+        result = run_and_record(
+            AdapterTestResult,
+            adapter,
+            lambda: AdapterProcessor.test_saved_adapter(adapter),
+            tested_at,
+        )
+        return Response(ConnectionCheckResultSerializer(result).data)
+
     def update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
@@ -567,6 +571,11 @@ class AdapterInstanceViewSet(
 
         # Get the adapter instance for update
         adapter = self.get_object()
+        # Changing an adapter's type amounts to creating one of the new type,
+        # so it needs the same capability as creating it would.
+        new_type = request.data.get(AdapterKeys.ADAPTER_TYPE)
+        if new_type and new_type != adapter.adapter_type:
+            self._enforce_adapter_creation_capability(request, new_type)
 
         if use_platform_unstract_key:
             logger.error("Processing adapter with platform key")
@@ -604,3 +613,57 @@ class AdapterInstanceViewSet(
         serialized_instances = AdapterInfoSerializer(adapter).data
 
         return Response(serialized_instances)
+
+
+_DEFAULT_SLOTS = {
+    "llm": "default_llm_adapter",
+    "embedding": "default_embedding_adapter",
+    "vector_db": "default_vector_db_adapter",
+    "x2text": "default_x2text_adapter",
+}
+
+
+@best_effort
+def _default_adapter_names(user: User) -> dict[str, str | None]:
+    """The member's default adapter per slot, by name."""
+    member = OrganizationMemberService.get_user_by_id(user.id)
+    defaults = (
+        UserDefaultAdapter.objects.filter(organization_member=member)
+        .select_related(*_DEFAULT_SLOTS.values())
+        .first()
+    )
+    names: dict[str, str | None] = {}
+    for slot, field in _DEFAULT_SLOTS.items():
+        adapter = getattr(defaults, field, None) if defaults else None
+        names[slot] = adapter.adapter_name if adapter else None
+    return names
+
+
+@best_effort
+def _record_defaults_changed(request: Request, before: dict | None) -> None:
+    """Defaults are stored per member, so the member is both actor and target."""
+    after = _default_adapter_names(request.user)
+    if after is None:
+        return
+    if before is None:
+        # Previous defaults unreadable: record all of them as they now stand.
+        changes = {"after": after}
+        summary = "; ".join(f"{slot} → {name or 'none'}" for slot, name in after.items())
+        summary = f"{summary} {BEFORE_UNAVAILABLE}"
+    else:
+        changes = diff(before, after)
+        summary = "; ".join(
+            f"{slot}: {changes['before'][slot] or 'none'} → {name or 'none'}"
+            for slot, name in changes["after"].items()
+        )
+    if not changes["after"]:
+        return
+    record_platform_event(
+        action=Action.DEFAULT_PROFILE_CHANGED,
+        target_type=TargetType.DEFAULT_PROFILE,
+        target_id=request.user.id,
+        target_name=request.user.email,
+        changes=changes,
+        summary=summary,
+        request=request,
+    )

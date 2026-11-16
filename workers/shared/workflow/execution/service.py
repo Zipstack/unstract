@@ -10,7 +10,7 @@ import time
 from typing import Any
 
 import magic
-from shared.enums.file_types import AllowedFileTypes
+from shared.enums.file_types import AllowedFileTypes, resolve_inconclusive_mime_type
 from shared.exceptions.execution_exceptions import (
     NotFoundDestinationConfiguration,
     NotFoundSourceConfiguration,
@@ -25,7 +25,6 @@ from unstract.core.data_models import (
     FileOperationConstants,
     WorkflowDefinitionResponseData,
     WorkflowEndpointConfigData,
-    is_pg_transport,
 )
 
 # Import file execution tracking for proper recovery mechanism
@@ -54,6 +53,7 @@ from unstract.workflow_execution.workflow_execution import WorkflowExecutionServ
 from ...api.internal_client import InternalAPIClient
 from ...infrastructure.logging import WorkerLogger
 from ...utils.error_utils import get_user_friendly_error_message
+from ...utils.manual_review_factory import AUTO_ENABLE_HIGHLIGHT
 from ..destination_connector import (
     DestinationConfig,
     WorkerDestinationConnector,
@@ -71,6 +71,9 @@ class WorkerWorkflowExecutionService:
         self.api_client = api_client
         self.logger = logger
         self._last_execution_error = None
+        # (execution_id, context) of the file being processed, reused by the
+        # source/destination config lookups.
+        self._execution_context: tuple[str, dict] | None = None
 
     def execute_workflow_for_file(
         self,
@@ -557,19 +560,38 @@ class WorkerWorkflowExecutionService:
     def _get_workflow_execution_context(
         self, execution_id: str, workflow_id: str, organization_id: str
     ) -> tuple[dict, list]:
-        """Get workflow execution context and tool instances."""
-        execution_response = self.api_client.get_workflow_execution(execution_id)
-        if not execution_response.success:
-            raise Exception(
-                f"Failed to get workflow execution: {execution_response.error}"
-            )
+        """Get workflow execution context and tool instances.
+
+        The context is fetched fresh for each file (connector settings can change
+        during a long batch) and kept for this file's config lookups.
+        """
+        execution_context = self._fetch_execution_context(execution_id)
+        self._execution_context = (str(execution_id), execution_context)
 
         tool_instances_response = self.api_client.get_tool_instances_by_workflow(
             workflow_id=workflow_id,
             organization_id=organization_id,
         )
 
-        return execution_response.data, tool_instances_response.tool_instances
+        return execution_context, tool_instances_response.tool_instances
+
+    def _fetch_execution_context(self, execution_id: str) -> dict:
+        """Fetch the execution context, without its file-execution rows."""
+        execution_response = self.api_client.get_workflow_execution(execution_id)
+        if not execution_response.success:
+            raise Exception(
+                f"Failed to get workflow execution: {execution_response.error}"
+            )
+        return execution_response.data
+
+    def _get_cached_execution_context(self, execution_id: str) -> dict:
+        """Execution context already loaded for this file, else fetch it."""
+        cached = self._execution_context
+        if cached is not None and cached[0] == str(execution_id):
+            return cached[1]
+        execution_context = self._fetch_execution_context(execution_id)
+        self._execution_context = (str(execution_id), execution_context)
+        return execution_context
 
     def _get_workflow(
         self, workflow_id: str, organization_id: str
@@ -848,7 +870,12 @@ class WorkerWorkflowExecutionService:
                     # Continue with normal execution if check fails
 
             # Step 3: Build and execute workflow
-            self._build_and_execute_workflow(execution_service, file_name)
+            review_config = file_processing_context.file_data.manual_review_config
+            self._build_and_execute_workflow(
+                execution_service,
+                file_name,
+                auto_enable_highlight=review_config.get(AUTO_ENABLE_HIGHLIGHT, False),
+            )
 
             return True
 
@@ -970,7 +997,10 @@ class WorkerWorkflowExecutionService:
             raise file_prep_error
 
     def _build_and_execute_workflow(
-        self, execution_service: WorkflowExecutionService, file_name: str
+        self,
+        execution_service: WorkflowExecutionService,
+        file_name: str,
+        auto_enable_highlight: bool = False,
     ) -> None:
         """Build and execute the workflow.
 
@@ -978,7 +1008,9 @@ class WorkerWorkflowExecutionService:
         execute_structure_tool task instead of the Docker container flow.
         """
         if self._is_structure_tool_workflow(execution_service):
-            self._execute_structure_tool_workflow(execution_service, file_name)
+            self._execute_structure_tool_workflow(
+                execution_service, file_name, auto_enable_highlight
+            )
         else:
             # Original Docker-based flow (unchanged)
             execution_service.build_workflow()
@@ -1016,13 +1048,16 @@ class WorkerWorkflowExecutionService:
         return False
 
     def _execute_structure_tool_workflow(
-        self, execution_service: WorkflowExecutionService, file_name: str
+        self,
+        execution_service: WorkflowExecutionService,
+        file_name: str,
+        auto_enable_highlight: bool = False,
     ) -> None:
-        """Execute structure tool as Celery task instead of Docker container.
+        """Execute structure tool as a task instead of a Docker container.
 
         Calls execute_structure_tool directly (same process, in-band).
-        Only the inner ExecutionDispatcher calls go through Celery to
-        the executor worker.
+        Only the inner executor-RPC dispatches leave this process, and they go
+        to the executor worker over the PG queue.
         """
         from file_processing.structure_tool_task import (
             execute_structure_tool as _execute_structure_tool,
@@ -1062,6 +1097,7 @@ class WorkerWorkflowExecutionService:
             "messaging_channel": getattr(execution_service, "messaging_channel", ""),
             "file_hash": metadata.get("source_hash", ""),
             "exec_metadata": metadata,
+            AUTO_ENABLE_HIGHLIGHT: auto_enable_highlight,
         }
 
         # Call synchronously (same process, in-band)
@@ -1220,7 +1256,9 @@ class WorkerWorkflowExecutionService:
             while chunk := source_file.read(self.READ_CHUNK_SIZE):
                 # MIME type detection and validation on first chunk
                 if first_chunk:
-                    mime_type = magic.from_buffer(chunk, mime=True)
+                    mime_type = resolve_inconclusive_mime_type(
+                        magic.from_buffer(chunk, mime=True), chunk
+                    )
                     logger.info(f"Detected MIME type: {mime_type} for file {file_path}")
 
                     if not AllowedFileTypes.is_allowed(mime_type):
@@ -1362,36 +1400,30 @@ class WorkerWorkflowExecutionService:
         logger.error("No connector_id found in any configuration source")
         return None, {}
 
-    def _pg_destination_already_written(
+    def _destination_already_written(
         self,
         *,
         file_hash: FileHashData,
-        transport: str | None,
         use_file_history: bool,
         workflow_id: str,
         is_api: bool,
     ) -> bool:
         """True if this file's destination write already completed in a prior run.
 
-        On the PG (at-least-once) transport a batch can be re-run after a crash
-        or reaper-recovery, and such a re-run bypasses discovery's FileHistory
+        The queue is at-least-once, so a batch can be re-run after a crash or
+        reaper-recovery, and such a re-run bypasses discovery's FileHistory
         filter — so re-check by hash (plus path for non-API) at the write
         boundary. Returns True only if a COMPLETED FileHistory record already
         exists for this file.
 
-        Scoped two ways:
-        - to the PG transport (the re-run duplicate this prevents is PG-specific;
-          always False on Celery, so that path is unchanged), and
-        - to ``use_file_history``: a workflow run with file history off is
-          contractually "rewrite every run" (mirrors the discovery FileHistory
-          filter), so its write is never skipped.
+        Scoped to ``use_file_history``: a workflow run with file history off is
+        contractually "rewrite every run" (mirrors the discovery FileHistory
+        filter), so its write is never skipped.
 
         Fail-open on any lookup error (never block a legitimate write), logging
         at error level so a persistent lookup regression is visible rather than a
         silent, permanent no-op.
         """
-        if not is_pg_transport(transport):
-            return False
         if not use_file_history:
             return False
         cache_key = file_hash.file_hash
@@ -1527,16 +1559,14 @@ class WorkerWorkflowExecutionService:
                         f"📤 File {file_hash.file_name} marked for DESTINATION processing - sending to {destination_display}"
                     )
 
-                # PG-only re-run duplicate-write guard: a re-run after a crash /
+                # Re-run duplicate-write guard: a re-run after a crash /
                 # reaper-recovery bypasses discovery's FileHistory filter, so
                 # re-check by hash at the write boundary. If this file's
                 # destination write already completed in a prior run, skip it,
-                # avoiding a duplicate destination write. A no-op on the Celery
-                # transport, so that path is unchanged; fail-open so a lookup
+                # avoiding a duplicate destination write. Fail-open so a lookup
                 # error never blocks a write.
-                if self._pg_destination_already_written(
+                if self._destination_already_written(
                     file_hash=file_hash,
-                    transport=file_processing_context.transport,
                     use_file_history=use_file_history,
                     workflow_id=workflow_id,
                     is_api=destination.is_api,
@@ -1710,15 +1740,10 @@ class WorkerWorkflowExecutionService:
     def _get_destination_config(
         self, workflow_id: str, execution_id: str
     ) -> dict[str, Any] | None:
-        """Get destination configuration for the workflow via API."""
+        """Get destination configuration from this file's execution context."""
         try:
             # Get workflow execution context which includes destination config
-            execution_response = self.api_client.get_workflow_execution(execution_id)
-            if not execution_response.success:
-                raise Exception(
-                    f"Failed to get execution context: {execution_response.error}"
-                )
-            execution_context = execution_response.data
+            execution_context = self._get_cached_execution_context(execution_id)
             destination_config = execution_context.get("destination_config", {})
 
             if not destination_config:
@@ -1741,15 +1766,10 @@ class WorkerWorkflowExecutionService:
     def _get_source_config(
         self, workflow_id: str, execution_id: str
     ) -> dict[str, Any] | None:
-        """Get source configuration for the workflow via API."""
+        """Get source configuration from this file's execution context."""
         try:
             # Get workflow execution context which includes source config
-            execution_response = self.api_client.get_workflow_execution(execution_id)
-            if not execution_response.success:
-                raise Exception(
-                    f"Failed to get execution context: {execution_response.error}"
-                )
-            execution_context = execution_response.data
+            execution_context = self._get_cached_execution_context(execution_id)
             source_config = execution_context.get("source_config", {})
 
             if not source_config:
