@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearBrowserStorage,
   clearUserLocalStorage,
-  reloadWhenSignedOutElsewhere,
+  signOutWhenSignedOutElsewhere,
 } from "./browserStorage";
 
 describe("clearBrowserStorage", () => {
@@ -103,39 +103,42 @@ describe("sign-out across tabs", () => {
 
   // CASA 6.6.1: an open tab still shows the previous user's data after a
   // logout elsewhere; it must drop what it stored and leave the page.
-  it("clears this tab's sessionStorage and reloads on a sign-out elsewhere", async () => {
-    const reload = vi.fn();
-    vi.stubGlobal("location", { ...window.location, reload });
+  // It signs out rather than reloading: the server may not have ended the
+  // session yet when the message arrives.
+  it("clears this tab's sessionStorage and signs it out on a sign-out elsewhere", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
     window.sessionStorage.setItem("dashboard_metrics_overview", "{}");
-    const stop = reloadWhenSignedOutElsewhere();
+    const stop = signOutWhenSignedOutElsewhere();
     const tab = otherTab();
 
     tab.postMessage("something-else");
     await delivered();
-    expect(reload).not.toHaveBeenCalled();
+    expect(assign).not.toHaveBeenCalled();
     expect(window.sessionStorage.length).toBe(1);
 
     tab.postMessage("signed-out");
     await delivered();
-    expect(reload).toHaveBeenCalledTimes(1);
+    expect(assign).toHaveBeenCalledTimes(1);
+    expect(assign).toHaveBeenCalledWith("/api/v1/logout");
     expect(window.sessionStorage.length).toBe(0);
 
     stop();
     tab.postMessage("signed-out");
     await delivered();
-    expect(reload).toHaveBeenCalledTimes(1);
+    expect(assign).toHaveBeenCalledTimes(1);
     tab.close();
   });
 
-  it("does not reload the tab that signed out", async () => {
-    const reload = vi.fn();
-    vi.stubGlobal("location", { ...window.location, reload });
-    const stop = reloadWhenSignedOutElsewhere();
+  it("does not act on the tab's own sign-out", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+    const stop = signOutWhenSignedOutElsewhere();
 
     clearBrowserStorage();
     await delivered();
 
-    expect(reload).not.toHaveBeenCalled();
+    expect(assign).not.toHaveBeenCalled();
     stop();
   });
 });

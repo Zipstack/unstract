@@ -8,7 +8,7 @@
  *
  * Other open tabs are told too: they still show the user's data and hold it
  * in their own sessionStorage, so on a sign-out elsewhere they clear it and
- * reload, which lands them on the signed-out page.
+ * sign out themselves.
  */
 
 const SIGNED_OUT = "signed-out";
@@ -70,7 +70,7 @@ export function clearUserLocalStorage(): void {
 
 /**
  * At sign-out: all of sessionStorage, and localStorage bar the preferences.
- * Tells the other open tabs, which then do the same and reload.
+ * Tells the other open tabs, which then clear theirs and sign out too.
  */
 export function clearBrowserStorage(): void {
   try {
@@ -88,10 +88,16 @@ export function clearBrowserStorage(): void {
 }
 
 /**
- * Clears this tab's sessionStorage and reloads when another tab signs out.
- * Mount once at the app root; returns the unsubscribe.
+ * When another tab signs out, clears this tab's sessionStorage and signs this
+ * tab out too. Mount once at the app root; returns the unsubscribe.
+ *
+ * It signs out rather than reloads: the message can arrive before the server
+ * has ended the session (v0 logs out by navigating to the GET logout, and v1
+ * falls back to it when the POST fails), and a reload that wins that race
+ * would load the user's data again. Logging out again is harmless, so
+ * whichever request reaches the server first ends the session.
  */
-export function reloadWhenSignedOutElsewhere(): () => void {
+export function signOutWhenSignedOutElsewhere(): () => void {
   const current = sessionChannel();
   if (!current) {
     return () => undefined;
@@ -103,9 +109,9 @@ export function reloadWhenSignedOutElsewhere(): () => void {
     try {
       window.sessionStorage.clear();
     } catch {
-      // Storage unavailable: the reload still removes the data on screen.
+      // Storage unavailable: leaving the page still removes the data on screen.
     }
-    window.location.reload();
+    window.location.assign("/api/v1/logout");
   };
   current.addEventListener("message", onMessage);
   return () => current.removeEventListener("message", onMessage);

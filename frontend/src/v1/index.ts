@@ -20,5 +20,5 @@ export { VersionSwitch, type VersionSwitchProps } from "@v1/app/VersionSwitch";
 export {
   clearBrowserStorage,
   clearUserLocalStorage,
-  reloadWhenSignedOutElsewhere,
+  signOutWhenSignedOutElsewhere,
 } from "@v1/lib/browserStorage";

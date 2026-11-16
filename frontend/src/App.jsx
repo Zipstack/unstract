@@ -1,4 +1,4 @@
-import { reloadWhenSignedOutElsewhere } from "@v1";
+import { signOutWhenSignedOutElsewhere } from "@v1";
 import axios from "axios";
 import { ThemeProvider, useTheme } from "next-themes";
 import { DismissableLayer } from "radix-ui/internal";
@@ -42,9 +42,9 @@ function App() {
   const { alertDetails } = useAlertStore();
   const { pushLogMessages } = useSocketLogsStore();
 
-  // A logout in another tab: drop this tab's stored data and reload, so the
-  // previous user's pages are not left open for the next person.
-  useEffect(() => reloadWhenSignedOutElsewhere(), []);
+  // A logout in another tab: drop this tab's stored data and sign it out too,
+  // so the previous user's pages are not left open for the next person.
+  useEffect(() => signOutWhenSignedOutElsewhere(), []);
 
   useEffect(() => {
     if (!alertDetails?.content) {
