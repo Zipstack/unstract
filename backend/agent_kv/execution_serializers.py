@@ -1,13 +1,20 @@
 """Submit-time validation: every §6.1 cap lives here, before any paid work."""
 
 import json
+import tempfile
 
+import magic
 import pdfplumber
 from django.conf import settings
 from rest_framework import serializers
 
 from agent_kv.constants import EXTRACTOR_ROUTES, TABLE_EXTRACTOR_NAME, V1_EXTRACTOR_NAME
 from unstract.agent_kv_schema import SchemaError, compile_schema
+from unstract.core.mime_gate import (
+    INCONCLUSIVE_MIME_TYPES,
+    identify_zip_container,
+    resolve_inconclusive_mime_type,
+)
 from unstract.core.network.ssrf import webhook_url_refusal
 from unstract.sdk1.constants import AdapterTypes
 
@@ -24,8 +31,30 @@ from unstract.sdk1.constants import AdapterTypes
 # `success: true` with a page billed. Refusing at submit is the honest
 # behaviour until the engine side is wired; re-add them in the same change that
 # gives `load_pages` a call site, not before.
-ALLOWED_EXTENSIONS = {".pdf", ".xlsx", ".xls"}
+#
+# Each extension maps to the content types its bytes may be identified as. The
+# extension alone is the caller's claim: a ZIP or an executable renamed `.pdf`
+# passed when only the name was checked (CASA 5.2.1).
+CONTENT_TYPES_BY_EXTENSION = {
+    ".pdf": frozenset({"application/pdf"}),
+    ".xlsx": frozenset(
+        {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+    ),
+    ".xls": frozenset({"application/vnd.ms-excel"}),
+}
+ALLOWED_EXTENSIONS = set(CONTENT_TYPES_BY_EXTENSION)
 PDF_LIKE = {".pdf"}
+
+# Enough for libmagic to name a PDF or an OOXML package that leads with its
+# content-types member.
+MIME_SAMPLE_BYTES = 8192
+
+# What libmagic answers from a sample when it recognises only the wrapper.
+# A real `.xls` reads as `application/CDFV2` from its first 8 KiB and as
+# `application/vnd.ms-excel` from the whole file, and an `.xlsx` whose
+# content-types member is not first reads as `application/zip`. These are
+# classified again from a path, where libmagic sees the whole container.
+WRAPPER_MIME_TYPES = INCONCLUSIVE_MIME_TYPES | {"application/CDFV2"}
 EXTRACTION_MODES = ("whole-doc", "per-page")
 
 
@@ -33,6 +62,46 @@ EXTRACTION_MODES = ("whole-doc", "per-page")
 # these names, so a literal here that no route/stage list knows about would let
 # the serializer accept a name the responses file under something else.
 SUPPORTED_EXTRACTORS = tuple(EXTRACTOR_ROUTES)
+
+
+def _classify_path(path: str) -> str:
+    """Classify a staged file, looking inside a zip when that is all we get."""
+    mime_type = magic.from_file(path, mime=True)
+    if mime_type == "application/zip":
+        try:
+            return identify_zip_container(path) or mime_type
+        except Exception:
+            # The archive is untrusted, and reading one raises more than any
+            # list keeps up with: RuntimeError for an encrypted member,
+            # NotImplementedError for an unknown compression method,
+            # `zlib.error` for corrupt data, EOFError for a truncated stream.
+            # Whatever it raises, it is a zip we cannot see into, not a 500.
+            return mime_type
+    return mime_type
+
+
+def _content_mime_type(f) -> str:
+    """The upload's type, read from its bytes rather than its name or header.
+
+    A wrapper-only answer is classified again from a path: the temp file Django
+    already spilled a large upload to, or a spill of a small in-memory one.
+    Leaves the stream at the start for the readers after this.
+    """
+    sample = f.read(MIME_SAMPLE_BYTES)
+    f.seek(0)
+    mime_type = magic.from_buffer(sample, mime=True)
+    if mime_type in WRAPPER_MIME_TYPES:
+        temporary_file_path = getattr(f, "temporary_file_path", None)
+        if temporary_file_path is not None:
+            mime_type = _classify_path(temporary_file_path())
+        else:
+            with tempfile.NamedTemporaryFile(suffix=".upload") as spill:
+                for chunk in f.chunks():
+                    spill.write(chunk)
+                spill.flush()
+                f.seek(0)
+                mime_type = _classify_path(spill.name)
+    return resolve_inconclusive_mime_type(mime_type, sample)
 
 
 class KVOptionsSerializer(serializers.Serializer):
@@ -421,6 +490,11 @@ class SubmitSerializer(serializers.Serializer):
         if f.size > max_bytes:
             raise serializers.ValidationError(
                 f"File exceeds {settings.AGENT_KV_MAX_FILE_SIZE_MB}MB limit"
+            )
+        mime_type = _content_mime_type(f)
+        if mime_type not in CONTENT_TYPES_BY_EXTENSION[ext]:
+            raise serializers.ValidationError(
+                f"File content ({mime_type}) does not match its '{ext}' extension"
             )
         return f
 
