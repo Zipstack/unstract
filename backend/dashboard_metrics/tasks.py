@@ -986,8 +986,8 @@ def _build_result(
     result = {
         "tier": tier.value,
         # Reported, not enforced: _run answers 200 for any dict, so this does not
-        # fail the call. `errors` is what the worker alerts on and what switches the
-        # completion line to WARNING.
+        # fail the call. `errors` is what the worker alerts on; the completion line
+        # also warns on prefetch_failed or when nothing was written.
         "success": stats["errors"] == 0,
         "organizations_processed": stats["orgs_processed"],
         "hourly": stats["hourly"],
