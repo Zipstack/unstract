@@ -5,7 +5,28 @@
  * A session must not leave the user's data in the browser (connector OAuth
  * state, the last signed-in user). Everything goes except UI preferences that
  * say nothing about the user or their data.
+ *
+ * Other open tabs are told too: they still show the user's data and hold it
+ * in their own sessionStorage, so on a sign-out elsewhere they clear it and
+ * reload, which lands them on the signed-out page.
  */
+
+const SIGNED_OUT = "signed-out";
+
+// One channel per document for both sending and listening: a BroadcastChannel
+// never receives its own messages, so the tab signing out does not react to
+// its own announcement.
+let channel: BroadcastChannel | null | undefined;
+
+function sessionChannel(): BroadcastChannel | null {
+  if (channel === undefined) {
+    channel =
+      typeof BroadcastChannel === "undefined"
+        ? null
+        : new BroadcastChannel("unstract.session");
+  }
+  return channel;
+}
 
 const KEPT_KEYS: ReadonlySet<string> = new Set([
   "selectedProduct",
@@ -47,7 +68,10 @@ export function clearUserLocalStorage(): void {
   }
 }
 
-/** At sign-out: all of sessionStorage, and localStorage bar the preferences. */
+/**
+ * At sign-out: all of sessionStorage, and localStorage bar the preferences.
+ * Tells the other open tabs, which then do the same and reload.
+ */
 export function clearBrowserStorage(): void {
   try {
     window.sessionStorage.clear();
@@ -55,4 +79,34 @@ export function clearBrowserStorage(): void {
     // Storage unavailable (sandboxed document): nothing to clear.
   }
   clearUserLocalStorage();
+  try {
+    sessionChannel()?.postMessage(SIGNED_OUT);
+  } catch {
+    // A closed or unsupported channel: other tabs find out on their next
+    // request instead.
+  }
+}
+
+/**
+ * Clears this tab's sessionStorage and reloads when another tab signs out.
+ * Mount once at the app root; returns the unsubscribe.
+ */
+export function reloadWhenSignedOutElsewhere(): () => void {
+  const current = sessionChannel();
+  if (!current) {
+    return () => undefined;
+  }
+  const onMessage = (event: MessageEvent) => {
+    if (event.data !== SIGNED_OUT) {
+      return;
+    }
+    try {
+      window.sessionStorage.clear();
+    } catch {
+      // Storage unavailable: the reload still removes the data on screen.
+    }
+    window.location.reload();
+  };
+  current.addEventListener("message", onMessage);
+  return () => current.removeEventListener("message", onMessage);
 }

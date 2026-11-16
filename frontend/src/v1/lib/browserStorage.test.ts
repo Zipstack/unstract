@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearBrowserStorage, clearUserLocalStorage } from "./browserStorage";
+import {
+  clearBrowserStorage,
+  clearUserLocalStorage,
+  reloadWhenSignedOutElsewhere,
+} from "./browserStorage";
 
 describe("clearBrowserStorage", () => {
   afterEach(() => {
@@ -65,5 +69,73 @@ describe("clearBrowserStorage", () => {
     ).toBeNull();
     expect(window.localStorage.getItem("unstract.v1.theme")).toBe("dark");
     expect(window.sessionStorage.getItem("unstract:silentSignInAt")).toBe("1");
+  });
+});
+
+// Another tab is another BroadcastChannel on the same name.
+function otherTab(): BroadcastChannel {
+  return new BroadcastChannel("unstract.session");
+}
+
+/** Resolves once pending channel messages have been delivered. */
+function delivered(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 20));
+}
+
+describe("sign-out across tabs", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+
+  it("announces the sign-out to the other tabs", async () => {
+    const tab = otherTab();
+    const received: unknown[] = [];
+    tab.onmessage = (event) => received.push(event.data);
+
+    clearBrowserStorage();
+    await delivered();
+
+    expect(received).toEqual(["signed-out"]);
+    tab.close();
+  });
+
+  // CASA 6.6.1: an open tab still shows the previous user's data after a
+  // logout elsewhere; it must drop what it stored and leave the page.
+  it("clears this tab's sessionStorage and reloads on a sign-out elsewhere", async () => {
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    window.sessionStorage.setItem("dashboard_metrics_overview", "{}");
+    const stop = reloadWhenSignedOutElsewhere();
+    const tab = otherTab();
+
+    tab.postMessage("something-else");
+    await delivered();
+    expect(reload).not.toHaveBeenCalled();
+    expect(window.sessionStorage.length).toBe(1);
+
+    tab.postMessage("signed-out");
+    await delivered();
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(window.sessionStorage.length).toBe(0);
+
+    stop();
+    tab.postMessage("signed-out");
+    await delivered();
+    expect(reload).toHaveBeenCalledTimes(1);
+    tab.close();
+  });
+
+  it("does not reload the tab that signed out", async () => {
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    const stop = reloadWhenSignedOutElsewhere();
+
+    clearBrowserStorage();
+    await delivered();
+
+    expect(reload).not.toHaveBeenCalled();
+    stop();
   });
 });
