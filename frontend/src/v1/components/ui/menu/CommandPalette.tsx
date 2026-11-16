@@ -2,7 +2,13 @@ import { cn } from "@v1/lib/cn";
 import { getPortalContainer } from "@v1/lib/portal";
 import { Dialog as RadixDialog } from "radix-ui";
 import { type JSX, type ReactNode, useEffect, useRef } from "react";
-import { Command, type CommandItem, type CommandProps } from "./Command";
+import {
+  Command,
+  type CommandBaseProps,
+  type CommandItem,
+  type CommandQuery,
+  type CommandRows,
+} from "./Command";
 
 /*
  * The command palette shell: a dialog near the top of the screen holding a
@@ -11,7 +17,12 @@ import { Command, type CommandItem, type CommandProps } from "./Command";
  * closes it and returns focus to where it was.
  */
 
-export type CommandPaletteProps = Omit<CommandProps, "autoFocus" | "label"> &
+export type CommandPaletteProps = Omit<
+  CommandBaseProps,
+  "autoFocus" | "label"
+> &
+  CommandRows &
+  CommandQuery &
   Readonly<{
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -111,7 +122,7 @@ export function CommandPalette({
               // where to return.
               autoFocus={false}
               onSelect={select}
-              footer={footer ?? <CommandPaletteHints />}
+              footer={footer === undefined ? <CommandPaletteHints /> : footer}
               className={cn("ui:min-h-0 ui:flex-1", command.className)}
               listClassName={cn("ui:max-h-96", command.listClassName)}
             />
@@ -122,28 +133,36 @@ export function CommandPalette({
   );
 }
 
+/** Apple platforms use ⌘ for shortcuts; Ctrl+K there edits text. */
+function isApplePlatform(): boolean {
+  return /Mac|iPhone|iPad|iPod/.test(globalThis.navigator?.platform ?? "");
+}
+
 /**
- * Calls `onOpen` on Ctrl+K or ⌘K (either modifier, on any platform)
- * anywhere on the page. A key press another control already handled (for
- * example a Ctrl+K chord in the code editor) is left alone. Mount it once,
- * in the shell, beside the palette.
+ * Calls `onOpen` on ⌘K on Apple platforms and Ctrl+K elsewhere, anywhere on
+ * the page. On a Mac, Ctrl+K is left to text fields ("delete to end of
+ * line"). The key is matched by its position (`event.code`), so it works on
+ * any keyboard layout, with the typed letter as a fallback. A key press
+ * another control already handled (for example a chord in the code editor)
+ * is left alone. Mount it once, in the shell, beside the palette.
  */
 export function useCommandPaletteShortcut(onOpen: () => void, key = "k"): void {
   const latest = useRef(onOpen);
   latest.current = onOpen;
   useEffect(() => {
     const target = key.toLowerCase();
+    const code = `Key${target.toUpperCase()}`;
+    const apple = isApplePlatform();
     const onKeyDown = (event: KeyboardEvent) => {
       // Autofill fires keydown with no key.
       if (!event.key || event.defaultPrevented || event.isComposing) {
         return;
       }
-      if (
-        event.key.toLowerCase() === target &&
-        (event.metaKey || event.ctrlKey) &&
-        !event.altKey &&
-        !event.shiftKey
-      ) {
+      const modifier = apple
+        ? event.metaKey && !event.ctrlKey
+        : event.ctrlKey && !event.metaKey;
+      const matches = event.code === code || event.key.toLowerCase() === target;
+      if (matches && modifier && !event.altKey && !event.shiftKey) {
         event.preventDefault();
         latest.current();
       }

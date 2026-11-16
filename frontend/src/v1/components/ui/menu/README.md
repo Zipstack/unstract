@@ -24,7 +24,7 @@ Every row takes the same options (`MenuItemOptions`):
 | Prop | Shows |
 | --- | --- |
 | `icon` | A 16px lucide glyph before the label (`ACTION_ICONS.edit`) |
-| `shortcut` | A hint at the end ("⌘D"). Hidden from screen readers: bind the key yourself and pass `aria-keyshortcuts` |
+| `shortcut` | A hint at the end ("⌘D"), hidden from screen readers. It binds no key: on the Radix rows, bind it yourself and pass `aria-keyshortcuts` |
 | `description` | A second line, read as the row's description, not its name |
 | `destructive` | The destructive colour. Destructive rows go last, after a separator |
 | `loading` | A spinner instead of the icon; the row is disabled and `aria-busy` |
@@ -97,7 +97,8 @@ const actions: MenuAction[] = [
 - Actions with the same `group` sit together, in first-seen order, between
   separators. Every `destructive` action is moved into one last group,
   whatever order it was given in (`groupActions`).
-- With no actions the kebab is disabled, and right-click does nothing.
+- With no actions the kebab is disabled, and right-click opens the browser's
+  own menu instead.
 - `RowContextMenu` uses its child as the trigger (`asChild`), so the child
   must accept a ref and props. Keep the kebab too: right-click is a
   shortcut, not the only way in.
@@ -126,11 +127,15 @@ useCommandPaletteShortcut(() => setOpen(true));
 - **Filtering.** By default rows whose label or `keywords` contain the query
   (ignoring case) stay, and empty groups are hidden. For a server search, pass
   `filter={false}` with `query` and `onQueryChange`, and give only the rows
-  that matched; `loading` shows "Loading…" meanwhile.
+  that matched; `loading` shows "Loading…" in place of the rows meanwhile.
+  The types require `onQueryChange` whenever you pass `query` or
+  `filter={false}`, and exactly one of `groups` or `items`.
 - **Keyboard.** The ARIA combobox pattern: focus stays in the search box,
   which points at the active row with `aria-activedescendant`. Up and Down
   move, wrapping and skipping disabled and loading rows; Enter runs the active
-  row; Escape closes. The pointer moves the active row too.
+  row. Escape is handled by the popover or dialog around it (`SearchMenu`,
+  `CommandPalette`), not by `Command` itself. The pointer moves the active
+  row too.
 - **Status rows** ("No results", "Loading…") are an `<output>` beside the
   listbox, and the listbox is hidden meanwhile: an empty listbox fails the
   accessibility scan.
@@ -139,9 +144,11 @@ useCommandPaletteShortcut(() => setOpen(true));
 - `SearchMenu` closes on a select unless `closeOnSelect={false}`, and starts
   each opening with an empty query unless the query is controlled.
 - `CommandPalette` sits near the top of the screen over the scrim, with key
-  hints in the footer (`footer` replaces them). On close it returns focus to
-whatever had it when it opened. Mount
-  `useCommandPaletteShortcut` once, in the shell.
+  hints in the footer (`footer` replaces them; `footer={null}` removes
+  them). On close it returns focus to whatever had it when it opened. Mount
+  `useCommandPaletteShortcut` once, in the shell: it listens for ⌘K on a Mac
+  (leaving Ctrl+K to text fields there) and Ctrl+K elsewhere, by key
+  position, so any keyboard layout works.
 
 ## Triggers: a temporary seam
 

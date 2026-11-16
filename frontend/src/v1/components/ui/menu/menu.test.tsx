@@ -181,6 +181,44 @@ describe("DropdownMenu", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it("disables loading checkbox and radio rows too", async () => {
+    const onChecked = vi.fn();
+    const onValue = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <DropdownMenu defaultOpen>
+        <DropdownMenuTrigger asChild>
+          <MenuButton>View</MenuButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuCheckboxItem
+            checked={false}
+            loading
+            onCheckedChange={onChecked}
+          >
+            Show archived
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuRadioGroup value="name" onValueChange={onValue}>
+            <DropdownMenuRadioItem value="created" loading>
+              Created
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    );
+    const checkbox = screen.getByRole("menuitemcheckbox", {
+      name: "Show archived",
+    });
+    const radio = screen.getByRole("menuitemradio", { name: "Created" });
+    for (const row of [checkbox, radio]) {
+      expect(row.getAttribute("aria-busy")).toBe("true");
+      expect(row.getAttribute("aria-disabled")).toBe("true");
+      await user.click(row);
+    }
+    expect(onChecked).not.toHaveBeenCalled();
+    expect(onValue).not.toHaveBeenCalled();
+  });
+
   it("toggles checkbox items and picks radio items", async () => {
     const onChecked = vi.fn();
     const onValue = vi.fn();

@@ -12,7 +12,7 @@ import {
 } from "./Command";
 import { CommandPalette, useCommandPaletteShortcut } from "./CommandPalette";
 import { MenuButton } from "./MenuTrigger";
-import { SearchMenu } from "./SearchMenu";
+import { SearchMenu, type SearchMenuProps } from "./SearchMenu";
 
 const GROUPS: readonly CommandGroup[] = [
   {
@@ -131,10 +131,9 @@ describe("Command", () => {
     );
   });
 
-  it("filters as you type, matching keywords, and resets the active row", async () => {
+  it("filters as you type, matching keywords", async () => {
     const user = userEvent.setup();
     render(<Command label="Search" groups={GROUPS} />);
-    await user.keyboard("{ArrowDown}");
     await user.keyboard("pipe");
     expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
       "Workflows",
@@ -143,16 +142,69 @@ describe("Command", () => {
     expect(activeLabel()).toBe("Workflows");
   });
 
+  it("moves the active row to the first match on typing, even when the old one still matches", async () => {
+    const user = userEvent.setup();
+    render(<Command label="Search" groups={GROUPS} />);
+    await user.keyboard("{ArrowUp}");
+    expect(activeLabel()).toBe("Clear history");
+    await user.keyboard("c");
+    expect(screen.getAllByRole("option").map((o) => o.id)).toHaveLength(2);
+    expect(screen.getByRole("option", { name: "Clear history" })).toBeVisible();
+    expect(activeLabel()).toBe("New project");
+  });
+
+  it("moves off an active row that becomes unavailable", () => {
+    const groups = (exportLoading: boolean): readonly CommandGroup[] => [
+      {
+        id: "g",
+        items: [
+          { id: "a", label: "Alpha" },
+          { id: "b", label: "Beta", loading: exportLoading },
+        ],
+      },
+    ];
+    const { rerender } = render(
+      <Command label="Search" groups={groups(false)} />,
+    );
+    fireEvent.keyDown(input(), { key: "ArrowDown" });
+    expect(activeLabel()).toBe("Beta");
+    rerender(<Command label="Search" groups={groups(true)} />);
+    expect(activeLabel()).toBe("Alpha");
+  });
+
+  it("scrolls the active row into view", () => {
+    const scroll = vi.fn();
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scroll;
+    try {
+      render(<Command label="Search" groups={GROUPS} />);
+      fireEvent.keyDown(input(), { key: "ArrowUp" });
+      expect(scroll).toHaveBeenLastCalledWith({ block: "nearest" });
+      expect(scroll.mock.contexts.at(-1)).toBe(
+        screen.getByRole("option", { name: "Clear history" }),
+      );
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
+  });
+
   it("says so when nothing matches, without an empty listbox", async () => {
     const user = userEvent.setup();
+    const onSelect = vi.fn();
     render(
-      <Command label="Search" groups={GROUPS} emptyText="No matching pages" />,
+      <Command
+        label="Search"
+        groups={GROUPS}
+        emptyText="No matching pages"
+        onSelect={onSelect}
+      />,
     );
     await user.keyboard("zzz");
     expect(screen.getByRole("status").textContent).toBe("No matching pages");
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(input().getAttribute("aria-activedescendant")).toBeNull();
     await user.keyboard("{Enter}");
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("shows the loading state instead of rows", () => {
@@ -308,13 +360,35 @@ describe("Command", () => {
     const onSelect = vi.fn();
     render(<Command label="Search" groups={GROUPS} onSelect={onSelect} />);
     fireEvent.keyDown(input(), { key: "Enter", isComposing: true });
+    // Safari: the composition has ended, but the confirming Enter keeps keyCode 229.
+    fireEvent.keyDown(input(), { key: "Enter", keyCode: 229 });
     expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.keyDown(input(), { key: "Enter" });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects prop combinations that would freeze the search or drop rows", () => {
+    const noop = () => undefined;
+    const typeChecks = [
+      // @ts-expect-error a controlled query needs onQueryChange, or typing is dropped.
+      <Command key="1" label="S" items={[]} query="x" />,
+      // @ts-expect-error filter={false} needs onQueryChange, or the list never changes.
+      <Command key="2" label="S" items={[]} filter={false} />,
+      // @ts-expect-error groups and items together: one would be ignored.
+      <Command key="3" label="S" items={[]} groups={[]} />,
+      // @ts-expect-error neither groups nor items.
+      <Command key="4" label="S" />,
+      <Command key="5" label="S" items={[]} query="x" onQueryChange={noop} />,
+    ];
+    expect(typeChecks).toHaveLength(5);
   });
 });
 
 describe("SearchMenu", () => {
   function renderSearchMenu(
-    props: Partial<Parameters<typeof SearchMenu>[0]> = {},
+    props: Partial<
+      Pick<SearchMenuProps, "closeOnSelect" | "listClassName" | "onOpenChange">
+    > = {},
   ) {
     const onSelect = vi.fn();
     render(
@@ -459,6 +533,18 @@ describe("CommandPalette", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("drops the key hints with footer={null}", () => {
+    render(
+      <CommandPalette
+        open
+        onOpenChange={vi.fn()}
+        groups={GROUPS}
+        footer={null}
+      />,
+    );
+    expect(screen.queryByText("to select")).toBeNull();
+  });
+
   it("returns focus to the control that had it when the palette opened", async () => {
     const user = userEvent.setup();
     function Shell() {
@@ -499,18 +585,21 @@ describe("CommandPalette", () => {
 });
 
 describe("useCommandPaletteShortcut", () => {
-  function Shortcut({ onOpen }: Readonly<{ onOpen: () => void }>) {
-    useCommandPaletteShortcut(onOpen);
+  function Shortcut({
+    onOpen,
+    shortcutKey,
+  }: Readonly<{ onOpen: () => void; shortcutKey?: string }>) {
+    useCommandPaletteShortcut(onOpen, shortcutKey);
     return null;
+  }
+
+  function onPlatform(platform: string) {
+    return vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
   }
 
   it("leaves handled, composing and key-less events alone, and takes an upper-case key", () => {
     const onOpen = vi.fn();
-    function Upper() {
-      useCommandPaletteShortcut(onOpen, "K");
-      return null;
-    }
-    render(<Upper />);
+    render(<Shortcut onOpen={onOpen} shortcutKey="K" />);
     const handled = new KeyboardEvent("keydown", {
       key: "k",
       ctrlKey: true,
@@ -519,23 +608,50 @@ describe("useCommandPaletteShortcut", () => {
     handled.preventDefault();
     document.dispatchEvent(handled);
     fireEvent.keyDown(document, { key: "k", ctrlKey: true, isComposing: true });
-    document.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true }));
+    // Autofill: a keydown whose key is undefined, not "".
+    const keyless = Object.assign(new Event("keydown"), { ctrlKey: true });
+    expect(() => document.dispatchEvent(keyless)).not.toThrow();
     expect(onOpen).not.toHaveBeenCalled();
     fireEvent.keyDown(document, { key: "k", ctrlKey: true });
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it("fires on Ctrl+K and ⌘K only, and stops listening on unmount", () => {
-    const onOpen = vi.fn();
-    const { unmount } = render(<Shortcut onOpen={onOpen} />);
-    fireEvent.keyDown(document, { key: "k", ctrlKey: true });
-    fireEvent.keyDown(document, { key: "K", metaKey: true });
-    fireEvent.keyDown(document, { key: "k" });
-    fireEvent.keyDown(document, { key: "k", ctrlKey: true, shiftKey: true });
-    fireEvent.keyDown(document, { key: "j", ctrlKey: true });
-    expect(onOpen).toHaveBeenCalledTimes(2);
-    unmount();
-    fireEvent.keyDown(document, { key: "k", ctrlKey: true });
-    expect(onOpen).toHaveBeenCalledTimes(2);
+  it("fires on Ctrl+K off Apple platforms, on any layout, and stops listening on unmount", () => {
+    const platform = onPlatform("Win32");
+    try {
+      const onOpen = vi.fn();
+      const { unmount } = render(<Shortcut onOpen={onOpen} />);
+      fireEvent.keyDown(document, { key: "k", ctrlKey: true });
+      // A Cyrillic layout types "л" on the K key.
+      fireEvent.keyDown(document, { key: "л", code: "KeyK", ctrlKey: true });
+      expect(onOpen).toHaveBeenCalledTimes(2);
+      fireEvent.keyDown(document, { key: "k", metaKey: true });
+      fireEvent.keyDown(document, { key: "k" });
+      fireEvent.keyDown(document, { key: "k", ctrlKey: true, shiftKey: true });
+      fireEvent.keyDown(document, { key: "k", ctrlKey: true, altKey: true });
+      fireEvent.keyDown(document, { key: "j", code: "KeyJ", ctrlKey: true });
+      expect(onOpen).toHaveBeenCalledTimes(2);
+      unmount();
+      fireEvent.keyDown(document, { key: "k", ctrlKey: true });
+      expect(onOpen).toHaveBeenCalledTimes(2);
+    } finally {
+      platform.mockRestore();
+    }
+  });
+
+  it("fires on ⌘K on a Mac and leaves Ctrl+K to text fields", () => {
+    const platform = onPlatform("MacIntel");
+    try {
+      const onOpen = vi.fn();
+      render(<Shortcut onOpen={onOpen} />);
+      const ctrlK = fireEvent.keyDown(document, { key: "k", ctrlKey: true });
+      expect(ctrlK).toBe(true);
+      expect(onOpen).not.toHaveBeenCalled();
+      const metaK = fireEvent.keyDown(document, { key: "k", metaKey: true });
+      expect(metaK).toBe(false);
+      expect(onOpen).toHaveBeenCalledTimes(1);
+    } finally {
+      platform.mockRestore();
+    }
   });
 });

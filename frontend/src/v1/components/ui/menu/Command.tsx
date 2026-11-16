@@ -51,25 +51,41 @@ export type CommandGroup = Readonly<{
   items: readonly CommandItem[];
 }>;
 
-export type CommandProps = Readonly<{
-  /** The rows, in groups. For one plain list, pass `items` instead. */
-  groups?: readonly CommandGroup[];
-  items?: readonly CommandItem[];
+/** The rows: in `groups`, or one plain list in `items`. Exactly one. */
+export type CommandRows =
+  | Readonly<{ groups: readonly CommandGroup[]; items?: never }>
+  | Readonly<{ items: readonly CommandItem[]; groups?: never }>;
+
+/**
+ * Who owns the query. Either the list keeps its own and filters locally
+ * (`onQueryChange` optional, to listen), or the caller does: then
+ * `onQueryChange` is required, because a set `query` with nobody to update it
+ * would freeze the search box, and `filter={false}` (the caller filters, e.g.
+ * a server search, and passes only the matching rows) with nobody listening
+ * would never change the list.
+ */
+export type CommandQuery =
+  | Readonly<{
+      query?: undefined;
+      onQueryChange?: (query: string) => void;
+      /** Default true: hide rows whose label or keywords lack the query (ignoring case). */
+      filter?: true;
+    }>
+  | Readonly<{
+      /** The query, when the caller holds it. */
+      query?: string;
+      onQueryChange: (query: string) => void;
+      filter?: boolean;
+    }>;
+
+/** Everything but the rows and the query. */
+export type CommandBaseProps = Readonly<{
   /** The search box's accessible name, e.g. "Search actions". */
   label: string;
   placeholder?: string;
-  /** Controlled query. Leave out to let the list keep its own. */
-  query?: string;
-  onQueryChange?: (query: string) => void;
-  /**
-   * Default true: rows whose label or keywords do not contain the query
-   * (ignoring case) are hidden. Set false when the caller filters, e.g. a
-   * server search, and passes only the matching rows.
-   */
-  filter?: boolean;
   /** Shown when no row matches. */
   emptyText?: string;
-  /** Shows "Loading…" instead of the empty text while results load. */
+  /** Shows "Loading…" in place of the rows (and the empty text) while results load. */
   loading?: boolean;
   onSelect?: (item: CommandItem) => void;
   /** A row at the bottom, below the list (key hints in the palette). */
@@ -80,6 +96,8 @@ export type CommandProps = Readonly<{
   /** Classes for the scrolling list. */
   listClassName?: string;
 }>;
+
+export type CommandProps = CommandBaseProps & CommandRows & CommandQuery;
 
 /** Whether `item` matches `query`: a case-insensitive substring of its label or a keyword. */
 export function matchesQuery(item: CommandItem, query: string): boolean {
@@ -221,7 +239,9 @@ export function Command({
 
   // On the input, and on the list too in case assistive tech moves focus there.
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.nativeEvent.isComposing) {
+    // Safari ends the composition before the confirming Enter's keydown,
+    // which then has isComposing false but keyCode 229.
+    if (event.nativeEvent.isComposing || event.keyCode === 229) {
       return;
     }
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {

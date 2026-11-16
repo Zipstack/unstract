@@ -1,8 +1,14 @@
 import { cn } from "@v1/lib/cn";
 import { getPortalContainer } from "@v1/lib/portal";
 import { Popover as RadixPopover } from "radix-ui";
-import { type JSX, type ReactElement, useEffect, useState } from "react";
-import { Command, type CommandItem, type CommandProps } from "./Command";
+import { type JSX, type ReactElement, useState } from "react";
+import {
+  Command,
+  type CommandBaseProps,
+  type CommandItem,
+  type CommandQuery,
+  type CommandRows,
+} from "./Command";
 import { MENU_SURFACE } from "./item";
 
 /*
@@ -12,7 +18,12 @@ import { MENU_SURFACE } from "./item";
  * use the selection inputs (P1-T04) instead.
  */
 
-export type SearchMenuProps = Omit<CommandProps, "autoFocus" | "className"> &
+export type SearchMenuProps = Omit<
+  CommandBaseProps,
+  "autoFocus" | "className"
+> &
+  CommandRows &
+  CommandQuery &
   Readonly<{
     /**
      * The control that opens the menu, used as the trigger itself
@@ -54,11 +65,15 @@ export function SearchMenu({
     onOpenChange?.(next);
   };
   // Each opening starts on a fresh search, however the menu was last closed.
-  useEffect(() => {
+  // Reset while rendering the opening (React's "adjust state on a prop
+  // change"), so no frame paints the last search.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (open) {
       setOwnQuery("");
     }
-  }, [open]);
+  }
   const select = (item: CommandItem) => {
     onSelect?.(item);
     if (closeOnSelect) {

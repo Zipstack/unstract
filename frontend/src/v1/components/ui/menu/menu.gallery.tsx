@@ -272,6 +272,7 @@ export const MENU_GALLERY: readonly GalleryEntry[] = [
         onOpenChange={noop}
         label="Search columns"
         query="zzz"
+        onQueryChange={noop}
         items={COLUMN_ITEMS}
         emptyText="No matching columns"
         trigger={<MenuButton>Columns</MenuButton>}
@@ -294,6 +295,7 @@ export const MENU_GALLERY: readonly GalleryEntry[] = [
         filter={false}
         loading
         query="invoice"
+        onQueryChange={noop}
       />
     ),
   },

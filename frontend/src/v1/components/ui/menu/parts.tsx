@@ -44,6 +44,11 @@ export type MenuPrimitives = Readonly<{
  * The row parts render their own body (icon, label, description, hint) inside
  * the Radix item, so they take no `asChild`: a link row runs its navigation in
  * `onSelect` instead.
+ *
+ * On these Radix rows, a `shortcut` is only a hint: bind the key yourself and
+ * pass `aria-keyshortcuts` (e.g. "Meta+D") if the menu should announce it. To
+ * keep the menu open while a `loading` row works, call
+ * `event.preventDefault()` in `onSelect`.
  */
 export type MenuItemProps = Omit<
   ComponentProps<P["Item"]>,
@@ -197,7 +202,11 @@ export function createMenuParts(R: MenuPrimitives, family: string) {
     return <R.RadioGroup data-slot={`${family}-radio-group`} {...props} />;
   }
 
-  /** A group label. Wrap it and its rows in a `Group` so the rows are named by it. */
+  /**
+   * A group label, visual only: Radix does not tie it to a `Group`. To have
+   * screen readers name the rows, give the `Group` an `aria-labelledby` that
+   * points at this label's `id`.
+   */
   function Label({
     className,
     ...props

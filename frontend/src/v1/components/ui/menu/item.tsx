@@ -50,20 +50,15 @@ export type MenuItemOptions = Readonly<{
   /** A 16px lucide glyph before the label, e.g. `ACTION_ICONS.edit`. */
   icon?: LucideIcon;
   /**
-   * A shortcut hint shown at the end, e.g. "⌘D". It is only a hint: it is
-   * hidden from screen readers, so bind the key yourself and pass
-   * `aria-keyshortcuts` (e.g. "Meta+D") if the menu should announce it.
+   * A shortcut hint shown at the end, e.g. "⌘D". It is only a hint, hidden
+   * from screen readers; it binds no key.
    */
   shortcut?: string;
   /** A second line in the caption role, read as the item's description. */
   description?: string;
   /** Styles the row apart. Put destructive rows last, after a separator. */
   destructive?: boolean;
-  /**
-   * Shows a spinner in place of the icon and disables the row, with
-   * `aria-busy`. To keep the menu open while the work runs, call
-   * `event.preventDefault()` in `onSelect`.
-   */
+  /** Shows a spinner in place of the icon and disables the row, with `aria-busy`. */
   loading?: boolean;
 }>;
 
