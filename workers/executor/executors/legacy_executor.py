@@ -428,7 +428,7 @@ class LegacyExecutor(BaseExecutor):
             # cache hits don't resurrect stale signatures.
             try:
                 if fs.exists(sidecar_path):
-                    fs.rm(sidecar_path)
+                    fs.rm_exact(sidecar_path)
             except Exception as e:
                 logger.warning(
                     "DOC_INSIGHTS sidecar: failed to remove stale %s: %s",
