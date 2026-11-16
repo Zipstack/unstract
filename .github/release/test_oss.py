@@ -3953,12 +3953,13 @@ class PublishWorkflow(Workflow):
                 )
         dev_git(self.cloud, "push", "-q", "--tags", "origin", "main")
 
-    def plan(self):
+    def plan(self, **env):
         r = self.run_step(
             inline("publish.yaml", "Plan"),
             VERSION="v1.7.0",
             TARGET="cloud",
             OWNER_REPO="Zipstack/unstract-cloud",
+            **env,
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         return r.stdout, dict(
@@ -3986,7 +3987,7 @@ class PublishWorkflow(Workflow):
         out, o = self.plan()
         self.assertEqual((o["prev"], o["exclude"]), ("v1.6.0", "5"), out)
 
-    def test_exclude_oss_is_what_the_previous_oss_pin_shipped(self):
+    def plan_after_oss_pick(self, **env):
         # OSS fix #41 merged on main and was picked into ee-v1.6.0, the pin of v1.6.0; v1.7.0's OSS notes drop #41.
         work = self.repos["oss"][1]
         base = dev_git(work, "rev-parse", "HEAD")
@@ -4003,8 +4004,18 @@ class PublishWorkflow(Workflow):
         dev_git(work, "push", "-q", "--tags", "origin", "main", "release/1.6")
         self.release("ee-v1.6.0", "v1.6.0")
         self.release("ee-v1.7.0-rc.1", "v1.7.0-rc.1", "v1.7.0")
-        out, o = self.plan()
+        return self.plan(**env)
+
+    def test_exclude_oss_is_what_the_previous_oss_pin_shipped(self):
+        out, o = self.plan_after_oss_pick()
         self.assertEqual(o["exclude_oss"], "41", out)
+
+    def test_without_the_oss_clone_nothing_is_excluded_from_oss(self):
+        out, o = self.plan_after_oss_pick(OSS_REPO="")
+        self.assertEqual(o["exclude_oss"], "", out)
+        self.assertIn(
+            "::warning::OSS shipped-PR scan failed, excluding nothing: no OSS clone", out
+        )
 
     def test_oss_range_is_the_two_pins(self):
         self.release("ee-v1.6.0", "v1.6.0")
@@ -4333,29 +4344,38 @@ elif "/contents/pyproject.toml" in a[1]:
     print(base64.b64encode(toml).decode())
 elif a[1].endswith("/releases/generate-notes"):
     print("## What's Changed")
-    for n in (5, 6):
-        print(f"* [FIX] fix {n} by @dev in https://github.com/Zipstack/unstract-cloud/pull/{n}")
+    for n in (5, 6):  # both repos number PRs 5 and 6
+        print(f"* [FIX] fix {n} by @dev in https://github.com/{a[1].split('/')[1]}/{a[1].split('/')[2]}/pull/{n}")
 """  # a commit's PR lookup prints nothing: no PR
 
-    def prerelease(self, subject):
+    def pick(self, work, subject, tag, stable):
+        # Fix `subject` merged on main, tagged `tag`, and was picked into `stable`.
+        base = dev_git(work, "rev-parse", "HEAD")
+        with open(os.path.join(work, "y.txt"), "w") as fh:
+            fh.write("y")
+        dev_git(work, "add", "y.txt")
+        dev_git(work, "commit", "-q", "-m", subject)
+        fix = dev_git(work, "rev-parse", "HEAD")
+        dev_git(work, "tag", tag)
+        dev_git(work, "checkout", "-q", "-b", "release/1.6", base)
+        dev_git(work, "cherry-pick", "-x", fix)
+        dev_git(work, "tag", stable)
+        dev_git(work, "checkout", "-q", "main")
+        dev_git(work, "push", "-q", "--tags", "origin", "main", "release/1.6")
+        return fix
+
+    def prerelease(self, subject, oss_subject=None, oss_clone=True):
         # Fix `subject` merged on main and was picked into v1.6.0; v1.7.0-rc.1 comes from main after it.
+        # With `oss_subject`, an OSS fix did the same between ee-v1.6.0 and ee-v1.7.0-rc.1.
         c = self.cloud
         with open(os.path.join(c, "pyproject.toml"), "w") as fh:
             fh.write('unstract-platform-version = "ee-v1.6.0"\n')
         dev_git(c, "add", "pyproject.toml")
         dev_git(c, "commit", "-q", "-m", "pin")
-        base = dev_git(c, "rev-parse", "HEAD")
-        with open(os.path.join(c, "y.txt"), "w") as fh:
-            fh.write("y")
-        dev_git(c, "add", "y.txt")
-        dev_git(c, "commit", "-q", "-m", subject)
-        fix = dev_git(c, "rev-parse", "HEAD")
-        dev_git(c, "tag", "v1.7.0-rc.1")
-        dev_git(c, "checkout", "-q", "-b", "release/1.6", base)
-        dev_git(c, "cherry-pick", "-x", fix)
-        dev_git(c, "tag", "v1.6.0")
-        dev_git(c, "checkout", "-q", "main")
-        dev_git(c, "push", "-q", "--tags", "origin", "main", "release/1.6")
+        fix = self.pick(c, subject, "v1.7.0-rc.1", "v1.6.0")
+        if oss_subject:
+            self.pick(self.repos["oss"][1], oss_subject, "ee-v1.7.0-rc.1", "ee-v1.6.0")
+        env = {"OSS_REPO": self.repos["oss"][1]} if oss_clone else {}
         os.makedirs(os.path.join(c, ".github"))
         os.symlink(HERE, os.path.join(c, ".github", "release"))
         bin_ = os.path.join(self.d, "bin-shipped")
@@ -4371,8 +4391,8 @@ elif a[1].endswith("/releases/generate-notes"):
                 "PATH": f"{bin_}:{self.path}",
                 "TAG": "v1.7.0-rc.1",
                 "SHA": fix,
-                "OSS": "ee-v1.6.0",  # the pin did not move: no OSS section
-                "OSS_REPO": self.repos["oss"][1],
+                **env,
+                "OSS": "ee-v1.7.0-rc.1" if oss_subject else "ee-v1.6.0",
                 "BRANCH": "release/1.7",
                 "TARGETS": "cloud",
                 "RC_NOTES": "",
@@ -4387,6 +4407,34 @@ elif a[1].endswith("/releases/generate-notes"):
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         return self.read("sent"), r.stderr
+
+    def sections(self, sent):
+        cloud, oss = sent.split("## Platform OSS changes")
+        return cloud, oss
+
+    def test_each_section_leaves_out_its_own_repos_shipped_prs(self):
+        # Cloud shipped #5 and OSS shipped #6: the numbers overlap, the lists must not.
+        cloud, oss = self.sections(self.prerelease("[FIX] y (#5)", "[FIX] y (#6)")[0])
+        self.assertNotIn("unstract-cloud/pull/5\n", cloud)
+        self.assertIn("unstract-cloud/pull/6\n", cloud)
+        self.assertIn("Zipstack/unstract/pull/5\n", oss)
+        self.assertNotIn("Zipstack/unstract/pull/6\n", oss)
+        self.assertIn("Leaves out 1 PRs already shipped in `ee-v1.6.0`.", oss)
+
+    def test_a_failed_oss_scan_keeps_every_oss_pr_and_says_so(self):
+        cloud, oss = self.sections(self.prerelease("[FIX] y (#5)", "[FIX] y")[0])
+        self.assertNotIn("unstract-cloud/pull/5\n", cloud)
+        self.assertIn("Zipstack/unstract/pull/5\n", oss)
+        self.assertIn("Zipstack/unstract/pull/6\n", oss)
+        self.assertIn("Could not list the PRs `ee-v1.6.0` already shipped", oss)
+
+    def test_without_the_oss_clone_the_oss_notes_keep_every_pr(self):
+        cloud, oss = self.sections(
+            self.prerelease("[FIX] y (#5)", "[FIX] y (#6)", oss_clone=False)[0]
+        )
+        self.assertNotIn("unstract-cloud/pull/5\n", cloud)
+        self.assertIn("Zipstack/unstract/pull/6\n", oss)
+        self.assertIn("Could not list the PRs `ee-v1.6.0` already shipped", oss)
 
     def test_shipped_prs_are_left_out(self):
         sent, _ = self.prerelease("[FIX] y (#5)")
