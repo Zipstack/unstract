@@ -1,3 +1,4 @@
+import { clearBrowserStorage } from "@v1/lib/browserStorage";
 import { http } from "@v1/lib/http";
 import posthog from "posthog-js";
 
@@ -20,7 +21,7 @@ export async function signOut(): Promise<string> {
   return url.href;
 }
 
-/** Signs out, forgets the analytics identity and leaves the app. */
+/** Signs out, forgets the analytics identity and stored data, and leaves the app. */
 export async function signOutAndLeave(): Promise<void> {
   let destination: string;
   try {
@@ -32,5 +33,6 @@ export async function signOutAndLeave(): Promise<void> {
     destination = "/api/v1/logout";
   }
   posthog.reset();
+  clearBrowserStorage();
   window.location.assign(destination);
 }

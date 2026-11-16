@@ -189,6 +189,21 @@ describe("signOutAndLeave", () => {
     expect(assign).toHaveBeenCalledWith("https://id.example.com/v2/logout");
   });
 
+  // CASA 6.6.1: the user's data must not outlive the session in the browser.
+  test("clears browser storage, keeping UI preferences", async () => {
+    reply.data = { redirect_url: "https://id.example.com/v2/logout" };
+    window.localStorage.setItem("dashboard_metrics_overview", '{"data":{}}');
+    window.localStorage.setItem("unstract.v1.theme", "dark");
+    window.sessionStorage.setItem("oauth-current-connector", "google_drive");
+    await signOutAndLeave();
+    expect(
+      window.localStorage.getItem("dashboard_metrics_overview"),
+    ).toBeNull();
+    expect(window.localStorage.getItem("unstract.v1.theme")).toBe("dark");
+    expect(window.sessionStorage.length).toBe(0);
+    window.localStorage.clear();
+  });
+
   test("a failed POST resets analytics, logs, and falls back to the GET logout", async () => {
     const logged = vi
       .spyOn(console, "error")

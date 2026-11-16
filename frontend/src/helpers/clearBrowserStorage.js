@@ -1,11 +1,14 @@
 /**
- * Browser storage cleanup at logout.
+ * Browser storage cleanup when a session ends.
  *
- * Logging out must not leave the user's data behind in the browser: the
+ * A session must not leave the user's data behind in the browser: the
  * dashboard metrics cache, connector OAuth state and the last signed-in user
  * all live in localStorage or sessionStorage. Everything is removed except
  * the UI preferences below, which say nothing about the user or their data
  * and would otherwise reset on every logout.
+ *
+ * v1 keeps its own copy (src/v1/lib/browserStorage.ts), because v1 may not
+ * import v0. Change both allowlists together.
  */
 
 const KEPT_LOCAL_STORAGE_KEYS = new Set([
@@ -14,6 +17,9 @@ const KEPT_LOCAL_STORAGE_KEYS = new Set([
   "sidebarPinned",
   "unstract.v1.theme",
   "unstract.v1.preview",
+  // Enterprise plugins: dismissed-banner flags.
+  "aps_onboarding_stepper_dismissed",
+  "unstract_welcome_card_dismissed",
 ]);
 
 // One entry per user who chose the old version on this browser (UN-4271).
@@ -23,12 +29,8 @@ const isKept = (key) =>
   KEPT_LOCAL_STORAGE_KEYS.has(key) ||
   KEPT_LOCAL_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix));
 
-export const clearBrowserStorage = () => {
-  try {
-    window.sessionStorage.clear();
-  } catch {
-    // Storage unavailable (sandboxed document): nothing to clear.
-  }
+/** Removes every localStorage key except the UI preferences above. */
+export const clearUserLocalStorage = () => {
   try {
     const storage = window.localStorage;
     // Collect first: removing while iterating by index shifts the indices.
@@ -44,4 +46,14 @@ export const clearBrowserStorage = () => {
   } catch {
     // Storage unavailable (sandboxed document): nothing to clear.
   }
+};
+
+/** At logout: all of sessionStorage, and localStorage bar the preferences. */
+export const clearBrowserStorage = () => {
+  try {
+    window.sessionStorage.clear();
+  } catch {
+    // Storage unavailable (sandboxed document): nothing to clear.
+  }
+  clearUserLocalStorage();
 };

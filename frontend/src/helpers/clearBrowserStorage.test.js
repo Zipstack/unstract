@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { clearBrowserStorage } from "./clearBrowserStorage.js";
+import {
+  clearBrowserStorage,
+  clearUserLocalStorage,
+} from "./clearBrowserStorage.js";
 
 describe("clearBrowserStorage", () => {
   afterEach(() => {
@@ -16,6 +19,8 @@ describe("clearBrowserStorage", () => {
       sidebarPinned: "false",
       "unstract.v1.theme": "dark",
       "unstract.v1.preview": "[]",
+      aps_onboarding_stepper_dismissed: "true",
+      unstract_welcome_card_dismissed: "true",
       "unstract.v1.oldVersion.7": "true",
     };
     const removed = {
@@ -51,5 +56,21 @@ describe("clearBrowserStorage", () => {
     });
 
     expect(() => clearBrowserStorage()).not.toThrow();
+  });
+
+  // Used when the server reports no session: sessionStorage is per tab and
+  // holds loop guards (silent sign-in), so only localStorage is cleared.
+  it("clearUserLocalStorage leaves sessionStorage alone", () => {
+    window.localStorage.setItem("dashboard_metrics_overview", '{"data":{}}');
+    window.localStorage.setItem("unstract.v1.theme", "dark");
+    window.sessionStorage.setItem("unstract:silentSignInAt", "1");
+
+    clearUserLocalStorage();
+
+    expect(
+      window.localStorage.getItem("dashboard_metrics_overview"),
+    ).toBeNull();
+    expect(window.localStorage.getItem("unstract.v1.theme")).toBe("dark");
+    expect(window.sessionStorage.getItem("unstract:silentSignInAt")).toBe("1");
   });
 });
