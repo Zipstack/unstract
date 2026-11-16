@@ -85,7 +85,7 @@ class ToolAPIClient(BaseAPIClient):
             )
 
         except Exception as e:
-            logger.error(f"Failed to execute tool {tool_instance_id}: {str(e)}")
+            logger.exception(f"Failed to execute tool {tool_instance_id}: {str(e)}")
             return APIResponse(success=False, error=str(e))
 
     def get_tool_execution_status(
@@ -113,7 +113,7 @@ class ToolAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to get tool execution status for {execution_id}: {str(e)}"
             )
             return APIResponse(success=False, error=str(e))
@@ -147,7 +147,7 @@ class ToolAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to get tool instances for workflow {workflow_id}: {str(e)}"
             )
             return APIResponse(success=False, error=str(e))
@@ -179,7 +179,7 @@ class ToolAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to get tool instance details for {tool_instance_id}: {str(e)}"
             )
             return APIResponse(success=False, error=str(e))
@@ -208,7 +208,7 @@ class ToolAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to get tool execution result for {execution_id}: {str(e)}"
             )
             return APIResponse(success=False, error=str(e))
@@ -254,7 +254,7 @@ class ToolAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to get tool execution logs for {execution_id}: {str(e)}"
             )
             return APIResponse(success=False, error=str(e))
@@ -305,7 +305,7 @@ class ToolAPIClient(BaseAPIClient):
                 error="Circuit breaker open - tool cancellation service unavailable",
             )
         except Exception as e:
-            logger.error(f"Failed to cancel tool execution {execution_id}: {str(e)}")
+            logger.exception(f"Failed to cancel tool execution {execution_id}: {str(e)}")
             return APIResponse(success=False, error=str(e))
 
     def batch_execute_tools(
@@ -353,7 +353,7 @@ class ToolAPIClient(BaseAPIClient):
             )
 
         except Exception as e:
-            logger.error(f"Failed to batch execute tools: {str(e)}")
+            logger.exception(f"Failed to batch execute tools: {str(e)}")
             return BatchOperationResponse(
                 operation_id=str(uuid.uuid4()),
                 total_items=len(tool_executions),
@@ -412,7 +412,7 @@ class ToolAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(f"Failed to get tool execution history: {str(e)}")
+            logger.exception(f"Failed to get tool execution history: {str(e)}")
             return APIResponse(success=False, error=str(e))
 
     def get_tool_execution_metrics(
@@ -461,7 +461,7 @@ class ToolAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(f"Failed to get tool execution metrics: {str(e)}")
+            logger.exception(f"Failed to get tool execution metrics: {str(e)}")
             return APIResponse(success=False, error=str(e))
 
     def update_tool_execution_status(
@@ -511,7 +511,7 @@ class ToolAPIClient(BaseAPIClient):
             )
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to update tool execution status for {execution_id}: {str(e)}"
             )
             return APIResponse(success=False, error=str(e))

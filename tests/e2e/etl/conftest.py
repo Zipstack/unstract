@@ -133,6 +133,7 @@ def etl_workflow(
                     "secret": minio_store.secret_key,
                     "endpoint_url": minio_store.internal_url,
                     "region_name": "us-east-1",
+                    "bucket": minio_store.bucket,
                 },
             },
         )
@@ -164,7 +165,9 @@ def etl_workflow(
             "connection_type": "FILESYSTEM",
             "connector_instance_id": source_id,
             "configuration": {
-                "folders": [f"/{minio_store.bucket}/{input_prefix}"],
+                # UN-3487: the connector is now scoped to its own bucket, so
+                # paths resolve relative to it — no bucket prefix here.
+                "folders": [f"/{input_prefix}"],
                 "processSubDirectories": False,
                 "maxFiles": 1,
                 "fileProcessingOrder": "unordered",
@@ -179,7 +182,8 @@ def etl_workflow(
         json={
             "connection_type": "FILESYSTEM",
             "connector_instance_id": destination_id,
-            "configuration": {"outputFolder": f"{minio_store.bucket}/{output_prefix}"},
+            # UN-3487: same as the source — no bucket prefix, it's implicit.
+            "configuration": {"outputFolder": output_prefix},
         },
     )
     assert resp.status_code == 200, f"destination endpoint: {resp.text}"

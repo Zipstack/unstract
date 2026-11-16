@@ -8,6 +8,8 @@ from typing import Any
 
 from account_v2.constants import Common
 from account_v2.models import User
+from adapter_processor_v2.deprecated_adapters import is_adapter_selectable
+from adapter_processor_v2.image_output_gating import LLMWHISPERER_ADAPTER_PREFIX
 from adapter_processor_v2.models import AdapterInstance, UserDefaultAdapter
 from django.conf import settings
 from django.db import transaction
@@ -17,7 +19,6 @@ from permissions.permission import (
     _is_resource_viewer,
     has_group_access,
 )
-from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework.exceptions import APIException
 from rest_framework.request import Request
@@ -26,6 +27,7 @@ from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
 
+from prompt_studio import vlm_utils
 from prompt_studio.lookup_utils import (
     get_lookup_config,
     get_lookup_configs_for_tool,
@@ -54,6 +56,7 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     DefaultProfileError,
     EmptyPromptError,
     ExtractionAPIError,
+    ImageModePageLimitExceeded,
     IndexingAPIError,
     NoPromptsFound,
     OperationNotSupported,
@@ -77,16 +80,36 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import 
     OutputManagerHelper,
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
+from prompt_studio.vlm_utils import invalidate_vlm_answers_on_reextraction
 from unstract.core.prompt_run_cancellation import (
     PROMPT_RUN_CANCELLED_ERROR,
     is_cancelled,
 )
 from unstract.core.pubsub_helper import LogPublisher
+from unstract.sdk1.adapters.x2text.constants import ImageOutputConstants
+from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import (
+    LLMWhispererHelper,
+)
+from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.page_range import (
+    PageRangeError,
+)
+from unstract.sdk1.adapters.x2text.page_image_loader import get_fixed_page_cap
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.exceptions import IndexingError, SdkError
 from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.file_storage.constants import StorageType
 from unstract.sdk1.file_storage.env_helper import EnvHelper
+from unstract.sdk1.llm import LLM
+from unstract.sdk1.utils.image_limits import (
+    codes as image_limit_codes,
+)
+from unstract.sdk1.utils.image_limits import (
+    compute_page_budget,
+    extraction_bound_kwargs,
+    fixed_cap_message,
+    model_aware_limits_enabled,
+    page_cap_message,
+)
 from unstract.sdk1.utils.indexing import IndexingUtils
 from unstract.sdk1.utils.tool import ToolUtils
 
@@ -148,8 +171,8 @@ class PromptStudioHelper:
             "vector_store": default_adapter.default_vector_db_adapter,
             "x2text": default_adapter.default_x2text_adapter,
         }
-        # A valid profile needs a usable default for every adapter type
-        if not all(adapter and adapter.is_usable for adapter in adapters.values()):
+        # A valid profile needs a selectable default for every adapter type
+        if not all(is_adapter_selectable(adapter) for adapter in adapters.values()):
             logger.info(
                 "Skipping default profile creation: "
                 "incomplete or unusable default adapters"
@@ -451,6 +474,7 @@ class PromptStudioHelper:
         output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
         output[TSPKeys.SECTION] = profile_manager.section
         output[TSPKeys.X2TEXT_ADAPTER] = x2text
+        PromptStudioHelper._stamp_x2text_output_mode(output, profile_manager)
 
         webhook_enabled = bool(prompt.enable_postprocessing_webhook)
         webhook_url = (prompt.postprocessing_webhook_url or "").strip()
@@ -655,6 +679,13 @@ class PromptStudioHelper:
                 "check_extraction_status raised; falling back to full extraction",
                 exc_info=True,
             )
+        if reused_extracted_text:
+            # The cache key ignores the LLM, so a cached image-mode extraction
+            # made for another LLM must still fit this profile's (outside the
+            # fallback above: a rejection must reach the user).
+            PromptStudioHelper._check_cached_image_extraction(
+                default_profile, reused_extracted_text, filename
+            )
 
         util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         doc_id_key = IndexingUtils.generate_index_key(
@@ -673,6 +704,9 @@ class PromptStudioHelper:
 
         extract_params = {
             IKeys.X2TEXT_INSTANCE_ID: str(default_profile.x2text.id),
+            IKeys.LLM_INSTANCE_IDS: PromptStudioHelper._image_limit_llm_ids(
+                default_profile
+            ),
             IKeys.FILE_PATH: file_path,
             IKeys.ENABLE_HIGHLIGHT: tool.enable_highlight,
             IKeys.OUTPUT_FILE_PATH: extract_file_path,
@@ -876,6 +910,9 @@ class PromptStudioHelper:
             enable_highlight=tool.enable_highlight,
         )
 
+        # Captured before the summarize override: the page-image reader must
+        # key on the extract path even when answers run over the summary.
+        image_extract_path = extract_path
         is_summary = tool.summarize_as_source
         if is_summary:
             profile_manager.chunk_size = 0
@@ -923,6 +960,7 @@ class PromptStudioHelper:
         output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
         output[TSPKeys.SECTION] = profile_manager.section
         output[TSPKeys.X2TEXT_ADAPTER] = x2text
+        PromptStudioHelper._stamp_x2text_output_mode(output, profile_manager)
 
         webhook_enabled = bool(prompt.enable_postprocessing_webhook)
         webhook_url = (prompt.postprocessing_webhook_url or "").strip()
@@ -984,6 +1022,7 @@ class PromptStudioHelper:
             TSPKeys.FILE_NAME: doc_name,
             TSPKeys.FILE_HASH: file_hash,
             TSPKeys.FILE_PATH: extract_path,
+            TSPKeys.EXTRACT_FILE_PATH: image_extract_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
             TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
             TSPKeys.CUSTOM_DATA: tool.custom_data,
@@ -1105,6 +1144,9 @@ class PromptStudioHelper:
             enable_highlight=tool.enable_highlight,
         )
 
+        # Captured before the summarize override: the page-image reader must
+        # key on the extract path even when answers run over the summary.
+        image_extract_path = extract_path
         is_summary = tool.summarize_as_source
         if is_summary:
             profile_manager.chunk_size = 0
@@ -1182,6 +1224,7 @@ class PromptStudioHelper:
             TSPKeys.FILE_NAME: doc_name,
             TSPKeys.FILE_HASH: file_hash,
             TSPKeys.FILE_PATH: extract_path,
+            TSPKeys.EXTRACT_FILE_PATH: image_extract_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
             TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
             TSPKeys.CUSTOM_DATA: tool.custom_data,
@@ -1321,6 +1364,10 @@ class PromptStudioHelper:
             or TSPKeys.SIMPLE,
             TSPKeys.SIMILARITY_TOP_K: default_profile.similarity_top_k,
         }
+        # Stamp the x2text output mode like every other payload builder — the
+        # executor's single-pass guard trusts the stamp, and an unstamped IDE
+        # payload is treated as pre-upgrade text mode (guard never fires).
+        PromptStudioHelper._stamp_x2text_output_mode(tool_settings, default_profile)
 
         lookup_configs = get_lookup_configs_for_tool(tool, prompts=prompts)
         if lookup_configs:
@@ -1443,6 +1490,305 @@ class PromptStudioHelper:
             tool_id=tool_id
         ).order_by(TSPKeys.SEQUENCE_NUMBER)
         return prompt_instances
+
+    @staticmethod
+    def _stamp_x2text_output_mode(output: dict, profile_manager) -> None:
+        """Stamp the x2text output mode onto a per-prompt payload.
+
+        Lets the executor detect image mode from the payload instead of a
+        platform-service call. LLMWhisperer-only (the sole adapter with an
+        image output mode); best-effort — a metadata read failure leaves
+        the stamp absent and the executor falls back to live resolution.
+        """
+        x2text = getattr(profile_manager, "x2text", None)
+        if x2text is None:
+            return
+        try:
+            adapter_id = str(getattr(x2text, "adapter_id", "") or "")
+            if not adapter_id.startswith(LLMWHISPERER_ADAPTER_PREFIX):
+                return
+            metadata = x2text.metadata or {}
+            output[TSPKeys.X2TEXT_OUTPUT_MODE] = metadata.get(
+                ImageOutputConstants.OUTPUT_MODE
+            )
+        except Exception:
+            logger.exception("Could not stamp x2text output mode; will resolve live")
+
+    @staticmethod
+    def _is_image_output_mode(profile_manager: ProfileManager | None) -> bool:
+        """True when the profile's x2text adapter is LLMWhisperer in image mode.
+
+        Gated on BOTH the LLMWhisperer adapter id and ``output_mode == image``:
+        ``output_mode`` is user-editable adapter metadata, so keying on it alone
+        would make any future x2text adapter that adopts the same key inherit
+        image-mode rules it never asked for.
+        """
+        x2text = getattr(profile_manager, "x2text", None)
+        if x2text is None:
+            return False
+        adapter_id = str(getattr(x2text, "adapter_id", "") or "")
+        if not adapter_id.startswith(LLMWHISPERER_ADAPTER_PREFIX):
+            return False
+        return (x2text.metadata or {}).get(
+            ImageOutputConstants.OUTPUT_MODE
+        ) == ImageOutputConstants.IMAGE_MODE
+
+    @staticmethod
+    def uploads_use_image_output_mode(profile_manager: ProfileManager | None) -> bool:
+        """Whether uploads to a project are checked against image-mode limits.
+
+        True when the project's default profile is LLMWhisperer in image mode:
+        an upload isn't tied to an output mode, and the same document is fine
+        in a text mode. Fails open — an unreadable adapter config (e.g. metadata
+        encrypted with an old key) must not block uploads; extraction still
+        enforces the limits.
+        """
+        try:
+            return PromptStudioHelper._is_image_output_mode(profile_manager)
+        except Exception:
+            logger.exception("Could not read the default profile's output mode")
+            return False
+
+    @staticmethod
+    def _image_limit_llm_ids(profile_manager: ProfileManager | None) -> list[str]:
+        """The LLM ids whose image limits apply to this profile's extraction."""
+        llm = getattr(profile_manager, "llm", None)
+        llm_id = getattr(llm, "id", None)
+        return [str(llm_id)] if llm_id else []
+
+    @staticmethod
+    def _upload_page_budget(profile_manager: ProfileManager | None) -> Any:
+        """The profile LLM's page budget, or None to use the fixed cap.
+
+        Resolution is local (the adapter's own validation) and never waits on
+        the network: the limits table is served from memory, and a due
+        refresh runs in the background. Any failure, or
+        ``VLM_IMAGE_LIMITS_ENFORCE=false``, falls back to the fixed cap rather
+        than blocking the upload: extraction re-checks against the LLM before
+        anything is converted.
+        """
+        llm = getattr(profile_manager, "llm", None)
+        if llm is None or not model_aware_limits_enabled():
+            return None
+        try:
+            limits, tokens = LLM.image_input_limits_for(
+                str(llm.adapter_id), llm.metadata or {}
+            )
+        except SdkError as e:
+            # The error type only, no traceback: adapter error text stays out of
+            # the log.
+            logger.warning(
+                "Could not resolve image limits for the default profile's LLM "
+                "(%s); using the fixed page cap for the upload check",
+                type(e).__name__,
+            )
+            return None
+        except Exception:
+            # Not the adapter's fault: a defect while resolving the limits.
+            # The upload still falls back to the fixed cap; extraction
+            # re-resolves and fails with a clear reason if this persists.
+            logger.exception(
+                "Internal error resolving image limits for the default "
+                "profile's LLM; using the fixed page cap for the upload check"
+            )
+            return None
+        bounds = extraction_bound_kwargs()
+        return compute_page_budget(
+            limits,
+            context_tokens=tokens,
+            page_ceiling=bounds["page_ceiling"],
+            legacy_cap=bounds["legacy_cap"],
+        )
+
+    @staticmethod
+    def _check_cached_image_extraction(
+        profile_manager: ProfileManager, extracted_text: str, filename: str
+    ) -> None:
+        """Re-check a cached image-mode extraction against the profile's LLM.
+
+        The extraction cache is keyed on the document, profile and x2text
+        config, not the LLM. After a profile switches LLM (e.g. Gemini to
+        Bedrock Claude, 20 images) a cache hit would skip the page-budget
+        check and the prompt would fail at the provider. Uses the page count
+        recorded in the image-mode summary; no-op outside image mode or when
+        the count is unknown (answer time re-checks). Without a resolvable
+        LLM, or with ``VLM_IMAGE_LIMITS_ENFORCE=false``, the fixed page cap
+        applies, as at upload.
+        """
+        if not PromptStudioHelper.uploads_use_image_output_mode(profile_manager):
+            return
+        page_count = LLMWhispererHelper.page_count_from_image_output_summary(
+            extracted_text
+        )
+        if page_count is None:
+            return
+        budget = PromptStudioHelper._upload_page_budget(profile_manager)
+        if budget is None:
+            page_cap = get_fixed_page_cap()
+            if page_count <= page_cap:
+                return
+            raise ExtractionAPIError(
+                f"Failed to extract '{filename}'. "
+                f"{image_limit_codes.IMAGE_PAGE_CAP_EXCEEDED}: "
+                + fixed_cap_message(
+                    page_count,
+                    page_cap,
+                    switch_to="switch this profile to a text output mode",
+                )
+            )
+        if page_count <= budget.max_pages:
+            return
+        raise ExtractionAPIError(
+            f"Failed to extract '{filename}'. "
+            f"{image_limit_codes.IMAGE_PAGE_CAP_EXCEEDED}: "
+            + page_cap_message(page_count, budget, charged=None)
+            + " The document was extracted earlier for a different LLM; "
+            "switch this profile back, or use one whose LLM accepts more pages."
+        )
+
+    @staticmethod
+    def validate_upload_page_count_for_image_mode(
+        file_data: Any, file_type: str, profile_manager: ProfileManager | None = None
+    ) -> None:
+        """Reject, at upload, a PDF with more pages than image mode can answer.
+
+        Call only when ``uploads_use_image_output_mode`` is True. Image mode
+        sends every page to the LLM in one request, so a document over the
+        LLM's page budget can never be answered — and converting it would be
+        billed. Catching it at upload means the user never builds prompts
+        around a document that will fail at indexing.
+
+        ``profile_manager`` is the project's default profile: its LLM's
+        image-request limits set the budget (the same computation the
+        extraction-time pre-check runs). Without a resolvable LLM the fixed
+        cap applies. The file is read in place, not copied into memory. A
+        PDF whose page count can't be read is let through; extraction
+        re-checks it.
+        """
+        if file_type != "application/pdf":
+            return
+        total_page_count = LLMWhispererHelper.pdf_page_count(file_data)
+        file_data.seek(0)
+        if total_page_count is None:
+            return
+        page_count, selection_valid = PromptStudioHelper._selected_page_count(
+            profile_manager, total_page_count
+        )
+        # Named in the message only when the selection narrowed the count,
+        # as the SDK's pre-submit check does.
+        selected_from = total_page_count if page_count != total_page_count else None
+        budget = PromptStudioHelper._upload_page_budget(profile_manager)
+        if budget is not None:
+            if page_count <= budget.max_pages:
+                return
+            profile_name = getattr(profile_manager, "profile_name", "") or "default"
+            raise ImageModePageLimitExceeded(
+                detail=(
+                    page_cap_message(
+                        page_count,
+                        budget,
+                        charged=None,
+                        selected_from=selected_from,
+                        invalid_selection=not selection_valid,
+                    )
+                    + " This check uses the project's default profile "
+                    f"('{profile_name}'); other profiles may allow a different "
+                    "number of pages."
+                )
+            )
+        page_cap = get_fixed_page_cap()
+        if page_count <= page_cap:
+            return
+        raise ImageModePageLimitExceeded(
+            detail=fixed_cap_message(
+                page_count,
+                page_cap,
+                switch_to="switch the project's default profile to a text output mode",
+                selected_from=selected_from,
+                invalid_selection=not selection_valid,
+            )
+        )
+
+    @staticmethod
+    def _selected_page_count(
+        profile_manager: ProfileManager | None, total_page_count: int
+    ) -> tuple[int, bool]:
+        """``(pages the profile's 'Pages to extract' selects, setting valid)``.
+
+        Image mode converts and sends only the selected pages, so the upload
+        check counts those, with the SDK's own counting. Fails open to the
+        whole document when the setting is invalid (``False``: the message
+        must not suggest a smaller range) or unreadable; extraction reports
+        an invalid setting before anything is converted. Failures are logged
+        with their type only: the setting's value is user input, and reading
+        the adapter metadata decrypts it, so an error there can quote
+        credentials (hence no traceback either).
+        """
+        try:
+            x2text = getattr(profile_manager, "x2text", None)
+            metadata = (getattr(x2text, "metadata", None) or {}) if x2text else {}
+            return (
+                LLMWhispererHelper.selected_page_count(metadata, total_page_count),
+                True,
+            )
+        except PageRangeError as e:
+            logger.warning(
+                "The default profile's 'Pages to extract' setting is invalid "
+                "(%s); the upload page check counts all %d pages",
+                type(e).__name__,
+                total_page_count,
+            )
+            return total_page_count, False
+        except Exception as e:
+            logger.error(
+                "Could not apply the default profile's 'Pages to extract' setting "
+                "to the upload page check (%s); counting all %d pages",
+                type(e).__name__,
+                total_page_count,
+            )
+            return total_page_count, True
+
+    @staticmethod
+    def _validate_image_output_pdf_only(
+        profile_manager: ProfileManager, file_name: str
+    ) -> None:
+        """Reject non-PDF inputs when the x2text adapter is in image mode.
+
+        Image output mode (LLMWhisperer V2) supports PDF input only. The SDK
+        adapter enforces this at extraction time; this mirror-check runs just
+        before extraction is dispatched (from ``dynamic_extractor``, the single
+        choke point for every extract path) so the user gets the identical
+        PDF-only message early. The message + PDF test come from the shared
+        ``ImageOutputConstants`` so the two layers cannot drift.
+
+        Gated by ``_is_image_output_mode`` (adapter id AND output mode).
+
+        Also rejects image-mode extraction outright when the cloud plugin
+        package is present but its backend hooks are broken
+        (``vlm_utils.VLM_HOOKS_BROKEN``) — see the inline comment below.
+        """
+        if not PromptStudioHelper._is_image_output_mode(profile_manager):
+            return
+        # Fail-closed on a half-broken cloud install: with the plugin package
+        # present but its backend hooks unimportable, a re-extraction would
+        # rewrite the page images while the answers stored against the old
+        # pages are never invalidated. Blocking image-mode extraction here
+        # (same choke point) is the only safe behavior.
+        if vlm_utils.VLM_HOOKS_BROKEN:
+            raise IndexingAPIError(
+                detail=(
+                    "Image output mode is unavailable: the VLM consumer "
+                    "plugin is installed but failed to load. Contact your "
+                    "administrator, or switch the profile's text extractor "
+                    "to a text output mode."
+                ),
+                status_code=500,
+            )
+        if not ImageOutputConstants.is_pdf(file_name):
+            raise IndexingAPIError(
+                detail=ImageOutputConstants.PDF_ONLY_ERROR,
+                status_code=400,
+            )
 
     @staticmethod
     def index_document(
@@ -2132,6 +2478,7 @@ class PromptStudioHelper:
         output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
         output[TSPKeys.SECTION] = profile_manager.section
         output[TSPKeys.X2TEXT_ADAPTER] = x2text
+        PromptStudioHelper._stamp_x2text_output_mode(output, profile_manager)
         # Webhook postprocessing settings
         webhook_enabled = bool(prompt.enable_postprocessing_webhook)
         webhook_url = (prompt.postprocessing_webhook_url or "").strip()
@@ -2585,6 +2932,14 @@ class PromptStudioHelper:
         profile_manager: ProfileManager,
         document_id: str,
     ) -> str:
+        # Reject a non-PDF input paired with an image-output adapter before any
+        # extraction work. This is the single choke point every extract path
+        # funnels through, and it runs under this profile_manager (not the
+        # default profile), so every entry point and prompt-level profile
+        # override is covered (UNS-757/758).
+        PromptStudioHelper._validate_image_output_pdf_only(
+            profile_manager, os.path.basename(file_path)
+        )
         # Guard against None metadata (when adapter_metadata_b is None)
         metadata = profile_manager.x2text.metadata or {}
         x2text_config_hash = ToolUtils.hash_str(json.dumps(metadata, sort_keys=True))
@@ -2614,6 +2969,11 @@ class PromptStudioHelper:
             try:
                 extracted_text = fs_instance.read(path=extract_file_path, mode="r")
                 logger.info("Extracted text found. Reading from file..")
+                # The cache key ignores the LLM, so a cached image-mode
+                # extraction made for another LLM must still fit this one.
+                PromptStudioHelper._check_cached_image_extraction(
+                    profile_manager, extracted_text, filename
+                )
                 return extracted_text
             except FileNotFoundError as e:
                 logger.warning(
@@ -2623,6 +2983,9 @@ class PromptStudioHelper:
                 extracted_text = None
         payload = {
             IKeys.X2TEXT_INSTANCE_ID: x2text,
+            IKeys.LLM_INSTANCE_IDS: PromptStudioHelper._image_limit_llm_ids(
+                profile_manager
+            ),
             IKeys.FILE_PATH: file_path,
             IKeys.ENABLE_HIGHLIGHT: enable_highlight,
             IKeys.USAGE_KWARGS: usage_kwargs.copy(),
@@ -2677,6 +3040,50 @@ class PromptStudioHelper:
             )
 
         extracted_text = result.data.get("extracted_text", "")
+
+        # A fresh (non-cache-hit) extraction rewrote any persisted page
+        # images — notify the VLM answer-invalidation hook (no-op in OSS)
+        # BEFORE committing the extraction-success marker. A success marker
+        # for this hash can already exist (the cache-hit path falls through
+        # here when the extracted text file was missing), so on a hook
+        # failure it is explicitly marked failed: a retry then re-runs
+        # extraction and invalidation instead of cache-hitting past a
+        # stale-answer state.
+        try:
+            invalidate_vlm_answers_on_reextraction(
+                document_id=str(document_id),
+                profile_manager=profile_manager,
+                extract_file_path=extract_file_path,
+            )
+        except Exception as e:
+            status_result = PromptStudioIndexHelper.mark_extraction_status(
+                document_id=document_id,
+                profile_manager=profile_manager,
+                x2text_config_hash=x2text_config_hash,
+                enable_highlight=enable_highlight,
+                extracted=False,
+                error_message=f"VLM answer invalidation failed: {e}",
+            )
+            if status_result is not ExtractionStatusResult.OK:
+                # The stale success marker survived. Remove the freshly
+                # written text so a cache hit on that marker falls through
+                # the file-missing path and re-extracts anyway.
+                logger.warning(
+                    f"Failed to mark extraction failure for document {document_id} "
+                    f"after VLM answer invalidation failed; removing extracted text."
+                )
+                try:
+                    EnvHelper.get_storage(
+                        storage_type=StorageType.PERMANENT,
+                        env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+                    ).rm_exact(extract_file_path)
+                except Exception:
+                    logger.exception(
+                        f"Failed to remove {extract_file_path}; a retry may "
+                        f"cache-hit past VLM answer invalidation."
+                    )
+            raise
+
         # Distinct name: ``result`` is the dispatcher's ExecutionResult and is
         # still read above. Rebinding it to an ExtractionStatusResult made
         # ``result.data`` correct only by branch ordering.
@@ -3007,7 +3414,7 @@ class PromptStudioHelper:
 
         # created_by is audit-only; grant the creator an OWNER membership row so
         # access/ownership flows through it (UN-2202), as the viewset create does.
-        tool.memberships.get_or_create(user=user, defaults={"role": ResourceRole.OWNER})
+        tool.grant_owner(user)
 
         return tool
 
@@ -3226,7 +3633,7 @@ class PromptStudioHelper:
                 ]
 
                 for adapter in adapters_to_check:
-                    if not adapter or not adapter.is_usable:
+                    if not is_adapter_selectable(adapter):
                         warning_message = (
                             "Some adapters may need to be configured before you can use "
                             "this project. Please check the profile settings."

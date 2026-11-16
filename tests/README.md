@@ -117,12 +117,13 @@ Optional knobs (see `groups.yaml` for examples):
 
 ### Frontend groups (`vitest` / `playwright`)
 
-Two groups run Node suites rather than pytest:
+Three groups run Node suites rather than pytest:
 
 | Group | Tier | Runner | What it covers |
 |---|---|---|---|
 | `frontend` | unit | `vitest` | Vitest + React Testing Library over jsdom — the antd→shadcn shims and the components on top of them. Workdir `frontend`. |
 | `ui` | e2e | `playwright` | Browser e2e against the real UI. Specs live in `tests/e2e/ui/`, beside the other e2e suites. |
+| `frontend-v1-e2e` | e2e | `playwright` | Browser e2e for the v1 frontend (epic UN-4257). Specs and harness live in `tests/e2e/ui-v1/`; see its README. |
 
 ```bash
 python -m tests.rig run frontend           # the whole vitest suite
@@ -135,17 +136,28 @@ cd tests/e2e/ui && npx playwright install chromium
 `tests/e2e/ui` is self-contained — specs, `playwright.config.js` and its own
 `node_modules` — so it resolves without reaching into `frontend/`.
 
-Both emit **real JUnit**, so `parse_junit` reports per-test counts exactly like
+All three emit **real JUnit**, so `parse_junit` reports per-test counts exactly like
 a pytest group (unlike `hurl`, which gets one synthetic row). Vitest takes
 `--outputFile`; Playwright reads `PLAYWRIGHT_JUNIT_OUTPUT_NAME`, which the rig
 exports — that is why the config reads it.
 
-Both are `optional`, deliberately. They shell out via `npx --no-install`, so a
+`frontend` and `ui` are `optional`, deliberately. They shell out via `npx --no-install`, so a
 machine or CI image without `node_modules` (or without the browser binaries)
 **skips** instead of failing the build. The runner returns exit 5 — the rig's
 "nothing collected" convention — when `npx` is missing entirely. If a Node
 runner dies before its reporter flushes, the rig backfills a synthetic junit so
 the failure still shows in the summary rather than vanishing as a missing group.
+
+`frontend-v1-e2e` is **not** optional: it gates the build. CI's e2e job
+installs its `node_modules` and browser before the tier runs. To run it
+locally, install them first:
+
+```bash
+cd tests/e2e/ui-v1 && bun install --frozen-lockfile && bunx playwright install chromium
+```
+
+Without them, `npx --no-install` fails and the group is red; with no `npx` at
+all it still exits 5 and reads as skipped, like the other Node groups.
 
 **Auth.** The `ui` suite runs against both deployments. `UNSTRACT_AUTH_MODE`
 picks the flow, or it auto-detects:
@@ -201,7 +213,7 @@ Three modes behind one protocol, chosen by `--runtime` or `UNSTRACT_E2E_RUNTIME`
 |---|---|---|
 | `compose` | CI; testing the prod image. | `docker compose -f docker/docker-compose.yaml -f tests/compose/docker-compose.test.yaml up -d --wait`, then HTTP. Teardown wipes volumes. |
 | `testcontainers` | Local iteration on infra-only groups. | Stands up Postgres/Redis/RabbitMQ/MinIO via testcontainers and exposes their handles on `PlatformEndpoints.infra`. **Stub today**: does NOT auto-launch backend/prompt-service/etc. as subprocesses — full-platform e2e on testcontainers will need that wiring added. Use `compose` for now if you need the whole stack. |
-| `local` | After `./run-platform.sh`. | Assume a developer-managed stack; read URLs from env. |
+| `local` | After `./run-platform.sh`. | Assume a developer-managed stack; read URLs from env. The smoke gate probes x2text-service at `localhost:3004`, which `docker/docker-compose.yaml` does not publish: uncomment its loopback `ports` entry there, then re-run `./run-platform.sh` with the options you started it with, so the container is recreated with it. |
 
 The rig brings the platform up **once** per `run` invocation (if any selected group has `requires_platform: true`) and exports its URLs via env vars (`UNSTRACT_BACKEND_URL`, `UNSTRACT_PROMPT_SERVICE_URL`, etc.). The rig uses `env.setdefault(...)` so a pre-set value (e.g. from `local` runtime or a developer override) wins over the runtime's default — useful when iterating against a custom stack, but means stale shell env can mask wiring bugs. The smoke test asserts the fixture's URL matches the env var to catch this.
 
@@ -332,6 +344,27 @@ List what a group would run (no DB required):
 ```bash
 cd backend && uv run --group test pytest . -m integration --collect-only -q
 ```
+
+### Backend: tests that touch auth or roles
+
+A distribution can install an auth plugin that replaces the built-in
+`AuthenticationService`, and the same backend tests then run under it. Such a
+plugin names roles its own way and makes its own identity-provider calls. A
+test that hardcodes the built-in behaviour passes here and fails there. So ask
+the active service, with the helpers in `backend/utils/tests/auth_seam.py`:
+
+| Instead of | Use |
+|---|---|
+| `role="admin"` / `role="user"` on a membership row | `admin_role()` / `member_role()` |
+| `patch.object(AuthenticationService, "invite_user", ...)` | `patch_auth_service("invite_user", ...)` |
+| patching `is_admin_by_role` or `is_user_organization_admin` | a row with `admin_role()`; let the role check run |
+| patching `AuthenticationPluginRegistry.is_plugin_available` | `builtin_auth_service()`, only when the built-in service is the subject |
+
+`builtin_auth_service()` turns any plugin off, so the test stops checking the
+distribution it runs in. Use it only when the test's subject is the built-in
+service (its session login, or a role change through its identity-provider
+path). Say why in a comment. `backend/tenant_account_v2/test_capabilities.py`
+shows both cases.
 
 ### Other services / new areas
 

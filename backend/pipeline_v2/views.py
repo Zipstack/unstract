@@ -8,11 +8,16 @@ from api_v2.key_helper import KeyHelper
 from api_v2.postman_collection.dto import PostmanCollection
 from django.db import IntegrityError, transaction
 from django.db.models import F, QuerySet
-from django.http import HttpResponse
+from django.http import HttpResponse, QueryDict
 from permissions.membership_views import OwnerManagementMixin
-from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from permissions.permission import (
+    IsOwner,
+    IsOwnerOrSharedUserOrSharedToOrg,
+    is_activation_only_patch,
+)
 from permissions.resource_share_views import ResourceShareManagementMixin
-from permissions.roles import ResourceRole
+from platform_audit.actions import Action
+from platform_audit.resources import record_resource_event, resource_ref
 from plugins import get_plugin
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
@@ -20,8 +25,19 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from scheduler.helper import SchedulerHelper
+from tenant_account_v2.capabilities import Capability, RequiresCapability
 from utils.filters.ordering_filter import DeterministicOrderingFilter
 from utils.pagination import CustomPagination
+from workflow_manager.workflow_v2.list_aggregate_serializers import (
+    LIST_FILTER_ACTIONS,
+    list_filters_from,
+    workflow_filter_from,
+)
+from workflow_manager.workflow_v2.list_aggregates import (
+    RowFields,
+    aggregate_rows,
+    apply_list_filters,
+)
 
 from pipeline_v2.constants import (
     PipelineConstants,
@@ -32,6 +48,7 @@ from pipeline_v2.constants import PipelineKey as PK
 from pipeline_v2.manager import PipelineManager
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
+from pipeline_v2.serializers.aggregate import PipelineAggregateSerializer
 from pipeline_v2.serializers.crud import PipelineSerializer
 from pipeline_v2.serializers.execute import (
     PipelineExecuteSerializer as ExecuteSerializer,
@@ -39,10 +56,24 @@ from pipeline_v2.serializers.execute import (
 from pipeline_v2.serializers.sharing import SharedUserListSerializer
 
 notification_plugin = get_plugin("notification")
-if notification_plugin:
-    from plugins.notification.constants import ResourceType
 
 logger = logging.getLogger(__name__)
+
+PIPELINE_ROW_FIELDS = RowFields(
+    active="active", last_run="last_run_time", schedule="cron_string"
+)
+
+
+def _pipeline_type_from(params: QueryDict) -> str | None:
+    """The ``type`` param, ``None`` when blank; an unknown type is a 400."""
+    pipeline_type: str | None = params.get(PipelineConstants.TYPE)
+    if not pipeline_type:
+        return None
+    if pipeline_type not in Pipeline.PipelineType.values:
+        raise serializers.ValidationError(
+            {PipelineConstants.TYPE: "Unknown pipeline type."}
+        )
+    return pipeline_type
 
 
 class PipelineViewSet(
@@ -58,16 +89,28 @@ class PipelineViewSet(
     notification_resource_name_field = "pipeline_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
-        # Only ETL/TASK pipelines map to a notification ResourceType.
         if not notification_plugin:
             return None
-        if resource.pipeline_type in (ResourceType.ETL.value, ResourceType.TASK.value):
-            return resource.pipeline_type
-        return None
+        from tenant_account_v2.notification_resource_types import (
+            pipeline_notification_type,
+        )
+
+        return pipeline_notification_type(resource.pipeline_type)
 
     def get_permissions(self) -> list[Any]:
+        # Enabling or disabling is use, not configuration, so it follows
+        # sharing. ``pipeline_id`` is echoed by the client and changes nothing.
+        if self.action == "partial_update" and is_activation_only_patch(
+            self.request, flag="active", ignore=("pipeline_id",)
+        ):
+            return [IsOwnerOrSharedUserOrSharedToOrg()]
+        if self.action == "destroy":
+            # Ownership as before, narrowed by the org's deletion capability.
+            return [
+                IsOwner(),
+                RequiresCapability(Capability.DELETE_WORKFLOWS_AND_DEPLOYMENTS),
+            ]
         if self.action in [
-            "destroy",
             "partial_update",
             "update",
             "add_co_owner",
@@ -88,12 +131,12 @@ class PipelineViewSet(
         )
 
         # Apply type filter if specified
-        pipeline_type = self.request.query_params.get(PipelineConstants.TYPE)
-        if pipeline_type is not None:
+        pipeline_type = _pipeline_type_from(self.request.query_params)
+        if pipeline_type:
             queryset = queryset.filter(pipeline_type=pipeline_type)
 
         # Filter by workflow ID if provided
-        workflow_filter = self.request.query_params.get("workflow", None)
+        workflow_filter = workflow_filter_from(self.request.query_params)
         if workflow_filter:
             queryset = queryset.filter(workflow_id=workflow_filter)
 
@@ -116,11 +159,29 @@ class PipelineViewSet(
 
         return queryset
 
+    def filter_queryset(self, queryset: QuerySet) -> QuerySet:
+        queryset = super().filter_queryset(queryset)
+        if self.action not in LIST_FILTER_ACTIONS:
+            return queryset
+        filters = list_filters_from(self.request.query_params)
+        return apply_list_filters(queryset, filters, PIPELINE_ROW_FIELDS)
+
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action == "execute":
             return ExecuteSerializer
         else:
             return PipelineSerializer
+
+    @action(detail=False, methods=["get"])
+    def aggregate(self, request: Request) -> Response:
+        """Status counts and failing rows over the list's filtered rows.
+
+        Call it without ``status`` and ``failing`` to fill the counts while the
+        list is filtered by them.
+        """
+        rows = self.filter_queryset(self.get_queryset())
+        summary = aggregate_rows(rows, PIPELINE_ROW_FIELDS)
+        return Response(PipelineAggregateSerializer(summary).data)
 
     # TODO: Refactor to perform an action with explicit arguments
     # For eg, passing pipeline ID and with_log=False -> executes pipeline
@@ -158,20 +219,21 @@ class PipelineViewSet(
                 pipeline_instance = serializer.save()
                 # Grant before the API key so the creator's access is committed
                 # with the row itself, matching api_deployment_views.create().
-                pipeline_instance.memberships.get_or_create(
-                    user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
-                )
+                pipeline_instance.grant_owner(request.user)
                 # Create API key using the created instance
                 KeyHelper.create_api_key(pipeline_instance, request)
         except IntegrityError:
             raise DuplicateData(
                 f"{PipelineErrors.PIPELINE_EXISTS}, {PipelineErrors.DUPLICATE_API}"
             )
+        record_resource_event(request, Action.RESOURCE_CREATED, pipeline_instance)
         return Response(data=serializer.data, status=status.HTTP_201_CREATED)
 
     def perform_destroy(self, instance: Pipeline) -> None:
         pipeline_to_remove = str(instance.pk)
+        deleted = resource_ref(instance)
         super().perform_destroy(instance)
+        record_resource_event(self.request, Action.RESOURCE_DELETED, deleted)
         return SchedulerHelper.remove_job(pipeline_to_remove)
 
     @action(detail=True, methods=["get"], url_path="users")
@@ -186,60 +248,6 @@ class PipelineViewSet(
         pipeline = self.get_object()
         serializer = SharedUserListSerializer(pipeline)
         return Response(serializer.data, status=status.HTTP_200_OK)
-
-    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        """Override to handle sharing notifications."""
-        instance = self.get_object()
-        before = self.snapshot_share_axes(instance)
-
-        response = super().partial_update(request, *args, **kwargs)
-        if response.status_code == 200 and notification_plugin:
-            self._notify_shared_users(instance, before, request.data, request.user)
-        return response
-
-    def _notify_shared_users(
-        self,
-        instance: Pipeline,
-        before: dict[str, set[Any]],
-        request_data: dict[str, Any],
-        actor: Any,
-    ) -> None:
-        """Email users newly added to ``shared_users`` (best-effort).
-
-        Only ETL/TASK pipelines map to a notification ``ResourceType``;
-        DEFAULT/APP pipelines have no analogue and skip the fan-out.
-        """
-        users_diff = self.diff_share_axes(instance, before, request_data).get(
-            "shared_users"
-        )
-        if not (users_diff and users_diff.added):
-            return
-        if instance.pipeline_type not in (
-            ResourceType.ETL.value,
-            ResourceType.TASK.value,
-        ):
-            return
-        try:
-            service_class = notification_plugin["service_class"]
-            notification_service = service_class()
-            notification_service.send_sharing_notification(
-                resource_type=instance.pipeline_type,
-                resource_name=instance.pipeline_name,
-                resource_id=str(instance.id),
-                shared_by=actor,
-                shared_to=list(users_diff.added),
-                resource_instance=instance,
-            )
-            logger.info(
-                "Sent sharing notifications for %s to %d users",
-                instance.pipeline_type,
-                len(users_diff.added),
-            )
-        except Exception as e:
-            logger.exception(
-                "Failed to send sharing notification, continuing update though: %s",
-                str(e),
-            )
 
     @action(detail=True, methods=["get"])
     def download_postman_collection(

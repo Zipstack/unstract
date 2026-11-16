@@ -17,6 +17,7 @@ from scheduler.tasks import execute_pipeline_task_v2
 
 # Import shared worker infrastructure using new structure
 from shared.api import InternalAPIClient
+from shared.clients.execution_client import refused_as_stopped
 
 # Import worker-specific data models
 from shared.data.models import (
@@ -42,7 +43,11 @@ from shared.patterns.notification.helper import notify_execution_failure
 from shared.patterns.retry.utils import circuit_breaker
 from shared.processing.files import FileProcessingUtils
 from shared.processing.types import FileDataValidator, TypeConverter
-from shared.utils.manual_review_factory import get_manual_review_service
+from shared.utils.manual_review_factory import (
+    AUTO_ENABLE_HIGHLIGHT,
+    get_manual_review_service,
+    has_confidence_rules,
+)
 from shared.workflow.connectors.source import WorkerSourceConnector
 from shared.workflow.execution import (
     WorkerExecutionContext,
@@ -56,13 +61,10 @@ from worker import app, config
 
 # Import shared data models for type safety
 from unstract.core.data_models import (
-    DEFAULT_WORKFLOW_TRANSPORT,
     ExecutionStatus,
     FileBatchData,
     FileHashData,
     WorkerFileData,
-    is_pg_transport,
-    normalize_transport,
 )
 
 # Import common workflow utilities
@@ -143,16 +145,15 @@ def _log_batch_creation_statistics(
 
 
 def _should_skip_duplicate_orchestration(
-    execution_id: str, organization_id: str, transport: str, retries: int = 0
+    execution_id: str, organization_id: str, retries: int = 0
 ) -> bool:
-    """PG-only: claim the execution's orchestration slot; ``True`` iff THIS
-    delivery lost the claim (a duplicate / redelivered orchestration) and must
-    no-op.
+    """Claim the execution's orchestration slot; ``True`` iff THIS delivery lost
+    the claim (a duplicate / redelivered orchestration) and must no-op.
 
     ``organization_id`` (the org schema_name) is stamped onto the claim row so the
     reaper can call the org-scoped API when it recovers or GCs an orphan claim.
 
-    On the PG queue the orchestration task can be redelivered — it runs longer
+    The orchestration task can be redelivered — it runs longer
     than the consumer's visibility timeout and a sibling replica re-claims the
     message — and re-running it re-arms the barrier (resets ``remaining`` and
     wipes the dedup markers mid-flight) and dispatches a second set of batch
@@ -165,14 +166,7 @@ def _should_skip_duplicate_orchestration(
     a prior attempt claimed and did not release it (a hard crash after the claim,
     before the failure-path release) — a suppressed retry, logged at ERROR with an
     errorId so it's distinguishable from a normal duplicate.
-
-    No-op on Celery (returns ``False`` — always proceeds): Celery has no
-    at-least-once redelivery, and the router owns terminal status there, so there
-    is no double-orchestration to guard. Gated exactly like the terminal guard so
-    the Celery path is behaviorally unchanged.
     """
-    if not is_pg_transport(transport):
-        return False
     if try_claim_orchestration(execution_id, organization_id):
         return False  # first delivery — this replica owns the orchestration
     if retries > 0:
@@ -213,7 +207,6 @@ def async_execute_bin_general(
     pipeline_id: str | None = None,
     log_events_id: str | None = None,
     use_file_history: bool = False,
-    transport: str = DEFAULT_WORKFLOW_TRANSPORT,
     **kwargs: dict[str, Any],
 ) -> dict[str, Any]:
     """Lightweight general workflow execution task.
@@ -248,27 +241,27 @@ def async_execute_bin_general(
             f"Starting general workflow execution for workflow {workflow_id}, execution {execution_id}"
         )
 
-        # Tracks whether THIS delivery won the PG orchestration claim, so the
-        # error path releases the claim only when we actually acquired it (not, for
+        # Tracks whether THIS delivery won the orchestration claim, so the error
+        # path releases the claim only when we actually acquired it (not, for
         # instance, when the claim's own INSERT raised). Set below only after the
-        # gate returns "proceed" on the PG path.
+        # gate returns "proceed".
         claimed_orchestration = False
         try:
-            # PG-only idempotency gate (claim-before-work): a duplicate /
-            # redelivered orchestration no-ops here BEFORE any setup, barrier arm,
-            # or batch dispatch — so exactly one delivery orchestrates the
-            # execution even with replicas > 1. No-op on Celery.
+            # Idempotency gate (claim-before-work): a duplicate / redelivered
+            # orchestration no-ops here BEFORE any setup, barrier arm, or batch
+            # dispatch — so exactly one delivery orchestrates the execution even
+            # with replicas > 1.
             if _should_skip_duplicate_orchestration(
-                execution_id, schema_name, transport, self.request.retries
+                execution_id, schema_name, self.request.retries
             ):
                 return {
                     "status": "skipped_duplicate_orchestration",
                     "execution_id": execution_id,
                     "workflow_id": workflow_id,
                 }
-            # Gate returned "proceed": on PG that means this delivery just won the
-            # claim (Celery never claims), so the error path owns releasing it.
-            claimed_orchestration = is_pg_transport(transport)
+            # Gate returned "proceed": this delivery just won the claim, so the
+            # error path owns releasing it.
+            claimed_orchestration = True
 
             # Initialize execution context with shared utility
             config, api_client = WorkerExecutionContext.setup_execution_context(
@@ -312,17 +305,14 @@ def async_execute_bin_general(
             # to test) a redelivery could reach here, win a fresh claim, and re-arm +
             # re-dispatch a finished execution — duplicate (costly) destination
             # writes when use_file_history=False. Skip if already terminal, keeping
-            # the freshly-won claim so it re-establishes the tombstone. PG only:
-            # Celery has no redelivery, so the orchestrator only ever runs on a
-            # non-terminal execution — the check is a no-op there.
-            if (
-                is_pg_transport(transport)
-                and current_status in ExecutionStatus.terminal_values()
-            ):
+            # the freshly-won claim so it re-establishes the tombstone. A run aborted
+            # before pickup is skipped here too.
+            if current_status in ExecutionStatus.terminal_values():
                 logger.warning(
-                    f"Execution {execution_id} already terminal ({current_status}) "
-                    f"at orchestration entry — skipping re-orchestration (a PG "
-                    f"redelivery of a finished execution)."
+                    "Execution %s already terminal (%s) at orchestration entry — "
+                    "skipping (a redelivery, or a run aborted before pickup).",
+                    execution_id,
+                    current_status,
                 )
                 return {
                     "status": "skipped_terminal_execution",
@@ -369,7 +359,6 @@ def async_execute_bin_general(
                 use_file_history,
                 scheduled,
                 schema_name,
-                transport=transport,
                 **kwargs,
             )
 
@@ -438,14 +427,15 @@ def async_execute_bin_general(
             try:
                 with InternalAPIClient(config) as api_client:
                     api_client.set_organization_context(schema_name)
-                    api_client.update_workflow_execution_status(
+                    reply = api_client.update_workflow_execution_status(
                         execution_id=execution_id,
                         status=ExecutionStatus.ERROR.value,
                         error_message=str(e),
                     )
 
-                    # CRITICAL FIX: Also update pipeline status to FAILED for consistency
-                    if pipeline_id:
+                    # CRITICAL FIX: Also update pipeline status to FAILED for consistency.
+                    # An aborted run's pipeline status and notifications are the abort's.
+                    if pipeline_id and not refused_as_stopped(reply):
                         try:
                             api_client.update_pipeline_status(
                                 pipeline_id=pipeline_id,
@@ -605,7 +595,6 @@ def _execute_general_workflow(
     use_file_history: bool,
     scheduled: bool,
     schema_name: str,
-    transport: str = DEFAULT_WORKFLOW_TRANSPORT,
     **kwargs: dict[str, Any],
 ) -> dict[str, Any]:
     """Execute general workflow specific logic for ETL/TASK workflows.
@@ -627,12 +616,6 @@ def _execute_general_workflow(
         Execution result
     """
     start_time = time.time()
-
-    # Fail-closed coercion, for parity with the api/scheduler workers (which run
-    # normalize_transport at their entry): a typo'd transport degrades to Celery
-    # with a warning rather than silently routing onto an unknown substrate. The
-    # coerced value feeds both WorkflowContextData and the fan-out below.
-    transport = normalize_transport(transport, logger=logger)
 
     logger.info("Executing general workflow logic for ETL/TASK workflow")
 
@@ -672,7 +655,6 @@ def _execute_general_workflow(
                 "execution_mode": execution_mode,
             },
             is_scheduled=scheduled,
-            transport=transport,
         )
 
         logger.info(
@@ -798,30 +780,11 @@ def _execute_general_workflow(
                 "💤 No files to process - all files have been filtered out (already processed, active, or no matches)",
             )
 
-            # Send completion log to UI
-            workflow_logger.publish_execution_complete(
-                successful_files=0, failed_files=0, total_time=0.0
-            )
-
-            # Complete immediately with no files
-            try:
-                api_client.update_workflow_execution_status(
-                    execution_id=execution_id,
-                    status=ExecutionStatus.COMPLETED.value,
-                    total_files=0,
+            if _complete_without_files(api_client, execution_id, pipeline_id):
+                # Send completion log to UI
+                workflow_logger.publish_execution_complete(
+                    successful_files=0, failed_files=0, total_time=0.0
                 )
-            except Exception as status_error:
-                logger.warning(f"Failed to update execution status: {status_error}")
-
-            # Update pipeline status if needed
-            if pipeline_id:
-                try:
-                    api_client.update_pipeline_status(
-                        pipeline_id=pipeline_id,
-                        status=PipelineStatus.SUCCESS.value,
-                    )
-                except Exception as pipeline_error:
-                    logger.warning(f"Failed to update pipeline status: {pipeline_error}")
 
             execution_time = time.time() - start_time
             response = WorkerTaskResponse.success_response(
@@ -856,7 +819,6 @@ def _execute_general_workflow(
                 execution_mode=execution_mode,
                 use_file_history=use_file_history,
                 organization_id=api_client.organization_id,
-                transport=transport,
                 **kwargs,
             )
 
@@ -868,28 +830,17 @@ def _execute_general_workflow(
 
         except Exception as e:
             logger.error(f"Workflow execution failed: {e}")
-            # On PG, surface the error to the UI + reconcile file counters so a
-            # failed run reads "N failed" not "N in progress" (see
-            # WorkflowOrchestrationUtils.record_pg_orchestration_failure). The
-            # Celery branch below is the original status update, untouched.
-            if is_pg_transport(transport):
-                WorkflowOrchestrationUtils.record_pg_orchestration_failure(
-                    api_client=api_client,
-                    execution_id=execution_id,
-                    total_files=total_files,
-                    error_message=str(e),
-                    logger=logger,
-                    workflow_logger=workflow_logger,
-                )
-            else:
-                try:
-                    api_client.update_workflow_execution_status(
-                        execution_id=execution_id,
-                        status=ExecutionStatus.ERROR.value,
-                        error_message=str(e),
-                    )
-                except Exception as status_error:
-                    logger.warning(f"Failed to update error status: {status_error}")
+            # Surface the error to the UI + reconcile file counters so a failed
+            # run reads "N failed" not "N in progress" (see
+            # WorkflowOrchestrationUtils.record_pg_orchestration_failure).
+            WorkflowOrchestrationUtils.record_pg_orchestration_failure(
+                api_client=api_client,
+                execution_id=execution_id,
+                total_files=total_files,
+                error_message=str(e),
+                logger=logger,
+                workflow_logger=workflow_logger,
+            )
 
             orchestration_result = WorkerTaskResponse.error_response(
                 execution_id=execution_id,
@@ -915,6 +866,34 @@ def _execute_general_workflow(
         raise
 
 
+def _complete_without_files(
+    api_client: InternalAPIClient, execution_id: str, pipeline_id: str | None
+) -> bool:
+    """Mark a run with no files COMPLETED and its pipeline SUCCESS.
+
+    Returns False for a run aborted meanwhile: it stays STOPPED, and the abort
+    sets its pipeline status.
+    """
+    try:
+        reply = api_client.update_workflow_execution_status(
+            execution_id=execution_id,
+            status=ExecutionStatus.COMPLETED.value,
+            total_files=0,
+        )
+        if refused_as_stopped(reply):
+            return False
+    except Exception as status_error:
+        logger.warning("Failed to update execution status: %s", status_error)
+    if pipeline_id:
+        try:
+            api_client.update_pipeline_status(
+                pipeline_id=pipeline_id, status=PipelineStatus.SUCCESS.value
+            )
+        except Exception as pipeline_error:
+            logger.warning("Failed to update pipeline status: %s", pipeline_error)
+    return True
+
+
 def _orchestrate_file_processing_general(
     api_client: InternalAPIClient,
     workflow_id: str,
@@ -925,7 +904,6 @@ def _orchestrate_file_processing_general(
     execution_mode: tuple | None,
     use_file_history: bool,
     organization_id: str,
-    transport: str = DEFAULT_WORKFLOW_TRANSPORT,
     **kwargs: dict[str, Any],
 ) -> dict[str, Any]:
     """Orchestrate file processing for general workflows using the same pattern as API worker.
@@ -1017,6 +995,9 @@ def _orchestrate_file_processing_general(
             total_files=len(source_files),
         )
         logger.debug("Global file data configured for manual review")
+        # Rules run after extraction, so every file needs confidence data.
+        if has_confidence_rules(workflow_util, workflow_id, "DB"):
+            global_file_data.manual_review_config[AUTO_ENABLE_HIGHLIGHT] = True
         # Pre-calculate file decisions for ALL files based on total count - not per batch!
         q_file_no_list = global_file_data.manual_review_config.get("q_file_no_list", [])
         logger.info(
@@ -1119,7 +1100,6 @@ def _orchestrate_file_processing_general(
                 org_id=organization_id,
                 workload_type=WorkloadType.NON_API,
             ),
-            transport=transport,
         )
 
         if not result:

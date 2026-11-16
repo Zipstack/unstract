@@ -232,8 +232,9 @@ class TestValidateApiFallbackOrdering:
 class TestGlobalKeyLlmProfileScoping:
     """``llm_profile_id`` must stay org-scoped when a global key is used.
 
-    The per-user ownership check that guards deployment-specific keys cannot
-    apply to an org-level key, so the organization comparison in
+    The per-user ownership check that guards deployment-specific keys does
+    not apply to an admin-created (org-level) key, so the organization
+    comparison in
     ``ExecutionRequestSerializer.validate_llm_profile_id`` is what stops a
     caller referencing another org's profile by UUID.
     """
@@ -245,7 +246,7 @@ class TestGlobalKeyLlmProfileScoping:
             context={
                 "api": _deployment(organization_id),
                 "api_key": WELL_FORMED_UUID,
-                "is_global_key": True,
+                "global_key": mock.MagicMock(created_by_member=False),
             }
         )
 
@@ -285,6 +286,59 @@ class TestGlobalKeyLlmProfileScoping:
         with mock.patch.object(ProfileManager, "objects") as objects:
             objects.get.side_effect = ProfileManager.DoesNotExist
             with pytest.raises(DRFValidationError, match="Profile not found"):
+                serializer.validate_llm_profile_id(self.PROFILE_ID)
+
+
+class TestMemberGlobalKeyLlmProfileOwnership:
+    """A global key a member created carries only that member's rights
+    (UN-4399): like a deployment's own key, it may only use profiles its
+    creator owns. An admin-created key stays org-level.
+    """
+
+    PROFILE_ID = "b7c2f1de-0000-4000-8000-000000000003"
+    CREATOR, OTHER = 11, 12
+
+    def _validate(self, created_by_member: bool, profile_owner: int):
+        key = mock.MagicMock(created_by_member=created_by_member, created_by_id=self.CREATOR)
+        serializer = ExecutionRequestSerializer(
+            context={
+                "api": _deployment(ORG_A),
+                "api_key": WELL_FORMED_UUID,
+                "global_key": key,
+            }
+        )
+        profile = mock.MagicMock(prompt_studio_tool_id="tool-id", created_by_id=profile_owner)
+        profile.prompt_studio_tool.organization_id = ORG_A
+        with mock.patch.object(ProfileManager, "objects") as objects:
+            objects.get.return_value = profile
+            return serializer.validate_llm_profile_id(self.PROFILE_ID)
+
+    def test_a_member_key_uses_its_creators_profile(self) -> None:
+        assert self._validate(True, self.CREATOR) == self.PROFILE_ID
+
+    def test_a_member_key_cannot_use_another_users_profile(self) -> None:
+        with pytest.raises(DRFValidationError, match="profiles that you own"):
+            self._validate(True, self.OTHER)
+
+    def test_an_admin_key_stays_org_level(self) -> None:
+        assert self._validate(False, self.OTHER) == self.PROFILE_ID
+
+    def test_marking_a_request_global_without_the_key_grants_nothing(self) -> None:
+        # The org-level branch is chosen from the key itself, so a bare flag
+        # falls through to the deployment-key lookup.
+        api = mock.MagicMock(organization_id=ORG_A)
+        # No deployment key matches: the bare flag earns no org-level access.
+        api_key_model = APIDeployment.api_keys.rel.related_model
+        api.api_keys.model = api_key_model
+        api.api_keys.get.side_effect = api_key_model.DoesNotExist
+        serializer = ExecutionRequestSerializer(
+            context={"api": api, "api_key": WELL_FORMED_UUID, "is_global_key": True}
+        )
+        profile = mock.MagicMock(prompt_studio_tool_id="tool-id", created_by_id=self.OTHER)
+        profile.prompt_studio_tool.organization_id = ORG_A
+        with mock.patch.object(ProfileManager, "objects") as objects:
+            objects.get.return_value = profile
+            with pytest.raises(DRFValidationError, match="API key not found"):
                 serializer.validate_llm_profile_id(self.PROFILE_ID)
 
 

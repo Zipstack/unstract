@@ -7,6 +7,7 @@ from importlib import import_module
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from account_usage.models import PageUsage
 from account_v2.models import Organization
 from celery.exceptions import SoftTimeLimitExceeded
 from django.apps import apps
@@ -511,6 +512,24 @@ class TestActiveOrgPrefilter(TestCase):
         window_start = self.now - timedelta(days=DASHBOARD_SOURCE_WINDOW_DAYS)
         assert stale_org.id in _active_org_ids(self.now, window_start)
 
+    def test_an_org_with_only_page_usage_is_kept(self):
+        """Prompt Studio writes page_usage without a workflow execution.
+
+        Shortlisting on executions alone left those orgs with no daily rows at all.
+        """
+        ps_org = Organization.objects.create(
+            organization_id="ps-only-org", name="ps", display_name="PS only"
+        )
+        usage = PageUsage.objects.create(
+            organization_id=ps_org.organization_id, pages_processed=3, file_size=1
+        )
+        PageUsage.objects.filter(pk=usage.pk).update(
+            created_at=self.now - timedelta(days=1)
+        )
+
+        window_start = self.now - timedelta(days=DASHBOARD_SOURCE_WINDOW_DAYS)
+        assert ps_org.id in _active_org_ids(self.now, window_start)
+
 
 class TestMonthlyRollupFailurePosture(TestCase):
     """The rollup's errors must be counted, so success is False without a retry."""
@@ -835,9 +854,7 @@ class TestMonthlyMatchesTheOldDerivation(TestCase):
         )
         assert self._written() == expected
 
-        last_month_day = (
-            self.now - timedelta(days=self.days_to_last_month_end)
-        ).date()
+        last_month_day = (self.now - timedelta(days=self.days_to_last_month_end)).date()
         corrupted = EventMetricsDaily._base_manager.filter(
             date=last_month_day, metric_name="documents_processed"
         ).update(metric_value=99)
@@ -1209,15 +1226,25 @@ class TestALoweredTotalIsReported(TestCase):
         """
         self._monthly(self.short, value=80)
         EventMetricsMonthly._base_manager.create(
-            organization=self.short, month=self.month, metric_name="pages_processed",
-            metric_type=MetricType.COUNTER, metric_value=5, metric_count=1,
-            project="default", tag="",
+            organization=self.short,
+            month=self.month,
+            metric_name="pages_processed",
+            metric_type=MetricType.COUNTER,
+            metric_value=5,
+            metric_count=1,
+            project="default",
+            tag="",
         )
         self._daily(self.short, self.month, value=70)  # short — will be skipped
         EventMetricsDaily._base_manager.create(
-            organization=self.short, date=self.month, metric_name="pages_processed",
-            metric_type=MetricType.COUNTER, metric_value=50, metric_count=1,
-            project="default", tag="",
+            organization=self.short,
+            date=self.month,
+            metric_name="pages_processed",
+            metric_type=MetricType.COUNTER,
+            metric_value=50,
+            metric_count=1,
+            project="default",
+            tag="",
         )
 
         lowered = _pairs_the_rollup_would_lower(self.month)
@@ -1338,12 +1365,14 @@ class TestTheDiagnosticCannotBlockTheRollup(TestCase):
         then overwrite exactly the totals the guard exists to preserve, and once a
         short total is stored the lowering check can never see it again.
         """
-        with patch(
-            "dashboard_metrics.tasks._rollup_monthly_from_daily"
-        ) as rollup, patch(
-            "dashboard_metrics.tasks._pairs_the_rollup_would_lower",
-            side_effect=SoftTimeLimitExceeded(),
-        ), patch("dashboard_metrics.tasks.WorkflowExecution") as mock_execution:
+        with (
+            patch("dashboard_metrics.tasks._rollup_monthly_from_daily") as rollup,
+            patch(
+                "dashboard_metrics.tasks._pairs_the_rollup_would_lower",
+                side_effect=SoftTimeLimitExceeded(),
+            ),
+            patch("dashboard_metrics.tasks.WorkflowExecution") as mock_execution,
+        ):
             prefilter = mock_execution.objects.filter.return_value
             prefilter.values_list.return_value.distinct.return_value = [1]
             with self.assertRaises(SoftTimeLimitExceeded):
@@ -1386,9 +1415,9 @@ class TestTheLockIsReleasedOnlyByItsOwner(TestCase):
 
         _release_aggregation_locks([self.key], "older-run")
 
-        assert cache.get(self.key) is not None, (
-            "a run that no longer owns the key deleted the current holder's lock"
-        )
+        assert (
+            cache.get(self.key) is not None
+        ), "a run that no longer owns the key deleted the current holder's lock"
 
     def test_the_owner_does_release_its_own_key(self):
         """The control: ownership gates the delete, it does not disable it."""
@@ -1418,21 +1447,31 @@ class TestTheRunSurfacesWhatTheDiagnosticFound(TestCase):
 
     def test_a_lowered_total_reaches_the_result_dict(self):
         EventMetricsMonthly._base_manager.create(
-            organization=self.org, month=self.month,
-            metric_name="documents_processed", metric_type=MetricType.COUNTER,
-            metric_value=999, metric_count=1, project="default", tag="",
+            organization=self.org,
+            month=self.month,
+            metric_name="documents_processed",
+            metric_type=MetricType.COUNTER,
+            metric_value=999,
+            metric_count=1,
+            project="default",
+            tag="",
         )
         EventMetricsDaily._base_manager.create(
-            organization=self.org, date=self.month,
-            metric_name="documents_processed", metric_type=MetricType.COUNTER,
-            metric_value=1, metric_count=1, project="default", tag="",
+            organization=self.org,
+            date=self.month,
+            metric_name="documents_processed",
+            metric_type=MetricType.COUNTER,
+            metric_value=1,
+            metric_count=1,
+            project="default",
+            tag="",
         )
 
         result = self._run(tier=AggregationTier.DAILY_MONTHLY)
 
-        assert result["monthly"]["needs_daily_repair"], (
-            "the rollup lowered a total and the result dict did not say so"
-        )
+        assert result["monthly"][
+            "needs_daily_repair"
+        ], "the rollup lowered a total and the result dict did not say so"
 
     def test_an_incomplete_daily_tier_reaches_the_result_dict(self):
         """The sibling of the assertion above, for the other check.
@@ -1451,16 +1490,21 @@ class TestTheRunSurfacesWhatTheDiagnosticFound(TestCase):
         # A row for the month's first day and nothing since: every other whole day
         # of the month is missing.
         EventMetricsDaily._base_manager.create(
-            organization=self.org, date=self.month,
-            metric_name="documents_processed", metric_type=MetricType.COUNTER,
-            metric_value=1, metric_count=1, project="default", tag="",
+            organization=self.org,
+            date=self.month,
+            metric_name="documents_processed",
+            metric_type=MetricType.COUNTER,
+            metric_value=1,
+            metric_count=1,
+            project="default",
+            tag="",
         )
 
         result = self._run(tier=AggregationTier.DAILY_MONTHLY)
 
-        assert result["monthly"]["incomplete_daily_coverage"], (
-            "the daily tier is missing whole days and the result dict did not say so"
-        )
+        assert result["monthly"][
+            "incomplete_daily_coverage"
+        ], "the daily tier is missing whole days and the result dict did not say so"
 
     def test_a_failed_coverage_check_is_reported_as_unavailable(self):
         """The sibling of the lowering check's arm, for the other key.
@@ -1627,16 +1671,26 @@ class TestTheGuardComparesWithinOneMonth(TestCase):
 
     def _daily(self, day, value):
         EventMetricsDaily._base_manager.create(
-            organization=self.org, date=day, metric_name="documents_processed",
-            metric_type=MetricType.COUNTER, metric_value=value, metric_count=1,
-            project="default", tag="",
+            organization=self.org,
+            date=day,
+            metric_name="documents_processed",
+            metric_type=MetricType.COUNTER,
+            metric_value=value,
+            metric_count=1,
+            project="default",
+            tag="",
         )
 
     def _monthly(self, month, value):
         EventMetricsMonthly._base_manager.create(
-            organization=self.org, month=month, metric_name="documents_processed",
-            metric_type=MetricType.COUNTER, metric_value=value, metric_count=1,
-            project="default", tag="",
+            organization=self.org,
+            month=month,
+            metric_name="documents_processed",
+            metric_type=MetricType.COUNTER,
+            metric_value=value,
+            metric_count=1,
+            project="default",
+            tag="",
         )
 
     def test_a_short_month_is_flagged_even_when_its_neighbour_is_whole(self):
@@ -1693,7 +1747,9 @@ class TestTheTaskAcquiresAndReleasesForReal(TestCase):
         self.addCleanup(override.disable)
         cache.clear()
         self.addCleanup(cache.clear)
-        self.keys = _aggregation_lock_keys(AggregationTier.ALL, DASHBOARD_SOURCE_WINDOW_DAYS)
+        self.keys = _aggregation_lock_keys(
+            AggregationTier.ALL, DASHBOARD_SOURCE_WINDOW_DAYS
+        )
 
     def _held(self):
         return [k for k in self.keys if cache.get(k) is not None]
@@ -1796,12 +1852,14 @@ class TestTheReconciliationRowInheritsOwnership(TestCase):
         """The control, so the assertions above cannot pass by coincidence."""
         self.migration.create_reconciliation_task(apps, None)
 
-        assert PeriodicTask.objects.get(
-            name=self.migration.RECONCILE_TASK_NAME
-        ).enabled is True
-        assert PgPeriodicTask.objects.get(
-            name=self.migration.RECONCILE_TASK_NAME
-        ).pg_owned is False
+        assert (
+            PeriodicTask.objects.get(name=self.migration.RECONCILE_TASK_NAME).enabled
+            is True
+        )
+        assert (
+            PgPeriodicTask.objects.get(name=self.migration.RECONCILE_TASK_NAME).pg_owned
+            is False
+        )
 
 
 class TestTheTruncatedListNamesTheTotal(TestCase):

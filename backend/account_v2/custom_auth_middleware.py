@@ -6,11 +6,13 @@ from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from utils.constants import Account
 from utils.local_context import StateStore
+from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 
 from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
 from account_v2.authentication_service import AuthenticationService
 from account_v2.constants import Common
+from account_v2.session_tracking import SessionTracker
 from backend.constants import RequestHeader
 from backend.internal_api_constants import INTERNAL_API_PREFIX
 
@@ -99,6 +101,8 @@ class CustomAuthMiddleware:
             # -- see the note beside the setting.
             if request.organization_id and not organization_id:
                 return JsonResponse({"message": "Organization access denied"}, status=403)
+            if not SessionTracker.touch(request):
+                return JsonResponse({"message": "Unauthorized"}, status=401)
             StateStore.set(Common.LOG_EVENTS_ID, request.session.session_key)
             StateStore.set(Account.ORGANIZATION_ID, organization_id)
             response = self.get_response(request)
@@ -116,7 +120,11 @@ class CustomAuthMiddleware:
         Resolves the token to the owning user so all downstream code sees
         a fully authenticated request.
         """
+        from api_key_usage.expiry import EXPIRED_MESSAGE, is_expired
+        from api_key_usage.recorder import record_key_use
+        from api_key_usage.rotation import get_by_secret
         from platform_api.models import ApiKeyPermission, PlatformApiKey
+        from platform_audit.actions import TargetType
 
         token_str = auth_header[len("Bearer ") :]
         try:
@@ -131,12 +139,20 @@ class CustomAuthMiddleware:
             return JsonResponse({"message": "Invalid API key format"}, status=401)
 
         try:
-            key = PlatformApiKey.objects.select_related(
-                "created_by", "api_user", "organization"
-            ).get(key=key_uuid, is_active=True)
+            key = get_by_secret(
+                PlatformApiKey.objects.select_related(
+                    "created_by", "api_user", "organization"
+                ),
+                key_uuid,
+                is_active=True,
+            )
         except PlatformApiKey.DoesNotExist:
             _log_key_rejection(request, token_str, "unknown or inactive key")
             return JsonResponse({"message": "Invalid or inactive API key"}, status=401)
+
+        if is_expired(key):
+            _log_key_rejection(request, token_str, "expired key")
+            return JsonResponse({"message": EXPIRED_MESSAGE}, status=401)
 
         # Validate the key belongs to the org in the URL
         if request.organization_id and str(key.organization.organization_id) != str(
@@ -189,12 +205,23 @@ class CustomAuthMiddleware:
                 status=403,
             )
 
+        record_key_use(
+            key_type=TargetType.PLATFORM_API_KEY,
+            key_id=key.id,
+            organization_id=key.organization_id,
+        )
         request.user = key.api_user
         request.platform_api_key = key
+        # True when the caller used the old secret of a key rotated with a
+        # grace period. That secret may keep calling the API, but not manage
+        # the key: rotating would hand it the new secret.
+        request.platform_api_key_is_previous = key.key != key_uuid
         # Skip CSRF for Bearer-authenticated requests
         request.csrf_processing_done = True
         StateStore.set(Common.LOG_EVENTS_ID, str(key.id))
-        StateStore.set(Account.ORGANIZATION_ID, key.organization.organization_id)
+        # Sets the id, then caches the row loaded with the key: saves the
+        # request's first org lookup.
+        UserContext.set_organization(key.organization)
 
         try:
             return self.get_response(request)

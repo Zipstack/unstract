@@ -87,6 +87,7 @@ class ConsumerMetrics(_Exporter):
         freshness_fn: Callable[[], float],
         alive_children_fn: Callable[[], float] | None = None,
         concurrency_fn: Callable[[], float] | None = None,
+        watchdog_kills_fn: Callable[[], float] | None = None,
     ) -> None:
         super().__init__()
         self._function_gauge(
@@ -107,6 +108,36 @@ class ConsumerMetrics(_Exporter):
                 "Configured child-process concurrency of the supervisor fleet",
                 concurrency_fn,
             )
+        if watchdog_kills_fn is not None:
+            self.registry.register(
+                _FunctionCounter(
+                    "pg_consumer_child_watchdog_kills",
+                    "Children the supervisor SIGKILLed for going silent past "
+                    "HEALTH_STALE_SECONDS",
+                    watchdog_kills_fn,
+                )
+            )
+
+
+class _FunctionCounter:
+    """A counter read from a callable at scrape time (``Counter`` has no
+    ``set_function``). Exposed as ``<name>_total``.
+    """
+
+    def __init__(self, name: str, doc: str, fn: Callable[[], float]) -> None:
+        self._name = name
+        self._doc = doc
+        self._fn = fn
+
+    def describe(self) -> Iterable[Metric]:
+        from prometheus_client.core import CounterMetricFamily
+
+        return [CounterMetricFamily(self._name, self._doc)]
+
+    def collect(self) -> Iterable[Metric]:
+        from prometheus_client.core import CounterMetricFamily
+
+        yield CounterMetricFamily(self._name, self._doc, value=self._fn())
 
 
 @dataclass(frozen=True)

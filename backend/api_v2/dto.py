@@ -22,9 +22,7 @@ class DeploymentExecutionDTO:
     api_key: str = field(repr=False)
     # The global API deployment key that authorized this execution, if any.
     # Carrying the resolved key (not just a bool) preserves audit identity —
-    # "which named key authorized this?" — for downstream logging/incidents.
+    # "which named key authorized this?" — for downstream logging/incidents,
+    # and lets ExecutionRequestSerializer hold a member-created key to its
+    # creator's LLM profiles (UN-4399).
     global_key: "GlobalApiDeploymentKey | None" = None
-
-    @property
-    def is_global_key(self) -> bool:
-        return self.global_key is not None

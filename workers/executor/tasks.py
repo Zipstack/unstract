@@ -5,16 +5,9 @@ ExecutionContext dict, runs the appropriate executor via
 ExecutionOrchestrator, and returns an ExecutionResult dict.
 """
 
-# Import the executor implementations so their ``@ExecutorRegistry.register``
-# decorators run before ``execute_extraction`` can be invoked. Coupling this to
-# the task module (not only the Celery ``executor/worker.py`` entrypoint) ensures
-# the registry is populated wherever the task is registered — in particular the PG
-# executor consumer, which bootstraps via the root-worker import that loads
-# ``executor/tasks.py`` (this module) but NOT ``executor/worker.py`` where this
-# import historically lived; without it the consumer hits "No executor
-# registered". Import is idempotent (module cached), so the Celery entrypoint
-# importing it again is harmless.
-import executor.executors  # noqa: E402, F401
+import logging
+
+from executor.executors import register_all
 from queue_backend import worker_task
 from shared.clients import UsageAPIClient
 from shared.enums.task_enums import TaskName
@@ -25,14 +18,50 @@ from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.orchestrator import ExecutionOrchestrator
 from unstract.sdk1.execution.result import ExecutionResult
 
+# Suppress Celery trace logging of task return values.
+# The trace logger prints the full result dict on task success, which can
+# contain sensitive customer data (extracted text, summaries, etc.).
+#
+# This lives here, not in ``executor/worker.py``, because that module is not on
+# any deployed path: ``workers/worker.py`` exec-loads THIS file by path for both
+# the Celery and PG executor roles, and no launcher runs ``celery -A executor``.
+# It used to be reached only because ``executor/__init__.py`` eagerly imported
+# ``.worker``; making that lazy (UN-4136) would otherwise have silently
+# re-enabled result logging on every extraction.
+logging.getLogger("celery.app.trace").setLevel(logging.WARNING)
+
 logger = WorkerLogger.get_logger(__name__)
 
+# Populate ``ExecutorRegistry`` so the executor implementations are registered
+# before ``execute_extraction`` can be invoked. Coupling this to the task module
+# (not only the Celery ``executor/worker.py`` entrypoint) ensures the registry is
+# populated wherever the task is registered — in particular the PG executor
+# consumer, which bootstraps via the root-worker import that loads
+# ``executor/tasks.py`` (this module) but NOT ``executor/worker.py``; without it
+# the consumer hits "No executor registered". This is the only call site;
+# ``executor/worker.py`` reaches it by importing this module.
+register_all()
+
+#: Operations that are expected to emit usage records. An op in this set that
+#: finishes successfully with NO records logs below -- it is the only signal
+#: that billing silently produced nothing.
+#:
+#: Keeping a paid op out of this set is not a missing log line, it is a missing
+#: alarm: the cloud `flush()` returns `[]` on a skipped LLM without raising, so
+#: total loss of a run's billing rows is otherwise indistinguishable from a run
+#: that legitimately made no LLM calls. Add every new LLM-bearing operation here
+#: at the same time as the operation itself.
 _LLM_BEARING_OPS = frozenset(
     {
         "answer_prompt",
         "single_pass_extraction",
         "summarize",
         "structure_pipeline",
+        # The Agent-KV API's table extractor (cloud `agentic_table`'s blind-API
+        # operation). Every run drives two LLMs; a run of this op with no usage
+        # records means the billing chain broke, never that there was nothing
+        # to bill.
+        "table_extract_api",
     }
 )
 

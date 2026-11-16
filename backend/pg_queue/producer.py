@@ -33,6 +33,7 @@ from unstract.core.data_models import (
     QueueMessageState,
     TaskPayload,
 )
+from unstract.core.jsonb import dumps_for_jsonb
 
 _READY = QueueMessageState.READY.value
 _SCHEDULED = QueueMessageState.SCHEDULED.value
@@ -58,14 +59,18 @@ def _json_safe(value: Any) -> Any:
     the worker consumer already receives string ids on the existing PG dispatch
     path, so coercing here keeps both transports consistent.
 
-    ``allow_nan=False`` rejects ``NaN``/``Infinity`` here with a ``ValueError``
-    rather than letting Python's default lenient encoder emit the non-standard
-    ``NaN``/``Infinity`` tokens: Postgres ``jsonb`` rejects those at insert with a
-    ``django.db.DataError`` (a permanent failure the notification dispatcher's
-    ``(ValueError, TypeError)`` seam would otherwise miss, looping the row). Fail
-    at the intended seam instead.
+    :func:`~unstract.core.jsonb.dumps_for_jsonb` enforces ``allow_nan=False``, so
+    ``NaN``/``Infinity`` raise a ``ValueError`` here rather than reaching Python's
+    lenient encoder and emitting the non-standard ``NaN``/``Infinity`` tokens:
+    Postgres ``jsonb`` rejects those at insert with a ``django.db.DataError`` (a
+    permanent failure the notification dispatcher's ``(ValueError, TypeError)``
+    seam would otherwise miss, looping the row). Fail at the intended seam instead.
+
+    It also strips the strings ``jsonb`` refuses (NUL, lone surrogate), which this
+    site previously did not handle — the same rule now applies to every PG-queue
+    ``jsonb`` writer instead of each carrying a partial defence (UN-4126).
     """
-    return json.loads(json.dumps(value, default=str, allow_nan=False))
+    return json.loads(dumps_for_jsonb(value, default=str))
 
 
 def _resolve_visibility(

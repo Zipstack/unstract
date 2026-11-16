@@ -5,11 +5,13 @@ from typing import Any
 from urllib.parse import urlencode, urlparse
 
 import requests
+from api_key_usage.recorder import record_key_use
 from configuration.config_registry import ConfigurationRegistry
 from configuration.models import Configuration
 from django.conf import settings
 from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
 from global_api_deployment_key.models import GlobalApiDeploymentKey
+from platform_audit.actions import TargetType
 from plugins.workflow_manager.workflow_v2.api_hub_usage_utils import APIHubUsageUtil
 from rest_framework.request import Request
 from rest_framework.serializers import Serializer
@@ -19,7 +21,9 @@ from usage_v2.helper import UsageHelper
 from utils.constants import Account, CeleryQueue
 from utils.local_context import StateStore
 from workflow_manager.endpoint_v2.destination import DestinationConnector
+from workflow_manager.endpoint_v2.result_cache_utils import ResultCacheUtils
 from workflow_manager.endpoint_v2.source import SourceConnector
+from workflow_manager.utils.pipeline_utils import PipelineUtils
 from workflow_manager.workflow_v2.dto import ExecutionResponse
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
@@ -89,7 +93,8 @@ class DeploymentHelper(BaseAPIKeyValidator):
         Returns:
             The authorizing ``GlobalApiDeploymentKey`` when the request was
             authenticated via a global key, else ``None`` (deployment-specific
-            key). Returning the key (not a bool) preserves audit identity.
+            key). Returning the key (not a bool) preserves audit identity and
+            lets the request serializer check a member-created key's profiles.
 
         Raises:
             APINotFound: If deployment not found
@@ -112,6 +117,12 @@ class DeploymentHelper(BaseAPIKeyValidator):
             )
             global_key = KeyHelper.validate_global_api_deployment_key(
                 api_key=api_key, api_deployment=api_deployment
+            )
+            record_key_use(
+                key_type=TargetType.GLOBAL_API_DEPLOYMENT_KEY,
+                key_id=global_key.id,
+                organization_id=global_key.organization_id,
+                api_deployment_id=api_deployment.id,
             )
             logger.info(
                 "API '%s' authorized via global API deployment key '%s' (%s).",
@@ -284,16 +295,25 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 use_file_history=use_file_history,
             )
         except Exception as error:
+            logger.exception("Failed to stage files for execution %s", execution_id)
             # Isolate the DB error-marking so cleanup still runs if it raises.
+            stored_status = ExecutionStatus.ERROR.value
             try:
-                WorkflowExecutionServiceHelper.update_execution_err(
+                marked = WorkflowExecutionServiceHelper.update_execution_err(
                     str(execution_id), str(error)
                 )
+                # An aborted run stays STOPPED; answer with what is stored.
+                stored_status = marked.status if marked else stored_status
             except Exception:
                 logger.exception(f"Failed to mark execution {execution_id} as ERROR")
 
             # Async job never started — release the rate limit slot and clean up.
-            APIDeploymentRateLimiter.release_slot(api.organization, str(execution_id))
+            # The id string, never the model instance: release_slot builds its
+            # Redis key from what it is passed, so an instance silently removes
+            # nothing and leaves the slot held for its full TTL.
+            APIDeploymentRateLimiter.release_slot(
+                str(api.organization.organization_id), str(execution_id)
+            )
             DestinationConnector.delete_api_storage_dir(
                 workflow_id=workflow_id, execution_id=execution_id
             )
@@ -301,8 +321,74 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 ExecutionResponse(
                     workflow_id=workflow_id,
                     execution_id=execution_id,
-                    execution_status=ExecutionStatus.ERROR.value,
+                    execution_status=stored_status,
                     error=str(error),
+                )
+            ).data
+
+        # Nothing was staged, so nothing will be dispatched to write a status
+        # back. Terminalise here or the execution is stranded in PENDING.
+        if not hash_values_of_files:
+            # Isolated so the slot and staging dir are released even if it raises.
+            execution = None
+            terminalise_error: str | None = None
+            try:
+                execution = WorkflowExecutionServiceHelper.update_execution_completed(
+                    str(execution_id),
+                    total_files=len(file_objs),
+                    failed_files=len(file_objs),
+                )
+            except Exception as error:
+                logger.exception(f"Failed to mark execution {execution_id} as COMPLETED")
+                # Reported, so the caller is not given a bare failure with no reason.
+                terminalise_error = str(error)
+
+            APIDeploymentRateLimiter.release_slot(
+                str(api.organization.organization_id), str(execution_id)
+            )
+            DestinationConnector.delete_api_storage_dir(
+                workflow_id=workflow_id, execution_id=execution_id
+            )
+            api_results = ResultCacheUtils.get_api_results(
+                workflow_id=str(workflow_id), execution_id=str(execution_id)
+            )
+            if execution is not None:
+                try:
+                    # This response carries the results, so mark them consumed or a
+                    # later GET /status serves them again.
+                    WorkflowHelper.set_result_acknowledge(execution)
+                except Exception:
+                    logger.exception(
+                        f"Failed to acknowledge results for execution {execution_id}"
+                    )
+
+            # An aborted run was already reported by the abort.
+            if (
+                execution is not None
+                and execution.status == ExecutionStatus.COMPLETED.value
+            ):
+                try:
+                    # Terminalising here bypasses the usual notifier, so subscribers
+                    # would otherwise hear nothing.
+                    PipelineUtils.update_pipeline_status(
+                        pipeline_id=pipeline_id, workflow_execution=execution
+                    )
+                except Exception:
+                    logger.exception(
+                        f"Failed to notify subscribers for execution {execution_id}"
+                    )
+
+            # The stored status, not an assumed COMPLETED: the row may be missing
+            # or the guard may have refused the change.
+            return APIExecutionResponseSerializer(
+                ExecutionResponse(
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    execution_status=(
+                        execution.status if execution else ExecutionStatus.ERROR.value
+                    ),
+                    error=terminalise_error,
+                    result=api_results,
                 )
             ).data
 
@@ -352,7 +438,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
             # Dispatch failures are marked ERROR internally by execute_workflow_async;
             # post-dispatch failures (enrichment/config) must not overwrite a running
             # execution's status, so only release the slot and clean up storage here.
-            APIDeploymentRateLimiter.release_slot(api.organization, str(execution_id))
+            APIDeploymentRateLimiter.release_slot(
+                str(api.organization.organization_id), str(execution_id)
+            )
 
             # Clean up storage
             DestinationConnector.delete_api_storage_dir(

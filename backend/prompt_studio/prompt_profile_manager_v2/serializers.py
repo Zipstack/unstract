@@ -2,11 +2,16 @@ import logging
 from typing import Any
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
+from adapter_processor_v2.deprecated_adapters import (
+    get_deprecation_message,
+    is_adapter_deprecated,
+)
 from adapter_processor_v2.models import AdapterInstance
 from rest_framework.serializers import ValidationError
 
 from backend.serializers import AuditSerializer
 from prompt_studio.prompt_profile_manager_v2.constants import ProfileManagerKeys
+from prompt_studio.vlm_utils import get_profile_vision_warning
 
 from .models import ProfileManager
 
@@ -28,11 +33,18 @@ class ProfileManagerSerializer(AuditSerializer):
         # Dropped so a duplicate create surfaces the view's DuplicateData.
         validators = []
 
+    def validate_prompt_studio_tool(self, value):
+        """Refuse reparenting: the gate authorises against the stored parent."""
+        if self.instance and value != self.instance.prompt_studio_tool:
+            raise ValidationError("A profile cannot be moved to another project.")
+        return value
+
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
-        """Reject a change to an adapter the requester cannot access.
+        """Reject a change to an adapter the requester cannot access or use.
 
         An unchanged value passes, so a co-owner can still save a profile
-        that points at an adapter shared only with the owner.
+        that points at an adapter shared only with the owner, and a profile
+        already on a deprecated adapter stays editable in its other fields.
         """
         request = self.context.get("request")
         if not request:
@@ -44,6 +56,10 @@ class ProfileManagerSerializer(AuditSerializer):
                 continue
             if not accessible.filter(id=adapter.id).exists():
                 raise ValidationError({field: "No access to the selected adapter."})
+            if not adapter.is_available or is_adapter_deprecated(adapter.adapter_id):
+                raise ValidationError(
+                    {field: get_deprecation_message(adapter.adapter_id)}
+                )
         return attrs
 
     def to_representation(self, instance):  # type: ignore
@@ -66,4 +82,9 @@ class ProfileManagerSerializer(AuditSerializer):
         if conf:
             conf["Profile Name"] = instance.profile_name
         rep["conf"] = conf
+        # Non-blocking image-mode/vision-LLM mismatch warning (cloud-only;
+        # always None in OSS — key omitted).
+        vision_warning = get_profile_vision_warning(instance)
+        if vision_warning:
+            rep["vision_warning"] = vision_warning
         return rep

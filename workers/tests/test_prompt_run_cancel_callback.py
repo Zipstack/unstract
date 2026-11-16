@@ -174,14 +174,20 @@ class TestStoppedRunEvent:
 
         assert mock_emit_ws.call_args[1]["data"]["run_id"] == "run-1"
 
-    def test_still_delivers_the_partial_results(
+    def test_leaves_the_partial_results_to_the_refetch(
         self, mock_get_client, mock_emit_ws, mock_api, cb_kwargs
     ):
+        """Partial answers travel the same way a completed run's do.
+
+        They are persisted, then refetched by the UI; never inlined in the
+        socket event, which would hit DATA_UPLOAD_MAX_MEMORY_SIZE.
+        """
         mock_get_client.return_value = mock_api
 
         _call_complete(_cancelled_result(), cb_kwargs)
 
-        assert mock_emit_ws.call_args[1]["data"]["result"] == [{"id": "out1"}]
+        assert "result" not in mock_emit_ws.call_args[1]["data"]
+        assert mock_api.update_prompt_output.call_args.kwargs["prompt_ids"] == ["p1"]
 
 
 @patch(_PATCH_EMIT_WS)

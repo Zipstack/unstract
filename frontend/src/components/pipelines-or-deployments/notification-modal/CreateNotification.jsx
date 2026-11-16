@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/shims/antd-button";
 import { Form } from "@/components/ui/shims/antd-form";
 import { Checkbox, Input, Select } from "@/components/ui/shims/antd-inputs";
@@ -68,23 +68,11 @@ function CreateNotification({
   editDetails,
 }) {
   const [form] = Form.useForm();
-  const [formDetails, setFormDetails] = useState(DEFAULT_FORM_DETAILS);
+  // Lazy init: the Form shim seeds initialValues only on first mount.
+  const [formDetails, setFormDetails] = useState(
+    () => editDetails ?? DEFAULT_FORM_DETAILS,
+  );
   const [backendErrors, setBackendErrors] = useState(null);
-  const [resetForm, setResetForm] = useState(false);
-
-  useEffect(() => {
-    if (editDetails) {
-      setFormDetails(editDetails);
-      setResetForm(true);
-    }
-  }, [editDetails]);
-
-  useEffect(() => {
-    if (resetForm) {
-      form.resetFields();
-      setResetForm(false);
-    }
-  }, [formDetails]);
 
   const handleInputChange = (changedValues, allValues) => {
     const nextValues = { ...formDetails, ...allValues };
@@ -181,7 +169,13 @@ function CreateNotification({
     {
       label: "Authorization Key",
       name: "authorization_key",
-      component: <Input />,
+      // A credential: masked until revealed. new-password keeps the browser
+      // from filling a saved login password into it; the accepted cost is
+      // that Chrome may offer to generate a password for the field, which
+      // the user can dismiss. The mask is on screen
+      // only: the API returns the stored key, so it is still the input's
+      // value (and value attribute) until the API stops sending it (UN-4562).
+      component: <Input.Password autoComplete="new-password" />,
       tooltip:
         "Provide the authorization key used to validate the notification.",
       rules:

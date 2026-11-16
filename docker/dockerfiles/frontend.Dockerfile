@@ -24,6 +24,12 @@ COPY ${BUILD_CONTEXT_PATH}/ /app/
 COPY ${BUILD_CONTEXT_PATH}/generate-runtime-config.sh /app/generate-runtime-config.sh
 RUN chmod +x /app/generate-runtime-config.sh
 
+# VITE_DISTRIBUTION: as in the builder stage below. The dev server reads it
+# from the environment when it starts, so the dev-live image of a cloud or
+# on-prem overlay needs it here too.
+ARG VITE_DISTRIBUTION=""
+ENV VITE_DISTRIBUTION=${VITE_DISTRIBUTION}
+
 # Set dev server to run on port 80 to match production nginx
 ENV PORT=80
 EXPOSE 80
@@ -46,8 +52,22 @@ RUN bun install --frozen-lockfile --ignore-scripts
 # Copy the rest of the application files
 COPY ${BUILD_CONTEXT_PATH}/ .
 
+# Declared after the install layer so a different value (the E2E image sets
+# VITE_V1_DEV_ROUTES) does not invalidate the cached install it shares with
+# release builds.
+# VITE_V1_DEV_ROUTES: "true" only for the E2E image (ci-test.yaml); registers
+# the v1 demo pages that prove the version switch and honours the v1 preview
+# override. Release builds leave it empty.
+# VITE_DISTRIBUTION: oss (default when empty), cloud or onprem. It picks the
+# v1 plugins the build offers (P0-T07) and the pages the v1 route registry
+# keeps; the cloud workflows set it. See frontend/src/v1/README.md.
+ARG VITE_V1_DEV_ROUTES=""
+ARG VITE_DISTRIBUTION=""
+
 # Build with Vite
-RUN bun run build
+RUN VITE_V1_DEV_ROUTES="${VITE_V1_DEV_ROUTES}" \
+    VITE_DISTRIBUTION="${VITE_DISTRIBUTION}" \
+    bun run build
 
 # Production stage
 FROM nginx:1.29.1-alpine AS production

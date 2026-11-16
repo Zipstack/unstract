@@ -1,5 +1,12 @@
 import axios from "axios";
-import { LogIn, LogOut, Settings, User, UserRoundCog } from "lucide-react";
+import {
+  ChevronDown,
+  LogIn,
+  LogOut,
+  Settings,
+  User,
+  UserRoundCog,
+} from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -16,6 +23,7 @@ import {
   onboardCompleted,
   THEME,
 } from "../../../helpers/GetStaticData.js";
+import { switchOrgViaLogin } from "../../../helpers/orgSwitchLogin.js";
 import useLogout from "../../../hooks/useLogout.js";
 import "../../../layouts/page-layout/PageLayout.css";
 import { useSessionStore } from "../../../store/session-store.js";
@@ -23,7 +31,7 @@ import "./TopNavBar.css";
 import config from "../../../config";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../../store/alert-store.js";
-import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
+import { openConfirm } from "../../widgets/confirm-modal/confirmStore.js";
 
 let TrialDaysInfo;
 try {
@@ -224,6 +232,11 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
 
   // Switch organization
   const handleContinue = useCallback(async (selectedOrg) => {
+    // Read at click time: this callback is created once.
+    if (useSessionStore.getState().sessionDetails?.orgSwitchViaLogin) {
+      switchOrgViaLogin(selectedOrg);
+      return;
+    }
     const requestOptions = {
       method: "POST",
       url: `/api/v1/organization/${selectedOrg}/set`,
@@ -243,28 +256,29 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   // Prepare org list for switching
   const cascadeOptions = useMemo(() => {
     return allOrganization?.map((org) => {
+      const isCurrentOrg = org?.id === sessionDetails?.orgId;
       return {
         key: org?.id,
-        label:
-          org?.id === sessionDetails?.orgId ? (
-            <div
-              onClick={() =>
-                setAlertDetails({
-                  type: "error",
-                  content: `You are already in ${org?.display_name}`,
-                })
-              }
-            >
-              {org?.display_name}
-            </div>
-          ) : (
-            <ConfirmModal
-              handleConfirm={() => handleContinue(org?.id)}
-              content={`Want to switch to ${org?.display_name}?`}
-            >
-              <div>{org?.display_name}</div>
-            </ConfirmModal>
-          ),
+        /*
+         * Both actions sit on the menu item, not inside its label: the item is
+         * what the keyboard focuses, and Radix turns Enter/Space on it into a
+         * click on the item itself, which never reaches a descendant's handler.
+         */
+        onClick: isCurrentOrg
+          ? () =>
+              setAlertDetails({
+                type: "error",
+                content: `You are already in ${org?.display_name}`,
+              })
+          : () =>
+              openConfirm({
+                title: "Are you sure?",
+                content: `Want to switch to ${org?.display_name}?`,
+                okText: "Confirm",
+                cancelText: "Cancel",
+                onOk: () => handleContinue(org?.id),
+              }),
+        label: org?.display_name,
       };
     });
   }, [allOrganization, handleContinue]);
@@ -311,7 +325,16 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             }}
             placement="left"
           >
-            <div className="ant-dropdown-trigger">
+            {/*
+             * The org list opens on pointerdown; the click that follows would
+             * otherwise select this row of the parent menu, which closes that
+             * menu and unmounts the org list with it.
+             */}
+            <div
+              className="ant-dropdown-trigger switch-org-trigger"
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
               <UserRoundCog /> Switch Org
             </div>
           </Dropdown>
@@ -377,7 +400,10 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   return (
     <Row align="middle" className="topNav">
       <Col span={6} className="platform-switch-container">
-        {isUnstract ? (
+        {/* The cloud product switcher carries its own product mark. */}
+        {PlatformDropdown ? (
+          <PlatformDropdown />
+        ) : isUnstract ? (
           <CustomLogo
             className="topbar-logo cursor-pointer"
             Logo={ProductLogo}
@@ -396,7 +422,6 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             <span className="page-heading">{reviewPageHeader}</span>
           </span>
         )}
-        {PlatformDropdown && <PlatformDropdown />}
       </Col>
 
       {isSimpleLayout ? (
@@ -424,7 +449,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
 
       <Col span={4}>
         <Row justify="end" align="middle">
-          <Space>
+          <Space size={6}>
             {topNavBarOptions}
             {isUnstract && TrialDaysInfo && <TrialDaysInfo />}
             <Dropdown
@@ -433,20 +458,26 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
               arrow
               className="top-navbar-dp"
             >
-              <div className="top-navbar-dp">
-                {sessionDetails?.picture ? (
-                  <Image
-                    className="navbar-img"
-                    height="100%"
-                    width="100%"
-                    preview={false}
-                    src={sessionDetails?.picture}
-                  />
-                ) : (
-                  <Typography.Text className="initials">
-                    {getInitials(sessionDetails?.name)}
-                  </Typography.Text>
-                )}
+              <div
+                className="top-navbar-avatar-menu"
+                data-testid="top-navbar-avatar-menu"
+              >
+                <div className="top-navbar-dp">
+                  {sessionDetails?.picture ? (
+                    <Image
+                      className="navbar-img"
+                      height="100%"
+                      width="100%"
+                      preview={false}
+                      src={sessionDetails?.picture}
+                    />
+                  ) : (
+                    <Typography.Text className="initials">
+                      {getInitials(sessionDetails?.name)}
+                    </Typography.Text>
+                  )}
+                </div>
+                <ChevronDown className="top-navbar-avatar-chevron" />
               </div>
             </Dropdown>
           </Space>

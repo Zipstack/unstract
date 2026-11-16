@@ -78,7 +78,7 @@ class OrganizationAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(f"Failed to get organization details for {org_id}: {str(e)}")
+            logger.exception(f"Failed to get organization details for {org_id}: {str(e)}")
             return APIResponse(success=False, error=str(e))
 
     def get_organization_settings(self, org_id: str) -> APIResponse:
@@ -99,7 +99,9 @@ class OrganizationAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(f"Failed to get organization settings for {org_id}: {str(e)}")
+            logger.exception(
+                f"Failed to get organization settings for {org_id}: {str(e)}"
+            )
             return APIResponse(success=False, error=str(e))
 
     def get_organization_permissions(
@@ -129,7 +131,9 @@ class OrganizationAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(f"Failed to get organization permissions for {org_id}: {str(e)}")
+            logger.exception(
+                f"Failed to get organization permissions for {org_id}: {str(e)}"
+            )
             return APIResponse(success=False, error=str(e))
 
     def get_organization_members(
@@ -158,7 +162,7 @@ class OrganizationAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(f"Failed to get organization members for {org_id}: {str(e)}")
+            logger.exception(f"Failed to get organization members for {org_id}: {str(e)}")
             return APIResponse(success=False, error=str(e))
 
     def get_organization_usage(self, org_id: str, period: str = "month") -> APIResponse:
@@ -184,7 +188,7 @@ class OrganizationAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(f"Failed to get organization usage for {org_id}: {str(e)}")
+            logger.exception(f"Failed to get organization usage for {org_id}: {str(e)}")
             return APIResponse(success=False, error=str(e))
 
     def get_organization_quota(self, org_id: str) -> APIResponse:
@@ -205,7 +209,7 @@ class OrganizationAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(f"Failed to get organization quota for {org_id}: {str(e)}")
+            logger.exception(f"Failed to get organization quota for {org_id}: {str(e)}")
             return APIResponse(success=False, error=str(e))
 
     def validate_organization_access(
@@ -237,7 +241,9 @@ class OrganizationAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(f"Failed to validate organization access for {org_id}: {str(e)}")
+            logger.exception(
+                f"Failed to validate organization access for {org_id}: {str(e)}"
+            )
             return APIResponse(success=False, error=str(e))
 
     @circuit_breaker(failure_threshold=3, recovery_timeout=60.0)
@@ -260,7 +266,7 @@ class OrganizationAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(f"Failed to get organization health for {org_id}: {str(e)}")
+            logger.exception(f"Failed to get organization health for {org_id}: {str(e)}")
             return APIResponse(success=False, error=str(e))
 
     def switch_organization_context(self, org_id: str) -> APIResponse:
@@ -292,7 +298,9 @@ class OrganizationAPIClient(BaseAPIClient):
             )
 
         except Exception as e:
-            logger.error(f"Failed to switch organization context to {org_id}: {str(e)}")
+            logger.exception(
+                f"Failed to switch organization context to {org_id}: {str(e)}"
+            )
             return APIResponse(success=False, error=str(e))
 
     def get_organization_workflows(
@@ -325,7 +333,9 @@ class OrganizationAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(f"Failed to get organization workflows for {org_id}: {str(e)}")
+            logger.exception(
+                f"Failed to get organization workflows for {org_id}: {str(e)}"
+            )
             return APIResponse(success=False, error=str(e))
 
     def get_organization_connectors(
@@ -358,5 +368,7 @@ class OrganizationAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(f"Failed to get organization connectors for {org_id}: {str(e)}")
+            logger.exception(
+                f"Failed to get organization connectors for {org_id}: {str(e)}"
+            )
             return APIResponse(success=False, error=str(e))

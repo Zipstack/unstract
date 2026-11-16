@@ -1,8 +1,13 @@
 import json
 import logging
+import re
+import time
+import zipfile
+import zlib
+from collections.abc import Callable
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, BinaryIO
 
 import requests
 from requests import Response
@@ -11,26 +16,66 @@ from unstract.llmwhisperer.client_v2 import (
     LLMWhispererClientException,
     LLMWhispererClientV2,
 )
-from unstract.sdk1.adapters.exceptions import ExtractorError
+from unstract.sdk1.adapters.exceptions import ExtractorError, ImageLimitExceededError
 from unstract.sdk1.adapters.utils import AdapterUtils
-from unstract.sdk1.adapters.x2text.constants import X2TextConstants
+from unstract.sdk1.adapters.x2text.constants import (
+    ImageOutputConstants,
+    X2TextConstants,
+)
+from unstract.sdk1.adapters.x2text.constants import (
+    build_page_store_dir as _shared_build_page_store_dir,
+)
+from unstract.sdk1.adapters.x2text.dto import PageImageReference
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.constants import (
+    ImageOutputConfig,
     LineSplitterStrategies,
     Modes,
     OutputModes,
     WhispererConfig,
     WhispererDefaults,
+    WhispererEndpoint,
     WhispererHeader,
     WhisperStatus,
 )
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.dto import (
     WhispererRequestParams,
 )
+from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.page_range import (
+    PageLimitError,
+    PageRangeError,
+    resolve_page_range,
+    validate_page_range,
+)
+from unstract.sdk1.adapters.x2text.page_image_loader import (
+    PAGE_LABELS_FILENAME,
+    get_fixed_max_total_bytes,
+    get_fixed_page_cap,
+    validate_document_pages,
+)
 from unstract.sdk1.constants import MimeType
+from unstract.sdk1.exceptions import FileOperationError
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk1.utils.aborting import sliced_sleep
+from unstract.sdk1.utils.image_limits import codes as limit_codes
+from unstract.sdk1.utils.retry_utils import retry_with_exponential_backoff
+
+if TYPE_CHECKING:
+    from unstract.sdk1.utils.image_limits.policy import ImageModePolicy
 
 logger = logging.getLogger(__name__)
+
+# Shared by the image-mode extract summary and its parser.
+_IMAGE_SUMMARY_PREFIX = "[LLMWhisperer image output mode]"
+# LLMWhisperer's size rejection when its byte figures cannot be read.
+_SIZE_REJECTION_WITHOUT_FIGURES = (
+    "This document is too large for image output mode: LLMWhisperer stopped "
+    "converting its pages once they passed the size limit for one LLM request. "
+    "Split the document, select fewer pages with 'Pages to extract', or use a "
+    "text output mode. Nothing was charged."
+)
+_IMAGE_SUMMARY_COUNT_RE = re.compile(
+    re.escape(_IMAGE_SUMMARY_PREFIX) + r" (\d+) page image"
+)
 
 
 class LLMWhispererHelper:
@@ -47,17 +92,41 @@ class LLMWhispererHelper:
         }
 
     @staticmethod
-    def test_connection_request(
-        config: dict[str, Any], request_endpoint: str
+    def _send_raw_request(
+        config: dict[str, Any],
+        method: str,
+        endpoint: str,
+        *,
+        params: dict[str, Any] | None = None,
+        data: BytesIO | None = None,
+        headers: dict[str, Any] | None = None,
+        timeout: float = WhispererDefaults.IMAGE_REQUEST_TIMEOUT,
+        stream: bool = False,
     ) -> Response:
-        llm_whisperer_svc_url = f"{config.get(WhispererConfig.URL)}/api/v2"
-        headers = LLMWhispererHelper.get_request_headers(config=config)
+        """Single outbound raw-``requests`` code path for the adapter.
 
+        Resolves the service base URL and auth headers from ``config`` so that
+        no caller constructs URLs or headers itself, issues the request with an
+        explicit timeout, and maps transport / HTTP failures to ``ExtractorError``
+        with the same semantics used across the adapter. Both ``test_connection``
+        and the ``pdf-to-images`` image-mode calls go through here.
+        """
+        llm_whisperer_svc_url = f"{config.get(WhispererConfig.URL)}/api/v2"
+        url = f"{llm_whisperer_svc_url}/{endpoint}"
+        if headers is None:
+            headers = LLMWhispererHelper.get_request_headers(config=config)
         try:
-            response: Response
-            url = f"{llm_whisperer_svc_url}/{request_endpoint}"
-            response = requests.get(url=url, headers=headers)
+            response = requests.request(
+                method=method,
+                url=url,
+                headers=headers,
+                params=params,
+                data=data,
+                timeout=timeout,
+                stream=stream,
+            )
             response.raise_for_status()
+            return response
         except ConnectionError as e:
             logger.error(f"Adapter error: {e}")
             raise ExtractorError(
@@ -78,6 +147,16 @@ class LLMWhispererHelper:
             raise ExtractorError(
                 msg, status_code=e.response.status_code, actual_err=e
             ) from e
+
+    @staticmethod
+    def test_connection_request(
+        config: dict[str, Any], request_endpoint: str
+    ) -> Response:
+        return LLMWhispererHelper._send_raw_request(
+            config=config,
+            method="GET",
+            endpoint=request_endpoint,
+        )
 
     @staticmethod
     def await_extraction(
@@ -156,7 +235,7 @@ class LLMWhispererHelper:
         params: dict[str, Any] | None = None,
         data: BytesIO | None = None,
         type: str = "whisper",
-    ) -> Response:
+    ) -> dict[str, Any]:
         """Makes a request to LLMWhisperer service.
 
         Args:
@@ -171,7 +250,7 @@ class LLMWhispererHelper:
                 Defaults to "whisper".
 
         Returns:
-            Response: Response from the request
+            dict[str, Any]: Decoded LLMWhisperer response body
         """
         llm_whisperer_svc_url = f"{config.get(WhispererConfig.URL)}/api/v2"
         if not headers:
@@ -350,7 +429,7 @@ class LLMWhispererHelper:
         config: dict[str, Any],
         extra_params: WhispererRequestParams,
         fs: FileStorage | None = None,
-    ) -> requests.Response:
+    ) -> dict[str, Any]:
         if fs is None:
             fs = FileStorage(provider=FileStorageProvider.LOCAL)
         params = LLMWhispererHelper.get_whisperer_params(
@@ -358,7 +437,7 @@ class LLMWhispererHelper:
         )
         # Recorded against the extraction for cross referencing in usage reports
         params[WhispererConfig.FILE_NAME] = Path(input_file_path).name
-        response: requests.Response
+        response: dict[str, Any]
         try:
             input_file_data = BytesIO(fs.read(path=input_file_path, mode="rb"))
             enable_highlight = extra_params.enable_highlight
@@ -410,6 +489,54 @@ class LLMWhispererHelper:
             type="highlight",
         )
         return retrieve_response
+
+    @staticmethod
+    def get_processed_page_count(response: dict[str, Any]) -> int | None:
+        """Billable page count LLMWhisperer reports for this extraction.
+
+        This is the count LLMWhisperer bills, so it honours a page range.
+
+        Args:
+            response: Decoded `/whisper-retrieve` body returned by `make_request`.
+
+        Returns:
+            The processed page count, or None if the response does not carry a
+            usable one.
+        """
+        metadata = response.get("whisper_metadata")
+        has_metadata = isinstance(metadata, dict)
+        page_count = metadata.get("processed_page_count") if has_metadata else None
+        # bool is a subclass of int, so it has to be rejected explicitly.
+        if (
+            isinstance(page_count, bool)
+            or not isinstance(page_count, int)
+            or page_count <= 0
+        ):
+            logger.info(
+                "No usable processed_page_count in LLMWhisperer response; PDF "
+                "billing falls back to the file's page count "
+                "(whisper_hash=%s, whisper_metadata_present=%s, value=%r)",
+                response.get(X2TextConstants.WHISPER_HASH_V2),
+                has_metadata,
+                page_count,
+            )
+            return None
+        requested = metadata.get("requested_page_count")
+        if (
+            isinstance(requested, int)
+            and not isinstance(requested, bool)
+            and page_count < requested
+        ):
+            # Pages that failed to extract are dropped and not billed.
+            logger.warning(
+                "LLMWhisperer extracted %d of %d requested pages; billing %d "
+                "(whisper_hash=%s)",
+                page_count,
+                requested,
+                page_count,
+                response.get(X2TextConstants.WHISPER_HASH_V2),
+            )
+        return page_count
 
     @staticmethod
     def extract_text_from_response(
@@ -488,3 +615,1065 @@ class LLMWhispererHelper:
             )
         except Exception as e:
             logger.warn(f"Error while writing metadata to {metadata_file_path}: {e}")
+
+    # Image output mode (pdf-to-images): these endpoints are not exposed by the
+    # llmwhisperer-client, so the adapter calls them via raw `requests`. The
+    # wire contract the adapter relies on is centralised in ImageOutputConfig.
+
+    # Matches service page files like `page_001.png` / `page-1.png`. The
+    # captured digits are passed through int() (leading zeros stripped there),
+    # so no separate `0*` prefix is needed — keeping the pattern linear.
+    _PAGE_IMAGE_RE = re.compile(ImageOutputConfig.ZIP_PAGE_MEMBER_REGEX, re.IGNORECASE)
+
+    @staticmethod
+    def _safe_json(response: Response) -> dict[str, Any]:
+        """Parse a JSON object body, tolerating non-JSON / non-object bodies.
+
+        A non-JSON or non-object body is logged (with a truncated preview)
+        before returning ``{}`` so a caller that treats the empty result as an
+        unexpected status has a diagnostic instead of a silent fall-through.
+        """
+        try:
+            parsed = response.json()
+        except ValueError:
+            logger.warning(
+                "LLMWhisperer returned a non-JSON body (HTTP %s): %s",
+                getattr(response, "status_code", "?"),
+                (response.text or "")[:200],
+            )
+            return {}
+        if not isinstance(parsed, dict):
+            logger.warning(
+                "LLMWhisperer returned a non-object JSON body: %s",
+                str(parsed)[:200],
+            )
+            return {}
+        return parsed
+
+    @staticmethod
+    def pages_to_extract_setting(config: dict[str, Any]) -> str:
+        """The adapter's ``pages_to_extract`` in canonical form (``""`` = all).
+
+        Checks what needs no page count: syntax, page 0, reversed ranges.
+
+        Raises:
+            PageRangeError: The setting is invalid for any document.
+        """
+        raw = config.get(
+            WhispererConfig.PAGES_TO_EXTRACT, WhispererDefaults.PAGES_TO_EXTRACT
+        )
+        return validate_page_range(str(raw or ""))
+
+    @staticmethod
+    def selected_page_count(config: dict[str, Any], total_page_count: int) -> int:
+        """Pages image mode converts from a ``total_page_count``-page document.
+
+        The count 'Pages to extract' selects (every page when unset); used by
+        the pre-submit check and by the backend's upload-time check. A count
+        over LLMWhisperer's maximum is returned without building the list.
+
+        Raises:
+            PageRangeError: The setting is invalid or selects no page.
+        """
+        canonical = LLMWhispererHelper.pages_to_extract_setting(config)
+        return LLMWhispererHelper._resolve_selection(canonical, total_page_count)[0]
+
+    @staticmethod
+    def _resolve_selection(
+        canonical: str, total_page_count: int
+    ) -> tuple[int, list[int] | None]:
+        """``(selected count, selected pages)`` of a canonical setting.
+
+        The page list is None when the count exceeds LLMWhisperer's maximum
+        (the job will be rejected, so it is never built).
+
+        Raises:
+            PageRangeError: The setting selects no page of this document.
+        """
+        try:
+            pages = resolve_page_range(
+                canonical,
+                total_page_count,
+                max_pages=ImageOutputConstants.LLMWHISPERER_MAX_PAGES,
+            )
+        except PageLimitError as e:
+            return e.selected, None
+        return len(pages), pages
+
+    @staticmethod
+    def submit_pdf_to_images(
+        config: dict[str, Any],
+        file_data: BytesIO,
+        tag: str | list[str] | None = None,
+        file_name: str | None = None,
+        pages_to_extract: str | None = None,
+        max_total_image_bytes: int | None = None,
+    ) -> str:
+        """Submit a ``pdf-to-images`` job; returns the job id (whisper_hash).
+
+        The image ``format``, ``tag`` (usage-report label), ``file_name`` and
+        ``pages_to_extract`` (when set) are sent as query params, consistent
+        with the ``/whisper`` endpoint, so the service attributes usage
+        correctly and converts and bills only the selected pages.
+        ``tag`` falls back to the adapter config, then the default.
+        ``pages_to_extract`` is the canonical setting when the caller already
+        checked it; otherwise it is read from the adapter config.
+        ``max_total_image_bytes`` (when set) makes LLMWhisperer stop rendering
+        and reject the job unbilled once the images pass it.
+
+        Raises:
+            ExtractorError: The 'Pages to extract' setting is invalid (400).
+        """
+        resolved_tag = WhispererRequestParams(tag=tag).tag or config.get(
+            WhispererConfig.TAG, WhispererDefaults.TAG
+        )
+        params: dict[str, Any] = {
+            ImageOutputConfig.IMAGE_FORMAT_PARAM: ImageOutputConfig.DEFAULT_IMAGE_FORMAT,
+            WhispererConfig.TAG: resolved_tag,
+        }
+        if file_name:
+            params[ImageOutputConfig.FILE_NAME_PARAM] = file_name
+        if pages_to_extract is None:
+            pages_to_extract = LLMWhispererHelper._pages_to_extract_or_error(config)
+        if pages_to_extract:
+            params[WhispererConfig.PAGES_TO_EXTRACT] = pages_to_extract
+        if max_total_image_bytes is not None:
+            params[ImageOutputConfig.MAX_TOTAL_IMAGE_BYTES_PARAM] = max_total_image_bytes
+        headers = {
+            **LLMWhispererHelper.get_request_headers(config),
+            "Content-Type": "application/octet-stream",
+        }
+        response = LLMWhispererHelper._send_raw_request(
+            config=config,
+            method="POST",
+            endpoint=WhispererEndpoint.PDF_TO_IMAGES,
+            params=params,
+            data=file_data,
+            headers=headers,
+            timeout=WhispererDefaults.IMAGE_REQUEST_TIMEOUT,
+        )
+        body = LLMWhispererHelper._safe_json(response)
+        whisper_hash = body.get(X2TextConstants.WHISPER_HASH_V2, "")
+        if not whisper_hash:
+            raise ExtractorError(
+                "LLMWhisperer pdf-to-images submit did not return a job id "
+                f"(whisper_hash). Response: {body}",
+                status_code=502,
+            )
+        logger.info("Image mode: submitted pdf-to-images job %s", whisper_hash)
+        return whisper_hash
+
+    @staticmethod
+    def poll_pdf_to_images_status(
+        config: dict[str, Any],
+        whisper_hash: str,
+        image_limits: "ImageModePolicy | None" = None,
+        expected_page_count: int | None = None,
+    ) -> dict[str, Any]:
+        """Poll the status endpoint until a terminal state is reached.
+
+        Returns the terminal status payload on success (``status`` reaches
+        ``PROCESSED``); raises ``ExtractorError`` on a failed/unknown state or
+        once the poll budget is exhausted. Mirrors the submit-then-poll pattern
+        already used for text extraction. A byte-budget rejection raises the
+        same error type and code as the post-download byte check
+        (``image_limits`` picks which), worded as a lower bound and uncharged.
+        ``expected_page_count`` (the local selection's count) names the pages
+        when the status carries no ``metadata.page_count``.
+        """
+        headers = LLMWhispererHelper.get_request_headers(config)
+        params = {WhisperStatus.WHISPER_HASH: whisper_hash}
+        for attempt in range(WhispererDefaults.IMAGE_POLL_MAX_ATTEMPTS):
+            response = LLMWhispererHelper._send_raw_request(
+                config=config,
+                method="GET",
+                endpoint=WhispererEndpoint.PDF_TO_IMAGES_STATUS,
+                params=params,
+                headers=headers,
+                timeout=WhispererDefaults.IMAGE_REQUEST_TIMEOUT,
+            )
+            body = LLMWhispererHelper._safe_json(response)
+            status = str(body.get(ImageOutputConfig.STATUS, "")).lower()
+            logger.info(
+                "Image mode: job %s status=%s (attempt %d/%d)",
+                whisper_hash,
+                status,
+                attempt + 1,
+                WhispererDefaults.IMAGE_POLL_MAX_ATTEMPTS,
+            )
+            if status in ImageOutputConfig.STATUS_SUCCESS:
+                return body
+            if status not in ImageOutputConfig.STATUS_INTERMEDIATE:
+                # Fail closed: only explicit intermediate states keep polling.
+                # A failure state, an unknown status, or an empty body (non-JSON)
+                # raises immediately with the observed status echoed, instead of
+                # hanging until the poll budget is exhausted.
+                LLMWhispererHelper._raise_if_size_limit_rejection(
+                    body, image_limits, expected_page_count
+                )
+                msg = body.get(ImageOutputConfig.MESSAGE, "unknown error")
+                raise ExtractorError(
+                    f"LLMWhisperer pdf-to-images job {whisper_hash} returned an "
+                    f"unexpected status '{status or '<none>'}': {msg}",
+                    status_code=502,
+                )
+            time.sleep(WhispererDefaults.IMAGE_POLL_INTERVAL)
+        raise ExtractorError(
+            f"LLMWhisperer pdf-to-images job {whisper_hash} did not reach a "
+            f"terminal state within {WhispererDefaults.IMAGE_POLL_MAX_ATTEMPTS} "
+            "poll attempts",
+            status_code=504,
+        )
+
+    @staticmethod
+    def download_pdf_to_images_zip(config: dict[str, Any], whisper_hash: str) -> BytesIO:
+        """Stream the page-image ZIP into an in-memory buffer via chunked reads.
+
+        Uses a distinct, longer download timeout (large multi-page PDFs) and
+        avoids a single ``response.content`` load.
+        """
+        # This endpoint streams application/zip; advertise it so a strict
+        # gateway does not 406 the default ``accept: application/json``.
+        headers = {
+            **LLMWhispererHelper.get_request_headers(config),
+            "accept": "application/zip",
+        }
+        response = LLMWhispererHelper._send_raw_request(
+            config=config,
+            method="GET",
+            endpoint=WhispererEndpoint.PDF_TO_IMAGES_RETRIEVE,
+            params={WhisperStatus.WHISPER_HASH: whisper_hash},
+            headers=headers,
+            timeout=WhispererDefaults.IMAGE_DOWNLOAD_TIMEOUT,
+            stream=True,
+        )
+        buffer = BytesIO()
+        # Consume the stream inside try/finally: map read-time transport errors
+        # (ChunkedEncodingError / ConnectionError / read Timeout) to
+        # ExtractorError like the rest of the adapter, and always release the
+        # connection even if a chunk read fails mid-stream.
+        try:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    buffer.write(chunk)
+        except requests.RequestException as e:
+            logger.error(f"Error streaming pdf-to-images archive: {e}")
+            raise ExtractorError(
+                "Failed to download the pdf-to-images archive from LLMWhisperer",
+                status_code=502,
+                actual_err=e,
+            ) from e
+        finally:
+            response.close()
+        buffer.seek(0)
+        return buffer
+
+    @staticmethod
+    def extract_page_images_from_zip(
+        zip_buffer: BytesIO,
+    ) -> list[tuple[int, bytes]]:
+        """Extract page images from the ZIP, ordered ascending by page number.
+
+        Returns ``[(page_number, image_bytes), ...]``. Raises ``ExtractorError``
+        on a corrupt/invalid archive.
+        """
+        pages: list[tuple[int, bytes]] = []
+        skipped: list[str] = []
+        try:
+            with zipfile.ZipFile(zip_buffer) as archive:
+                for name in archive.namelist():
+                    if name.endswith("/"):
+                        continue  # directory entry, not a member
+                    match = LLMWhispererHelper._PAGE_IMAGE_RE.search(name)
+                    if not match:
+                        skipped.append(name)
+                        continue
+                    page_number = int(match.group(1))
+                    pages.append((page_number, archive.read(name)))
+        except (zipfile.BadZipFile, RuntimeError, zlib.error) as e:
+            # BadZipFile: not a ZIP. RuntimeError: encrypted member.
+            # zlib.error: corrupt compressed member surfaced by read().
+            raise ExtractorError(
+                f"Corrupt or invalid ZIP received from pdf-to-images: {e}",
+                status_code=502,
+                actual_err=e,
+            ) from e
+        if skipped:
+            # Visible, not silent: a naming-convention change mid-archive would
+            # otherwise truncate the page set and still report success.
+            logger.warning(
+                "Image mode: ignored %d non-page entr%s in the pdf-to-images "
+                "archive: %s",
+                len(skipped),
+                "y" if len(skipped) == 1 else "ies",
+                ", ".join(skipped[:10]),
+            )
+        if not pages:
+            # A well-formed archive with no recognizable page images is a
+            # failed extraction, not an empty success — fail closed.
+            raise ExtractorError(
+                "pdf-to-images returned an archive with no page images",
+                status_code=502,
+            )
+        pages.sort(key=lambda item: item[0])
+        # The page set must be exactly 1..N with no gaps or duplicates. A gap
+        # means a truncated archive; a duplicate means two members mapped to the
+        # same page number (``page_001.png`` under two folders) — which
+        # ``persist_page_images`` would silently overwrite. Fail closed on both.
+        page_numbers = [page for page, _ in pages]
+        if page_numbers != list(range(1, len(page_numbers) + 1)):
+            raise ExtractorError(
+                "pdf-to-images archive page numbers are not a contiguous 1..N "
+                f"sequence (got {page_numbers}); the archive is truncated or has "
+                "duplicate/misnamed page members",
+                status_code=502,
+            )
+        return pages
+
+    @staticmethod
+    def pdf_page_count(source: bytes | BinaryIO) -> int | None:
+        """Page count of a PDF, or None if it cannot be read.
+
+        ``source`` is the PDF's bytes or a seekable binary stream; a stream is
+        read in place rather than copied into memory. This is the counter the
+        image-mode page-cap checks use, so callers outside the SDK (e.g. an
+        upload-time check) agree with the extraction-time pre-check.
+
+        Best-effort: the extraction must not fail just because the count could
+        not be derived locally, so any error returns None (and the caller
+        degrades to the archive contiguity check).
+        """
+        try:
+            import pdfplumber  # noqa: PLC0415 - lazy: only image mode needs it
+
+            stream = BytesIO(source) if isinstance(source, bytes | bytearray) else source
+            with pdfplumber.open(stream) as pdf:
+                return len(pdf.pages)
+        except Exception as e:
+            logger.warning("Image mode: unable to read input PDF page count: %s", e)
+            return None
+
+    @staticmethod
+    def _safe_pdf_page_count(pdf_bytes: bytes) -> int | None:
+        return LLMWhispererHelper.pdf_page_count(pdf_bytes)
+
+    @staticmethod
+    def status_page_count(status: dict[str, Any]) -> int | None:
+        """``metadata.page_count`` of a pdf-to-images status, or None.
+
+        The number of page images LLMWhisperer put in the ZIP; None when the
+        status carries no usable positive integer.
+        """
+        metadata = status.get("metadata")
+        count = metadata.get("page_count") if isinstance(metadata, dict) else None
+        if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+            return None
+        return count
+
+    @staticmethod
+    def verify_page_count(
+        pages: list[tuple[int, bytes]],
+        expected_page_count: int | None,
+        service_page_count: int | None = None,
+    ) -> None:
+        """Verify the extracted image count before anything is persisted.
+
+        ``expected_page_count`` is the number of pages the 'Pages to extract'
+        setting selects in the input PDF, derived locally before submission.
+        It wins over ``service_page_count`` (the processed status'
+        ``metadata.page_count``): a service that ignored the selection
+        converts the whole document and reports that count, and the wrong
+        page set must not be persisted. When the local count is unknown the
+        service's count is used; with neither, the check is skipped with a
+        warning, leaving the 1..N contiguity check in
+        ``extract_page_images_from_zip`` as the last line of defence.
+        """
+        if expected_page_count is not None:
+            expected, source = expected_page_count, "selected from the input PDF"
+        elif service_page_count is not None:
+            expected, source = service_page_count, "reported by the service"
+        else:
+            logger.warning(
+                "Image mode: neither the selected nor the service page count is "
+                "available; skipping page-count verification (relying on the 1..N "
+                "contiguity check)"
+            )
+            return
+        actual = len(pages)
+        if actual != expected:
+            raise ExtractorError(
+                "Page count mismatch in image output mode: expected "
+                f"{expected} page image(s) ({source}) but the service returned "
+                f"{actual}",
+                status_code=502,
+            )
+
+    @staticmethod
+    def verify_page_bytes(pages: list[tuple[int, bytes]]) -> None:
+        """Reject a page set too large to send to an LLM in one request.
+
+        Same budget, from the same accessor, as the answer-time check in
+        ``page_image_loader`` — so a document that passes here passes there.
+        Raises before anything is persisted.
+        """
+        budget = get_fixed_max_total_bytes()
+        total = sum(len(data) for _, data in pages)
+        if total <= budget:
+            return
+        raise ExtractorError(
+            LLMWhispererHelper._fixed_bytes_message(len(pages), total, budget),
+            status_code=400,
+        )
+
+    @staticmethod
+    def _fixed_bytes_message(
+        page_count: int | None, total: int, budget: int, *, stopped_early: bool = False
+    ) -> str:
+        """The fixed-budget byte error, after download or from LLMWhisperer.
+
+        ``stopped_early``: LLMWhisperer stopped rendering once ``total`` passed
+        the budget, so ``total`` is a lower bound and nothing was charged.
+        """
+        mb = 1024 * 1024
+        size = "total at least" if stopped_early else "total"
+        charge = (
+            "The conversion stopped once the limit was passed; nothing was charged."
+            if stopped_early
+            else "The page conversion has already been charged, because image "
+            "sizes are only known after the pages are rendered."
+        )
+        images = f"{page_count} page images" if page_count else "page images"
+        return (
+            "This document is too large for image output mode. Its "
+            f"{images} {size} {total / mb:.1f} MiB, over the "
+            f"{budget / mb:.1f} MiB limit for one LLM request. Split the document "
+            f"into smaller files, or use a text output mode instead. {charge}"
+        )
+
+    @staticmethod
+    def submit_byte_limit(
+        image_limits: "ImageModePolicy | None", page_count: int | None
+    ) -> int | None:
+        """``max_total_image_bytes`` to send: the post-download check's budget.
+
+        The same raw-byte bound ``_check_pages_after_download`` enforces for
+        ``page_count`` images, so LLMWhisperer stops where sdk1 would reject.
+        None (param omitted) when there is no enforceable bound, or when a
+        policy's bound needs a page count that could not be read locally.
+        """
+        if image_limits is None:
+            budget: int | None = get_fixed_max_total_bytes()
+        elif page_count is None:
+            return None
+        else:
+            budget = image_limits.raw_byte_budget(page_count=page_count)
+        return budget if budget is not None and budget > 0 else None
+
+    @staticmethod
+    def _raise_if_size_limit_rejection(
+        body: dict[str, Any],
+        image_limits: "ImageModePolicy | None",
+        expected_page_count: int | None = None,
+    ) -> None:
+        """Raise the uncharged size error for an LLMWhisperer size rejection.
+
+        LLMWhisperer (LW-460) fails the job with ``metadata.error_code`` =
+        ``size_limit_exceeded`` and the bytes rendered when it stopped (a lower
+        bound on the total). That code always raises the typed, uncharged
+        error (``IMAGE_PAGES_TOO_LARGE`` with a policy, else a 400); when the
+        byte figures are missing or unusable the message omits them. Any
+        other failure returns, for the generic error.
+        """
+        metadata = body.get("metadata")
+        if not isinstance(metadata, dict):
+            return
+        if metadata.get("error_code") != ImageOutputConfig.SIZE_LIMIT_EXCEEDED:
+            return
+        page_count = LLMWhispererHelper.status_page_count(body) or expected_page_count
+        figures = {
+            name: metadata.get(name)
+            for name in ("rendered_bytes", ImageOutputConfig.MAX_TOTAL_IMAGE_BYTES_PARAM)
+        }
+        bad = [
+            name
+            for name, value in figures.items()
+            if not (isinstance(value, int) and not isinstance(value, bool) and value > 0)
+        ]
+        if bad:
+            logger.warning(
+                "Image mode: LLMWhisperer rejected the page set as too large "
+                "(%s) but its %s is missing or not a positive integer; "
+                "reporting the rejection without the figures",
+                ImageOutputConfig.SIZE_LIMIT_EXCEEDED,
+                " and ".join(bad),
+            )
+            message = _SIZE_REJECTION_WITHOUT_FIGURES
+        else:
+            rendered = figures["rendered_bytes"]
+            logger.info(
+                "Image mode: LLMWhisperer stopped rendering at %d bytes "
+                "(limit %d, %s pages); nothing was charged",
+                rendered,
+                figures[ImageOutputConfig.MAX_TOTAL_IMAGE_BYTES_PARAM],
+                page_count if page_count else "unknown",
+            )
+            if image_limits is None:
+                message = LLMWhispererHelper._fixed_bytes_message(
+                    page_count, rendered, get_fixed_max_total_bytes(), stopped_early=True
+                )
+            else:
+                from unstract.sdk1.utils.image_limits import policy as _policy
+
+                message = _policy.request_too_large_message(
+                    image_limits,
+                    page_count=page_count,
+                    raw_total=rendered,
+                    prompt_text_bytes=None,
+                    charged=False,
+                    at_least=True,
+                )
+        if image_limits is None:
+            raise ExtractorError(message, status_code=400)
+        raise ImageLimitExceededError(
+            message, error_code=limit_codes.IMAGE_PAGES_TOO_LARGE, charged=False
+        )
+
+    # Single canonical derivation of ``{extract_dir}/{stem}/pages`` shared
+    # by writer and reader alike (see unstract.sdk1.adapters.x2text.constants).
+    build_page_store_dir = staticmethod(_shared_build_page_store_dir)
+
+    @staticmethod
+    def _page_image_filename(page_number: int) -> str:
+        padded = str(page_number).zfill(ImageOutputConfig.PAGE_NUMBER_PADDING)
+        return (
+            f"{ImageOutputConfig.PAGE_IMAGE_PREFIX}{padded}"
+            f"{ImageOutputConfig.PAGE_IMAGE_EXTENSION}"
+        )
+
+    @staticmethod
+    def _write_single_page(fs: FileStorage, path: str, data: bytes) -> None:
+        fs.write(path=path, mode="wb", data=data, encoding="utf-8")
+
+    @staticmethod
+    def _cleanup_partial_pages(fs: FileStorage, page_store_dir: str) -> None:
+        """Best-effort removal of a partially-written page directory.
+
+        Invoked when a persist fails mid-set so a failed extraction leaves no
+        orphan pages behind. A cleanup error is only logged — the original
+        extraction error is what the caller must see.
+        """
+        try:
+            # Named after the uploaded document: never a glob (rm_exact).
+            fs.rm_exact(page_store_dir)
+        except Exception as e:
+            logger.warning(
+                "Image mode: could not clean up partial page dir %s: %s",
+                page_store_dir,
+                e,
+            )
+
+    @staticmethod
+    def status_document_pages(
+        status: dict[str, Any], image_count: int
+    ) -> list[int] | None:
+        """``metadata.pages`` of a pdf-to-images status, if valid for the images."""
+        metadata = status.get("metadata")
+        value = metadata.get("pages") if isinstance(metadata, dict) else None
+        return validate_document_pages(value, image_count)
+
+    @staticmethod
+    def label_document_pages(
+        local_pages: list[int] | None,
+        service_pages: list[int] | None,
+        image_count: int,
+    ) -> list[int] | None:
+        """Document page numbers to label the images with, or None.
+
+        Prefers the selection resolved locally before submitting (it is what
+        was asked for); the service's ``metadata.pages`` is the fallback when
+        the local page count was unknown. When both are valid and disagree,
+        a warning is logged and the local selection wins.
+        """
+        local = validate_document_pages(local_pages, image_count)
+        service = validate_document_pages(service_pages, image_count)
+        if local is not None and service is not None and local != service:
+            logger.warning(
+                "Image mode: LLMWhisperer reported pages %s but 'Pages to "
+                "extract' selects %s (%d images); labelling with the selection",
+                service[:20],
+                local[:20],
+                image_count,
+            )
+        return local if local is not None else service
+
+    @staticmethod
+    def _write_page_labels(
+        fs: FileStorage,
+        page_store_dir: str,
+        document_pages: list[int] | None,
+        image_count: int,
+        write: Callable[..., None],
+    ) -> None:
+        """Write ``pages.json`` when the document pages differ from 1..N.
+
+        A failed write (after ``write``'s retries) raises: without the file
+        a selection's pages would be labelled, and named in limit errors, by
+        position, which is wrong. The caller removes the partial set.
+        """
+        pages = validate_document_pages(document_pages, image_count)
+        if pages is None or pages == list(range(1, image_count + 1)):
+            return
+        path = str(Path(page_store_dir) / PAGE_LABELS_FILENAME)
+        try:
+            write(fs=fs, path=path, data=json.dumps({"pages": pages}).encode())
+        except Exception as e:
+            raise ExtractorError(
+                "Failed to persist the page labels after retries: "
+                f"provider={fs.provider.value}, path={path}",
+                status_code=500,
+                actual_err=e,
+            ) from e
+
+    @staticmethod
+    def persist_page_images(
+        fs: FileStorage,
+        page_store_dir: str,
+        pages: list[tuple[int, bytes]],
+        document_pages: list[int] | None = None,
+    ) -> list[PageImageReference]:
+        """Write every page image to FileStorage with per-page retry.
+
+        ``document_pages`` (the local 'Pages to extract' selection, else the
+        status' ``metadata.pages``) records each image's page number in the
+        source document. When valid and different from the positions 1..N, it
+        is written as ``pages.json`` next to the images so the "Page N" labels
+        and limit errors name the document's pages; a failed write fails the
+        extraction like a failed page write (the set is removed).
+
+        Fail-closed on disk as well as in the return value: if any page exhausts
+        its retries, the pages already written are removed (best-effort) before
+        a hard ``ExtractorError`` propagates, so a failed extraction never leaves
+        a partial set behind. Works transparently for LOCAL and S3 via ``fs``.
+
+        The directory is reset wholesale first: a re-extraction can produce
+        fewer pages than a previous run left in this stable path, and stale
+        trailing images would otherwise be read back as part of the new set.
+        A failed reset raises rather than risk serving another document's
+        pages to the vision LLM.
+
+        Concurrency — a DESIGNED, ACCEPTED limitation, not an oversight: a
+        prompt execution that reads this directory while a re-extraction of
+        the same document is rewriting it observes a missing or incomplete
+        set and fails with a *typed, retryable* error
+        (``PageImagesNotFoundError`` / ``PageImageSetIncompleteError``, both
+        surfaced to the user as ``IMAGE_OUTPUT_MISSING``). This loud
+        transient failure is deliberately preferred over the alternatives:
+        in-place overwrites can silently mix old and new pages into one
+        answer, and atomic directory replacement does not exist on the
+        object-storage backends ``FileStorage`` targets (S3 has no atomic
+        rename). A generation-versioned directory scheme with a pointer
+        object was considered and rejected as out of scope (PR #2210
+        review); revisit only if same-document re-extract-while-answering
+        becomes a real workflow.
+        """
+        try:
+            if fs.exists(page_store_dir):
+                # Named after the uploaded document: never a glob (rm_exact).
+                fs.rm_exact(page_store_dir)
+        except Exception as e:
+            raise ExtractorError(
+                "Failed to clear previous page images before writing the new "
+                f"set: dir={page_store_dir}, provider={fs.provider.value}",
+                status_code=500,
+                actual_err=e,
+            ) from e
+        # The delete is not trusted on its own: it works from a listing, and
+        # fsspec's dircache can serve a stale one that omits objects, so a
+        # "successful" delete can leave survivors behind — which would
+        # silently join the new set as stale trailing pages. Verify the
+        # prefix is actually gone (through a fresh listing, not fsspec's
+        # dircache) and fail loudly otherwise.
+        invalidate = getattr(getattr(fs, "fs", None), "invalidate_cache", None)
+        if callable(invalidate):
+            invalidate(page_store_dir)
+        if fs.exists(page_store_dir):
+            raise ExtractorError(
+                "Previous page images survived the pre-write cleanup (partial "
+                f"delete): dir={page_store_dir}, provider={fs.provider.value}. "
+                "Refusing to write a new page set on top of stale pages.",
+                status_code=500,
+            )
+        fs.mkdir(create_parents=True, path=page_store_dir)
+
+        write_with_retry = retry_with_exponential_backoff(
+            max_retries=WhispererDefaults.PAGE_STORE_MAX_RETRIES,
+            base_delay=WhispererDefaults.RETRY_MIN_WAIT,
+            multiplier=2.0,
+            jitter=True,
+            exceptions=(FileOperationError, OSError),
+            logger_instance=logger,
+            prefix="LLMW_PAGE_STORE",
+        )(LLMWhispererHelper._write_single_page)
+
+        references: list[PageImageReference] = []
+        for page_number, data in pages:
+            filename = LLMWhispererHelper._page_image_filename(page_number)
+            path = str(Path(page_store_dir) / filename)
+            try:
+                write_with_retry(fs=fs, path=path, data=data)
+            except Exception as e:
+                LLMWhispererHelper._cleanup_partial_pages(fs, page_store_dir)
+                raise ExtractorError(
+                    "Failed to persist page image after retries: "
+                    f"page={page_number}, provider={fs.provider.value}, "
+                    f"path={path}",
+                    status_code=500,
+                    actual_err=e,
+                ) from e
+            references.append(
+                PageImageReference(
+                    page_number=page_number,
+                    path=path,
+                    filename=filename,
+                    size_bytes=len(data),
+                    provider=fs.provider,
+                )
+            )
+        references.sort(key=lambda ref: ref.page_number)
+        try:
+            LLMWhispererHelper._write_page_labels(
+                fs, page_store_dir, document_pages, len(references), write_with_retry
+            )
+        except ExtractorError:
+            LLMWhispererHelper._cleanup_partial_pages(fs, page_store_dir)
+            raise
+        logger.info(
+            "Image mode: persisted %d page image(s) under %s (provider=%s)",
+            len(references),
+            page_store_dir,
+            fs.provider.value,
+        )
+        return references
+
+    @staticmethod
+    def _download_and_extract(
+        config: dict[str, Any], whisper_hash: str
+    ) -> list[tuple[int, bytes]]:
+        zip_buffer = LLMWhispererHelper.download_pdf_to_images_zip(config, whisper_hash)
+        return LLMWhispererHelper.extract_page_images_from_zip(zip_buffer)
+
+    @staticmethod
+    def _invalid_setting_error(
+        config: dict[str, Any], error: PageRangeError
+    ) -> ExtractorError:
+        spec = str(config.get(WhispererConfig.PAGES_TO_EXTRACT) or "")
+        return ExtractorError(
+            f"Invalid 'Pages to extract' setting '{spec}' for image output "
+            f"mode: {error}. No pages were converted or charged.",
+            status_code=400,
+        )
+
+    @staticmethod
+    def _pages_to_extract_or_error(config: dict[str, Any]) -> str:
+        """The canonical setting, or an ExtractorError (400) when invalid."""
+        try:
+            return LLMWhispererHelper.pages_to_extract_setting(config)
+        except PageRangeError as e:
+            raise LLMWhispererHelper._invalid_setting_error(config, e) from e
+
+    @staticmethod
+    def _local_selection(
+        config: dict[str, Any], canonical: str, total_page_count: int | None
+    ) -> tuple[int | None, list[int] | None]:
+        """``(expected page count, selected pages)``; both None when unknown.
+
+        With an unknown PDF page count the setting was already checked for
+        page 0 and reversed ranges (neither needs the count); a selection that
+        lies past the end is then left to LLMWhisperer, which fails it
+        unbilled.
+
+        Raises:
+            ExtractorError: The setting selects no page of this document
+                (status 400; nothing was submitted or charged).
+        """
+        if total_page_count is None:
+            return None, None
+        try:
+            return LLMWhispererHelper._resolve_selection(canonical, total_page_count)
+        except PageRangeError as e:
+            raise LLMWhispererHelper._invalid_setting_error(config, e) from e
+
+    @staticmethod
+    def _check_page_count_before_submit(
+        expected_page_count: int | None,
+        image_limits: "ImageModePolicy | None",
+        selected_from: int | None = None,
+    ) -> None:
+        """Reject an over-budget document BEFORE the per-page-billed conversion.
+
+        With a model-aware policy the budget is the consuming LLM's (image
+        count, LLMWhisperer's 999, operator ceilings; the context-window
+        estimate only warns) and the error carries a stable code. Without
+        one the fixed cap applies. Best-effort by design: a PDF whose
+        count cannot be read locally falls through and is caught after
+        conversion / at answer time.
+        """
+        if expected_page_count is None:
+            return
+        if image_limits is not None:
+            from unstract.sdk1.utils.image_limits import policy as _policy
+
+            budget = image_limits.page_budget
+            if expected_page_count > budget.max_pages:
+                raise ImageLimitExceededError(
+                    _policy.page_cap_message(
+                        expected_page_count,
+                        budget,
+                        charged=False,
+                        selected_from=selected_from,
+                    ),
+                    error_code=limit_codes.IMAGE_PAGE_CAP_EXCEEDED,
+                    charged=False,
+                )
+            # Warn-only limits (context-window estimate, pass-through
+            # defaults, the size hint) go to the worker log and, through the
+            # policy's advisory sink, to the user's run log.
+            image_limits.emit_advisories(
+                page_count=expected_page_count, include_size=True
+            )
+            return
+        page_cap = get_fixed_page_cap()
+        if expected_page_count > page_cap:
+            from unstract.sdk1.utils.image_limits.policy import fixed_cap_message
+
+            raise ExtractorError(
+                fixed_cap_message(
+                    expected_page_count,
+                    page_cap,
+                    charged=False,
+                    selected_from=selected_from,
+                ),
+                status_code=400,
+            )
+
+    @staticmethod
+    def _check_pages_after_download(
+        pages: list[tuple[int, bytes]],
+        image_limits: "ImageModePolicy | None",
+        page_store_dir: str,
+        expected_page_count: int | None = None,
+        document_pages: list[int] | None = None,
+    ) -> None:
+        """Apply the byte/per-image checks once the rendered pages are known.
+
+        ``document_pages`` makes a per-image error name the document page.
+
+        The conversion is already billed at this point; the checks run before
+        anything is persisted so a rejected document leaves no page set behind.
+        Advisories are reported again only when the pre-submit check could
+        not count the pages (``expected_page_count`` differs).
+        """
+        if image_limits is None:
+            LLMWhispererHelper.verify_page_bytes(pages)
+            return
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            PageCapExceededError,
+            PageImageSetTooLargeError,
+            PageImageTooLargeError,
+        )
+        from unstract.sdk1.utils.image_limits import policy as _policy
+
+        try:
+            _policy.check_page_set(
+                image_limits,
+                pages,
+                page_store_dir=page_store_dir,
+                charged=True,
+                emit_advisories=expected_page_count != len(pages),
+                document_pages=document_pages,
+            )
+        except PageCapExceededError as e:
+            raise ImageLimitExceededError(
+                str(e), error_code=limit_codes.IMAGE_PAGE_CAP_EXCEEDED, charged=True
+            ) from e
+        except PageImageTooLargeError as e:
+            raise ImageLimitExceededError(
+                str(e), error_code=limit_codes.IMAGE_PAGE_TOO_LARGE, charged=True
+            ) from e
+        except PageImageSetTooLargeError as e:
+            raise ImageLimitExceededError(
+                str(e), error_code=limit_codes.IMAGE_PAGES_TOO_LARGE, charged=True
+            ) from e
+
+    @staticmethod
+    def get_page_images(
+        config: dict[str, Any],
+        input_file_path: str,
+        output_file_path: str | None,
+        fs: FileStorage | None = None,
+        tag: str | list[str] | None = None,
+        image_limits: "ImageModePolicy | None" = None,
+    ) -> tuple[str, list[PageImageReference]]:
+        """End-to-end image output flow (orchestrator).
+
+        submit -> poll -> download+extract (ONCE) -> verify page count ->
+        persist per-page (retried). Returns ``(whisper_hash, references)`` with
+        the ordered ``PageImageReference`` list, or raises (fail-closed — never
+        partial). The ``whisper_hash`` is returned so callers can record the
+        real job id in extraction metadata instead of an empty string.
+
+        ``image_limits`` is the model-aware policy of the LLM(s) that will
+        consume the pages; it drives the pre-submit page budget and the
+        post-download byte and per-image checks. Without it the fixed cap
+        (``get_fixed_page_cap`` / ``get_fixed_max_total_bytes``) applies.
+
+        Retrieval is intentionally NOT retried: the service marks the job
+        RETRIEVED before streaming and (with the default persistence off) a
+        second retrieve is rejected, while a re-submit would double-bill — so a
+        mid-download failure is a hard error the caller must resubmit. Per-page
+        FileStorage writes are still retried.
+        """
+        if fs is None:
+            fs = FileStorage(provider=FileStorageProvider.LOCAL)
+
+        input_bytes = fs.read(path=input_file_path, mode="rb")
+
+        # Reject an over-budget document BEFORE submitting: pdf-to-images
+        # bills per converted page, and the answer-time check would reject
+        # the result anyway — so without this check the caller pays to
+        # convert a document that can never be answered.
+        # The count that matters is the SELECTED one: pdf-to-images converts
+        # and bills only the pages 'Pages to extract' selects.
+        # The setting is parsed once here and passed on; an invalid one fails
+        # before anything is submitted.
+        pages_to_extract = LLMWhispererHelper._pages_to_extract_or_error(config)
+        total_page_count = LLMWhispererHelper._safe_pdf_page_count(input_bytes)
+        expected_page_count, selected_pages = LLMWhispererHelper._local_selection(
+            config, pages_to_extract, total_page_count
+        )
+        # Named in the cap message only when a selection narrowed the count.
+        selected_from = (
+            total_page_count if expected_page_count != total_page_count else None
+        )
+        LLMWhispererHelper._check_page_count_before_submit(
+            expected_page_count, image_limits, selected_from
+        )
+
+        whisper_hash = LLMWhispererHelper.submit_pdf_to_images(
+            config,
+            BytesIO(input_bytes),
+            tag=tag,
+            file_name=Path(input_file_path).name,
+            pages_to_extract=pages_to_extract,
+            # LLMWhisperer stops at the byte budget the post-download check
+            # enforces and rejects unbilled, instead of billing the whole
+            # selection first. That check stays as the backstop.
+            max_total_image_bytes=LLMWhispererHelper.submit_byte_limit(
+                image_limits, expected_page_count
+            ),
+        )
+        status = LLMWhispererHelper.poll_pdf_to_images_status(
+            config, whisper_hash, image_limits, expected_page_count
+        )
+
+        pages = LLMWhispererHelper._download_and_extract(
+            config=config, whisper_hash=whisper_hash
+        )
+
+        # Verify the returned image count against the selected page count
+        # (derived locally above, before submission; else the service's own
+        # count) BEFORE persisting, so nothing is written on a truncated or
+        # over-produced archive, or on one where the selection was ignored.
+        LLMWhispererHelper.verify_page_count(
+            pages,
+            expected_page_count,
+            LLMWhispererHelper.status_page_count(status),
+        )
+
+        page_store_dir = LLMWhispererHelper.build_page_store_dir(
+            output_file_path=output_file_path,
+            input_file_path=input_file_path,
+        )
+
+        # Enforce the byte and per-image limits HERE, at extraction, not only
+        # when a prompt runs. The page images are only measurable after
+        # conversion, so the conversion itself cannot be saved — but without
+        # this check the document indexed successfully and failed only when
+        # the user ran a prompt, after they had built their prompts around
+        # it. Failing at indexing is the earliest point the size is known.
+        # The answer-time check in page_image_loader stays as the backstop.
+        document_pages = LLMWhispererHelper.label_document_pages(
+            selected_pages,
+            LLMWhispererHelper.status_document_pages(status, len(pages)),
+            len(pages),
+        )
+        LLMWhispererHelper._check_pages_after_download(
+            pages, image_limits, page_store_dir, expected_page_count, document_pages
+        )
+        references = LLMWhispererHelper.persist_page_images(
+            fs, page_store_dir, pages, document_pages
+        )
+        logger.info(
+            "Image mode: completed job=%s pages=%d", whisper_hash, len(references)
+        )
+        return whisper_hash, references
+
+    @staticmethod
+    def build_image_output_summary(page_images: list[PageImageReference]) -> str:
+        """Human-readable extract text for an image-mode result.
+
+        Image mode produces no OCR text, but the Prompt Studio extraction cache
+        keys on a non-empty extract file and the indexer stores whatever text
+        the extraction yields. Returning a short summary (rather than an empty
+        string) keeps a re-run from re-submitting the remote conversion and
+        keeps the indexed document meaningful instead of blank. The per-page
+        references travel separately in ``extraction_metadata.page_images`` —
+        never inside this string.
+        """
+        count = len(page_images)
+        noun = "page image" if count == 1 else "page images"
+        return (
+            f"{_IMAGE_SUMMARY_PREFIX} {count} {noun} extracted from the "
+            "PDF and stored in FileStorage. Per-page references are available in "
+            "the page_images extraction metadata."
+        )
+
+    @staticmethod
+    def page_count_from_image_output_summary(text: str | None) -> int | None:
+        """The page count recorded by ``build_image_output_summary``, or None.
+
+        Lets a cached image-mode extraction be re-checked against a different
+        LLM's page budget without reading the page images.
+        """
+        if not text:
+            return None
+        match = _IMAGE_SUMMARY_COUNT_RE.match(text)
+        return int(match.group(1)) if match else None
+
+    @staticmethod
+    def write_image_output(
+        fs: FileStorage,
+        output_file_path: str,
+        summary: str,
+    ) -> None:
+        """Persist the image-mode summary to the extract file.
+
+        Image mode has no OCR text; writing a short summary to
+        ``output_file_path`` gives the Prompt Studio extraction cache a
+        non-empty extract, so a re-run is a cache hit instead of a re-submit of
+        the remote pdf-to-images conversion, and the indexed document stays
+        meaningful. The per-page references remain on the returned
+        ``extraction_metadata.page_images`` and the images themselves are
+        persisted to FileStorage; a Prompt Studio consumer of those references
+        is tracked as follow-up work.
+        """
+        try:
+            fs.write(
+                path=str(output_file_path),
+                mode="w",
+                data=summary,
+                encoding="utf-8",
+            )
+        except Exception as e:
+            logger.error(f"Error writing image extract file {output_file_path}: {e}")
+            raise ExtractorError(str(e)) from e

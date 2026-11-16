@@ -7,10 +7,15 @@ from django.db.models import Count, F, IntegerField, OuterRef, QuerySet, Subquer
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from permissions.membership_views import OwnerManagementMixin
-from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from permissions.permission import (
+    IsOwner,
+    IsOwnerOrSharedUserOrSharedToOrg,
+    is_activation_only_patch,
+)
 from permissions.resource_share_views import ResourceShareManagementMixin
-from permissions.roles import ResourceRole
 from platform_api.openapi_schema import PlatformKeyAutoSchema
+from platform_audit.actions import Action
+from platform_audit.resources import record_resource_event, resource_ref
 from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from rest_framework import serializers, status, views, viewsets
@@ -18,17 +23,30 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
+from tenant_account_v2.capabilities import Capability, RequiresCapability
 from tool_instance_v2.models import ToolInstance
 from utils.enums import CeleryTaskState
 from utils.hubspot_notify import notify_hubspot_event
 from utils.pagination import CustomPagination
 from workflow_manager.workflow_v2.dto import ExecutionResponse
+from workflow_manager.workflow_v2.enums import ExecutionStatus
+from workflow_manager.workflow_v2.list_aggregate_serializers import (
+    LIST_FILTER_ACTIONS,
+    list_filters_from,
+    workflow_filter_from,
+)
+from workflow_manager.workflow_v2.list_aggregates import (
+    RowFields,
+    aggregate_rows,
+    apply_list_filters,
+)
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from api_v2.api_deployment_dto_registry import ApiDeploymentDTORegistry
 from api_v2.constants import ApiExecution
 from api_v2.deployment_helper import DeploymentHelper
 from api_v2.dto import DeploymentExecutionDTO
+from api_v2.error_message import add_error_message
 from api_v2.exceptions import (
     NoActiveAPIKeyError,
     RateLimitExceeded,
@@ -38,11 +56,13 @@ from api_v2.models import APIDeployment
 from api_v2.openapi_schema import (
     API_DEPLOYMENT_LIST_SCHEMA,
     DEPLOYMENT_EXECUTION_SCHEMA,
+    DeploymentAutoSchema,
 )
 from api_v2.rate_limiter import APIDeploymentRateLimiter
 from api_v2.serializers import (
     APIDeploymentListSerializer,
     APIDeploymentSerializer,
+    DeploymentAggregateSerializer,
     DeploymentResponseSerializer,
     ExecutionQuerySerializer,
     ExecutionRequestSerializer,
@@ -55,9 +75,14 @@ if notification_plugin:
 
 logger = logging.getLogger(__name__)
 
+# The last run is the one the list shows, annotated in get_queryset.
+DEPLOYMENT_ROW_FIELDS = RowFields(active="is_active", last_run="last_run_time_annotated")
+
 
 @DEPLOYMENT_EXECUTION_SCHEMA
 class DeploymentExecution(views.APIView):
+    schema = DeploymentAutoSchema()
+
     def initialize_request(self, request: Request, *args: Any, **kwargs: Any) -> Request:
         """To remove csrf request for public API.
 
@@ -69,6 +94,14 @@ class DeploymentExecution(views.APIView):
         """
         request.csrf_processing_done = True
         return super().initialize_request(request, *args, **kwargs)
+
+    def handle_exception(self, exc: Exception) -> Response:
+        response = super().handle_exception(exc)
+        # On the status read `message` is the result payload, and published
+        # clients copy it out as the extraction result without checking.
+        if self.request.method == "POST":
+            add_error_message(response.data)
+        return response
 
     @DeploymentHelper.validate_api_key
     def post(
@@ -87,7 +120,7 @@ class DeploymentExecution(views.APIView):
             context={
                 "api": api,
                 "api_key": api_key,
-                "is_global_key": deployment_execution_dto.is_global_key,
+                "global_key": deployment_execution_dto.global_key,
             },
         )
         serializer.is_valid(raise_exception=True)
@@ -153,7 +186,10 @@ class DeploymentExecution(views.APIView):
 
         # Determine response status based on execution result
         execution_status = response.get("execution_status", "")
-        has_error = response.get("error") or execution_status == "ERROR"
+        has_error = response.get("error") or execution_status in (
+            ExecutionStatus.ERROR.value,
+            ExecutionStatus.STOPPED.value,
+        )
 
         if has_error:
             # Check for tool not found in registry error - return 500 Internal Server Error
@@ -235,6 +271,10 @@ class DeploymentExecution(views.APIView):
         response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
         if execution_status_value == CeleryTaskState.COMPLETED.value:
             response_status = status.HTTP_200_OK
+        if execution_status_value in (
+            CeleryTaskState.COMPLETED.value,
+            ExecutionStatus.STOPPED.value,
+        ):
             DeploymentHelper.process_completed_execution(
                 response=response,
                 deployment_execution_dto=deployment_execution_dto,
@@ -270,8 +310,19 @@ class APIDeploymentViewSet(
         return ResourceType.API_DEPLOYMENT.value
 
     def get_permissions(self) -> list[Any]:
+        # Enabling or disabling is use, not configuration, so it follows
+        # sharing. Everything else on these verbs stays with the owner.
+        if self.action == "partial_update" and is_activation_only_patch(
+            self.request, flag="is_active"
+        ):
+            return [IsOwnerOrSharedUserOrSharedToOrg()]
+        if self.action == "destroy":
+            # Ownership as before, narrowed by the org's deletion capability.
+            return [
+                IsOwner(),
+                RequiresCapability(Capability.DELETE_WORKFLOWS_AND_DEPLOYMENTS),
+            ]
         if self.action in [
-            "destroy",
             "partial_update",
             "update",
             "add_co_owner",
@@ -313,16 +364,8 @@ class APIDeploymentViewSet(
 
         # TODO: replace the hand-read params and their OpenApiParameter
         # restatements with a FilterSet so the spec cannot drift from the code
-        workflow_filter = self.request.query_params.get("workflow", None)
+        workflow_filter = workflow_filter_from(self.request.query_params)
         if workflow_filter:
-            try:
-                uuid.UUID(workflow_filter)
-            except ValueError:
-                # Django raises on evaluation, past the handler that turns a bad
-                # request into a 400.
-                raise serializers.ValidationError(
-                    {"workflow": "Must be a valid UUID."}
-                ) from None
             queryset = queryset.filter(workflow_id=workflow_filter)
 
         # Search by display name
@@ -337,10 +380,28 @@ class APIDeploymentViewSet(
 
         return queryset
 
+    def filter_queryset(self, queryset: QuerySet) -> QuerySet:
+        queryset = super().filter_queryset(queryset)
+        if self.action not in LIST_FILTER_ACTIONS:
+            return queryset
+        filters = list_filters_from(self.request.query_params)
+        return apply_list_filters(queryset, filters, DEPLOYMENT_ROW_FIELDS)
+
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action in ["list"]:
             return APIDeploymentListSerializer
         return APIDeploymentSerializer
+
+    @action(detail=False, methods=["get"])
+    def aggregate(self, request: Request) -> Response:
+        """Status counts and failing rows over the list's filtered rows.
+
+        Call it without ``status`` and ``failing`` to fill the counts while the
+        list is filtered by them.
+        """
+        rows = self.filter_queryset(self.get_queryset())
+        summary = aggregate_rows(rows, DEPLOYMENT_ROW_FIELDS)
+        return Response(DeploymentAggregateSerializer(summary).data)
 
     @action(detail=True, methods=["get"])
     def fetch_one(self, request: Request, pk: str | None = None) -> Response:
@@ -360,10 +421,9 @@ class APIDeploymentViewSet(
         self.perform_create(serializer)
         # ``created_by`` is audit-only; the creator's access flows through an
         # OWNER membership row (UN-2202 co-owners).
-        serializer.instance.memberships.get_or_create(
-            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
-        )
+        serializer.instance.grant_owner(request.user)
         api_key = DeploymentHelper.create_api_key(serializer=serializer, request=request)
+        record_resource_event(request, Action.RESOURCE_CREATED, serializer.instance)
         response_serializer = DeploymentResponseSerializer(
             {"api_key": api_key.api_key, **serializer.data}
         )
@@ -382,6 +442,11 @@ class APIDeploymentViewSet(
             status=status.HTTP_201_CREATED,
             headers=headers,
         )
+
+    def perform_destroy(self, instance: APIDeployment) -> None:
+        deleted = resource_ref(instance)
+        super().perform_destroy(instance)
+        record_resource_event(self.request, Action.RESOURCE_DELETED, deleted)
 
     @action(detail=False, methods=["get"])
     def by_prompt_studio_tool(self, request: Request) -> Response:
@@ -406,8 +471,11 @@ class APIDeploymentViewSet(
             # Get API deployments for these workflows the user can access —
             # ``created_by`` is audit-only; access flows through memberships,
             # sharing, and the admin/SA bypasses (UN-2202).
-            deployments = APIDeployment.objects.for_user(request.user).filter(
-                workflow_id__in=workflow_ids
+            deployments = (
+                APIDeployment.objects.for_user(request.user)
+                .select_related("created_by")
+                .prefetch_related("memberships__user")
+                .filter(workflow_id__in=workflow_ids)
             )
 
             serializer = APIDeploymentListSerializer(deployments, many=True)
@@ -416,7 +484,7 @@ class APIDeploymentViewSet(
         except PromptStudioRegistry.DoesNotExist:
             return Response([], status=status.HTTP_200_OK)
         except Exception as e:
-            logger.error(f"Error fetching API deployments for tool {tool_id}: {e}")
+            logger.exception(f"Error fetching API deployments for tool {tool_id}: {e}")
             return Response(
                 {"error": "Failed to fetch API deployments"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -456,40 +524,3 @@ class APIDeploymentViewSet(
         instance = self.get_object()
         serializer = SharedUserListSerializer(instance)
         return Response(serializer.data)
-
-    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        """Override partial_update to handle sharing notifications."""
-        instance = self.get_object()
-        before = self.snapshot_share_axes(instance)
-
-        response = super().partial_update(request, *args, **kwargs)
-        if response.status_code == 200 and notification_plugin:
-            self._notify_shared_users(instance, before, request.data, request.user)
-        return response
-
-    def _notify_shared_users(
-        self,
-        instance: APIDeployment,
-        before: dict[str, set[Any]],
-        request_data: dict[str, Any],
-        actor: Any,
-    ) -> None:
-        """Email users newly added to ``shared_users`` (best-effort)."""
-        users_diff = self.diff_share_axes(instance, before, request_data).get(
-            "shared_users"
-        )
-        if not (users_diff and users_diff.added):
-            return
-        try:
-            service_class = notification_plugin["service_class"]
-            notification_service = service_class()
-            notification_service.send_sharing_notification(
-                resource_type=ResourceType.API_DEPLOYMENT.value,
-                resource_name=instance.display_name,
-                resource_id=str(instance.id),
-                shared_by=actor,
-                shared_to=list(users_diff.added),
-                resource_instance=instance,
-            )
-        except Exception as e:
-            logger.exception("Failed to send sharing notification: %s", e)

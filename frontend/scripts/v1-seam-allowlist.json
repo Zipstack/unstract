@@ -1,0 +1,4 @@
+{
+  "$comment": "v0 files the frontend v1 epic may change until Phase 9 (the seam allowlist in the Frontend v1 spec): route definitions, the root provider mount and the global stylesheet that loads Tailwind and the v1 styles. Build, test and CI configuration outside src/, public/ and index.html is never guarded; v0's own test setup (src/setupTests.js) is v0 code, since v1 has its own. With --base the guard reads this list from the base branch, so a change to it applies from the next PR. The v0 Human Review header is cloud-only, so it is allowed by the cloud copy of this list. Read by scripts/check-v1-seam.mjs; globs are relative to frontend/, `*` stays inside one folder and `**` crosses folders.",
+  "allow": ["src/routes/**", "src/index.jsx", "src/App.jsx", "src/index.css"]
+}

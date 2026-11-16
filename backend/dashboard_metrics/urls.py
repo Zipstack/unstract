@@ -15,6 +15,8 @@ metrics_live_summary = DashboardMetricsViewSet.as_view({"get": "live_summary"})
 metrics_live_series = DashboardMetricsViewSet.as_view({"get": "live_series"})
 metrics_health = DashboardMetricsViewSet.as_view({"get": "health"})
 metrics_recent_activity = DashboardMetricsViewSet.as_view({"get": "recent_activity"})
+metrics_attention = DashboardMetricsViewSet.as_view({"get": "attention"})
+metrics_attribution = DashboardMetricsViewSet.as_view({"get": "attribution"})
 metrics_workflow_token_usage = DashboardMetricsViewSet.as_view(
     {"get": "workflow_token_usage"}
 )
@@ -40,6 +42,9 @@ urlpatterns = format_suffix_patterns(
             metrics_workflow_token_usage,
             name="metrics-workflow-token-usage",
         ),
+        # Dashboard attention feed and failure attribution (PB-T14)
+        path("attention/", metrics_attention, name="metrics-attention"),
+        path("attribution/", metrics_attribution, name="metrics-attribution"),
         # Health check endpoint
         path("health/", metrics_health, name="metrics-health"),
         # Individual metric detail

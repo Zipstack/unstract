@@ -69,6 +69,14 @@ class ConfigKey(Enum):
         max_value=7200,
     )
 
+    PLATFORM_AUDIT_RETENTION_DAYS = ConfigSpec(
+        default=settings.PLATFORM_AUDIT_RETENTION_DAYS,
+        value_type=ConfigType.INT,
+        help_text="Days platform audit events stay readable before they expire.",
+        min_value=1,
+        max_value=3650,
+    )
+
     def cast_value(self, raw_value: Any):
         converters = {
             ConfigType.INT: int,

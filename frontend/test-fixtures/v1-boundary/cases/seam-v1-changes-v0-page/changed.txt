@@ -1,0 +1,2 @@
+src/v1/pages/logs/index.tsx
+src/pages/LogsPage.jsx

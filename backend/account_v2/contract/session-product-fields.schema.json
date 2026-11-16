@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "unstract/account/session-product-fields/v1",
+  "description": "Product-preference fields of the session response (GET /api/v1/session). Partial schema: other session fields are not described here, so additional properties are allowed.",
+  "type": "object",
+  "required": ["last_product", "has_chosen"],
+  "properties": {
+    "last_product": {
+      "enum": ["unstract", "llm-whisperer", "verticals", "flow", null]
+    },
+    "has_chosen": {"type": "boolean"}
+  }
+}

@@ -18,7 +18,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from tool_instance_v2.models import ToolInstance
 
-from unstract.core.data_models import WorkflowTransport
+from unstract.core.data_models import LEGACY_TRANSPORT_KEY, LEGACY_TRANSPORT_VALUE
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
 
@@ -87,7 +87,7 @@ def get_workflow_execution_data(request, execution_id: str):
             status=status.HTTP_404_NOT_FOUND,
         )
     except Exception as e:
-        logger.error(f"Error getting workflow execution data: {e}")
+        logger.exception(f"Error getting workflow execution data: {e}")
         return Response(
             {"error": "Internal server error"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -326,16 +326,15 @@ def create_workflow_execution(request):
                 "execution_id": str(execution.id),
                 "status": execution.status,
                 "execution_log_id": execution.execution_log_id,  # Return for workers to use
-                # Wire field the workers still branch on. PG is the only
-                # transport now; the field goes when those branches do.
-                "transport": WorkflowTransport.PG_QUEUE.value,
+                # Rolling-deploy shim: see LEGACY_TRANSPORT_KEY.
+                LEGACY_TRANSPORT_KEY: LEGACY_TRANSPORT_VALUE,
             }
         )
 
     except Workflow.DoesNotExist:
         return Response({"error": "Workflow not found"}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        logger.error(f"Error creating workflow execution: {e}")
+        logger.exception(f"Error creating workflow execution: {e}")
         return Response(
             {"error": "Internal server error"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -375,7 +374,7 @@ def compile_workflow(request):
         )
 
     except Exception as e:
-        logger.error(f"Error compiling workflow: {e}")
+        logger.exception(f"Error compiling workflow: {e}")
         return Response(
             {"error": "Internal server error"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -31,11 +31,12 @@ integers.
 | `SHUTDOWN_GRACE_SECONDS` | Graceful-drain budget (shared across all children) on SIGTERM before SIGKILL | `= VT` (floored at `30`) |
 | `QUEUE` | Queue name(s) this consumer polls (comma-separated) | `default` |
 | `BATCH` | Messages claimed per poll | `1` |
-| `POLL_INTERVAL` | Time between polls when the queue is empty | `0.1` |
-| `BACKOFF_MAX` | Max empty-queue poll backoff | `2.0` |
+| `POLL_INTERVAL` | First sleep after a poll cycle that handles nothing (doubles up to `BACKOFF_MAX`; a cycle that handles a message resets it) | `0.5` |
+| `BACKOFF_MAX` | Max empty-queue poll backoff — also the worst-case pickup latency on an idle queue. Keep well under `HEALTH_STALE_SECONDS` | `5.0` |
 | `MAX_ATTEMPTS` | Max deliveries before a message is dropped as **poison** | `5` |
 | `HEALTH_PORT` | Liveness HTTP port (unset → probe disabled) | unset |
 | `HEALTH_STALE_SECONDS` | A poll loop idle beyond this is reported unhealthy | `60` |
+| `CHILD_WATCHDOG` | With `CONCURRENCY > 1`, SIGKILL and re-fork a child silent past `HEALTH_STALE_SECONDS` (requires it set above the longest legitimate task) | `false` |
 | `WORKER_TYPE` | Which source worker's tasks this consumer registers (bootstrap) | — |
 
 ### Reaper (`WORKER_PG_REAPER_*`)
@@ -76,8 +77,9 @@ keeps its claim; a **dead** worker's renewal stops, so its `vt` expires in ~`LEA
 redelivery in **minutes, not hours**. `VT_SECONDS` is retained as the *drain /
 max-runtime bound* (grace, health-stale), and the lease is clamped to it. Note the
 lease is **not** a hard cap on runtime — a live-but-hung task keeps renewing forever;
-the backstop for that is the liveness probe restarting the pod (process death stops
-renewal). The renewal owns its own DB connection (closed on exit) and is best-effort:
+the backstop is process death, which stops renewal: the supervisor's child watchdog
+(`CHILD_WATCHDOG`) kills a child silent past `HEALTH_STALE_SECONDS`; otherwise a
+liveness probe restarting the pod, where one exists. The renewal owns its own DB connection (closed on exit) and is best-effort:
 a connection death retries within the `~2×` slack the `LEASE/3` interval leaves before
 expiry, and escalates to an ERROR log once it keeps failing past `LEASE` (the lease is
 then genuinely lost and the message may double-run). Because renewal covers only the
@@ -112,6 +114,14 @@ deadline**, then SIGKILLs stragglers. Must be ≤ the pod's
 **Liveness / heartbeat** — each child stamps its last-poll time into a shared array;
 the supervisor reports the *oldest* child's staleness on `/health`. Frozen during a
 long task, so a wedged child goes stale and trips the probe.
+
+**Readiness** — `/ready` on the same port answers 200 only once **every** child has
+finished its `import worker` bootstrap and built its consumer (503 `starting` until
+then; the JSON carries `loaded_children`). It is for a k8s `startupProbe`: the N
+children import in parallel for a minute or two at multiple cores, and a pod that is
+not yet Ready has that CPU ignored by the HPA instead of read as load. Single-process
+consumers (`CONCURRENCY = 1`) answer 200 as soon as the port is up, since they bind it
+only after loading. The reaper serves no `/ready` (404).
 
 **Reaper** — a singleton (leader-elected) sweeper that recovers **stranded** work:
 fast-fails a barrier whose `last_progress_at` stalled, cascades a terminal
@@ -192,9 +202,9 @@ checkpoints closes that window:
 |---|---|
 | `legacy_executor._abort_check` | Builds a `() -> bool` predicate over the same Redis key, **only for IDE runs** — workflow and API-deployment runs get `None` and keep the untouched synchronous path. Negative answers are memoized for a second, since the SDK polls twice per second |
 | `abort_scope(...)` in `execute()` and the prompt loop | Publishes the predicate as a `ContextVar` the SDK reads at call time, narrowed per prompt so a Stop aimed at one prompt abandons only its call |
-| `sdk1.llm` | With a predicate present, runs `litellm.acompletion` on a shared background loop and cancels the task — which closes the HTTP request. Without one, the byte-for-byte synchronous path. `UNSTRACT_LLM_ABORT_INFLIGHT=false` forces the synchronous path back |
+| `sdk1.llm` | `complete()` streams under the hood by default: the stream is checked between chunks and closed on a stop, so a call is abandoned at its next chunk (a provider that sends nothing at all is only noticed at its first chunk or read timeout). For an adapter with streaming off, and for `complete_vision()`, a predicate runs `litellm.acompletion` on a shared background loop and cancels the task — which closes the HTTP request. Without a predicate, the byte-for-byte synchronous path. `UNSTRACT_LLM_ABORT_INFLIGHT=false` forces the non-streamed call back to the synchronous path |
 | `sdk1.embedding` | Raises at each batch boundary; llama-index calls the leaf once per batch |
-| `sdk1` LLMWhisperer v1/v2 | Drives the status polling itself (`wait_for_completion=False`) instead of blocking inside the vendored client's uninterruptible loop |
+| `sdk1` LLMWhisperer v2 | Drives the status polling itself (`wait_for_completion=False`) instead of blocking inside the vendored client's uninterruptible loop |
 | `sdk1.utils.retry_utils` | Checks before each attempt and sleeps the backoff in slices, so a stop is not swallowed by up to a minute of exponential delay |
 
 An `AbortedError` from the SDK is translated to the executor's existing

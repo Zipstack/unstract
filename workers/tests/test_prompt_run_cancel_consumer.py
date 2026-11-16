@@ -73,7 +73,7 @@ def _payload(context, **overrides):
 
 
 def _msg(payload, msg_id=1):
-    return QueueMessage(msg_id=msg_id, message=payload, read_ct=1)
+    return QueueMessage(msg_id=msg_id, message=payload, read_ct=1, queue_name="q")
 
 
 def _poll(payload, *, cancelled: bool):

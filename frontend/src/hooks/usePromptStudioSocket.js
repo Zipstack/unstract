@@ -5,6 +5,7 @@ import { useAlertStore } from "../store/alert-store";
 import { useCustomToolStore } from "../store/custom-tool-store";
 import { usePromptRunStatusStore } from "../store/prompt-run-status-store";
 import { useExceptionHandler } from "./useExceptionHandler";
+import usePostHogEvents from "./usePostHogEvents";
 import usePromptOutput from "./usePromptOutput";
 
 const PROMPT_STUDIO_RESULT_EVENT = "prompt_studio_result";
@@ -24,7 +25,8 @@ const usePromptStudioSocket = () => {
     useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
-  const { updatePromptOutputState } = usePromptOutput();
+  const { updatePromptOutputState, promptOutputApi } = usePromptOutput();
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   const clearPromptStatuses = useCallback(
     (promptIds, docId, profileId) => {
@@ -40,10 +42,80 @@ const usePromptStudioSocket = () => {
   );
 
   const handleCompleted = useCallback(
-    (operation, result, extra) => {
-      if (operation === "fetch_response") {
-        const data = Array.isArray(result) ? result : [];
+    async (operation, result, extra) => {
+      if (
+        operation === "fetch_response" ||
+        operation === "single_pass_extraction"
+      ) {
+        // Use inline result if present (backward compat with old backend),
+        // otherwise refetch via API to avoid DATA_UPLOAD_MAX_MEMORY_SIZE.
+        let data = Array.isArray(result) ? result : [];
+        if (data.length === 0) {
+          try {
+            const res = await promptOutputApi(
+              details?.tool_id,
+              extra?.document_id,
+              null,
+              extra?.profile_manager_id,
+              operation === "single_pass_extraction",
+            );
+            // promptOutputApi catches errors and returns them instead of
+            // throwing, so check that the response looks like a success.
+            if (res?.status >= 200 && res?.status < 300) {
+              data = Array.isArray(res?.data) ? res.data : [];
+            } else {
+              // Fetch failed — preserve existing results, only clear spinners.
+              clearPromptStatuses(
+                extra?.prompt_ids,
+                extra?.document_id,
+                extra?.profile_manager_id,
+              );
+              if (operation === "single_pass_extraction") {
+                updateCustomTool({ isSinglePassExtractLoading: false });
+              }
+              setAlertDetails({
+                type: "error",
+                content:
+                  "Failed to fetch prompt output — existing results preserved.",
+              });
+              return;
+            }
+          } catch {
+            // Network error — preserve existing results, only clear spinners.
+            clearPromptStatuses(
+              extra?.prompt_ids,
+              extra?.document_id,
+              extra?.profile_manager_id,
+            );
+            if (operation === "single_pass_extraction") {
+              updateCustomTool({ isSinglePassExtractLoading: false });
+            }
+            setAlertDetails({
+              type: "error",
+              content:
+                "Failed to fetch prompt output — existing results preserved.",
+            });
+            return;
+          }
+
+          // Guard against tool switch while the API call was in flight:
+          // if the user moved to a different tool, discard stale results.
+          const currentToolId = useCustomToolStore.getState().details?.tool_id;
+          if (
+            currentToolId &&
+            details?.tool_id &&
+            currentToolId !== details.tool_id
+          ) {
+            return;
+          }
+        }
+        // Merge into existing outputs (false) so results for other
+        // documents / profiles are preserved.
         updatePromptOutputState(data, false, extra?.elapsed || 0);
+
+        if (operation === "single_pass_extraction") {
+          updateCustomTool({ isSinglePassExtractLoading: false });
+        }
         clearPromptStatuses(
           extra?.prompt_ids,
           extra?.document_id,
@@ -51,20 +123,10 @@ const usePromptStudioSocket = () => {
         );
         setAlertDetails({
           type: "success",
-          content: "Prompt execution completed successfully.",
-        });
-      } else if (operation === "single_pass_extraction") {
-        const data = Array.isArray(result) ? result : [];
-        updatePromptOutputState(data, false, extra?.elapsed || 0);
-        updateCustomTool({ isSinglePassExtractLoading: false });
-        clearPromptStatuses(
-          extra?.prompt_ids,
-          extra?.document_id,
-          extra?.profile_manager_id,
-        );
-        setAlertDetails({
-          type: "success",
-          content: "Single pass extraction completed successfully.",
+          content:
+            operation === "single_pass_extraction"
+              ? "Single pass extraction completed successfully."
+              : "Prompt execution completed successfully.",
         });
       } else if (operation === "index_document") {
         const docId = result?.document_id;
@@ -79,11 +141,13 @@ const usePromptStudioSocket = () => {
     },
     [
       updatePromptOutputState,
+      promptOutputApi,
       clearPromptStatuses,
       updateCustomTool,
       setAlertDetails,
       deleteIndexDoc,
       selectedDoc,
+      details,
     ],
   );
 
@@ -137,12 +201,46 @@ const usePromptStudioSocket = () => {
   // answers for the prompts that finished before the stop, so the results are
   // applied exactly as a completed run's are — only the toast differs.
   const handleCancelled = useCallback(
-    (operation, result, extra) => {
+    async (operation, result, extra) => {
       if (
         operation === "fetch_response" ||
         operation === "single_pass_extraction"
       ) {
-        const data = Array.isArray(result) ? result : [];
+        let data = Array.isArray(result) ? result : [];
+        const cancelledIds = new Set(extra?.cancelled_prompt_ids || []);
+        const persistedSome = (extra?.prompt_ids || []).some(
+          (promptId) => !cancelledIds.has(String(promptId)),
+        );
+        // As for a completed run, the answers are not sent inline: refetch
+        // what was persisted before the stop. A failed refetch only loses
+        // the partial answers, so the stop is still reported as a stop.
+        if (
+          data.length === 0 &&
+          persistedSome &&
+          extra?.document_id &&
+          extra?.profile_manager_id
+        ) {
+          try {
+            const res = await promptOutputApi(
+              details?.tool_id,
+              extra.document_id,
+              null,
+              extra.profile_manager_id,
+              operation === "single_pass_extraction",
+            );
+            const currentToolId =
+              useCustomToolStore.getState().details?.tool_id;
+            const toolSwitched =
+              currentToolId &&
+              details?.tool_id &&
+              currentToolId !== details.tool_id;
+            if (res?.status >= 200 && res?.status < 300 && !toolSwitched) {
+              data = Array.isArray(res?.data) ? res.data : [];
+            }
+          } catch {
+            // Keep the existing outputs; only the partial answers are lost.
+          }
+        }
         if (data.length) {
           // Second arg is isReset, not a mode flag: partial results are merged
           // in exactly as a completed run's are, never used to wipe state.
@@ -177,12 +275,14 @@ const usePromptStudioSocket = () => {
     },
     [
       updatePromptOutputState,
+      promptOutputApi,
       updateCustomTool,
       clearPromptStatuses,
       clearPromptStatusById,
       deleteIndexDoc,
       unregisterRun,
       setAlertDetails,
+      details,
     ],
   );
 
@@ -196,6 +296,16 @@ const usePromptStudioSocket = () => {
         if (tool_id && details?.tool_id && tool_id !== details.tool_id) {
           return;
         }
+
+        // Captured before handling so a handler throw doesn't hide the outcome.
+        setPostHogCustomEvent("ps_prompt_run_result", {
+          task_id: extra?.task_id,
+          operation,
+          status,
+          tool_id,
+          prompt_count: extra?.prompt_ids?.length,
+          elapsed_seconds: extra?.elapsed,
+        });
 
         if (status === "completed") {
           handleCompleted(operation, result, extra);
@@ -220,6 +330,7 @@ const usePromptStudioSocket = () => {
       setAlertDetails,
       handleException,
       details,
+      setPostHogCustomEvent,
     ],
   );
 

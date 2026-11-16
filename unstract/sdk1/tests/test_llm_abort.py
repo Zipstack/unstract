@@ -10,11 +10,15 @@ from __future__ import annotations
 
 import asyncio
 import time
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
 from unstract.sdk1.llm import LLM
 from unstract.sdk1.utils.aborting import AbortedError, abort_scope
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 def _fake_response(text: str = "an answer") -> dict:
@@ -29,7 +33,9 @@ def llm() -> LLM:
     """An LLM with its adapter and bookkeeping stubbed out.
 
     Constructing a real one needs a platform round trip; everything under test
-    here sits between `complete()` and litellm.
+    here sits between `complete()` and litellm. Streaming under the hood is
+    off: these tests cover the non-streaming, abortable-mid-call path. The
+    streamed path is covered by ``TestStreamedCompletion``.
     """
     inst = LLM.__new__(LLM)
     inst.adapter = MagicMock()
@@ -42,7 +48,12 @@ def llm() -> LLM:
     inst._system_prompt = None
     inst._record_usage = MagicMock()
     inst._get_adapter_info = MagicMock(return_value="test adapter")
+    inst._enable_streaming = False
     return inst
+
+
+def _content_chunk(text: str) -> dict:
+    return {"choices": [{"delta": {"content": text}}]}
 
 
 class TestAbortableCompletion:
@@ -165,3 +176,57 @@ class TestTheSwitch:
 
         async_call.assert_called_once()
         sync.assert_not_called()
+
+
+class TestStreamedCompletion:
+    """With streaming under the hood (the default), a stop lands between chunks."""
+
+    def test_a_stop_closes_the_stream_at_the_next_chunk(self, llm: LLM) -> None:
+        llm._enable_streaming = True
+        pulled: list[int] = []
+
+        def endless_stream() -> Iterator[dict]:
+            index = 0
+            while True:
+                pulled.append(index)
+                yield _content_chunk(f"token {index}")
+                index += 1
+
+        stream = endless_stream()
+
+        def should_abort() -> bool:
+            # The user presses Stop once the third chunk has arrived.
+            return len(pulled) >= 3
+
+        with (
+            patch("litellm.completion", return_value=stream),
+            patch("litellm.stream_chunk_builder") as rebuild,
+            abort_scope(should_abort),
+            pytest.raises(AbortedError),
+        ):
+            llm.complete("prompt")
+
+        assert len(pulled) == 3
+        rebuild.assert_not_called()
+        # Closed rather than left for the garbage collector.
+        assert stream.gi_frame is None
+
+    def test_an_unstopped_stream_is_rebuilt_as_before(self, llm: LLM) -> None:
+        llm._enable_streaming = True
+
+        with (
+            patch(
+                "litellm.completion",
+                return_value=iter([_content_chunk("4"), _content_chunk("2")]),
+            ),
+            patch(
+                "litellm.stream_chunk_builder", return_value=_fake_response("42")
+            ) as rebuild,
+            patch("litellm.acompletion") as async_call,
+            abort_scope(lambda: False),
+        ):
+            result = llm.complete("prompt")
+
+        assert result["response"].text == "42"
+        rebuild.assert_called_once()
+        async_call.assert_not_called()
