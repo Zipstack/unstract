@@ -1021,7 +1021,7 @@ happens **before enqueue, in the backend**, via a capability probe:
 
 ```python
 if not get_plugin("agent_kv"):
-    raise EngineUnavailable()   # 501, "agent-kv engine not available on this deployment"
+    raise EngineUnavailable()  # 501, "agent-kv engine not available on this deployment"
 ```
 
 `get_plugin(...)` (`backend/plugins/__init__.py`) returns an empty dict — falsy — when

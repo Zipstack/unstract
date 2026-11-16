@@ -2,6 +2,7 @@ import logging
 from collections import OrderedDict
 from typing import Any
 
+from backend.serializers import AuditSerializer
 from connection_check.serializers import profile_status_fields
 from connector_auth_v2.constants import OAUTH_TOKEN_KEYS
 from connector_auth_v2.models import ConnectorAuth
@@ -20,12 +21,11 @@ from tenant_account_v2.sharing_helpers import (
     serialize_group_refs,
     serialize_owner_refs,
 )
+from unstract.connectors.filesystems.ucs import UnstractCloudStorage
 from utils.fields import EncryptedBinaryFieldSerializer
 from utils.input_sanitizer import validate_name_field
 
-from backend.serializers import AuditSerializer
 from connector_v2.constants import ConnectorInstanceKey as CIKey
-from unstract.connectors.filesystems.ucs import UnstractCloudStorage
 
 from .models import ConnectorInstance
 

@@ -1,10 +1,10 @@
 import logging
 from typing import Any
 
+from backend.constants import FieldLengthConstants as FieldLength
 from pipeline_v2.manager import PipelineManager
 from rest_framework import serializers
 
-from backend.constants import FieldLengthConstants as FieldLength
 from scheduler.constants import SchedulerConstants as SC
 
 logger = logging.getLogger(__name__)

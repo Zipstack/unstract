@@ -37,6 +37,7 @@ from typing import Any
 from unittest import mock
 
 import pytest
+
 from unstract.sdk1.constants import MimeType
 from unstract.sdk1.x2txt import X2Text
 
@@ -80,8 +81,7 @@ def _minimal_pdf(pages: int) -> bytes:
     for off in offsets:
         out += f"{off:010d} 00000 n \n".encode()
     out += (
-        f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\n"
-        f"startxref\n{xref_at}\n%%EOF\n"
+        f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref_at}\n%%EOF\n"
     ).encode()
     return bytes(out)
 

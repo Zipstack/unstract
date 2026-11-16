@@ -152,11 +152,11 @@ from platform_audit.actions import Action, TargetType
 from platform_audit.recorder import record_platform_event
 
 record_platform_event(
-    action=Action.KEY_EXPIRY_SET,          # a registered key
+    action=Action.KEY_EXPIRY_SET,  # a registered key
     target_type=TargetType.PLATFORM_API_KEY,
-    target_id=key.id,                       # stored as a string
-    target_name=key.name,                   # display name at the time
-    request=request,                        # actor, API key, request id, org
+    target_id=key.id,  # stored as a string
+    target_name=key.name,  # display name at the time
+    request=request,  # actor, API key, request id, org
     changes={"before": {"expires_at": None}, "after": {"expires_at": "2027-01-01"}},
     summary="expires 2027-01-01",
 )
