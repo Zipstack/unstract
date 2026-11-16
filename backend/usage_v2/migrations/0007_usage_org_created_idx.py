@@ -1,8 +1,8 @@
 """Index usage by (organization_id, created_at) for the dashboard queries (UN-4672).
 
 The dashboard aggregation queries usage per org over a short window (24 h for the
-hourly tier; for daily, 2 days by default and 7 in the reconciliation run) about 5,000 times a day. The only full index leading
-with organization_id is the plain FK index, so each call read the org's whole usage
+hourly tier; for daily, 2 days by default and 7 in the reconciliation run), about
+5,000 times a day. The only full index leading with organization_id is the plain FK index, so each call read the org's whole usage
 history and filtered it by created_at: 0.4-4.8 s per call on the prod replica, where
 one org holds 3.2M of the 8M rows.
 
@@ -17,6 +17,11 @@ first:
 
 The migration then no-ops via IF NOT EXISTS and asserts the existing index is valid
 and has the expected definition.
+
+A CONCURRENTLY build waits for every transaction older than it to finish, so a
+long-running or idle-in-transaction session can hold migrate open. If the build is
+interrupted, the index is left INVALID and every later migrate stops with the error
+below until it is dropped: DROP INDEX CONCURRENTLY IF EXISTS idx_usage_org_created; then re-run.
 """
 
 from django.db import migrations, models

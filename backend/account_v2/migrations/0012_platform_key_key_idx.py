@@ -12,6 +12,11 @@ small (4.6 MB on prod), so building at deploy is fine. To build it out of band:
 
 The migration then no-ops via IF NOT EXISTS and asserts the existing index is valid
 and has the expected definition.
+
+A CONCURRENTLY build waits for every transaction older than it to finish, so a
+long-running or idle-in-transaction session can hold migrate open. If the build is
+interrupted, the index is left INVALID and every later migrate stops with the error
+below until it is dropped: DROP INDEX CONCURRENTLY IF EXISTS platform_key_key_idx; then re-run.
 """
 
 from django.db import migrations, models

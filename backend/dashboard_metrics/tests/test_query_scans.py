@@ -70,13 +70,14 @@ class DocumentsProcessedByOrgTests(_Seed, TestCase):
     def setUp(self) -> None:
         super().setUp()
         # Two orgs with completed files in several hours and days, plus rows each
-        # filter must drop: another status, and outside the window.
+        # filter must drop: another status, before the window, and after its end.
         for org, hours in ((self.org_a, (1, 1, 3, 30)), (self.org_b, (2, 26, 27))):
             workflow = self._workflow(org)
             for h in hours:
                 self._file(self._execution(workflow, h + 0.5), h)
             self._file(self._execution(workflow, 1.5), 1, status=ERROR)
             self._file(self._execution(workflow, 100), 99)
+            self._file(self._execution(workflow, -0.5), -1)
 
     def _org_ids(self) -> list[str]:
         return [str(self.org_a.id), str(self.org_b.id)]
@@ -166,6 +167,7 @@ class DocumentsProcessedByOrgTests(_Seed, TestCase):
                     sorted(granularities),
                 )
                 self.assertEqual(self.result["errors"], 0)
+                self.assertIs(self.result["prefetch_failed"], False)
 
     def test_the_spy_sees_per_org_calls_when_the_prefetch_is_off(self) -> None:
         # Proves the spy above is wired where the run reads the query.
@@ -222,6 +224,9 @@ class DocumentsProcessedByOrgTests(_Seed, TestCase):
             side_effect=RuntimeError("boom"),
         ):
             self.assertEqual(self._run(), expected)
+        # Correct metrics, but the run must say it fell back.
+        self.assertEqual(self.result["errors"], 0)
+        self.assertIs(self.result["prefetch_failed"], True)
 
     def test_a_database_error_in_the_prefetch_does_not_abort_the_run(self) -> None:
         # Inside a request transaction (DJANGO_ATOMIC_REQUESTS) a failed statement

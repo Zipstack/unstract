@@ -782,6 +782,7 @@ def _prefetch_cross_org_metrics(
     daily_start: datetime,
     end_date: datetime,
     tier: AggregationTier,
+    stats: dict[str, Any] | None = None,
 ) -> dict[str, dict[str, dict]]:
     """Read documents_processed for every org at once.
 
@@ -792,8 +793,9 @@ def _prefetch_cross_org_metrics(
     shape but is not prefetched: it filters on ERROR, a small fraction of rows.
 
     Returns {} on failure, so the run falls back to the per-org queries and
-    behaves exactly as before; the failure is logged, not counted, because the
-    fallback still produces the metric. The query runs in its own atomic block
+    behaves exactly as before. The failure is not counted in ``errors``, because
+    the fallback still produces the metric, but it sets ``stats["prefetch_failed"]``
+    so a run that keeps falling back is visible in its result and log level. The query runs in its own atomic block
     (a savepoint inside a request transaction under DJANGO_ATOMIC_REQUESTS), so
     a database error is rolled back rather than leaving the transaction aborted
     for the fallback.
@@ -831,6 +833,8 @@ def _prefetch_cross_org_metrics(
             tier.value,
             len(org_ids),
         )
+        if stats is not None:
+            stats["prefetch_failed"] = True
         return {}
 
 
@@ -990,6 +994,7 @@ def _build_result(
         "daily": stats["daily"],
         "monthly": stats["monthly"],
         "errors": stats["errors"],
+        "prefetch_failed": stats.get("prefetch_failed", False),
         "period": {
             "hourly": {"start": hourly_start.isoformat(), "end": end_date.isoformat()},
             "daily": {"start": daily_start.isoformat(), "end": end_date.isoformat()},
@@ -1132,6 +1137,7 @@ def _run_aggregation(
         "monthly": {"upserted": 0, "failed": False},
         "errors": 0,
         "orgs_processed": 0,
+        "prefetch_failed": False,
     }
 
     # Pre-filter to orgs with recent activity to reduce DB load.
@@ -1151,6 +1157,7 @@ def _run_aggregation(
         daily_start=daily_start,
         end_date=end_date,
         tier=tier,
+        stats=stats,
     )
 
     for org in organizations:
@@ -1190,13 +1197,19 @@ def _run_aggregation(
             for granularity in ("hourly", "daily", "monthly")
         )
     )
-    log = logger.warning if stats["errors"] or wrote_nothing else logger.info
+    # A failed prefetch leaves the metrics correct but brings back the per-org scan
+    # cost, so it warns without counting as an error.
+    log = (
+        logger.warning
+        if stats["errors"] or wrote_nothing or stats["prefetch_failed"]
+        else logger.info
+    )
     # tier and window are named because three schedules now emit this line and they
     # can overlap: without them a reconcile run is indistinguishable from a routine
     # one, and the window this change turns on appears in no successful run's logs.
     log(
         "Aggregation completed (tier=%s window=%dd): %d orgs, "
-        "hourly=%d, daily=%d, monthly=%d, errors=%d",
+        "hourly=%d, daily=%d, monthly=%d, errors=%d, prefetch_failed=%s",
         tier.value,
         source_window_days,
         stats["orgs_processed"],
@@ -1204,6 +1217,7 @@ def _run_aggregation(
         stats["daily"]["upserted"],
         stats["monthly"]["upserted"],
         stats["errors"],
+        stats["prefetch_failed"],
     )
 
     return _build_result(
