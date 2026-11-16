@@ -40,27 +40,35 @@ export type MenuPrimitives = Readonly<{
   SubContent: P["SubContent"];
 }>;
 
-export type MenuItemProps = Omit<ComponentProps<P["Item"]>, "children"> &
+/*
+ * The row parts render their own body (icon, label, description, hint) inside
+ * the Radix item, so they take no `asChild`: a link row runs its navigation in
+ * `onSelect` instead.
+ */
+export type MenuItemProps = Omit<
+  ComponentProps<P["Item"]>,
+  "children" | "asChild"
+> &
   MenuItemOptions &
   Readonly<{ children: ReactNode }>;
 
 export type MenuCheckboxItemProps = Omit<
   ComponentProps<P["CheckboxItem"]>,
-  "children"
+  "children" | "asChild"
 > &
   Omit<MenuItemOptions, "destructive"> &
   Readonly<{ children: ReactNode }>;
 
 export type MenuRadioItemProps = Omit<
   ComponentProps<P["RadioItem"]>,
-  "children"
+  "children" | "asChild"
 > &
   Omit<MenuItemOptions, "destructive"> &
   Readonly<{ children: ReactNode }>;
 
 export type MenuSubTriggerProps = Omit<
   ComponentProps<P["SubTrigger"]>,
-  "children"
+  "children" | "asChild"
 > &
   Pick<MenuItemOptions, "icon" | "description"> &
   Readonly<{ children: ReactNode }>;

@@ -68,6 +68,9 @@ runs a row; Escape closes and returns focus to the trigger. The list never
 opens off-screen: it flips to the other side, shifts to stay 8px inside the
 viewport, and scrolls when taller than the room left.
 
+Rows render their own body, so they take no `asChild`: for a link row,
+navigate in `onSelect`.
+
 `onSelect` closes the menu. Call `event.preventDefault()` in it to keep the
 menu open, for example while the row shows `loading`.
 
@@ -136,7 +139,8 @@ useCommandPaletteShortcut(() => setOpen(true));
 - `SearchMenu` closes on a select unless `closeOnSelect={false}`, and starts
   each opening with an empty query unless the query is controlled.
 - `CommandPalette` sits near the top of the screen over the scrim, with key
-  hints in the footer (`footer` replaces them). Mount
+  hints in the footer (`footer` replaces them). On close it returns focus to
+whatever had it when it opened. Mount
   `useCommandPaletteShortcut` once, in the shell.
 
 ## Triggers: a temporary seam

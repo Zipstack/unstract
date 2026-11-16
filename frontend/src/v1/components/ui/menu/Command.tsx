@@ -4,7 +4,6 @@ import {
   type JSX,
   type KeyboardEvent,
   type MouseEvent,
-  type PointerEvent,
   type ReactNode,
   useEffect,
   useId,
@@ -177,8 +176,13 @@ export function Command({
     () => new Map(rows.map((row, index) => [row.id, index])),
     [rows],
   );
+  const optionPrefix = `${id}-option-`;
   const optionId = (item: CommandItem) =>
-    `${id}-option-${positions.get(item.id) ?? -1}`;
+    `${optionPrefix}${positions.get(item.id) ?? -1}`;
+  const positionOf = (elementId: string) =>
+    elementId.startsWith(optionPrefix)
+      ? Number(elementId.slice(optionPrefix.length))
+      : -1;
 
   useEffect(() => {
     if (!active) {
@@ -203,6 +207,16 @@ export function Command({
     }
     item.onSelect?.();
     onSelect?.(item);
+  };
+
+  // One click handler on the list, not one per row: a pointer click and the
+  // click a screen reader sends to the active option both arrive here.
+  const onListClick = (event: MouseEvent<HTMLElement>) => {
+    const option = (event.target as Element).closest('[role="option"]');
+    const index = option ? positionOf(option.id) : -1;
+    if (index >= 0 && index < rows.length) {
+      choose(rows[index]);
+    }
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -261,9 +275,13 @@ export function Command({
           className="ui:h-10 ui:min-w-0 ui:flex-1 ui:border-0 ui:bg-transparent ui:font-sans ui:text-body-small ui:text-foreground ui:outline-none ui:placeholder:text-muted-foreground"
         />
       </div>
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: the combobox input runs rows from the keyboard; this click handler serves the pointer and screen readers. */}
       <div
         role="listbox"
         id={listId}
+        // Focusable from script only: focus stays in the search box.
+        tabIndex={-1}
+        onClick={onListClick}
         aria-label={label}
         // An empty listbox fails the accessibility scan; the status row speaks instead.
         hidden={status !== null}
@@ -282,7 +300,6 @@ export function Command({
               activeId={active?.id}
               optionId={optionId}
               onActivate={(item) => setActiveId(item.id)}
-              onChoose={choose}
             />
           ))}
       </div>
@@ -316,7 +333,6 @@ type GroupViewProps = Readonly<{
   activeId: string | undefined;
   optionId: (item: CommandItem) => string;
   onActivate: (item: CommandItem) => void;
-  onChoose: (item: CommandItem) => void;
 }>;
 
 function CommandGroupView({
@@ -326,7 +342,6 @@ function CommandGroupView({
   activeId,
   optionId,
   onActivate,
-  onChoose,
 }: GroupViewProps): JSX.Element {
   const hasChecks = group.items.some((item) => item.checked !== undefined);
   return (
@@ -347,7 +362,6 @@ function CommandGroupView({
             active={item.id === activeId}
             checkColumn={hasChecks}
             onActivate={onActivate}
-            onChoose={onChoose}
           />
         ))}
       </div>
@@ -362,13 +376,12 @@ type CommandOptionProps = Readonly<{
   /** Reserve the check slot, so labels line up in a group with checks. */
   checkColumn: boolean;
   onActivate: (item: CommandItem) => void;
-  onChoose: (item: CommandItem) => void;
 }>;
 
 /**
  * One `role="option"` row. Focus stays on the combobox input, so the row is
  * only focusable from script, and its mousedown is default-prevented to keep
- * the input focused. An unavailable row gets no pointer handlers at all.
+ * the input focused. A click on it is handled by the list (`onListClick`).
  */
 function CommandOption({
   item,
@@ -376,16 +389,9 @@ function CommandOption({
   active,
   checkColumn,
   onActivate,
-  onChoose,
 }: CommandOptionProps): JSX.Element {
   const unavailable = item.disabled || item.loading;
   const activate = () => onActivate(item);
-  // Runs on pointerup, as Radix menu rows do; the keyboard runs rows from the input.
-  const choose = (event: PointerEvent<HTMLElement>) => {
-    if (event.button === 0) {
-      onChoose(item);
-    }
-  };
   return (
     <div
       id={id}
@@ -404,7 +410,6 @@ function CommandOption({
       className={menuItemClass(item)}
       onMouseDown={preventFocusLoss}
       onMouseMove={unavailable || active ? undefined : activate}
-      onPointerUp={unavailable ? undefined : choose}
     >
       <MenuItemBody
         icon={item.icon}

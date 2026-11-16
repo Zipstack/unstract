@@ -201,7 +201,21 @@ describe("Command", () => {
     expect(onSelect).toHaveBeenCalledWith(
       expect.objectContaining({ id: "workflows" }),
     );
+    expect(onSelect).toHaveBeenCalledTimes(1);
     expect(input()).toHaveFocus();
+  });
+
+  it("runs a row on a bare click, as a screen reader sends it, but not an unavailable one", () => {
+    const onSelect = vi.fn();
+    render(<Command label="Search" groups={GROUPS} onSelect={onSelect} />);
+    fireEvent.click(screen.getByRole("option", { name: "Export" }));
+    fireEvent.click(screen.getByText("Create a Prompt Studio project"));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "new" }),
+    );
+    fireEvent.click(screen.getByRole("listbox"));
+    expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
   it("marks checked rows, and gives the whole group a check column", () => {
@@ -431,6 +445,44 @@ describe("CommandPalette", () => {
     expect(onOpenChange).not.toHaveBeenCalled();
     await user.keyboard("{Escape}");
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("returns focus to the control that had it when the palette opened", async () => {
+    const user = userEvent.setup();
+    function Shell() {
+      const [open, setOpen] = useState(false);
+      useCommandPaletteShortcut(() => setOpen(true));
+      return (
+        <>
+          <button type="button">Opener</button>
+          <CommandPalette open={open} onOpenChange={setOpen} groups={GROUPS} />
+        </>
+      );
+    }
+    render(<Shell />);
+    const opener = screen.getByRole("button", { name: "Opener" });
+    opener.focus();
+    await user.keyboard("{Control>}k{/Control}");
+    expect(screen.getByRole("combobox")).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(opener).toHaveFocus();
+  });
+
+  it("merges a caller's className into the search body", () => {
+    render(
+      <CommandPalette
+        open
+        onOpenChange={vi.fn()}
+        groups={GROUPS}
+        className="caller-class"
+      />,
+    );
+    const body = screen
+      .getByRole("dialog")
+      .querySelector('[data-slot="command"]');
+    expect(body?.className).toContain("caller-class");
+    expect(body?.className).toContain("ui:flex-1");
   });
 });
 

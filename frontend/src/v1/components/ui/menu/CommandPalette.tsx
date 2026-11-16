@@ -63,6 +63,9 @@ export function CommandPalette({
   footer,
   ...command
 }: CommandPaletteProps): JSX.Element {
+  // The palette opens from a shortcut, with no Radix trigger to return to, so
+  // it returns focus itself to whatever had it when the palette opened.
+  const returnFocus = useRef<HTMLElement | null>(null);
   const select = (item: CommandItem) => {
     onSelect?.(item);
     if (closeOnSelect) {
@@ -83,6 +86,18 @@ export function CommandPalette({
           <RadixDialog.Content
             data-slot="command-palette"
             aria-describedby={undefined}
+            onOpenAutoFocus={() => {
+              // Runs before Radix moves focus in, so this is still the opener.
+              returnFocus.current =
+                document.activeElement instanceof HTMLElement
+                  ? document.activeElement
+                  : null;
+            }}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              returnFocus.current?.focus();
+              returnFocus.current = null;
+            }}
             className="ui:pointer-events-auto ui:flex ui:max-h-full ui:w-full ui:max-w-xl ui:flex-col ui:overflow-hidden ui:rounded-xl ui:border ui:border-border ui:bg-popover ui:text-popover-foreground ui:shadow-xl ui:outline-none"
           >
             <RadixDialog.Title className="ui:sr-only">
@@ -91,9 +106,13 @@ export function CommandPalette({
             <Command
               {...command}
               label={label}
+              // Radix focuses the search box (the first tabbable) on open;
+              // its own autofocus would skip onOpenAutoFocus, which records
+              // where to return.
+              autoFocus={false}
               onSelect={select}
               footer={footer ?? <CommandPaletteHints />}
-              className="ui:min-h-0 ui:flex-1"
+              className={cn("ui:min-h-0 ui:flex-1", command.className)}
               listClassName={cn("ui:max-h-96", command.listClassName)}
             />
           </RadixDialog.Content>
