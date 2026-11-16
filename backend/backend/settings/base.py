@@ -295,6 +295,20 @@ AGENT_KV_MAX_CALCULATIONS_BYTES = int(
 )
 AGENT_KV_MAX_SCHEMA_BYTES = int(os.environ.get("AGENT_KV_MAX_SCHEMA_BYTES", 262_144))
 AGENT_KV_RESULT_TTL_DAYS = int(os.environ.get("AGENT_KV_RESULT_TTL_DAYS", 7))
+# How long an OCR document-cache entry may live. DERIVED from the result TTL
+# rather than chosen: the cache holds the document's extracted TEXT, so it must
+# not outlive the job data it came from, and defaulting it to the same number
+# means one knob moves both unless an operator deliberately splits them.
+#
+# It needs its own sweep because the entries are CONTENT-addressed
+# (`{prefix}/{org}/cache/{doc_sha256}-...`) with no job row to hang off, so
+# neither `delete_job_files` nor the row-driven TTL cleanup could ever reach
+# them -- and an object-store lifecycle rule cannot either, because `org_id`
+# sits ABOVE `cache/` in the path and S3/MinIO lifecycle prefixes are literal.
+# Reported by greptile on unstract-cloud#1816.
+AGENT_KV_CACHE_TTL_DAYS = int(
+    os.environ.get("AGENT_KV_CACHE_TTL_DAYS", AGENT_KV_RESULT_TTL_DAYS)
+)
 AGENT_KV_MAX_TIMEOUT_SECONDS = int(os.environ.get("AGENT_KV_MAX_TIMEOUT_SECONDS", 300))
 AGENT_KV_CONCURRENT_LIMIT = int(os.environ.get("AGENT_KV_CONCURRENT_LIMIT", 5))
 AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE = int(

@@ -13,7 +13,8 @@ there is exactly one implementation shared by both invocation paths:
   cloud deployment.
 
 Both callers get the identical dict shape back (``{"swept": N, "timed_out":
-M}`` / ``{"cleaned": N}``), and both entrypoints are equally safe to call
+M}`` / ``{"cleaned": N, "retained": N, "cache_deleted": N, "cache_failed":
+N}``), and both entrypoints are equally safe to call
 more often than needed, or concurrently with each other -- everything below
 is either a guarded UPDATE (``AgentKVJob.mark_terminal``) or a targeted
 single-row write, never a queryset-wide one.
@@ -30,7 +31,7 @@ from django.utils import timezone
 from agent_kv.dispatch import dispatch_terminal_webhook
 from agent_kv.models import AgentKVJob, JobStatus
 from agent_kv.rate_limiter import SLOT_TTL_SECONDS, AgentKVConcurrencyLimiter
-from agent_kv.storage import delete_job_files
+from agent_kv.storage import delete_job_files, sweep_document_cache
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,11 @@ _MAINTENANCE_BATCH_LIMIT = 500
 # the implementation starving each side in turn when one ordering tried to do
 # both. 20% leaves 400 slots for the normal case, where nothing is retrying.
 _TTL_RETRY_RESERVE = 100
+#: Cache objects examined-and-acted-on per tick. Separate from
+#: `_MAINTENANCE_BATCH_LIMIT`: that one bounds DB rows and the writes they
+#: drive, while this bounds object-store calls on a tier with no rows at all,
+#: so sharing the number would couple two unrelated costs.
+_CACHE_SWEEP_LIMIT = 500
 #: What "never dispatched" means, declared once because it is applied TWICE:
 #: as the sweep's candidate query and again inside the guarded UPDATE that
 #: terminalizes each candidate (`mark_terminal(require=...)`).
@@ -465,4 +471,20 @@ def run_ttl_cleanup() -> dict:
         )
     elif cleaned:
         logger.info("agent-kv TTL cleanup removed %s expired job(s)", cleaned)
-    return {"cleaned": cleaned, "retained": retained}
+    # The OCR document-cache tier, swept HERE so both invocation paths get it
+    # with no new wiring -- this module's contract is one implementation shared
+    # by the CronJob command and the internal endpoint, and a second entrypoint
+    # would have been a second thing to schedule and a second thing to forget.
+    #
+    # It is last and cannot affect the counts above: the cache sweep swallows
+    # every storage failure, so a cache that cannot be listed still leaves the
+    # job cleanup reported exactly as it happened.
+    cache_deleted, cache_failed = sweep_document_cache(
+        settings.AGENT_KV_CACHE_TTL_DAYS, _CACHE_SWEEP_LIMIT
+    )
+    return {
+        "cleaned": cleaned,
+        "retained": retained,
+        "cache_deleted": cache_deleted,
+        "cache_failed": cache_failed,
+    }

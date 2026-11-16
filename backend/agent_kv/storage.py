@@ -14,6 +14,7 @@ executor keys its OCR cache under the same root
 import logging
 import os
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from django.conf import settings
 
@@ -224,3 +225,102 @@ def delete_input(job) -> bool:
         )
         return False
     return True
+
+
+#: The OCR document-cache tier, relative to an org's root.
+_CACHE_DIR = "cache"
+
+
+def sweep_document_cache(max_age_days: int, limit: int) -> tuple[int, int]:
+    """Delete OCR document-cache entries older than ``max_age_days``.
+
+    Returns ``(deleted, failed)``.
+
+    **Why this is a separate sweep and not part of job cleanup.** Cache entries
+    are CONTENT-addressed -- ``{prefix}/{org_id}/cache/{doc_sha256}-...json`` --
+    so one entry may be the OCR of a document that several jobs, across time,
+    all submitted. Deleting on job deletion would therefore throw away a live
+    entry another job legitimately reads, and there is no job row to drive a
+    row-wise sweep from. Age is the only correct axis.
+
+    **Why not an object-store lifecycle rule instead.** ``org_id`` sits ABOVE
+    ``cache/`` in the path and S3/MinIO lifecycle filters match a LITERAL
+    prefix with no wildcard, so no single rule can select the cache tier across
+    orgs. ``minio_ilm_setup.yaml`` covers ``execution/`` and ``api/`` precisely
+    because those are literal roots; this tier is not reachable that way
+    without restructuring the key, which would orphan every existing entry.
+
+    **Deleting an entry is always safe**, which is what makes an unsynchronised
+    sweep acceptable here: a miss costs one re-OCR and nothing else. That is
+    not true of the job tree, which is why this does not share that code path.
+
+    Capped at ``limit`` objects examined-and-acted-on per call and tolerant of
+    every per-object failure, in the style of the two sweeps in
+    ``agent_kv.maintenance``: a cache that cannot be swept must never fail the
+    maintenance tick.
+    """
+    cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
+    pattern = f"{settings.AGENT_KV_STORAGE_DIR_PREFIX}/*/{_CACHE_DIR}/*.json"
+    # `_fs()` is inside the guard, not above it: resolving the storage backend
+    # RAISES where Agent-KV storage is not configured
+    # (`FileStorageError: AGENT_KV_FILE_STORAGE_CREDENTIALS is unset`), and
+    # this runs on every maintenance tick including one with nothing to do.
+    # Before this sweep existed a no-candidate tick touched storage not at all,
+    # so hoisting the call would turn a quiet no-op into a 500 on the TTL
+    # endpoint for every deployment that never configured the bucket.
+    try:
+        fs = _fs()
+        paths = fs.glob(pattern)
+    except Exception as exc:
+        logger.warning(
+            "agent-kv cache sweep: listing %s failed (%s): %s",
+            pattern,
+            type(exc).__name__,
+            exc,
+        )
+        return (0, 0)
+
+    deleted = failed = 0
+    for path in paths:
+        if deleted + failed >= limit:
+            break
+        try:
+            mtime = fs.modification_time(path)
+        except FileNotFoundError:
+            continue
+        except Exception as exc:
+            failed += 1
+            logger.warning(
+                "agent-kv cache sweep: mtime for %s failed (%s)",
+                path,
+                type(exc).__name__,
+            )
+            continue
+        # A naive mtime is treated as UTC: the comparison must not raise, and
+        # every backend that returns one stores UTC.
+        if mtime.tzinfo is None:
+            mtime = mtime.replace(tzinfo=UTC)
+        if mtime >= cutoff:
+            continue
+        try:
+            fs.rm(path=path)
+            deleted += 1
+        except FileNotFoundError:
+            # Raced with another sweeper, or already gone: the end state is the
+            # one this asked for, so it counts as deleted rather than failed.
+            deleted += 1
+        except Exception as exc:
+            failed += 1
+            logger.warning(
+                "agent-kv cache sweep: could not remove %s (%s)",
+                path,
+                type(exc).__name__,
+            )
+    if deleted or failed:
+        logger.info(
+            "agent-kv cache sweep: deleted=%s failed=%s older_than_days=%s",
+            deleted,
+            failed,
+            max_age_days,
+        )
+    return (deleted, failed)
