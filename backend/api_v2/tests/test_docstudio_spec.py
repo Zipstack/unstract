@@ -35,7 +35,10 @@ from api_v2.management.commands.generate_docstudio_spec import (
     SpecGenerationFailed,
     render_spec,
 )
-from api_v2.serializers import APIExecutionResponseSerializer
+from api_v2.serializers import (
+    APIExecutionResponseSerializer,
+    ExecutionRequestSerializer,
+)
 
 #: Keys under a path item that are operations. The rest -- `parameters`,
 #: `summary`, vendor extensions -- describe the path, not a call.
@@ -57,6 +60,10 @@ _KNOWN_EXAMPLE_DIVERGENCES = {
     ("status", "500", "APIException", "StatusResponse"),
     ("execute", "500", "APIException", "ExecuteResponse"),
 }
+
+#: The bodies the exception handler produces, and so the only ones whose
+#: injected handler example is correct for them.
+_HANDLER_SHAPED_SCHEMAS = {"ErrorResponse", "DeploymentErrorResponse"}
 
 #: The operations served by an API deployment, as opposed to the platform-key
 #: operations that describe the account. They authenticate differently and can
@@ -408,6 +415,19 @@ def test_documents_are_uploaded_as_binary_not_as_urls() -> None:
     assert files["items"] == {"type": "string", "format": "binary"}
 
 
+def test_the_internal_execute_option_is_withdrawn_but_still_accepted() -> None:
+    assert "use_file_history" not in _schema("ExecuteRequest")["properties"]
+
+    request = ExecutionRequestSerializer(
+        data={
+            "use_file_history": True,
+            "presigned_urls": ["https://bucket.s3.amazonaws.com/doc.pdf"],
+        }
+    )
+    assert request.is_valid(), request.errors
+    assert request.validated_data["use_file_history"] is True
+
+
 def test_the_result_a_pending_execution_omits_is_documented_nullable() -> None:
     """Both endpoints send `result: null` until the execution finishes, and a
     generated deserialiser iterates that field.
@@ -513,14 +533,14 @@ def test_no_published_example_contradicts_its_own_schema() -> None:
     replaced, and the artifact contradicts itself in one media-type object.
 
     Checked structurally rather than by name: any response declaring a body
-    other than `ErrorResponse` must carry no handler-shaped example.
+    other than a handler-shaped one must carry no handler-shaped example.
     """
     matched: set[tuple[str, str, str, str]] = set()
     for path, method, operation in _operations(_committed()):
         for code, response in operation["responses"].items():
             media = response.get("content", {}).get("application/json", {})
             ref = media.get("schema", {}).get("$ref", "")
-            if ref.endswith("/ErrorResponse"):
+            if ref.split("/")[-1] in _HANDLER_SHAPED_SCHEMAS:
                 continue
             for name, example in media.get("examples", {}).items():
                 key = (operation["operationId"], code, name, ref.split("/")[-1])
@@ -554,7 +574,8 @@ def test_the_example_contradiction_check_actually_fires() -> None:
     offending = [
         name
         for name, example in media["examples"].items()
-        if not ref.endswith("/ErrorResponse") and "errors" in example.get("value", {})
+        if ref.split("/")[-1] not in _HANDLER_SHAPED_SCHEMAS
+        and "errors" in example.get("value", {})
     ]
     assert offending == ["Handler"]
 

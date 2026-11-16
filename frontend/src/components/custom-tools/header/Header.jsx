@@ -9,6 +9,7 @@ import { ExportToolIcon } from "../../../assets";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { usePromptStudioCanEdit } from "../../../hooks/usePromptStudioCanEdit";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -53,6 +54,8 @@ function Header({
   const { details, isPublicSource, markChangesAsExported } =
     useCustomToolStore();
   const { sessionDetails } = useSessionStore();
+  // Renaming a shared project is an edit, so it follows the same rule.
+  const canEdit = usePromptStudioCanEdit();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
@@ -152,6 +155,10 @@ function Header({
     };
     setIsExportLoading(true);
     getAllUsers().then((users) => {
+      // getAllUsers has already shown the error and cleared the loading state.
+      if (!users) {
+        return;
+      }
       if (users.length < 2) {
         handleExport([details?.created_by], details, false);
       } else {
@@ -444,6 +451,7 @@ function Header({
         onEditTitle={
           isPublicSource || !details?.tool_id ? undefined : handleOpenEditModal
         }
+        editTitleDisabled={!canEdit}
         customButtons={actionButtons}
       />
       <Modal

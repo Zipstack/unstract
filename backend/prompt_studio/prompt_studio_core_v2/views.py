@@ -19,7 +19,8 @@ from file_management.exceptions import FileNotFound
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
-from permissions.roles import ResourceRole
+from platform_audit.actions import Action
+from platform_audit.resources import record_resource_event, resource_ref
 from plugins import get_plugin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -54,6 +55,7 @@ from prompt_studio.prompt_studio_core_v2.document_indexing_service import (
     DocumentIndexingService,
 )
 from prompt_studio.prompt_studio_core_v2.exceptions import (
+    DefaultProfileError,
     DeploymentUsageCheckError,
     MaxProfilesReachedError,
     OperationNotSupported,
@@ -152,6 +154,10 @@ class PromptStudioCoreView(
         return CustomToolSerializer
 
     def get_permissions(self) -> list[Any]:
+        # Settings are collaborative (UN-2868); only the project's existence
+        # and who it is shared with stay with the owner. Renaming is blocked
+        # per-field in the serializer, since it shares an endpoint with
+        # every settings write.
         if self.action in ["destroy", "add_co_owner", "remove_co_owner"]:
             return [IsOwner()]
 
@@ -211,12 +217,11 @@ class PromptStudioCoreView(
             )
         # ``created_by`` is audit-only; the creator's access flows through an
         # OWNER membership row (UN-2202 co-owners).
-        serializer.instance.memberships.get_or_create(
-            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
-        )
+        serializer.instance.grant_owner(request.user)
         PromptStudioHelper.create_default_profile_manager(
             request.user, serializer.data["tool_id"]
         )
+        record_resource_event(request, Action.RESOURCE_CREATED, serializer.instance)
 
         # Notify HubSpot if this is the first Prompt Studio project for the org
         # (count == 1 means the one we just created is the first)
@@ -231,7 +236,9 @@ class PromptStudioCoreView(
 
     def perform_destroy(self, instance: CustomTool) -> None:
         organization_id = UserSessionUtils.get_organization_id(self.request)
+        deleted = resource_ref(instance)
         instance.delete(organization_id)
+        record_resource_event(self.request, Action.RESOURCE_DELETED, deleted)
 
     def _check_tool_usage_in_workflows(self, instance: CustomTool) -> tuple[bool, set]:
         """Whether ``instance``'s exported tool is in use, and by which workflows.
@@ -278,54 +285,6 @@ class PromptStudioCoreView(
             )
         return super().destroy(request, *args, **kwargs)
 
-    def partial_update(
-        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
-    ) -> Response:
-        custom_tool = self.get_object()
-        before = self.snapshot_share_axes(custom_tool)
-
-        response = super().partial_update(request, *args, **kwargs)
-        if response.status_code == 200:
-            self._notify_shared_users(custom_tool, before, request.data, request.user)
-        return response
-
-    def _notify_shared_users(
-        self,
-        custom_tool: CustomTool,
-        before: dict[str, set[Any]],
-        request_data: dict[str, Any],
-        actor: Any,
-    ) -> None:
-        """Email users newly added to ``shared_users`` (best-effort)."""
-        notification_plugin = get_plugin("notification")
-        if not notification_plugin:
-            return
-        users_diff = self.diff_share_axes(custom_tool, before, request_data).get(
-            "shared_users"
-        )
-        if not (users_diff and users_diff.added):
-            return
-
-        from plugins.notification.constants import ResourceType
-
-        try:
-            service_class = notification_plugin["service_class"]
-            notification_service = service_class()
-            notification_service.send_sharing_notification(
-                resource_type=ResourceType.TEXT_EXTRACTOR.value,
-                resource_name=custom_tool.tool_name,
-                resource_id=str(custom_tool.tool_id),
-                shared_by=actor,
-                shared_to=list(users_diff.added),
-                resource_instance=custom_tool,
-            )
-        except Exception as e:
-            logger.exception(
-                "Failed to send sharing notification for custom tool %s: %s",
-                custom_tool.tool_id,
-                str(e),
-            )
-
     @action(detail=True, methods=["get"])
     def get_select_choices(self, request: HttpRequest) -> Response:
         """Method to return all static dropdown field values.
@@ -339,7 +298,7 @@ class PromptStudioCoreView(
             select_choices: dict[str, Any] = PromptStudioHelper.get_select_fields()
             return Response(select_choices, status=status.HTTP_200_OK)
         except Exception as e:
-            logger.error("Error occurred while fetching select fields: %s", e)
+            logger.exception("Error occurred while fetching select fields: %s", e)
             return Response(select_choices, status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["get"])
@@ -360,7 +319,7 @@ class PromptStudioCoreView(
             strategies = get_retrieval_strategy_metadata()
             return Response(strategies, status=status.HTTP_200_OK)
         except Exception as e:
-            logger.error("Error occurred while fetching retrieval strategies: %s", e)
+            logger.exception("Error occurred while fetching retrieval strategies: %s", e)
             return Response(
                 {"error": "Failed to fetch retrieval strategies"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -932,9 +891,15 @@ class PromptStudioCoreView(
 
     @action(detail=True, methods=["post"])
     def create_prompt(self, request: HttpRequest, pk: Any = None) -> Response:
+        # A custom @action, so DRF never calls get_object() on its own even
+        # though the route carries a pk -- the object gate would not run.
+        # Resolve the parent from the URL and pin it, so the payload cannot
+        # name a project the caller cannot reach.
+        prompt_studio_tool = self.get_object()
         context = super().get_serializer_context()
         serializer = ToolStudioPromptSerializer(data=request.data, context=context)
         serializer.is_valid(raise_exception=True)
+        serializer.validated_data[ToolStudioPromptKeys.TOOL_ID] = prompt_studio_tool
         try:
             # serializer.save()
             self.perform_create(serializer)
@@ -951,18 +916,15 @@ class PromptStudioCoreView(
         context = super().get_serializer_context()
         serializer = ProfileManagerSerializer(data=request.data, context=context)
         serializer.is_valid(raise_exception=True)
-        # Check for the maximum number of profiles constraint
-        prompt_studio_tool = serializer.validated_data.get(
-            ProfileManagerKeys.PROMPT_STUDIO_TOOL
+        # The URL is authoritative for the parent: resolving it here is what
+        # runs the object gate, and pinning it stops the payload naming another
+        # project. Also keeps perform_create() from persisting NULL and
+        # orphaning the profile from every ``filter(prompt_studio_tool=...)``.
+        prompt_studio_tool = self.get_object()
+        serializer.validated_data[ProfileManagerKeys.PROMPT_STUDIO_TOOL] = (
+            prompt_studio_tool
         )
-        if not prompt_studio_tool:
-            # Write back into validated_data so perform_create() doesn't
-            # persist NULL and orphan the profile from every
-            # ``filter(prompt_studio_tool=...)`` query.
-            prompt_studio_tool = self.get_object()
-            serializer.validated_data[ProfileManagerKeys.PROMPT_STUDIO_TOOL] = (
-                prompt_studio_tool
-            )
+        # Check for the maximum number of profiles constraint
         profile_count = ProfileManager.objects.filter(
             prompt_studio_tool=prompt_studio_tool
         ).count()
@@ -1060,14 +1022,30 @@ class PromptStudioCoreView(
             tool__in=CustomTool.objects.all()
         ).count()
 
-        documents = []
+        # Detect MIME from file content (not browser-supplied header)
+        file_types = []
         for uploaded_file in uploaded_files:
+            file_types.append(magic.from_buffer(uploaded_file.read(2048), mime=True))
+            uploaded_file.seek(0)
+
+        # Image mode can't answer a PDF over the page cap: reject it here,
+        # rather than at indexing. Every file is checked before any is stored,
+        # so a page-cap rejection never leaves part of the upload behind.
+        try:
+            default_profile = ProfileManager.get_default_llm_profile(custom_tool)
+        except DefaultProfileError:
+            default_profile = None
+        if PromptStudioHelper.uploads_use_image_output_mode(default_profile):
+            for uploaded_file, file_type in zip(uploaded_files, file_types, strict=True):
+                PromptStudioHelper.validate_upload_page_count_for_image_mode(
+                    uploaded_file, file_type, default_profile
+                )
+
+        documents = []
+        for uploaded_file, file_type in zip(uploaded_files, file_types, strict=True):
             # Store file
             file_name = uploaded_file.name
             file_data = uploaded_file
-            # Detect MIME from file content (not browser-supplied header)
-            file_type = magic.from_buffer(uploaded_file.read(2048), mime=True)
-            uploaded_file.seek(0)
 
             if file_converter_plugin and file_type != "application/pdf":
                 file_converter_service = file_converter_plugin["service_class"]()
@@ -1297,7 +1275,7 @@ class PromptStudioCoreView(
             return response
 
         except Exception as exc:
-            logger.error("Error exporting project: %s", exc)
+            logger.exception("Error exporting project: %s", exc)
             return Response(
                 {"error": "Failed to export project"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1325,6 +1303,8 @@ class PromptStudioCoreView(
             new_tool = PromptStudioHelper.create_tool_from_import_data(
                 import_data, tool_name, organization, request.user
             )
+            # Recorded now: the project exists even if a later step fails.
+            record_resource_event(request, Action.RESOURCE_CREATED, new_tool)
 
             try:
                 PromptStudioHelper.create_profile_manager(
@@ -1336,7 +1316,7 @@ class PromptStudioCoreView(
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             except Exception as e:
-                logger.error("Error creating profile manager: %s", e)
+                logger.exception("Error creating profile manager: %s", e)
                 return Response(
                     {"error": "Failed to create profile manager"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1364,7 +1344,7 @@ class PromptStudioCoreView(
             return Response(response_data, status=status.HTTP_201_CREATED)
 
         except Exception as exc:
-            logger.error("Error importing project: %s", exc)
+            logger.exception("Error importing project: %s", exc)
             return Response(
                 {"error": "Failed to import project"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1401,6 +1381,12 @@ class PromptStudioCoreView(
             )
             backup_tool = PromptStudioHelper.create_tool_from_import_data(
                 export_data, backup_name, organization, request.user
+            )
+            record_resource_event(
+                request,
+                Action.RESOURCE_CREATED,
+                backup_tool,
+                summary=f"backup of {tool.tool_name}",
             )
             # Copy profiles from original to backup
             for profile in ProfileManager.objects.filter(prompt_studio_tool=tool):

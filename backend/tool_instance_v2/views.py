@@ -132,6 +132,21 @@ class ToolInstanceViewSet(viewsets.ModelViewSet):
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        # Adding a tool mutates the workflow -- it also activates it -- so
+        # require owner / org-admin / service-account, parity with reorder.
+        # Collection-level, so IsParentWorkflowOwner cannot gate it; the
+        # for_user() fetch scopes out cross-org workflow ids (404).
+        workflow = get_object_or_404(
+            Workflow.objects.for_user(request.user),
+            pk=serializer.validated_data[WorkflowKey.WF_ID],
+        )
+        if not is_workflow_mutator(request, workflow):
+            raise PermissionDenied(
+                "Only the workflow owner or an organization admin can "
+                "add a tool to it."
+            )
+
         try:
             self.perform_create(serializer)
         except IntegrityError:

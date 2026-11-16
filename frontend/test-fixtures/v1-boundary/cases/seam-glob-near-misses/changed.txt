@@ -1,0 +1,5 @@
+src/v1/lib/x.ts
+src/routes.jsx
+src/indexXcss
+src/pages/src/App.jsx
+src/routesX/a.jsx

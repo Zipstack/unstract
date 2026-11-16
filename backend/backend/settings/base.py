@@ -15,11 +15,27 @@ import re
 from pathlib import Path
 from urllib.parse import quote
 
-import httpx
+from django.core.exceptions import ImproperlyConfigured
 from django.core.validators import URLValidator
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
 from utils.cors_origin import normalize_web_app_origin
+
+from backend.celery_broker import build_broker_url, required_broker_settings
+from unstract.core.cache.redis_client import (
+    apply_url_credentials,
+    build_socketio_redis_url,
+    ensure_tls_query_params,
+    parse_db,
+    parse_port,
+    resolve_sentinel_master_check_hostname,
+    resolve_ssl_cert_reqs,
+    resolve_ssl_check_hostname,
+    resolve_ssl_enabled,
+    set_url_db_path,
+    url_db_path,
+    url_username_from_env,
+)
 
 # Django 5.0+ caps URLValidator at 2048 chars. S3 pre-signed URLs signed with
 # temporary/STS credentials (carrying X-Amz-Security-Token) routinely exceed this,
@@ -56,19 +72,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load default log from env
 DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 
-# Celery Broker Configuration
-CELERY_BROKER_BASE_URL = get_required_setting("CELERY_BROKER_BASE_URL")
-CELERY_BROKER_USER = get_required_setting("CELERY_BROKER_USER")
-CELERY_BROKER_PASS = get_required_setting("CELERY_BROKER_PASS")
-CELERY_BROKER_URL = str(
-    httpx.URL(CELERY_BROKER_BASE_URL).copy_with(
-        username=CELERY_BROKER_USER, password=CELERY_BROKER_PASS
-    )
-)
-
 ENV_FILE = find_dotenv()
 if ENV_FILE:
     load_dotenv(ENV_FILE)
+
+# Celery Broker Configuration (read after the .env load so it can set LOG_TRANSPORT)
+# Required on the Celery log transport; optional on Redis, which never dials the
+# broker (an unset base URL leaves the URL empty and Celery connects lazily).
+for _broker_setting in required_broker_settings(os.environ):
+    get_required_setting(_broker_setting)
+CELERY_BROKER_BASE_URL = os.environ.get("CELERY_BROKER_BASE_URL")
+CELERY_BROKER_USER = os.environ.get("CELERY_BROKER_USER")
+CELERY_BROKER_PASS = os.environ.get("CELERY_BROKER_PASS")
+CELERY_BROKER_URL = build_broker_url(
+    CELERY_BROKER_BASE_URL, CELERY_BROKER_USER, CELERY_BROKER_PASS
+)
 
 # Loading environment variables
 
@@ -102,8 +120,33 @@ GOOGLE_STORAGE_BASE_URL = os.environ.get("GOOGLE_STORAGE_BASE_URL")
 REDIS_USER = os.environ.get("REDIS_USER", "default")
 REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", "")
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
-REDIS_PORT = os.environ.get("REDIS_PORT", "6379")
+# Through the shared parser, not a bare int() at the Sentinel call site below:
+# a blank REDIS_PORT= — this repo's "leave the default" spelling — raised
+# ValueError while Django settings were being imported, so the backend alone
+# failed to start while every worker came up healthy on 6379.
+REDIS_PORT = parse_port(os.environ.get("REDIS_PORT"), "REDIS_PORT", 6379)
 REDIS_DB = os.environ.get("REDIS_DB", "")
+# TLS to Redis (UN-4123). Off by default, so the in-cluster/local server is
+# untouched. `rediss://` is what actually selects TLS for both django-redis and
+# kombu; this flag only decides which scheme gets built.
+# Through the shared resolver, not a local `== "true"`: _TRUE_LITERALS accepts
+# 1, yes and on, so the bare comparison read REDIS_SSL=1 as FALSE — the workers
+# connected rediss:// while this cache built a redis:// LOCATION and skipped its
+# CONNECTION_POOL_KWARGS, i.e. one endpoint with two TLS policies in one process.
+REDIS_SSL = resolve_ssl_enabled()
+# Resolved by unstract.core, not re-read here: the raw value needs trimming,
+# lower-casing and validating, and a second copy of that logic is how this file
+# and create_redis_client came to hold two verification policies for one endpoint.
+REDIS_SSL_CERT_REQS = resolve_ssl_cert_reqs()
+REDIS_SSL_CHECK_HOSTNAME = resolve_ssl_check_hostname()
+REDIS_SSL_CA_CERTS = os.environ.get("REDIS_SSL_CA_CERTS", "").strip()
+# A full URL overrides the discrete vars above, exactly as it does in
+# unstract.core's create_redis_client — otherwise the workers would follow the URL
+# while this process stayed on REDIS_HOST, and the two would silently sit on
+# DIFFERENT servers. That split is invisible until something written by one side
+# is read by the other: an API deployment returns `result: null` because the
+# execution's cached result was written to the URL's Redis and looked up here.
+REDIS_URL = os.environ.get("REDIS_URL", "").strip()
 SESSION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "SESSION_EXPIRATION_TIME_IN_SECOND", 3600
 )
@@ -165,6 +208,143 @@ API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT = int(
 )
 
 
+# Agent-KV API
+#
+# Validated at import, because this value is added to `WHITELISTED_PATHS` and
+# `CustomAuthMiddleware` matches that list with `startswith`. An empty or
+# whitespace-only value makes the entry `/`, which is a prefix of every path on
+# the service -- authentication would be skipped for ALL of them. A value that
+# collides with another mounted prefix (`api`, `api/v1`, `deployment`) exempts
+# that whole surface instead. Both are operator mistakes rather than attacks,
+# and both are silent: the server starts, every request succeeds, and nothing
+# in any log says the API is now unauthenticated.
+#
+# Refused loudly at startup instead. `ImproperlyConfigured` is Django's own
+# signal for this and aborts the boot, which is the only outcome that cannot
+# be missed.
+def validate_agent_kv_path_prefix(raw, path_prefix, deployment_prefix):
+    """Normalise and refuse an unsafe `AGENT_KV_PATH_PREFIX`.
+
+    A function rather than inline statements so it is testable without
+    re-importing the settings module under a patched environment -- the
+    behaviour being guarded is an auth bypass, and it deserves a test that
+    enumerates the bad values rather than one that can only check the good one.
+    """
+    prefix = (raw or "").strip().strip("/")
+    if not prefix:
+        raise ImproperlyConfigured(
+            "AGENT_KV_PATH_PREFIX must not be empty: it is whitelisted out of "
+            "authentication by prefix match, so an empty value exempts every "
+            "path on this service."
+        )
+    for other_name, other in (
+        ("PATH_PREFIX", path_prefix),
+        ("API_DEPLOYMENT_PATH_PREFIX", deployment_prefix),
+    ):
+        # Equal, or an ancestor of the other: either way one whitelist entry
+        # swallows the other surface.
+        if prefix == other or other.startswith(f"{prefix}/"):
+            raise ImproperlyConfigured(
+                f"AGENT_KV_PATH_PREFIX={prefix!r} collides with "
+                f"{other_name}={other!r}. It is whitelisted out of "
+                "authentication by prefix match, so this would exempt that "
+                "surface too."
+            )
+    return prefix
+
+
+# Under PATH_PREFIX, not beside it: `/api/v1/agent-kv/`. It is a product API
+# like every other one the platform serves, and sharing the prefix means the
+# LB rule that already routes `/api/v1` covers it -- no dedicated ingress
+# entry to add, and nothing to keep in step with this value. That coupling
+# was a real gap: on-prem values files replace `ingress.hosts` wholesale and
+# carried no `/agent-kv`, so the API answered the SPA's HTML there.
+#
+# It is NOT under TENANT_SUBFOLDER_PREFIX (`api/v1/unstract`), because it
+# resolves its organisation from the Bearer key rather than a URL segment.
+AGENT_KV_PATH_PREFIX = validate_agent_kv_path_prefix(
+    os.environ.get("AGENT_KV_PATH_PREFIX", f"{PATH_PREFIX}/agent-kv"),
+    PATH_PREFIX,
+    API_DEPLOYMENT_PATH_PREFIX,
+)
+# Bucket-rooted object-store root for staged inputs/results, mirroring
+# WORKFLOW_EXECUTION_DIR_PREFIX / API_EXECUTION_DIR_PREFIX: the FIRST segment is
+# the bucket (s3fs/gcsfs treat it that way), so it must already exist. MUST match
+# the cloud executor's AGENT_KV_STORAGE_DIR_PREFIX -- the executor keys its OCR
+# cache under the same root.
+AGENT_KV_STORAGE_DIR_PREFIX = (
+    os.environ.get("AGENT_KV_STORAGE_DIR_PREFIX", "unstract/agent_kv").strip().strip("/")
+    or "unstract/agent_kv"
+)  # same normalisation as the cloud executor's reader (whitespace, edge slashes)
+AGENT_KV_MAX_FILE_SIZE_MB = int(os.environ.get("AGENT_KV_MAX_FILE_SIZE_MB", 50))
+
+#: Test/dev only: waive the https-and-public-host rule on `webhook_url` at
+#: SUBMIT, matching the waiver `workers/ide_callback/agent_kv_tasks.py` already
+#: reads at delivery. One switch, honoured on both sides.
+#:
+#: Needed because submit-side validation and the delivery guard have to agree:
+#: with the check only at the sink, the e2e webhook scenario could post to a
+#: receiver on the compose host; with it only at submit, that scenario 400s
+#: before a job exists. Unset in production, where both guards stay mandatory.
+AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE = os.environ.get(
+    "AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE", ""
+).lower() in ("1", "true", "yes")
+AGENT_KV_MAX_PAGES = int(os.environ.get("AGENT_KV_MAX_PAGES", 100))
+AGENT_KV_MAX_CALCULATIONS_BYTES = int(
+    os.environ.get("AGENT_KV_MAX_CALCULATIONS_BYTES", 20_000)
+)
+AGENT_KV_MAX_SCHEMA_BYTES = int(os.environ.get("AGENT_KV_MAX_SCHEMA_BYTES", 262_144))
+AGENT_KV_RESULT_TTL_DAYS = int(os.environ.get("AGENT_KV_RESULT_TTL_DAYS", 7))
+AGENT_KV_MAX_TIMEOUT_SECONDS = int(os.environ.get("AGENT_KV_MAX_TIMEOUT_SECONDS", 300))
+AGENT_KV_CONCURRENT_LIMIT = int(os.environ.get("AGENT_KV_CONCURRENT_LIMIT", 5))
+AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE = int(
+    os.environ.get("AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE", 60)
+)
+# When Redis is unreachable, do requests proceed? Default False = fail CLOSED
+# (429). Both Agent-KV limiters used to fail open implicitly, inside an `except`
+# block, so a Sentinel failover removed the concurrency ceiling and the per-key
+# rate ceiling at once while the API kept accepting billable LLM work. Fail-open
+# remains available as a deliberate, visible operational choice.
+AGENT_KV_LIMITER_FAIL_OPEN = (
+    os.environ.get("AGENT_KV_LIMITER_FAIL_OPEN", "false").lower() == "true"
+)
+AGENT_KV_SWEEP_GRACE_SECONDS = int(os.environ.get("AGENT_KV_SWEEP_GRACE_SECONDS", 3600))
+AGENT_KV_STUCK_JOB_GRACE_SECONDS = int(
+    os.environ.get("AGENT_KV_STUCK_JOB_GRACE_SECONDS", 21600)
+)
+#: How long after DISPATCH a cancelled job's executor is presumed dead, so the
+#: sweep may release the concurrency slot it still holds.
+#:
+#: Its own setting, and deliberately shorter than both the stuck grace and
+#: `rate_limiter.SLOT_TTL_SECONDS`. Phase 3 of the sweep used the stuck grace
+#: as its floor and the slot TTL as its ceiling; both default to 21600, so the
+#: window was `completed_at < now-21600 AND completed_at > now-21600` -- empty,
+#: and empty for ANY grace >= TTL. The phase could never select a row, and
+#: `released` was always 0.
+#:
+#: Measured from the CANCEL, not from dispatch. `dispatched_at` records
+#: enqueueing, so under a queue backlog a job can be an hour past dispatch
+#: with an executor that has only just started -- releasing then would free a
+#: slot still in use. Cancelling is what makes a live executor stop, so the
+#: grace runs from there.
+#:
+#: One hour rather than six because a live executor learns of the cancel at
+#: its next stage report, so an hour of silence after it is already strong
+#: evidence that nothing is coming.
+#: Waiting the full six hours is indistinguishable from waiting for Redis to
+#: expire the slot on its own, which is the behaviour this phase exists to
+#: improve on.
+AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS = int(
+    os.environ.get("AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS", 3600)
+)
+AGENT_KV_CALCULATIONS_ENABLED = (
+    os.environ.get("AGENT_KV_CALCULATIONS_ENABLED", "false").lower() == "true"
+)
+AGENT_KV_STRUCTURED_OUTPUT_ENABLED = (
+    os.environ.get("AGENT_KV_STRUCTURED_OUTPUT_ENABLED", "false").lower() == "true"
+)
+
+
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")
 DB_USER = os.environ.get("DB_USER", "unstract_dev")
 DB_HOST = os.environ.get("DB_HOST", "backend-db-1")
@@ -215,13 +395,22 @@ FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND = int(
     os.environ.get("FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND", 60 * 10)
 )  # 10 minutes
 
-FILE_ACTIVE_CACHE_REDIS_DB = int(
-    os.environ.get("FILE_ACTIVE_CACHE_REDIS_DB", 0)
-)  # Redis DB for active file cache tracking
+# Redis DB for active file cache tracking. Parsed the same way every other
+# database var is (UN-4123): a blank value is this repo's "leave the default",
+# not a crash, and backend/sample.env ships this variable — so an operator
+# collapsing the four-key database map onto a db-0-only endpoint is exactly who
+# would hit `int("")` here.
+FILE_ACTIVE_CACHE_REDIS_DB = parse_db(
+    os.environ.get("FILE_ACTIVE_CACHE_REDIS_DB", ""), "FILE_ACTIVE_CACHE_"
+)
 
 INSTANT_WF_POLLING_TIMEOUT = int(
     os.environ.get("INSTANT_WF_POLLING_TIMEOUT", "300")
 )  # 5 minutes
+# A PENDING/EXECUTING run with no activity for this long is listed as stuck.
+STUCK_EXECUTION_THRESHOLD_SECONDS = int(
+    os.environ.get("STUCK_EXECUTION_THRESHOLD_SECONDS", "9000")
+)
 
 # ETL Pipeline minimum schedule interval (in seconds)
 # Default: 1800 seconds (30 minutes)
@@ -273,6 +462,29 @@ NOTIFICATION_DISPATCH_LEASE_SECONDS = int(
 NOTIFICATION_MAX_DISPATCH_ATTEMPTS = int(
     os.environ.get("NOTIFICATION_MAX_DISPATCH_ATTEMPTS", "5")
 )
+# How long platform audit events (Settings > Audit log) stay readable. This is
+# the default; each org can override it (Configuration key
+# PLATFORM_AUDIT_RETENTION_DAYS). Older rows are hidden from every read and are
+# deleted by the purge_platform_audit_events management command.
+PLATFORM_AUDIT_RETENTION_DAYS = int(
+    os.environ.get("PLATFORM_AUDIT_RETENTION_DAYS", "365")
+)
+# How often API key usage (last used, daily call counts) moves from Redis to the
+# database. Opening Settings > API keys also moves it, so the page is current
+# unless a flush is already running then.
+API_KEY_USAGE_FLUSH_INTERVAL_SECONDS = int(
+    os.environ.get("API_KEY_USAGE_FLUSH_INTERVAL_SECONDS", "300")
+)
+# Whether the first use in each interval starts that flush in a background
+# thread. Off only in tests, which flush inline.
+API_KEY_USAGE_BACKGROUND_FLUSH = True
+# Prefix of every Redis key API key usage writes.
+API_KEY_USAGE_REDIS_PREFIX = "api_key_usage"
+# Longest a key's request waits on Redis to record its use. A slower Redis loses
+# that count instead of slowing the request.
+API_KEY_USAGE_REDIS_TIMEOUT_SECONDS = float(
+    os.environ.get("API_KEY_USAGE_REDIS_TIMEOUT_SECONDS", "0.5")
+)
 ATOMIC_REQUESTS = CommonUtils.str_to_bool(
     os.environ.get("DJANGO_ATOMIC_REQUESTS", "False")
 )
@@ -287,7 +499,8 @@ SECRET_KEY = get_required_setting("DJANGO_SECRET_KEY")
 ENCRYPTION_KEY = get_required_setting("ENCRYPTION_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Off unless DJANGO_DEBUG asks for it: the published image runs settings.dev.
+DEBUG = CommonUtils.str_to_bool(os.environ.get("DJANGO_DEBUG", "False"))
 
 ALLOWED_HOSTS = ["*"]
 CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL, WEB_APP_ORIGIN_URL_WITH_WILD_CARD]
@@ -380,11 +593,14 @@ SHARED_APPS = (
     "commands",
     # health checks
     "health",
+    # Platform-wide Prometheus /metrics
+    "platform_metrics",
     "migrating.v2",
     "connector_auth_v2",
     "tenant_account_v2",
     "connector_v2",
     "adapter_processor_v2",
+    "connection_check",
     "file_management",
     "workflow_manager.file_execution",
     "workflow_manager.endpoint_v2",
@@ -397,6 +613,7 @@ SHARED_APPS = (
     "mcp_server",
     "usage_v2",
     "notification_v2",
+    "inbox",
     "prompt_studio.prompt_profile_manager_v2",
     "prompt_studio.prompt_studio_v2",
     "prompt_studio.prompt_studio_core_v2",
@@ -409,6 +626,10 @@ SHARED_APPS = (
     "dashboard_metrics",
     "platform_api",
     "global_api_deployment_key",
+    "platform_audit",
+    "api_key_usage",
+    "global_search",
+    "agent_kv",
 )
 TENANT_APPS = []
 
@@ -520,18 +741,67 @@ REDIS_SENTINEL_MODE = (
 REDIS_SENTINEL_MASTER_NAME = os.environ.get("REDIS_SENTINEL_MASTER_NAME", "mymaster")
 
 if REDIS_SENTINEL_MODE:
+    # This branch used to hold four divergences from create_redis_client, all
+    # pre-existing. They are closed here because "the cache and the client reach
+    # the same place" is not a property that can stop at a mode boundary — an
+    # operator on Sentinel gets the same guarantee or the guarantee is a
+    # half-truth. TestSentinelModeAgreesWithCore covers each one.
+    #
+    # The username comes from the shared resolver, not the module-level
+    # REDIS_USER: that one defaults to "default", so this cache sent a
+    # two-argument ACL AUTH where core sends the one-argument form, and it read
+    # only REDIS_USER so the REDIS_USERNAME spelling platform-service ships was
+    # ignored entirely.
+    _sentinel_username = url_username_from_env()
+
+    # 26379 — the Sentinel port — matching core's
+    # _resolve_redis_env(default_port="26379"). The module-level REDIS_PORT
+    # defaults to 6379, which is the standalone port, so an unset REDIS_PORT
+    # pointed this cache at the wrong port while every other client found the
+    # sentinels. The chart always sets it, which is why this stayed hidden.
+    REDIS_PORT = parse_port(os.environ.get("REDIS_PORT"), "REDIS_PORT", 26379)
+
     _sentinel_kwargs = {}
     if REDIS_PASSWORD:
         _sentinel_kwargs["password"] = REDIS_PASSWORD
-    if REDIS_USER:
-        _sentinel_kwargs["username"] = REDIS_USER
+    if _sentinel_username:
+        _sentinel_kwargs["username"] = _sentinel_username
 
-    _redis_db = REDIS_DB or "0"
+    # TLS reached neither the discovery connections nor the master one, so a
+    # TLS-only Sentinel deployment got a plaintext cache while core encrypted
+    # both. Core builds them from one env dict for exactly this reason; the
+    # same settings go to both here.
+    _sentinel_pool_kwargs = {}
+    if REDIS_SSL:
+        _sentinel_tls = {"ssl": True, "ssl_cert_reqs": REDIS_SSL_CERT_REQS}
+        if REDIS_SSL_CA_CERTS:
+            _sentinel_tls["ssl_ca_certs"] = REDIS_SSL_CA_CERTS
+
+        # The two planes answer by DIFFERENT rules, and copying one dict into
+        # both got that wrong. Discovery connects to REDIS_HOST, a name whose
+        # certificate can match, so it verifies like any other client. The
+        # MASTER connects to whatever SENTINEL get-master-addr-by-name returns —
+        # an IP that SentinelManagedConnection hands to SSLConnection as
+        # server_hostname, which no DNS SAN covers and which changes on
+        # failover. core turns checking off there unless the operator asked
+        # explicitly; this cache has to agree, or it fails verification against
+        # the same master that create_redis_client reaches.
+        _sentinel_kwargs.update(_sentinel_tls)
+        _sentinel_pool_kwargs.update(_sentinel_tls)
+        if REDIS_SSL_CERT_REQS != "none":
+            _sentinel_kwargs["ssl_check_hostname"] = REDIS_SSL_CHECK_HOSTNAME
+        _sentinel_pool_kwargs["ssl_check_hostname"] = (
+            resolve_sentinel_master_check_hostname()
+        )
+
+    _redis_db = parse_db(REDIS_DB, "REDIS_")
 
     # SocketIO connection manager (Kombu Sentinel URL format)
     _cred_prefix = ""
-    if REDIS_USER and REDIS_PASSWORD:
-        _cred_prefix = f"{quote(REDIS_USER, safe='')}:{quote(REDIS_PASSWORD, safe='')}@"
+    if _sentinel_username and REDIS_PASSWORD:
+        _cred_prefix = (
+            f"{quote(_sentinel_username, safe='')}:{quote(REDIS_PASSWORD, safe='')}@"
+        )
     elif REDIS_PASSWORD:
         _cred_prefix = f":{quote(REDIS_PASSWORD, safe='')}@"
     SOCKET_IO_MANAGER_URL = (
@@ -540,7 +810,7 @@ if REDIS_SENTINEL_MODE:
     SOCKET_IO_TRANSPORT_OPTIONS = {"master_name": REDIS_SENTINEL_MASTER_NAME}
 
     # django-redis expects username in the LOCATION URL for ACL auth
-    _user_prefix = f"{REDIS_USER}@" if REDIS_USER else ""
+    _user_prefix = f"{_sentinel_username}@" if _sentinel_username else ""
     CACHES = {
         "default": {
             "BACKEND": "django_redis.cache.RedisCache",
@@ -549,9 +819,13 @@ if REDIS_SENTINEL_MODE:
                 "CLIENT_CLASS": "django_redis.client.SentinelClient",
                 "CONNECTION_POOL_CLASS": "redis.sentinel.SentinelConnectionPool",
                 "CONNECTION_FACTORY": "django_redis.pool.SentinelConnectionFactory",
-                "SENTINELS": [(REDIS_HOST, int(REDIS_PORT))],
+                "SENTINELS": [(REDIS_HOST, REDIS_PORT)],
                 "SENTINEL_KWARGS": _sentinel_kwargs,
-                "DB": int(_redis_db),
+                # TLS for the MASTER connection. SENTINEL_KWARGS covers only the
+                # discovery ones; core carries both, so a deployment with TLS on
+                # got an encrypted discovery and a plaintext master.
+                "CONNECTION_POOL_KWARGS": _sentinel_pool_kwargs,
+                "DB": _redis_db,
                 "PASSWORD": REDIS_PASSWORD,
                 "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
             },
@@ -559,31 +833,190 @@ if REDIS_SENTINEL_MODE:
         }
     }
 else:
-    # SocketIO connection manager (standalone)
-    _cred_prefix = ""
-    if REDIS_USER and REDIS_PASSWORD:
-        _cred_prefix = f"{quote(REDIS_USER, safe='')}:{quote(REDIS_PASSWORD, safe='')}@"
-    elif REDIS_PASSWORD:
-        _cred_prefix = f":{quote(REDIS_PASSWORD, safe='')}@"
-    SOCKET_IO_MANAGER_URL = f"redis://{_cred_prefix}{REDIS_HOST}:{REDIS_PORT}"
+    # Credentials for the Socket.IO URL are assembled inside
+    # build_socketio_redis_url(); only the cache LOCATION is built here.
+    _scheme = "rediss" if REDIS_SSL else "redis"
+    _cache_db = parse_db(REDIS_DB, "REDIS_")
+
+    # Both django-redis (via redis-py) and kombu read TLS settings out of the URL's
+    # query string, so one string configures both — verified against the pinned
+    # versions. The CA is appended rather than required in the URL, since it is a
+    # local path rather than part of the endpoint's identity.
+    # Same helper the Socket.IO URL uses. Hand-rolling the append here is how two
+    # copies drift: this one WOULD add only ssl_ca_certs while unstract.core added
+    # ssl_cert_reqs as well, leaving one process holding two verification policies
+    # for one endpoint. django-redis reads TLS from the LOCATION's query string
+    # AND from OPTIONS["CONNECTION_POOL_KWARGS"] — the query string wins when both
+    # set the same key (ConnectionPool.from_url ends with kwargs.update(url_options)).
+    # kombu is the URL-only one. The distinction matters: the pool-kwargs block
+    # below is the discrete-vars path's ONLY route, so reading "query string only"
+    # as "that block is dead" would drop hostname verification back to redis-py's
+    # unauthenticated default.
+    # THE DATABASE RULE, applied to the LOCATION so this cache lands where
+    # create_redis_client would put it. django-redis takes a LOCATION string and
+    # ignores OPTIONS["DB"], so rewriting the path is the only lever — and
+    # without it the backend followed the URL's own path while the workers
+    # honoured REDIS_DB. One REDIS_URL, one REDIS_DB, two different databases:
+    # workers RPUSH log_history_queue to db N, the backend LPOPs an empty db 0,
+    # and nothing errors. Same helper both sides use, so the rule has one
+    # implementation rather than two that agree today.
+    _url_db = url_db_path(REDIS_URL)
+    _redis_url = (
+        set_url_db_path(REDIS_URL, _cache_db) if (REDIS_URL and REDIS_DB) else REDIS_URL
+    )
+    _redis_url = ensure_tls_query_params(
+        _redis_url,
+        cert_reqs=REDIS_SSL_CERT_REQS,
+        ca_certs=REDIS_SSL_CA_CERTS,
+        check_hostname=REDIS_SSL_CHECK_HOSTNAME,
+    )
+
+    # Built by unstract.core, which the log-consumer worker's publisher also uses.
+    # Two hand-built URLs for one endpoint drift: one side would keep a hardcoded
+    # redis:// while the other speaks TLS, and against a TLS-only endpoint that
+    # publisher's events would never reach subscribers. The helper also pins ssl_cert_reqs
+    # (kombu defaults rediss:// to CERT_NONE) and carries ssl_ca_certs, neither of
+    # which this expression did for the discrete-vars path.
+    SOCKET_IO_MANAGER_URL = build_socketio_redis_url()
     SOCKET_IO_TRANSPORT_OPTIONS = {}
+
+    # django-redis 5.4.0 reads only PASSWORD (plus timeouts) out of OPTIONS — its
+    # ConnectionFactory.make_connection_params ignores USERNAME and DB entirely.
+    # So the db has to travel in the URL path, or this cache silently sits on db 0
+    # while every other service honours REDIS_DB: workers would RPUSH
+    # log_history_queue to db N and the backend would LPOP an empty db 0.
+    # DB below is passed for readability and is DISCARDED by django-redis — it is
+    # not the mechanism. An ACL USERNAME is not passed through OPTIONS at all,
+    # because django-redis would discard that too: it travels in the LOCATION,
+    # the same route the URL branch uses. This used to say auth "stays
+    # password-only as the built-in `default` user ... this cache never sends
+    # one", which described the discrete path accurately and made it the one
+    # consumer that could not reach an ACL endpoint — create_redis_client in the
+    # same process sends the username, so where `default` is disabled the cache
+    # alone failed. That is the identical divergence the URL branch was fixed
+    # for, left standing on the path the module docstring calls primary.
+    _cache_options = {
+        "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
+    }
+    _cache_username = url_username_from_env()
+    if not _redis_url:
+        _cache_options["DB"] = _cache_db
+        _cache_location = f"{_scheme}://{REDIS_HOST}:{REDIS_PORT}/{_cache_db}"
+        if _cache_username:
+            # Only when a username must travel. Keeping the password in OPTIONS
+            # otherwise is deliberate: OPTIONS["PASSWORD"] matches Django's
+            # SafeExceptionReporterFilter and is masked in a settings dump,
+            # while LOCATION is not. Pay that exposure only where django-redis
+            # leaves no alternative.
+            _cache_location = apply_url_credentials(
+                _cache_location, REDIS_PASSWORD, _cache_username
+            )
+        else:
+            _cache_options["PASSWORD"] = REDIS_PASSWORD
+    else:
+        # URL mode: the credentials go into the LOCATION, through the SAME helper
+        # the Socket.IO URL uses. Two reasons it is not OPTIONS["PASSWORD"]:
+        #
+        #   - django-redis 5.4.0 discards OPTIONS["USERNAME"], so an ACL username
+        #     could not reach this cache at all. It would authenticate as the
+        #     built-in `default` user while create_redis_client in the same
+        #     process authenticated as the configured one — and on an endpoint
+        #     where `default` is disabled, the cache alone would fail.
+        #   - a hand-rolled gate here diverged from the core one within a single
+        #     PR: it keyed on "@" being absent from the netloc, which the core
+        #     comment explicitly rejects, so a URL carrying only an ACL username
+        #     left this cache anonymous. One helper, one rule, no second copy to
+        #     keep in step.
+        #
+        # The helper returns the URL untouched when it already carries a
+        # password, so a credential-bearing REDIS_URL behaves exactly as before.
+        # The username comes from the SAME resolver the core client uses, not
+        # from a hand-written os.environ.get here. Two reasons, and the second
+        # was a live divergence:
+        #
+        #   - the module-level REDIS_USER above defaults to "default", while
+        #     create_redis_client reads the variable with no default. Passing
+        #     the fallback would make this cache send the two-argument
+        #     `AUTH default <pw>` while the client in the same process sends the
+        #     one-argument form.
+        #   - the resolver accepts BOTH spellings, REDIS_USER and
+        #     REDIS_USERNAME. platform-service ships the second one, so a single
+        #     shared Redis-credential secret can easily inject it — and reading
+        #     only REDIS_USER left this cache authenticating as `default` while
+        #     the client beside it authenticated as the configured ACL user.
+        #
+        # Re-deriving the chain here is the same second copy this commit removed
+        # for the "@" heuristic; asking core for it is what keeps the three
+        # consumers in step by construction rather than by comment.
+        _redis_url = apply_url_credentials(_redis_url, REDIS_PASSWORD, _cache_username)
+        _cache_location = _redis_url
+    # Gated on the EFFECTIVE scheme, not the flag. In URL mode TLS is carried by
+    # the URL (and its query string), so a plaintext REDIS_URL left behind while
+    # REDIS_SSL=true would otherwise hand ssl_cert_reqs to a plain
+    # redis.Connection — TypeError on the first cache read in a request, not at
+    # startup. Same trap the pooled standalone client hits, inverted.
+    if REDIS_SSL and not _redis_url:
+        _pool_kwargs = {"ssl_cert_reqs": REDIS_SSL_CERT_REQS}
+        # redis-py defaults ssl_check_hostname to False and overrides
+        # create_default_context()'s safe default with it, so a chain verified
+        # against a public CA still does not prove WHICH server answered. Forced
+        # off when verification itself is off, or Python's ssl module raises.
+        if REDIS_SSL_CERT_REQS != "none":
+            _pool_kwargs["ssl_check_hostname"] = REDIS_SSL_CHECK_HOSTNAME
+        if REDIS_SSL_CA_CERTS:
+            _pool_kwargs["ssl_ca_certs"] = REDIS_SSL_CA_CERTS
+        _cache_options["CONNECTION_POOL_KWARGS"] = _pool_kwargs
+
+    # Fires whenever the keyspace actually MOVES. Before the rule above reached
+    # URL mode this was gated on `not _redis_url`, so the one mode that could now
+    # relocate a live cache was the one mode that said nothing.
+    #
+    # Both sides have to be the EFFECTIVE db, not REDIS_DB: in URL mode with
+    # REDIS_DB unset the URL's own path stands, so comparing it against
+    # _cache_db's 0 default announced a move that never happens — a warning
+    # about data loss on a perfectly ordinary `redis://h/3`.
+    _previous_db = (_url_db or 0) if REDIS_URL else 0
+    _effective_db = _cache_db if (REDIS_DB or not REDIS_URL) else _previous_db
+    if _effective_db != _previous_db:
+        # Visible in the field, because this is a one-way RELOCATION of the whole
+        # CACHES["default"] keyspace. django-redis 5.4.0 ignores OPTIONS["DB"], so
+        # this cache has always sat on db 0 no matter what REDIS_DB said; carrying
+        # the db in the LOCATION path is the fix, but it MOVES live data. What
+        # moves is not only cache — CacheService wraps
+        # get_redis_connection("default"), so log_history_queue, the rate-limit
+        # counters and the dashboard caches go with it, and during a rolling
+        # deploy old pods read db 0 while new pods read db N. Drain
+        # log_history_queue before cutting over.
+        #
+        # The message deliberately does NOT explain where the previous db came
+        # from. It fires on both paths — discrete, where the cache sat on db 0
+        # regardless because django-redis ignores OPTIONS['DB'], and URL mode,
+        # where it came from the URL's own path — and the earlier wording gave
+        # the discrete explanation to both. The db NUMBERS are right in every
+        # case; only the stated reason was wrong on the URL path.
+        logging.getLogger(__name__).warning(
+            "Django cache is moving from Redis db %s to db %s (REDIS_DB). "
+            "Anything already in db %s — including log_history_queue — stays "
+            "there.",
+            _previous_db,
+            _effective_db,
+            _previous_db,
+        )
 
     CACHES = {
         "default": {
             "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}",
-            "OPTIONS": {
-                "CLIENT_CLASS": "django_redis.client.DefaultClient",
-                "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
-                "DB": int(REDIS_DB) if REDIS_DB else 0,
-                "USERNAME": REDIS_USER,
-                "PASSWORD": REDIS_PASSWORD,
-            },
+            "LOCATION": _cache_location,
+            "OPTIONS": _cache_options,
             "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
         }
     }
 
 SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
+# Dotted path to `callable(ip: str) -> str | None` naming an approximate location
+# for a signed-in session. Unset, sessions are listed without one.
+SESSION_LOCATION_RESOLVER = os.environ.get("SESSION_LOCATION_RESOLVER") or None
 
 RQ_QUEUES = {
     "default": {"USE_REDIS_CACHE": "default"},
@@ -692,6 +1125,8 @@ SPECTACULAR_SETTINGS = {
     "ENUM_NAME_OVERRIDES": {
         "ErrorType": "api_v2.openapi_schema.ERROR_TYPES",
         "ApiKeyPermission": "platform_api.models.ApiKeyPermission.choices",
+        "CapabilityKey": "tenant_account_v2.capabilities.CAPABILITY_KEY_VALUES",
+        "CapabilitySetting": "tenant_account_v2.capabilities.CAPABILITY_SETTING_VALUES",
     },
     # Group descriptions generated clients show in their help; without this
     # the spec has no root `tags` array for the text to live in.
@@ -724,13 +1159,101 @@ WHITELISTED_PATHS_LIST = [
     "/static",
 ]
 WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
-# White lists workflow-api-deployment path. This also covers the deployment MCP
-# server, which hangs off the same URL and authenticates with the deployment's
-# own API key rather than a session.
-WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
+WHITELISTED_PATHS.extend(
+    [
+        # workflow-api-deployment. Also covers the deployment MCP server, which
+        # hangs off the same URL and authenticates with the deployment's own API
+        # key rather than a session.
+        f"/{API_DEPLOYMENT_PATH_PREFIX}",
+        # Agent-KV public API: bearer-key auth happens in the views.
+        f"/{AGENT_KV_PATH_PREFIX}",
+    ]
+)
 
 # Whitelisting health check API
 WHITELISTED_PATHS.append("/health")
+
+# Platform-wide Prometheus /metrics (platform_metrics). Mounted at the root
+# like /health, outside every public ingress prefix, so it is served on the
+# backend service for in-cluster scraping only. Exempt from session auth; set
+# PLATFORM_METRICS_TOKEN to additionally require `Authorization: Bearer <token>`.
+WHITELISTED_PATHS.append("/metrics")
+PLATFORM_METRICS_TOKEN = os.environ.get("PLATFORM_METRICS_TOKEN", "")
+# How long one pod's refresh of a metric group is shared via Redis.
+PLATFORM_METRICS_CACHE_TTL_SECONDS = int(
+    os.environ.get("PLATFORM_METRICS_CACHE_TTL_SECONDS", 15)
+)
+# Postgres statement timeout for each group's refresh.
+PLATFORM_METRICS_QUERY_TIMEOUT_MS = int(
+    os.environ.get("PLATFORM_METRICS_QUERY_TIMEOUT_MS", 5000)
+)
+# unstract_workflow_executions_recent counts executions that went terminal
+# within this window...
+PLATFORM_METRICS_RECENT_WINDOW_SECONDS = int(
+    os.environ.get("PLATFORM_METRICS_RECENT_WINDOW_SECONDS", 3600)
+)
+# ...among executions created within this lookback, which keeps the query on
+# the created_at index instead of scanning the whole history.
+PLATFORM_METRICS_RECENT_LOOKBACK_SECONDS = int(
+    os.environ.get("PLATFORM_METRICS_RECENT_LOOKBACK_SECONDS", 86400)
+)
+# Same variable and default as the PG reaper, so unstract_batches_stuck counts
+# exactly what the reaper treats as stranded.
+PLATFORM_METRICS_BATCH_STUCK_TIMEOUT_SECONDS = int(
+    os.environ.get("WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS", 9000)
+)
+# Connect and read timeout for the metrics endpoint's own Redis pool, so a
+# stalled Redis fails a scrape over to the per-process fallback instead of
+# hanging it (KEDA's metrics-api client gives up after 3s).
+PLATFORM_METRICS_REDIS_TIMEOUT_SECONDS = float(
+    os.environ.get("PLATFORM_METRICS_REDIS_TIMEOUT_SECONDS", 1)
+)
+# Queue counts older than this are left out of the scrape instead of being
+# served as current, so a dashboard shows a gap and a KEDA trigger errors into
+# its fallback rather than scaling on a frozen value. Kept above the worst
+# healthy age (the cache TTL plus the 30s refresh-lock floor).
+PLATFORM_METRICS_QUEUE_MAX_STALENESS_SECONDS = int(
+    os.environ.get("PLATFORM_METRICS_QUEUE_MAX_STALENESS_SECONDS", 60)
+)
+# Queues always reported (as 0 when empty), on top of any queue that currently
+# holds messages. Defaults to the queues the PG consumers in
+# docker/docker-compose.yaml consume; override with a comma-separated list
+# where a deployment runs others.
+PLATFORM_METRICS_QUEUES = [
+    queue.strip()
+    for queue in os.environ.get(
+        "PLATFORM_METRICS_QUEUES",
+        ",".join(
+            [
+                "agent_kv_callback",
+                "api_file_processing",
+                "api_file_processing_callback",
+                "celery",
+                "celery_api_deployments",
+                "celery_callback",
+                "celery_executor_agentic",
+                "celery_executor_agentic_table",
+                "celery_executor_legacy",
+                "celery_executor_lookup_test",
+                "celery_executor_simple_prompt_studio",
+                "celery_executor_smart_table",
+                "celery_executor_table",
+                "dashboard_metric_events",
+                "file_processing",
+                "file_processing_callback",
+                "file_processing_priority",
+                "ide_callback",
+                "notifications",
+                "notifications_email",
+                "notifications_priority",
+                "notifications_sms",
+                "notifications_webhook",
+                "scheduler",
+            ]
+        ),
+    ).split(",")
+    if queue.strip()
+]
 
 # These path will work without organization in request.
 # `whoami` resolves the organisation from the API key itself, so it carries no
@@ -766,13 +1289,10 @@ SOCIAL_AUTH_JSONFIELD_ENABLED = True
 SOCIAL_AUTH_FIELDS_STORED_IN_SESSION = ["oauth-key", "connector-guid"]
 SOCIAL_AUTH_TRAILING_SLASH = False
 
-for key in [
-    "GOOGLE_OAUTH2_KEY",
-    "GOOGLE_OAUTH2_SECRET",
-    "AZUREAD_TENANT_OAUTH2_KEY",
-    "AZUREAD_TENANT_OAUTH2_SECRET",
-]:
-    exec(f"SOCIAL_AUTH_{key} = os.environ.get('{key}')")
+SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = os.environ.get("GOOGLE_OAUTH2_KEY")
+SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = os.environ.get("GOOGLE_OAUTH2_SECRET")
+SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_KEY = os.environ.get("AZUREAD_TENANT_OAUTH2_KEY")
+SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_SECRET = os.environ.get("AZUREAD_TENANT_OAUTH2_SECRET")
 
 SOCIAL_AUTH_PIPELINE = (
     # Checks if user is authenticated

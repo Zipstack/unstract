@@ -3,18 +3,20 @@
 Verifies:
 1. Summarize operation exists and routes through LegacyExecutor
 2. Summarize executor_params contract matches _handle_summarize expectations
-3. Dispatch routes summarize to celery_executor_legacy queue
+3. Dispatch routes summarize to celery_executor_legacy queue (PG executor RPC)
 4. Summarize result has expected shape (data.data = summary text)
-5. Full Celery chain for summarize operation
+5. Full dispatch chain for summarize operation
 """
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 from unstract.sdk1.execution.context import ExecutionContext, Operation
-from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
+from unstract.workflow_execution.executor_rpc import PgExecutionDispatcher
+
+from .executor_dispatch_fakes import FakeExecutorTransport, queue_for
 
 # Patches
 _PATCH_GET_PROMPT_DEPS = (
@@ -80,18 +82,16 @@ class TestSummarizeParamsContract:
 class TestSummarizeQueueRouting:
     def test_summarize_routes_to_legacy_queue(self):
         """Summarize dispatches to celery_executor_legacy (LegacyExecutor)."""
-        queue = ExecutionDispatcher._get_queue("legacy")
+        queue = queue_for("legacy")
         assert queue == "celery_executor_legacy"
 
     def test_dispatch_sends_summarize_to_legacy_queue(self):
-        mock_app = MagicMock()
-        mock_result = MagicMock()
-        mock_result.get.return_value = ExecutionResult(
-            success=True, data={"data": "Summary text here"}
-        ).to_dict()
-        mock_app.send_task.return_value = mock_result
-
-        dispatcher = ExecutionDispatcher(celery_app=mock_app)
+        transport = FakeExecutorTransport(
+            result=ExecutionResult(
+                success=True, data={"data": "Summary text here"}
+            ).to_dict()
+        )
+        dispatcher = PgExecutionDispatcher(transport)
         ctx = ExecutionContext(
             executor_name="legacy",
             operation="summarize",
@@ -108,9 +108,7 @@ class TestSummarizeQueueRouting:
         )
         result = dispatcher.dispatch(ctx)
 
-        mock_app.send_task.assert_called_once()
-        call_kwargs = mock_app.send_task.call_args
-        assert call_kwargs.kwargs.get("queue") == "celery_executor_legacy"
+        assert transport.queue == "celery_executor_legacy"
         assert result.success
         assert result.data["data"] == "Summary text here"
 

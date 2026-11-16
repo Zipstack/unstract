@@ -15,6 +15,9 @@ import os
 # find out early that AWS shipped a Mantle model the pinned wheel predates --
 # with LITELLM_LOCAL_MODEL_COST_MAP=False.
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+# Same reason for the image-limits table: an empty URL keeps tests on the
+# bundled copy instead of fetching limits.json from GitHub.
+os.environ.setdefault("VLM_IMAGE_LIMITS_URL", "")
 
 import logging  # noqa: E402
 from collections.abc import Callable  # noqa: E402

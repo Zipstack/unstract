@@ -1,0 +1,1206 @@
+import os
+import uuid
+from unittest import mock
+
+import django
+from django.apps import apps
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
+if not apps.ready:
+    django.setup()
+
+from rest_framework.test import APIRequestFactory  # noqa: E402
+
+from agent_kv import internal_views as iv  # noqa: E402
+from agent_kv import storage  # noqa: E402
+from agent_kv.models import AgentKVJob, JobStatus  # noqa: E402
+
+
+def _post(path, body):
+    return APIRequestFactory().post(path, body, format="json")
+
+
+def _merge_payload(update_call):
+    """Unwrap a ``stages=`` jsonb-merge expression's {stage: entry} payload.
+
+    Also pins the expression's shape: a ``||`` (jsonb concatenation)
+    ``CombinedExpression`` over the ``stages`` column, not a plain dict --
+    the whole point of the DB-side merge is that ``.update()`` never
+    receives a Python-computed full-column dict.
+    """
+    expr = update_call.kwargs["stages"]
+    assert not isinstance(expr, dict), "stages must be a jsonb-merge expression"
+    assert expr.connector == "||"
+    assert expr.lhs.name == "stages"
+    return expr.rhs.value
+
+
+# ---------------------------------------------------------------------------
+# _stage_merge_expression / _sanitize_counters (expression-builder unit tests)
+# ---------------------------------------------------------------------------
+
+
+# (u1) the expression builder produces a single-entry {stage: entry} jsonb
+# merge payload over the `stages` column via the `||` connector.
+def test_stage_merge_expression_builds_single_entry_jsonb_merge():
+    expr = iv._stage_merge_expression("extraction", {"status": "running"})
+
+    assert expr.connector == "||"
+    assert expr.lhs.name == "stages"
+    assert expr.rhs.value == {"extraction": {"status": "running"}}
+
+
+# (u2) counters colliding with reserved keys are dropped.
+def test_sanitize_counters_drops_reserved_keys():
+    assert iv._sanitize_counters({"status": "done", "seconds": 999, "pages": 3}) == {
+        "pages": 3
+    }
+
+
+# (u3) non-scalar counter values (dict/list) are dropped; scalars pass through.
+def test_sanitize_counters_drops_non_scalar_values():
+    assert iv._sanitize_counters(
+        {"pages": 3, "nested": {"a": 1}, "arr": [1, 2], "ok": "yes", "flag": True}
+    ) == {"pages": 3, "ok": "yes", "flag": True}
+
+
+# (u4) a non-dict counters payload (e.g. a string or list) sanitizes to {}.
+def test_sanitize_counters_non_dict_input_is_empty():
+    assert iv._sanitize_counters("not-a-dict") == {}
+    assert iv._sanitize_counters(None) == {}
+
+
+# ---------------------------------------------------------------------------
+# StageReportView
+# ---------------------------------------------------------------------------
+
+
+# (1) org_id missing from body -> 400 (ambient-auth views require it in body).
+def test_stage_report_missing_org_id_is_400():
+    resp = iv.StageReportView.as_view()(
+        _post("/x", {"stage": "extraction", "status": "running"}),
+        job_id=uuid.uuid4(),
+    )
+    assert resp.status_code == 400
+
+
+# (1b) missing `stage` -> 400.
+def test_stage_report_missing_stage_is_400():
+    resp = iv.StageReportView.as_view()(
+        _post("/x", {"org_id": "org1", "status": "running"}),
+        job_id=uuid.uuid4(),
+    )
+    assert resp.status_code == 400
+
+
+# (1c) missing/invalid `status` -> 400 (must be exactly "running" or "done").
+def test_stage_report_invalid_status_is_400():
+    resp = iv.StageReportView.as_view()(
+        _post("/x", {"org_id": "org1", "stage": "extraction", "status": "bogus"}),
+        job_id=uuid.uuid4(),
+    )
+    assert resp.status_code == 400
+
+    resp_missing = iv.StageReportView.as_view()(
+        _post("/x", {"org_id": "org1", "stage": "extraction"}),
+        job_id=uuid.uuid4(),
+    )
+    assert resp_missing.status_code == 400
+
+
+# (2) first stage report on a PENDING job flips it to RUNNING exactly once,
+# and merges the stage entry via a DB-side jsonb `||` expression (not a
+# plain dict) targeting only the reported stage's key.
+@mock.patch.object(AgentKVJob, "objects")
+def test_stage_report_flips_pending_to_running_once(m_jobs):
+    job = AgentKVJob(status=JobStatus.PENDING, stages={})
+    qs = m_jobs.filter.return_value.exclude.return_value
+    qs.first.return_value = job
+
+    resp = iv.StageReportView.as_view()(
+        _post(
+            "/x",
+            {
+                "org_id": "org1",
+                "stage": "extraction",
+                "status": "running",
+            },
+        ),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 200
+    qs.update.assert_called_once()
+    call = qs.update.call_args
+    assert _merge_payload(call) == {"extraction": {"status": "running"}}
+    assert call.kwargs["stage"] == "extraction"
+    assert call.kwargs["status"] == JobStatus.RUNNING
+
+
+# (2b) a stage report on an already-RUNNING job does NOT re-flip status --
+# the "once" half of "flips RUNNING once".
+@mock.patch.object(AgentKVJob, "objects")
+def test_stage_report_on_running_job_does_not_touch_status(m_jobs):
+    job = AgentKVJob(
+        status=JobStatus.RUNNING, stages={"extraction": {"status": "running"}}
+    )
+    qs = m_jobs.filter.return_value.exclude.return_value
+    qs.first.return_value = job
+
+    resp = iv.StageReportView.as_view()(
+        _post(
+            "/x",
+            {"org_id": "org1", "stage": "extraction", "status": "done", "seconds": 1.5},
+        ),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 200
+    call = qs.update.call_args
+    assert "status" not in call.kwargs
+    assert _merge_payload(call) == {"extraction": {"status": "done", "seconds": 1.5}}
+
+
+# (3) stage report on a CANCELLED (terminal) job -- the update queryset
+# excludes TERMINAL, so .first() returns None -- is a 200 no-op, never
+# reaching .update().
+@mock.patch.object(AgentKVJob, "objects")
+def test_stage_report_on_cancelled_job_is_200_noop(m_jobs):
+    qs = m_jobs.filter.return_value.exclude.return_value
+    qs.first.return_value = None
+
+    resp = iv.StageReportView.as_view()(
+        _post("/x", {"org_id": "org1", "stage": "extraction", "status": "running"}),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 200
+    assert not qs.update.called
+
+
+# (4) duplicate stage report (same stage name posted twice) overwrites the
+# entry rather than appending. With the DB-side jsonb `||` merge this falls
+# out structurally: the merge payload always carries exactly one key (the
+# reported stage), so the jsonb `||` operator replaces that key's value on
+# the second call instead of stacking a second version alongside it.
+@mock.patch.object(AgentKVJob, "objects")
+def test_stage_report_duplicate_overwrites_not_appends(m_jobs):
+    job = AgentKVJob(
+        status=JobStatus.RUNNING,
+        stages={"extraction": {"status": "running"}},
+    )
+    qs = m_jobs.filter.return_value.exclude.return_value
+    qs.first.return_value = job
+
+    resp = iv.StageReportView.as_view()(
+        _post(
+            "/x",
+            {
+                "org_id": "org1",
+                "stage": "extraction",
+                "status": "done",
+                "seconds": 2.0,
+                "counters": {"pages": 3},
+            },
+        ),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 200
+    call = qs.update.call_args
+    payload = _merge_payload(call)
+    assert list(payload.keys()) == ["extraction"]
+    assert payload == {"extraction": {"status": "done", "seconds": 2.0, "pages": 3}}
+    assert call.kwargs["stage"] == "extraction"
+
+
+# (5) the stage-report endpoint is the write gate for job.stages -- only the
+# defined shape (status, optional seconds, sanitized flat counters) is ever
+# persisted; unexpected top-level body keys (e.g. a stray "evil") must not
+# leak into the stored entry.
+@mock.patch.object(AgentKVJob, "objects")
+def test_stage_report_ignores_unexpected_top_level_keys(m_jobs):
+    job = AgentKVJob(status=JobStatus.RUNNING, stages={})
+    qs = m_jobs.filter.return_value.exclude.return_value
+    qs.first.return_value = job
+
+    resp = iv.StageReportView.as_view()(
+        _post(
+            "/x",
+            {
+                "org_id": "org1",
+                "stage": "extraction",
+                "status": "running",
+                "evil": "payload",
+                "another_bogus_key": 123,
+            },
+        ),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 200
+    stored_entry = _merge_payload(qs.update.call_args)["extraction"]
+    assert stored_entry == {"status": "running"}
+
+
+# (5b) a counter named "status" or "seconds" cannot clobber the endpoint's
+# own reserved fields.
+@mock.patch.object(AgentKVJob, "objects")
+def test_stage_report_counters_cannot_override_reserved_keys(m_jobs):
+    job = AgentKVJob(status=JobStatus.RUNNING, stages={})
+    qs = m_jobs.filter.return_value.exclude.return_value
+    qs.first.return_value = job
+
+    resp = iv.StageReportView.as_view()(
+        _post(
+            "/x",
+            {
+                "org_id": "org1",
+                "stage": "extraction",
+                "status": "running",
+                "counters": {"status": "done", "seconds": 999, "pages": 3},
+            },
+        ),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 200
+    stored_entry = _merge_payload(qs.update.call_args)["extraction"]
+    assert stored_entry == {"status": "running", "pages": 3}
+
+
+# (5c) a nested-dict (or list) counter value is dropped rather than stored.
+@mock.patch.object(AgentKVJob, "objects")
+def test_stage_report_counters_drops_nested_values(m_jobs):
+    job = AgentKVJob(status=JobStatus.RUNNING, stages={})
+    qs = m_jobs.filter.return_value.exclude.return_value
+    qs.first.return_value = job
+
+    resp = iv.StageReportView.as_view()(
+        _post(
+            "/x",
+            {
+                "org_id": "org1",
+                "stage": "extraction",
+                "status": "running",
+                "counters": {"pages": 3, "nested": {"a": 1}, "arr": [1, 2]},
+            },
+        ),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 200
+    stored_entry = _merge_payload(qs.update.call_args)["extraction"]
+    assert stored_entry == {"status": "running", "pages": 3}
+
+
+# ---------------------------------------------------------------------------
+# FinalizeView
+# ---------------------------------------------------------------------------
+
+
+# (6) org_id missing from body -> 400.
+def test_finalize_missing_org_id_is_400():
+    resp = iv.FinalizeView.as_view()(_post("/x", {"success": True}), job_id=uuid.uuid4())
+    assert resp.status_code == 400
+
+
+# (6b) missing `success` -> 400, and no slot is released (nothing was
+# finalized).
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+def test_finalize_missing_success_is_400(m_release):
+    resp = iv.FinalizeView.as_view()(_post("/x", {"org_id": "org1"}), job_id=uuid.uuid4())
+    assert resp.status_code == 400
+    assert not m_release.called
+
+
+# (6c) a non-bool `success` (e.g. a truthy string) -> 400 rather than
+# silently falling through to the failure branch and persisting a FAILED
+# job with an empty error.
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+def test_finalize_non_bool_success_is_400(m_release, m_mark_terminal):
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": "true"}), job_id=uuid.uuid4()
+    )
+    assert resp.status_code == 400
+    assert not m_release.called
+    assert not m_mark_terminal.called
+
+
+# (7) finalize success: writes the result THEN marks the job terminal (order
+# matters -- a duplicate must never rewrite a result nobody asked to change).
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_success_writes_result_then_marks_terminal(
+    m_jobs, m_write, m_mark_terminal, m_release
+):
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+    m_write.return_value = "org/o/agent_kv/j/result.json"
+    m_mark_terminal.return_value = True
+
+    manager = mock.Mock()
+    manager.attach_mock(m_write, "write_result")
+    manager.attach_mock(m_mark_terminal, "mark_terminal")
+
+    job_id = uuid.uuid4()
+    resp = iv.FinalizeView.as_view()(
+        _post(
+            "/x",
+            {
+                "org_id": "org1",
+                "success": True,
+                "result": {"foo": "bar"},
+                "usage_summary": {"tokens": 10},
+            },
+        ),
+        job_id=job_id,
+    )
+
+    assert resp.status_code == 200
+    assert resp.data == {
+        "finalized": True,
+        "webhook_url": "https://example.com/hook",
+        "status": "completed",
+        "reason": "ok",
+        # Additive, and False on every path but one: the result was
+        # kept on a row a cancel had already terminalized. See
+        # `test_finalize_guard_lost_to_a_cancel_keeps_the_paid_for_result`.
+        "result_attached": False,
+        "webhook_enqueued": False,
+    }
+    assert [c[0] for c in manager.mock_calls] == ["write_result", "mark_terminal"]
+    m_write.assert_called_once_with("org1", str(job_id), {"foo": "bar"})
+    m_mark_terminal.assert_called_once_with(
+        job_id,
+        "org1",
+        JobStatus.COMPLETED,
+        result_ref="org/o/agent_kv/j/result.json",
+        usage_summary={"tokens": 10},
+    )
+
+
+# (7b) finalize success deletes the staged input and blanks input_ref (spec
+# D10: "uploaded document deleted on job completion") -- the result file
+# itself is untouched by this.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(iv, "delete_input")
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_success_deletes_input_and_blanks_ref(
+    m_jobs, m_write, m_delete_input, m_mark_terminal, m_release
+):
+    job = AgentKVJob(
+        status=JobStatus.RUNNING,
+        webhook_url="",
+        input_ref="org/o/agent_kv/j/input.pdf",
+    )
+    m_jobs.filter.return_value.first.return_value = job
+    m_write.return_value = "org/o/agent_kv/j/result.json"
+
+    job_id = uuid.uuid4()
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": True, "result": {}}),
+        job_id=job_id,
+    )
+
+    assert resp.status_code == 200
+    m_delete_input.assert_called_once_with(job)
+    m_jobs.filter.return_value.update.assert_called_once_with(input_ref="")
+
+
+# (7c) success finalize whose guard is LOST right after the write (e.g. a
+# cancel raced in between the read and mark_terminal's guarded UPDATE) --
+# the just-written result file has no ref anywhere pointing at it, so it's
+# cleaned up immediately rather than orphaned forever.
+# `attach_result_to_cancelled` is pinned to False because that is what the real
+# query returns for this row: its guard is `status=CANCELLED`, and this job is
+# RUNNING. The patch is not cosmetic -- this suite is DB-free and the real
+# method opens a transaction, so without it the request 500s and the orphan
+# delete asserted below is never reached. Pinning it True instead would make
+# this test assert the opposite behaviour, which is
+# `test_finalize_guard_lost_to_a_cancel_keeps_the_paid_for_result` below. The
+# salvage path itself is covered DB-backed in `test_models.py`.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "delete_result_file")
+@mock.patch.object(AgentKVJob, "attach_result_to_cancelled", return_value=False)
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_success_guard_loss_deletes_orphaned_result(
+    m_jobs, m_write, m_mark_terminal, m_salvage, m_delete_result, m_release
+):
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="")
+    m_jobs.filter.return_value.first.return_value = job
+    m_write.return_value = "org/o/agent_kv/j/result.json"
+
+    job_id = uuid.uuid4()
+    resp = iv.FinalizeView.as_view()(
+        _post(
+            "/x",
+            {"org_id": "org1", "success": True, "result": {"foo": "bar"}},
+        ),
+        job_id=job_id,
+    )
+
+    assert resp.status_code == 200
+    assert resp.data["finalized"] is False
+    m_delete_result.assert_called_once_with("org/o/agent_kv/j/result.json")
+
+
+# (7c-ii) the one case (7c) must NOT catch: the guard was lost to a CANCEL, and
+# the run had already finished -- so the engine had already flushed its OCR and
+# LLM usage and the customer had already been billed. Deleting the result there
+# charged them for an answer and then destroyed it, with `GET result` reporting
+# only `{"success": false, "status": "cancelled"}`. It is attached to the
+# cancelled row instead, and the caller is owed a follow-up notification because
+# the cancellation webhook has already gone out.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "delete_result_file")
+@mock.patch.object(AgentKVJob, "attach_result_to_cancelled", return_value=True)
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_guard_lost_to_a_cancel_keeps_the_paid_for_result(
+    m_jobs, m_write, m_mark_terminal, m_salvage, m_delete_result, m_release
+):
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+    m_write.return_value = "org/o/agent_kv/j/result.json"
+
+    job_id = uuid.uuid4()
+    resp = iv.FinalizeView.as_view()(
+        _post(
+            "/x",
+            {
+                "org_id": "org1",
+                "success": True,
+                "result": {"tables": []},
+                "usage_summary": {"pages": 3},
+            },
+        ),
+        job_id=job_id,
+    )
+
+    assert resp.status_code == 200
+    # Still not "finalized": the cancel won the status and this must not pretend
+    # otherwise -- `mark_terminal` stays the only route to a terminal state.
+    assert resp.data["finalized"] is False
+    # The flag the callback worker needs: `finalized` False would otherwise mean
+    # "someone else already notified", and for this path nobody has.
+    assert resp.data["result_attached"] is True
+    m_salvage.assert_called_once()
+    kwargs = m_salvage.call_args.kwargs
+    assert kwargs["result_ref"] == "org/o/agent_kv/j/result.json"
+    assert kwargs["usage_summary"] == {"pages": 3}
+    assert not m_delete_result.called, (
+        "deleted a result the customer had already been billed for; a cancel "
+        "that lost the race keeps its answer"
+    )
+
+
+# (7c-iii) the attach is what decides, not the guard loss. A salvage that is
+# REFUSED -- a purged job, a COMPLETED row, a duplicate callback -- must still
+# leave no orphan behind, which is the invariant (7c) protects and the reason
+# `_complete` branches on the attach's return value rather than on `finalized`.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "delete_result_file")
+@mock.patch.object(AgentKVJob, "attach_result_to_cancelled", return_value=False)
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_refused_salvage_still_deletes_its_own_write(
+    m_jobs, m_write, m_mark_terminal, m_salvage, m_delete_result, m_release
+):
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+    m_write.return_value = "org/o/agent_kv/j/result.json"
+
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": True, "result": {"tables": []}}),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.data["result_attached"] is False
+    m_delete_result.assert_called_once_with("org/o/agent_kv/j/result.json")
+
+
+# (7c-iv) THE case the gap was actually about, and the one (7c-ii) cannot reach.
+#
+# `post` only calls a handler when the row it read was still non-terminal, so
+# `_complete`'s salvage covers a window of microseconds. The real race is wider:
+# the executor only learns of a cancel from its FINAL stage report, so by the
+# time the callback worker calls finalize the row has read CANCELLED for a whole
+# round trip. `post` short-circuited there and the fully computed, already-billed
+# output was dropped without even being written -- which is why a salvage that
+# lives only in `_complete` fixes almost nothing.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "delete_result_file")
+@mock.patch.object(AgentKVJob, "attach_result_to_cancelled", return_value=True)
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_for_an_already_cancelled_job_keeps_its_result(
+    m_jobs, m_write, m_mark_terminal, m_salvage, m_delete_result, m_release
+):
+    job = AgentKVJob(
+        status=JobStatus.CANCELLED, webhook_url="https://example.com/hook"
+    )
+    m_jobs.filter.return_value.first.return_value = job
+    m_write.return_value = "org/o/agent_kv/j/result.json"
+
+    job_id = uuid.uuid4()
+    resp = iv.FinalizeView.as_view()(
+        _post(
+            "/x",
+            {
+                "org_id": "org1",
+                "success": True,
+                "result": {"tables": [{"rows": 12}]},
+                "usage_summary": {"pages": 3},
+            },
+        ),
+        job_id=job_id,
+    )
+
+    assert resp.status_code == 200
+    m_write.assert_called_once_with("org1", str(job_id), {"tables": [{"rows": 12}]})
+    m_salvage.assert_called_once()
+    assert m_salvage.call_args.kwargs["result_ref"] == "org/o/agent_kv/j/result.json"
+    assert m_salvage.call_args.kwargs["usage_summary"] == {"pages": 3}
+    assert not m_delete_result.called
+    # The cancel keeps the status, so this stays False -- and the attach is what
+    # tells the callback worker a notification is still owed.
+    assert resp.data["finalized"] is False
+    assert resp.data["result_attached"] is True
+    assert not m_mark_terminal.called, (
+        "a salvage must not attempt the terminal guard; mark_terminal stays the "
+        "only route to a terminal state and this row already reached one"
+    )
+
+
+# (7c-v) ...and nothing else gets a second look. A success callback for an
+# already-COMPLETED or already-FAILED row must still write NOTHING -- that is
+# the idempotency the short-circuit protects, and widening the salvage past
+# CANCELLED would overwrite a real result or invent one for a failed run.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "attach_result_to_cancelled")
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_for_a_completed_or_failed_job_writes_nothing(
+    m_jobs, m_write, m_salvage, m_release
+):
+    for status in (JobStatus.COMPLETED, JobStatus.FAILED):
+        job = AgentKVJob(status=status, webhook_url="")
+        m_jobs.filter.return_value.first.return_value = job
+
+        resp = iv.FinalizeView.as_view()(
+            _post("/x", {"org_id": "org1", "success": True, "result": {"foo": "bar"}}),
+            job_id=uuid.uuid4(),
+        )
+
+        assert resp.data["finalized"] is False, status
+        assert resp.data["result_attached"] is False, status
+        assert not m_write.called, status
+        assert not m_salvage.called, status
+
+
+# (7c-vi) a FAILURE callback for an already-cancelled job keeps the old
+# short-circuit: there is no result to salvage, so nothing is written.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "attach_result_to_cancelled")
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_failure_finalize_for_a_cancelled_job_salvages_nothing(
+    m_jobs, m_write, m_salvage, m_release
+):
+    job = AgentKVJob(status=JobStatus.CANCELLED, webhook_url="")
+    m_jobs.filter.return_value.first.return_value = job
+
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": False, "error": "boom"}),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.data["result_attached"] is False
+    assert not m_write.called
+    assert not m_salvage.called
+
+
+# (7d) success finalize that WINS the guard never deletes the result it just
+# wrote -- only a guard-LOSS orphan triggers cleanup.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "delete_result_file")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_success_guard_win_does_not_delete_result(
+    m_jobs, m_write, m_mark_terminal, m_delete_result, m_release
+):
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="")
+    m_jobs.filter.return_value.first.return_value = job
+    m_write.return_value = "org/o/agent_kv/j/result.json"
+
+    iv.FinalizeView.as_view()(
+        _post(
+            "/x",
+            {"org_id": "org1", "success": True, "result": {"foo": "bar"}},
+        ),
+        job_id=uuid.uuid4(),
+    )
+
+    assert not m_delete_result.called
+
+
+# (7e) concurrent duplicate-SUCCESS finalize race, exercised through the REAL
+# storage layer (only the object-store FileSystem is faked): two finalize
+# attempts land for one job, the first WINS the terminal guard and the second
+# LOSES. Because write_result now returns a UNIQUE ref per attempt, the loser
+# cleans up only ITS OWN orphaned result file -- the winner's result_ref
+# target is left intact (pre-Greptile critical #3: the old deterministic
+# result.json path let the loser delete the winner's live result).
+@mock.patch.object(storage, "FileSystem")
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+# False for the same reason as the guard-loss case above: the row the loser
+# raced is COMPLETED, not CANCELLED, so the real guard matches nothing and the
+# loser must still delete the file it just wrote. Also keeps this DB-free test
+# out of the real method's transaction.
+@mock.patch.object(AgentKVJob, "attach_result_to_cancelled", return_value=False)
+@mock.patch.object(AgentKVJob, "mark_terminal", side_effect=[True, False])
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_duplicate_success_race_loser_deletes_only_its_own_result(
+    m_jobs, m_mark, m_salvage, m_release, m_fs
+):
+    # Two separate reads that both observed the job as still RUNNING (the race
+    # window before either guarded UPDATE ran).
+    winner_job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="", input_ref="")
+    loser_job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="", input_ref="")
+    m_jobs.filter.return_value.first.side_effect = [winner_job, loser_job]
+
+    fh = m_fs.return_value.get_file_storage.return_value
+    written: list[str] = []
+    removed: list[str] = []
+    fh.json_dump.side_effect = lambda path, data: written.append(path)
+    fh.rm.side_effect = lambda path: removed.append(path)
+
+    job_id = uuid.uuid4()
+    body = {"org_id": "org1", "success": True, "result": {"foo": "bar"}}
+    r1 = iv.FinalizeView.as_view()(_post("/x", body), job_id=job_id)  # winner
+    r2 = iv.FinalizeView.as_view()(_post("/x", body), job_id=job_id)  # loser
+
+    assert r1.data["finalized"] is True
+    assert r2.data["finalized"] is False
+
+    # Both attempts wrote a result; the two refs are DISTINCT.
+    assert len(written) == 2
+    assert written[0] != written[1]
+
+    # The winner's result file (written[0]) is the one mark_terminal stored as
+    # result_ref -- it must NOT be deleted. Only the loser's orphan is removed.
+    assert removed == [written[1]]
+    assert written[0] not in removed
+
+    # The winner stored its OWN specific ref, not a shared deterministic path.
+    winner_ref = m_mark.call_args_list[0].kwargs["result_ref"]
+    assert winner_ref == written[0]
+
+
+# (8) duplicate finalize: the job is already terminal (guard excludes it),
+# so this is a no-op -- finalized:false and the result is NOT rewritten.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_duplicate_does_not_rewrite_result(
+    m_jobs, m_write, m_mark_terminal, m_release
+):
+    job = AgentKVJob(status=JobStatus.COMPLETED, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": True, "result": {"foo": "bar"}}),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 200
+    assert resp.data == {
+        "finalized": False,
+        "webhook_url": "https://example.com/hook",
+        "status": "completed",
+        "reason": "ok",
+        # Additive, and False on every path but one: the result was
+        # kept on a row a cancel had already terminalized. See
+        # `test_finalize_guard_lost_to_a_cancel_keeps_the_paid_for_result`.
+        "result_attached": False,
+        "webhook_enqueued": False,
+    }
+    assert not m_write.called
+    assert not m_mark_terminal.called
+
+
+# (8b) duplicate finalize (guard-lost) never calls delete_input either --
+# either another writer already owns cleanup, or there's nothing new to
+# terminalize.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(iv, "delete_input")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_duplicate_does_not_call_delete_input(
+    m_jobs, m_delete_input, m_mark_terminal, m_release
+):
+    job = AgentKVJob(
+        status=JobStatus.COMPLETED,
+        webhook_url="",
+        input_ref="org/o/agent_kv/j/input.pdf",
+    )
+    m_jobs.filter.return_value.first.return_value = job
+
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": True, "result": {}}),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 200
+    assert not m_delete_input.called
+    assert not m_jobs.filter.return_value.update.called
+
+
+# (9) finalize failure records the error via mark_terminal(FAILED, ...).
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_failure_records_error(m_jobs, m_write, m_mark_terminal, m_release):
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="")
+    m_jobs.filter.return_value.first.return_value = job
+    m_mark_terminal.return_value = True
+
+    job_id = uuid.uuid4()
+    resp = iv.FinalizeView.as_view()(
+        _post(
+            "/x",
+            {"org_id": "org1", "success": False, "error": "LLM provider timed out"},
+        ),
+        job_id=job_id,
+    )
+
+    assert resp.status_code == 200
+    assert resp.data == {
+        "finalized": True,
+        "webhook_url": "",
+        "status": "failed",
+        "reason": "ok",
+        # Additive, and False on every path but one: the result was
+        # kept on a row a cancel had already terminalized. See
+        # `test_finalize_guard_lost_to_a_cancel_keeps_the_paid_for_result`.
+        "result_attached": False,
+        "webhook_enqueued": False,
+    }
+    assert not m_write.called
+    m_mark_terminal.assert_called_once_with(
+        job_id, "org1", JobStatus.FAILED, error="LLM provider timed out"
+    )
+
+
+# (9b) finalize failure also deletes the staged input and blanks input_ref
+# -- the run is over whether it completed or failed.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(iv, "delete_input")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_failure_deletes_input_and_blanks_ref(
+    m_jobs, m_delete_input, m_mark_terminal, m_release
+):
+    job = AgentKVJob(
+        status=JobStatus.RUNNING,
+        webhook_url="",
+        input_ref="org/o/agent_kv/j/input.pdf",
+    )
+    m_jobs.filter.return_value.first.return_value = job
+
+    job_id = uuid.uuid4()
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": False, "error": "boom"}),
+        job_id=job_id,
+    )
+
+    assert resp.status_code == 200
+    m_delete_input.assert_called_once_with(job)
+    m_jobs.filter.return_value.update.assert_called_once_with(input_ref="")
+
+
+# (10) the concurrency slot is released on every finalize path -- including
+# when the write/finalize work raises -- because release() sits in a
+# finally.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_releases_slot_even_when_write_result_raises(
+    m_jobs, m_write, m_mark_terminal, m_release
+):
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="")
+    m_jobs.filter.return_value.first.return_value = job
+    m_write.side_effect = RuntimeError("storage exploded")
+
+    job_id = uuid.uuid4()
+    try:
+        iv.FinalizeView.as_view()(
+            _post("/x", {"org_id": "org1", "success": True, "result": {}}),
+            job_id=job_id,
+        )
+    except RuntimeError:
+        pass
+
+    m_release.assert_called_once_with("org1", str(job_id))
+    assert not m_mark_terminal.called
+
+
+# (10b) slot released on the duplicate (already-terminal, no-op) path too.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_releases_slot_on_duplicate_noop_path(
+    m_jobs, m_write, m_mark_terminal, m_release
+):
+    job = AgentKVJob(status=JobStatus.CANCELLED, webhook_url="")
+    m_jobs.filter.return_value.first.return_value = job
+
+    job_id = uuid.uuid4()
+    iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": False, "error": "late"}),
+        job_id=job_id,
+    )
+
+    m_release.assert_called_once_with("org1", str(job_id))
+
+
+# ---------------------------------------------------------------------------
+# URL wiring
+# ---------------------------------------------------------------------------
+
+
+# (11) regression pin for the frozen paths (spec Interfaces block): the
+# cloud executor calls these exact URLs, so a dropped/renamed include in
+# internal_base_urls.py must fail loudly here rather than 404 in prod.
+def test_frozen_internal_urls_resolve_to_the_right_views():
+    from django.urls import resolve
+
+    job_id = uuid.uuid4()
+    stage = resolve(f"/internal/v1/agent-kv/jobs/{job_id}/stage/")
+    assert stage.func.cls is iv.StageReportView
+    assert stage.kwargs == {"job_id": job_id}
+
+    finalize = resolve(f"/internal/v1/agent-kv/jobs/{job_id}/finalize/")
+    assert finalize.func.cls is iv.FinalizeView
+    assert finalize.kwargs == {"job_id": job_id}
+
+
+# ---------------------------------------------------------------------------
+# An unknown job/org pair must be distinguishable from an ordinary duplicate.
+#
+# Both used to return a byte-identical 200 no-op with nothing logged. The
+# second is what an org-slug-vs-FK-pk mix-up looks like -- and `dispatch.py`
+# documents that exact confusion shipping once already. If it recurs, every
+# finalize is a silent no-op, every job stays non-terminal and is reaped as
+# "Job timed out": a 100% failure rate presenting as timeouts, invisible.
+#
+# Reported as 2.12 in the branch review.
+# ---------------------------------------------------------------------------
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_for_an_unknown_job_says_so_and_logs(m_objects, m_release, caplog):
+    import logging
+
+    m_objects.filter.return_value.first.return_value = None
+
+    with caplog.at_level(logging.WARNING, logger="agent_kv.internal_views"):
+        resp = iv.FinalizeView.as_view()(
+            _post("/x", {"org_id": "org1", "success": True}), job_id=uuid.uuid4()
+        )
+
+    assert resp.status_code == 200
+    assert resp.data["reason"] == "unknown_job"
+    assert resp.data["finalized"] is False
+    assert "unknown job" in caplog.text
+
+
+@mock.patch.object(AgentKVJob, "objects")
+def test_stage_report_for_an_unknown_job_says_so_and_logs(m_objects, caplog):
+    """`already_terminal` is ordinary and stays quiet; `unknown_job` is not."""
+    import logging
+
+    m_objects.filter.return_value.exclude.return_value.first.return_value = None
+    m_objects.filter.return_value.exists.return_value = False
+
+    with caplog.at_level(logging.WARNING, logger="agent_kv.internal_views"):
+        resp = iv.StageReportView.as_view()(
+            _post(
+                "/x", {"org_id": "org1", "stage": "table_extraction", "status": "running"}
+            ),
+            job_id=uuid.uuid4(),
+        )
+
+    assert resp.status_code == 200
+    assert resp.data["reason"] == "unknown_job"
+    assert "unknown job" in caplog.text
+
+
+@mock.patch.object(AgentKVJob, "objects")
+def test_stage_report_for_an_already_terminal_job_is_quiet(m_objects, caplog):
+    import logging
+
+    m_objects.filter.return_value.exclude.return_value.first.return_value = None
+    m_objects.filter.return_value.exists.return_value = True
+
+    with caplog.at_level(logging.WARNING, logger="agent_kv.internal_views"):
+        resp = iv.StageReportView.as_view()(
+            _post(
+                "/x", {"org_id": "org1", "stage": "table_extraction", "status": "running"}
+            ),
+            job_id=uuid.uuid4(),
+        )
+
+    assert resp.data["reason"] == "already_terminal"
+    assert caplog.records == [], "a late report for a finished job is ordinary"
+
+
+# ---------------------------------------------------------------------------
+# Untrusted executor payload must not be able to rewrite the status document.
+# Reported as 2.13 in the branch review.
+# ---------------------------------------------------------------------------
+def test_a_name_counter_cannot_rename_the_stage():
+    """`_status_document` builds `{"name": name, **entry}` with the spread
+    LAST, so a persisted `name` wins -- renaming the stage in every later status
+    response and breaking the `if name in stages_json` filter that decides
+    which stages are shown at all.
+    """
+    assert "name" in iv._RESERVED_STAGE_ENTRY_KEYS
+    assert iv._sanitize_counters({"name": "pwned", "steps": 3}) == {"steps": 3}
+
+
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_non_numeric_seconds_is_rejected(m_objects):
+    """`seconds` is echoed back in the status document, so a dict or list here
+    was persisted and returned to the caller verbatim.
+    """
+    resp = iv.StageReportView.as_view()(
+        _post(
+            "/x",
+            {
+                "org_id": "org1",
+                "stage": "table_extraction",
+                "status": "running",
+                "seconds": {"nested": "payload"},
+            },
+        ),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 400
+    assert "seconds" in str(resp.data)
+
+
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_boolean_seconds_is_rejected(m_objects):
+    """`bool` is a subclass of `int`, so a bare isinstance check would let
+    `True` through and persist it as a duration.
+    """
+    resp = iv.StageReportView.as_view()(
+        _post(
+            "/x",
+            {
+                "org_id": "org1",
+                "stage": "table_extraction",
+                "status": "running",
+                "seconds": True,
+            },
+        ),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 400
+
+
+@mock.patch.object(AgentKVJob, "objects")
+def test_an_overlong_stage_name_is_rejected(m_objects):
+    """`job.stage` is varchar(32); a longer name was an unhandled 500, and
+    `job.stages` could grow unbounded distinct keys.
+    """
+    resp = iv.StageReportView.as_view()(
+        _post(
+            "/x",
+            {"org_id": "org1", "stage": "x" * 33, "status": "running"},
+        ),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 400
+    assert "too long" in str(resp.data)
+
+
+# ---------------------------------------------------------------------------
+# The terminal webhook is queued by the request that WON the guard
+# ---------------------------------------------------------------------------
+# Regression cover for the finalize-replay notification loss reported on
+# #2317. The worker used to send the terminal webhook inline, after this view
+# answered. If that RESPONSE was lost -- a timeout, or a 5xx -- the worker
+# retried, the replay found an already-terminal row and was told
+# `finalized: False`, and the worker declined to send: from out there a
+# non-fresh finalize is indistinguishable from the ordinary duplicate
+# callback whose webhook already went out. The caller was never notified and
+# nothing recorded the miss.
+#
+# Tying the enqueue to the guard rather than to the response is the fix, so
+# what these pin is: exactly one enqueue, on the winning request, whatever
+# happens to the reply.
+
+
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "dispatch_terminal_webhook")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(iv, "write_result", return_value="ref")
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_won_finalize_queues_the_terminal_webhook(
+    m_jobs, m_write, m_mark, m_dispatch, m_release
+):
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+
+    iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": True, "result": {}}),
+        job_id=uuid.uuid4(),
+    )
+
+    m_dispatch.assert_called_once_with(job, "completed")
+
+
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "dispatch_terminal_webhook")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_won_failure_finalize_queues_failed_not_completed(
+    m_jobs, m_mark, m_dispatch, m_release
+):
+    """The status is read off the row the view just terminalized, so the
+    caller is told `failed` rather than a hardcoded `completed`."""
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+
+    iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": False, "error": "boom"}),
+        job_id=uuid.uuid4(),
+    )
+
+    m_dispatch.assert_called_once_with(job, "failed")
+
+
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "dispatch_terminal_webhook")
+@mock.patch.object(iv, "delete_result_file")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(iv, "write_result", return_value="ref")
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_replay_that_loses_the_guard_queues_nothing(
+    m_jobs, m_write, m_mark, m_del, m_dispatch, m_release
+):
+    """The retry after a lost response must NOT queue a second notification.
+
+    This is the other half of the fix: the first (winning) call already
+    queued it, so re-queuing here would double-notify the caller -- trading
+    the old lost-webhook bug for a duplicate-webhook one.
+    """
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+
+    iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": True, "result": {}}),
+        job_id=uuid.uuid4(),
+    )
+
+    m_dispatch.assert_not_called()
+
+
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "dispatch_terminal_webhook")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(iv, "write_result", return_value="ref")
+@mock.patch.object(AgentKVJob, "objects")
+def test_the_notification_does_not_depend_on_the_response_being_delivered(
+    m_jobs, m_write, m_mark, m_dispatch, m_release
+):
+    """The actual reported failure, expressed directly.
+
+    The enqueue must already have happened by the time this view produces a
+    response, so a response that never reaches the worker cannot take the
+    notification with it. Asserting ordering rather than just "it was called"
+    is what distinguishes the fix from the bug: the old code called out only
+    AFTER the reply had made it back to the caller.
+    """
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+    queued_before_response = []
+    m_dispatch.side_effect = lambda *a, **k: queued_before_response.append(True)
+
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": True, "result": {}}),
+        job_id=uuid.uuid4(),
+    )
+
+    assert queued_before_response == [True]
+    assert resp.status_code == 200
+
+
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "dispatch_terminal_webhook", return_value=True)
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(iv, "write_result", return_value="ref")
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_queued_webhook_tells_the_worker_not_to_send_one(
+    m_jobs, m_write, m_mark, m_dispatch, m_release
+):
+    """`webhook_enqueued: true` is how the worker learns delivery is not its
+    job. Without it a worker that has stopped sending inline, talking to a
+    backend that does not enqueue, drops the notification entirely."""
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": True, "result": {}}),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.data["webhook_enqueued"] is True
+
+
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "dispatch_terminal_webhook", return_value=False)
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(iv, "write_result", return_value="ref")
+@mock.patch.object(AgentKVJob, "objects")
+def test_an_enqueue_that_failed_hands_delivery_back_to_the_worker(
+    m_jobs, m_write, m_mark, m_dispatch, m_release
+):
+    """The flag reports what the enqueue DID, not whether the job has a
+    webhook.
+
+    The enqueue is best-effort and swallows its exception, so a queue that is
+    down returns False. Reporting True there would tell the worker to stand
+    down when nothing had been queued -- neither side sends, which is the
+    exact loss this change exists to remove. Fails back to the inline path
+    instead.
+    """
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": True, "result": {}}),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.data["webhook_enqueued"] is False

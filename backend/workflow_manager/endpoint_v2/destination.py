@@ -481,7 +481,6 @@ class DestinationConnector(BaseConnector):
                 table_name=table_name,
                 values=values,
             )
-            logger.info("destination.py sql_columns_and_values", sql_columns_and_values)
             DatabaseUtils.execute_write_query(
                 db_class=db_class,
                 engine=engine,
@@ -635,10 +634,17 @@ class DestinationConnector(BaseConnector):
                 result = file_content.encode("utf-8").decode("unicode-escape")
             else:
                 raise InvalidToolOutputType()
-        except (FileNotFoundError, json.JSONDecodeError) as err:
-            msg = f"Error while getting result from the tool: {err}"
-            logger.error(msg)
-            raise APIException(detail=msg)
+        except FileNotFoundError:
+            # The storage path goes to the log, never to the caller.
+            logger.exception(f"Error while getting result from the tool ({output_file})")
+            raise APIException(
+                detail="Error while getting result from the tool: output not found"
+            )
+        except json.JSONDecodeError:
+            logger.exception(f"Error while getting result from the tool ({output_file})")
+            raise APIException(
+                detail="Error while getting result from the tool: output is not valid JSON"
+            )
 
         return result
 
@@ -1119,7 +1125,7 @@ class DestinationConnector(BaseConnector):
 
         Args:
             input_file_path: Path to the file to read
-            file_name: Name of the file for logging purposes
+            file_name: Name of the file, used in the log and the caller-facing error
 
         Returns:
             Base64 encoded file content
@@ -1132,12 +1138,13 @@ class DestinationConnector(BaseConnector):
             file_storage = file_system.get_file_storage()
 
             if not file_storage.exists(input_file_path):
-                raise APIException(f"File not found: {input_file_path}")
+                raise FileNotFoundError(f"File not found: {input_file_path}")
 
             file_bytes = file_storage.read(input_file_path, mode="rb")
             if isinstance(file_bytes, str):
                 file_bytes = file_bytes.encode("utf-8")
             return base64.b64encode(file_bytes).decode("utf-8")
-        except Exception as e:
-            logger.error(f"Failed to read file content for {file_name}: {e}")
-            raise APIException(f"Failed to read file content for queue: {e}")
+        except Exception:
+            # The storage path goes to the log, never to the caller.
+            logger.exception(f"Failed to read file content for {file_name}")
+            raise APIException(f"Failed to read file content for queue: {file_name}")

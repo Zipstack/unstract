@@ -155,10 +155,10 @@ function ConnectorsPage() {
   );
   fetchRef.current = getConnectors;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: initial fetch on mount only; later fetches go through requestList and fetchUsers
   useEffect(() => {
     requestList(1, DEFAULT_PAGE_SIZE, "", sort.sortBy, sort.order);
     fetchUsers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchUsers = async () => {

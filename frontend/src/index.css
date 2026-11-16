@@ -3,6 +3,12 @@
  * (UN_SHADCN_IMPL_PLAN P0-10)
  * ------------------------------------------------------------------ */
 @import "tailwindcss";
+/* v1 compiles its own Tailwind root (src/v1/styles/index.css). Keep v0's scan
+ * out of the v1 tree, the lint scripts and the guardrail fixtures, or class-like
+ * strings there generate unprefixed utilities in v0's bundle (UN-4299). */
+@source not "./v1";
+@source not "../scripts";
+@source not "../test-fixtures";
 @plugin "tailwindcss-animate";
 @plugin "@tailwindcss/typography";
 

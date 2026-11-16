@@ -65,8 +65,7 @@ function ApiDeployment() {
     coOwnerAllUsers,
     coOwnerResourceId,
     handleCoOwner: handleCoOwnerAction,
-    onAddCoOwner,
-    onRemoveCoOwner,
+    onApplyCoOwners,
   } = useCoOwnerManagement({
     service: apiDeploymentsApiService,
     setAlertDetails,
@@ -85,6 +84,7 @@ function ApiDeployment() {
     fetchRef,
     handlePaginationChange,
     handleSearch,
+    handleListRefresh,
   } = usePaginatedList();
 
   const { scrollRestoreId, activateScrollRestore, clearPendingScroll } =
@@ -232,7 +232,7 @@ function ApiDeployment() {
     updateItemStatus(record.id, newStatus);
 
     apiDeploymentsApiService
-      .updateApiDeployment({ ...record, is_active: newStatus })
+      .setApiDeploymentActive(record.id, newStatus)
       .catch((err) => {
         updateItemStatus(record.id, !newStatus);
         setAlertDetails(handleException(err));
@@ -360,6 +360,7 @@ function ApiDeployment() {
           openCodeModal={setOpenCodeModal}
           setSelectedRow={setSelectedRow}
           workflowEndpointList={workflowEndpointList}
+          refreshList={handleListRefresh}
         />
       )}
       <ManageKeys
@@ -408,10 +409,8 @@ function ApiDeployment() {
         resourceType="API Deployment"
         allUsers={coOwnerAllUsers}
         coOwners={coOwnerData.coOwners}
-        createdBy={coOwnerData.createdBy}
         loading={coOwnerLoading}
-        onAddCoOwner={onAddCoOwner}
-        onRemoveCoOwner={onRemoveCoOwner}
+        onApplyCoOwners={onApplyCoOwners}
       />
     </>
   );

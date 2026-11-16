@@ -52,12 +52,12 @@ function GroupMemberManager({ open, group, onClose }) {
       .finally(() => setLoading(false));
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loadMembers is recreated every render; reload only when the dialog opens or the group changes
   useEffect(() => {
     if (open) {
       loadMembers();
       setPendingAddIds([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, group?.id]);
 
   const memberIds = new Set(members.map((m) => m.user_id));
