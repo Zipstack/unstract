@@ -279,6 +279,12 @@ def run_abortable(
         try:
             return future.result(timeout=poll)
         except concurrent.futures.TimeoutError:
+            if future.done():
+                # On Python 3.11+ this class IS the builtin TimeoutError, so a
+                # coroutine that itself timed out lands here too. A finished
+                # future re-raises on every result(), so looping would spin
+                # forever: surface the coroutine's own error instead.
+                return future.result()
             if not should_abort_now(predicate):
                 continue
             future.cancel()

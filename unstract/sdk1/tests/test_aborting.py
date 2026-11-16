@@ -29,6 +29,26 @@ from unstract.sdk1.utils.aborting import (
 
 
 class TestRunAbortable:
+    def test_a_coroutine_that_times_out_surfaces_its_error_instead_of_spinning(
+        self,
+    ) -> None:
+        async def work() -> None:
+            raise TimeoutError("provider read timeout")
+
+        result: list[BaseException] = []
+
+        def call() -> None:
+            try:
+                run_abortable(work, lambda: False, poll=0.01)
+            except BaseException as exc:  # noqa: BLE001
+                result.append(exc)
+
+        t = threading.Thread(target=call, daemon=True)
+        t.start()
+        t.join(timeout=3)
+        assert not t.is_alive(), "run_abortable spun on a finished future"
+        assert isinstance(result[0], TimeoutError)
+
     def test_returns_the_result_when_nothing_aborts(self) -> None:
         async def work() -> str:
             await asyncio.sleep(0.01)
