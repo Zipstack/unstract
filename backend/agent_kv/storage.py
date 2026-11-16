@@ -231,6 +231,16 @@ def delete_input(job) -> bool:
 _CACHE_DIR = "cache"
 
 
+def _scan_offset(total: int) -> int:
+    """Where this tick starts in the listing, so no prefix can starve the tail.
+
+    Moves with the clock rather than at random: a run is reproducible within
+    its hour, successive runs still cover the whole listing, and tests can
+    pin it. Its own function so they can.
+    """
+    return int(datetime.now(UTC).timestamp() // 3600) % total
+
+
 def sweep_document_cache(max_age_days: int, limit: int) -> tuple[int, int]:
     """Delete OCR document-cache entries older than ``max_age_days``.
 
@@ -254,10 +264,19 @@ def sweep_document_cache(max_age_days: int, limit: int) -> tuple[int, int]:
     sweep acceptable here: a miss costs one re-OCR and nothing else. That is
     not true of the job tree, which is why this does not share that code path.
 
-    Capped at ``limit`` objects examined-and-acted-on per call and tolerant of
-    every per-object failure, in the style of the two sweeps in
-    ``agent_kv.maintenance``: a cache that cannot be swept must never fail the
-    maintenance tick.
+    Capped at ``limit`` objects EXAMINED per call -- not deleted, see the note
+    at the loop -- and tolerant of every per-object failure, in the style of the
+    two sweeps in ``agent_kv.maintenance``: a cache that cannot be swept must
+    never fail the maintenance tick.
+
+    **The listing itself is still whole**, and that is a known limit rather than
+    an oversight. ``FileStorage`` exposes ``glob``/``ls``/``walk`` and no cursor,
+    so there is no paged scan to ask for: one call returns every matching key
+    and the per-tick cost of THAT grows with the cache even though the stat and
+    delete work no longer does. Closing it properly means either a cursor on the
+    storage interface or a key layout that a lifecycle rule can select
+    (``cache/{org}/...`` rather than ``{org}/cache/...``), both of which are
+    larger changes than this sweep.
     """
     cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
     pattern = f"{settings.AGENT_KV_STORAGE_DIR_PREFIX}/*/{_CACHE_DIR}/*.json"
@@ -280,10 +299,36 @@ def sweep_document_cache(max_age_days: int, limit: int) -> tuple[int, int]:
         )
         return (0, 0)
 
-    deleted = failed = 0
-    for path in paths:
-        if deleted + failed >= limit:
+    # EXAMINED, not acted-on, is what the budget counts, and the scan does not
+    # always start at the front. Both were wrong in the first version and both
+    # were reported by greptile on #2309:
+    #
+    # * counting only deletes and failures meant a store full of UNEXPIRED
+    #   entries stat'ed every one of them on every tick while never reaching
+    #   `limit`, so the per-tick cost grew with the cache and could hold the
+    #   internal TTL endpoint past its caller's patience;
+    # * starting at the front every time meant a prefix of entries that
+    #   persistently fail -- an unreadable mtime, a delete the backend refuses
+    #   -- consumed the whole budget on every run, and nothing behind them was
+    #   ever reached. `run_ttl_cleanup` has the same hazard and solves it by
+    #   splitting the batch between fresh rows and retries; there is no row
+    #   here to mark, so rotation is the equivalent that needs no state.
+    #
+    # The offset moves with the clock rather than at random, so a run is
+    # reproducible within its hour while successive runs still cover the whole
+    # listing. Deleting a cache entry is always safe, so sweeping the tiers in
+    # a different order on each tick costs nothing.
+    total = len(paths)
+    if not total:
+        return (0, 0)
+    offset = _scan_offset(total)
+
+    deleted = failed = examined = 0
+    for i in range(total):
+        if examined >= limit:
             break
+        path = paths[(offset + i) % total]
+        examined += 1
         try:
             mtime = fs.modification_time(path)
         except FileNotFoundError:

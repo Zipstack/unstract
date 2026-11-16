@@ -189,6 +189,83 @@ _ALLOWED_IMPORTS = {
     "functools",
     "sys",
 }
+
+#: Submodules permitted by their FULL dotted path. Everything else under an
+#: allowed top-level name is refused.
+#:
+#: The rules used to test only the FIRST dotted segment, so every submodule of
+#: an allowed module was allowed with it. That is not a hygiene gap: measured,
+#: `from json.tool import Path` was ACCEPTED while the identical
+#: `from pathlib import Path` was refused, because CPython's `json/tool.py`
+#: does `from pathlib import Path`. The same object, two spellings, opposite
+#: verdicts -- and `Path` carries `unlink`, `symlink_to` and `iterdir`.
+#: `import json.tool` and `from json import tool` reached it too.
+#: Reported by greptile on #2309.
+#:
+#: `collections.abc` is the only entry because it is the only submodule of an
+#: allowed module that generated transformation code has a reason to name.
+_ALLOWED_SUBMODULES = frozenset({"collections.abc"})
+
+
+def _module_allowed(name: str) -> bool:
+    """A module is allowed by its WHOLE dotted path, not by its first segment."""
+    if not name:
+        return False
+    return name in _ALLOWED_IMPORTS or name in _ALLOWED_SUBMODULES
+
+
+def _module_valued_members() -> dict[str, frozenset[str]]:
+    """Member names that resolve to a MODULE, per allowed module.
+
+    `from json import tool` binds a submodule as a member, so the dotted-path
+    check above never sees it -- the module is plainly `json`. Computed by
+    introspection rather than listed, so a stdlib that grows a re-export is
+    covered without anyone editing a constant.
+
+    TWO sources, because either alone leaves a hole and the second was found by
+    the first version of this failing its own test:
+
+    * bound module ATTRIBUTES catch re-exports (`statistics.random`,
+      `json.codecs`) -- present on the parent, defined elsewhere;
+    * `pkgutil.iter_modules` catches submodules NOT YET IMPORTED, which are
+      absent from `dir()` and are the case the report names.
+
+    Failure to import is not fatal: the entry is simply absent, and the member
+    is then judged by the other member rules as before.
+    """
+    import importlib
+    import pkgutil
+    from types import ModuleType
+
+    out: dict[str, frozenset[str]] = {}
+    for mod_name in _ALLOWED_IMPORTS:
+        try:
+            mod = importlib.import_module(mod_name)
+        except Exception:  # pragma: no cover - stdlib import cannot fail here
+            continue
+        names = {
+            attr
+            for attr in dir(mod)
+            if not attr.startswith("_")
+            and isinstance(getattr(mod, attr, None), ModuleType)
+        }
+        # Submodules not yet imported are ABSENT from `dir()`:
+        # `json/__init__.py` never imports `json.tool`, so a check built only
+        # on attributes accepted `from json import tool` while refusing
+        # `from json import codecs` -- measured, and `tool` is the one the
+        # report is about. `iter_modules` reads the package directory and does
+        # NOT import or execute what it names.
+        path = getattr(mod, "__path__", None)
+        if path is not None:
+            try:
+                names.update(info.name for info in pkgutil.iter_modules(path))
+            except Exception:  # pragma: no cover - unreadable package dir
+                pass
+        out[mod_name] = frozenset(names)
+    return out
+
+
+_MODULE_VALUED_MEMBERS = _module_valued_members()
 _DENYLISTED_CALLS = {
     "eval",
     "exec",
@@ -237,7 +314,7 @@ def _rule_import(node, parents) -> str | None:
     if not isinstance(node, ast.Import):
         return None
     for a in node.names:
-        if a.name.split(".")[0] not in _ALLOWED_IMPORTS:
+        if not _module_allowed(a.name):
             return f"safety gate: import '{a.name}' is not in the allowed set"
         # `import sys as s` would let aliased sys access dodge the
         # literal-name-"sys" match the bare-Name rule below relies
@@ -251,7 +328,7 @@ def _rule_import_from(node, parents) -> str | None:
     """Allowlisted modules only, and no `from sys import ...` in any form."""
     if not isinstance(node, ast.ImportFrom):
         return None
-    if (node.module or "").split(".")[0] not in _ALLOWED_IMPORTS:
+    if not _module_allowed(node.module or ""):
         return f"safety gate: import '{node.module}' is not in the allowed set"
     # `from sys import argv` (or anything else from sys) binds names
     # directly with no ast.Name(id='sys') reference for the rule
@@ -286,6 +363,17 @@ def _rule_import_from(node, parents) -> str | None:
             return f"safety gate: 'from {node.module} import sys' is not allowed"
         if name in _DENYLISTED_ATTR_CALLS or name in _DENYLISTED_NAMES:
             return f"safety gate: disallowed from-import member '{name}'"
+        # `from json import tool` binds a SUBMODULE as a member, so the
+        # dotted-path check above sees only `json` and passes it. Measured:
+        # that spelling reached `tool.Path` exactly as `from json.tool import
+        # Path` did. Judged by the same whole-path rule.
+        if name in _MODULE_VALUED_MEMBERS.get(node.module or "", ()) and (
+            not _module_allowed(f"{node.module}.{name}")
+        ):
+            return (
+                f"safety gate: 'from {node.module} import {name}' imports a "
+                "submodule that is not in the allowed set"
+            )
     return None
 
 

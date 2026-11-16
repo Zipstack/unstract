@@ -23,13 +23,17 @@ from agent_kv import storage
 class FakeFS:
     """Minimal stand-in for the `FileStorage` surface the sweep uses."""
 
-    def __init__(self, entries: dict, *, glob_raises=False, rm_raises=()):
+    def __init__(
+        self, entries: dict, *, glob_raises=False, rm_raises=(), mtime_raises=()
+    ):
         # entries: path -> mtime (datetime, possibly naive)
         self.entries = dict(entries)
         self.glob_raises = glob_raises
         self.rm_raises = set(rm_raises)
+        self.mtime_raises = set(mtime_raises)
         self.removed: list[str] = []
         self.globbed: list[str] = []
+        self.stat_calls: list[str] = []
 
     def glob(self, pattern):
         self.globbed.append(pattern)
@@ -38,6 +42,9 @@ class FakeFS:
         return list(self.entries)
 
     def modification_time(self, path):
+        self.stat_calls.append(path)
+        if path in self.mtime_raises:
+            raise OSError("stat refused")
         if path not in self.entries:
             raise FileNotFoundError(path)
         return self.entries[path]
@@ -116,6 +123,54 @@ def test_a_naive_mtime_is_read_as_utc_rather_than_raising(patched_fs):
     fs = patched_fs(FakeFS({"p/o1/cache/a.json": naive_old}))
     assert storage.sweep_document_cache(7, 100) == (1, 0)
     assert fs.removed == ["p/o1/cache/a.json"]
+
+
+# --- the budget bounds WORK, and the scan rotates (greptile, #2309) --------
+
+
+def test_unexpired_entries_consume_the_budget_too(patched_fs, monkeypatch):
+    """Counting only deletes and failures meant a store full of fresh entries
+    stat'ed every one of them on every tick and never reached `limit`, so the
+    per-tick cost grew with the cache and could hold the internal TTL endpoint
+    past its caller's patience.
+    """
+    monkeypatch.setattr(storage, "_scan_offset", lambda total: 0)
+    entries = {f"p/o1/cache/{i}.json": _ago(1) for i in range(10)}
+    fs = patched_fs(FakeFS(entries))
+    assert storage.sweep_document_cache(7, 3) == (0, 0)
+    assert len(fs.stat_calls) == 3, "examined more than the budget allowed"
+
+
+def test_a_persistently_failing_prefix_cannot_starve_the_rest(
+    patched_fs, monkeypatch
+):
+    """Starting at the front every tick meant entries that always fail ate the
+    whole budget forever and nothing behind them was reached. `run_ttl_cleanup`
+    has the same hazard and splits its batch; there is no row to mark here, so
+    the scan rotates instead.
+    """
+    paths = [f"p/o1/cache/{i}.json" for i in range(4)]
+    entries = {p: _ago(10) for p in paths}
+    bad = paths[:2]
+
+    # Front-start: the budget is spent entirely on the two that always fail.
+    monkeypatch.setattr(storage, "_scan_offset", lambda total: 0)
+    fs = patched_fs(FakeFS(entries, mtime_raises=bad))
+    assert storage.sweep_document_cache(7, 2) == (0, 2)
+    assert fs.removed == []
+
+    # A later tick starts past them and reaches what the front-start never did.
+    monkeypatch.setattr(storage, "_scan_offset", lambda total: 2)
+    fs2 = patched_fs(FakeFS(entries, mtime_raises=bad))
+    assert storage.sweep_document_cache(7, 2) == (2, 0)
+    assert sorted(fs2.removed) == sorted(paths[2:])
+
+
+def test_the_offset_stays_inside_the_listing(patched_fs):
+    # It indexes `paths`, so an out-of-range value is an IndexError on a
+    # maintenance tick rather than a bad sweep.
+    for total in (1, 2, 7, 500):
+        assert 0 <= storage._scan_offset(total) < total
 
 
 def test_unconfigured_storage_is_a_quiet_noop_not_a_raise(monkeypatch):

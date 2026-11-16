@@ -1459,3 +1459,87 @@ def test_a_lambda_parameter_still_shadows_the_builtin():
     """
     ok, reason = check_code_safe("g = lambda vars: vars['n']\nresult = g({'n': 1})\n")
     assert ok is True, reason
+
+
+# --- submodules are judged by their WHOLE dotted path (greptile, #2309) -----
+#
+# The import rules used to test only the FIRST dotted segment, so every
+# submodule of an allowed module was allowed with it. Measured before the fix:
+# `from json.tool import Path` was ACCEPTED while the identical
+# `from pathlib import Path` was refused, because CPython's `json/tool.py`
+# does `from pathlib import Path`. `Path` carries `unlink`, `symlink_to` and
+# `iterdir`, so the accepted spelling handed generated code the filesystem.
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "from json.tool import Path",
+        "import json.tool",
+        "import json.tool as t",
+        "from json import tool",
+        "import statistics.random",
+        "from statistics import random",
+        "from json import codecs",
+        "from json import decoder",
+        "from json import encoder",
+        "from json import scanner",
+        "from re import enum",
+    ],
+)
+def test_a_submodule_of_an_allowed_module_is_not_allowed_with_it(src):
+    ok, reason = check_code_safe(src)
+    assert ok is False, f"accepted {src!r}"
+    assert "allowed set" in reason
+
+
+def test_the_refused_submodule_really_is_the_refused_module():
+    """`json.tool.Path` IS `pathlib.Path` -- the two spellings named the same
+    object, which is what made the first-segment check a bypass rather than a
+    naming inconsistency. Asserted so this test cannot quietly stop being
+    about anything if CPython reorganises `json/tool.py`.
+    """
+    import json.tool
+    import pathlib
+
+    assert json.tool.Path is pathlib.Path
+    assert check_code_safe("from pathlib import Path")[0] is False
+    assert check_code_safe("from json.tool import Path")[0] is False
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "import json",
+        "from json import dumps, loads",
+        "from json import JSONDecodeError",
+        "import collections.abc",
+        "from collections import abc",
+        "from collections.abc import Mapping",
+        "import re\nresult = re.compile('x')",
+        "from statistics import mean",
+        "from decimal import Decimal",
+        "from datetime import datetime",
+        "from functools import reduce",
+        "from itertools import chain",
+    ],
+)
+def test_the_allowed_modules_and_collections_abc_still_import(src):
+    ok, reason = check_code_safe(src)
+    assert ok is True, reason
+
+
+def test_an_unimported_submodule_is_still_seen_as_one():
+    """`json/__init__.py` never imports `json.tool`, so a member check built
+    only on bound attributes accepted `from json import tool` while refusing
+    `from json import codecs`. `pkgutil` is what closes that gap.
+
+    Asserted against the computed member set rather than `dir(json)`: once ANY
+    test in this process does `import json.tool`, `tool` is bound on `json` for
+    good, so a `dir()` assertion here passes or fails on test ORDER rather than
+    on the gate. (It did, the first time this was written.)
+    """
+    from sandbox import gate
+
+    assert "tool" in gate._MODULE_VALUED_MEMBERS["json"]
+    assert check_code_safe("from json import tool")[0] is False
