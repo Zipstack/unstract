@@ -29,11 +29,15 @@ const ASSET_EXTENSIONS = new Set([
 // Asset imports (images, SVGs, etc.) are resolved to a module that exports
 // an empty string as default, so static `import logo from "..."` statements
 // don't break the build.
-function optionalPluginImports() {
+export function optionalPluginImports() {
   return {
     name: "optional-plugin-imports",
     resolveId(source, importer) {
       if (!importer) return null;
+
+      // v1 has no optional imports: an absent v1 plugin has no manifest, so a
+      // missing module under src/v1 is a bug and must fail the build.
+      if (importer.includes("/src/v1/")) return null;
 
       // Only handle relative imports
       if (!source.startsWith(".")) return null;
@@ -134,6 +138,30 @@ function jsxInJs() {
   };
 }
 
+/*
+ * v1 plugin check (scripts/v1-plugins.mjs): fails the build on a slot filled
+ * twice, a route defined twice (by two plugins, or by a plugin and an OSS
+ * page) or a plugin with no distribution, and publishes the plugins this
+ * build carries as plugin-matrix.json, tagged with its distribution.
+ */
+export function v1PluginMatrix({ dir, distribution = "oss" } = {}) {
+  let matrix;
+  return {
+    name: "v1-plugin-matrix",
+    async buildStart() {
+      const { check } = await import("./scripts/v1-plugins.mjs");
+      matrix = await check(dir);
+    },
+    generateBundle() {
+      this.emitFile({
+        type: "asset",
+        fileName: "plugin-matrix.json",
+        source: `${JSON.stringify({ distribution, ...matrix }, null, 2)}\n`,
+      });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
@@ -165,6 +193,7 @@ export default defineConfig(({ mode }) => {
       }),
       // SVG as React component support (for `import Logo from './logo.svg?react'`)
       svgr(),
+      v1PluginMatrix({ distribution: distribution || "oss" }),
     ],
 
     /*

@@ -10,6 +10,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from tool_instance_v2.models import ToolInstance
@@ -19,6 +20,7 @@ from utils.organization_utils import filter_queryset_by_organization
 
 # Import new dataclasses for WorkflowDefinitionAPIView
 from unstract.core.data_models import (
+    ALREADY_FINAL_REASON,
     ConnectionType,
     ConnectorInstanceData,
     WorkflowDefinitionResponseData,
@@ -515,6 +517,27 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 "settings": {},
             }
 
+    # Named execution_status because `status` is the imported DRF module.
+    @action(detail=True, methods=["get"], url_path="status")
+    def execution_status(self, request: Request, id: str | None = None) -> Response:
+        """Lightweight status read; workers poll it between files."""
+        try:
+            execution_id = uuid.UUID(str(id))
+        except ValueError:
+            execution_id = None
+        executions = filter_queryset_by_organization(
+            WorkflowExecution.objects.filter(id=execution_id),
+            request,
+            "workflow__organization",
+        )
+        execution_status = executions.values_list("status", flat=True).first()
+        if execution_status is None:
+            return Response(
+                {"error": "WorkflowExecution not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response({"id": str(execution_id), "status": execution_status})
+
     @action(detail=True, methods=["post"])
     def update_status(self, request, id=None):
         """Update workflow execution status."""
@@ -548,70 +571,54 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             # with failed_files=None, which is_failure_run() reads as a success and
             # silently bypasses notify_on_failures subscribers.
             with transaction.atomic():
-                row_locked = False
-                # Concurrency guard for PG-transport executions, identified by the
-                # durable ``queue_message_id`` marker — NOT a re-evaluated Flipt flag.
-                # Keying on the row's own transport keeps the invariant correct even
-                # if the rollout flag is toggled off or Flipt is unreachable while a
-                # PG execution is still finalizing (per the "transport carried on the
-                # row, never re-read from Flipt" rule).
-                #
-                # Protect COMPLETED and STOPPED — the two statuses that assert a
-                # deliberate final outcome. COMPLETED is set exclusively by a
-                # successful callback (its redelivery is skipped, see
-                # _callback_already_ran); STOPPED records an explicit user/operator
-                # stop. Under the PG path's high concurrency ~15 call sites write
-                # status via unlocked read-modify-write, so a stale writer can commit
-                # AFTER one of these and clobber it (lost update → execution stranded
-                # in EXECUTING, a confusing success→failed flip, or a straggler
-                # callback erasing a user's stop). Lock the row and refuse to overwrite
-                # either with a different status.
+                # Lock the row and refuse to overwrite a deliberate final outcome:
+                # COMPLETED (set only by a successful callback) and STOPPED (an
+                # explicit stop). Under high concurrency ~15 call sites write status
+                # via unlocked read-modify-write, so a stale writer can commit AFTER
+                # one of these and clobber it (lost update → execution stranded in
+                # EXECUTING, a confusing success→failed flip, or a straggler callback
+                # erasing a user's stop). See _protected_statuses for which rows
+                # protect which status.
                 #
                 # ERROR is deliberately NOT protected: other paths (upstream error,
                 # the reaper) can set it BEFORE the first real callback, which then
                 # legitimately corrects the row to COMPLETED when the files actually
                 # succeeded — blocking that would freeze a genuinely successful run at
-                # a premature ERROR. Celery executions (queue_message_id NULL) keep the
-                # legacy path.
+                # a premature ERROR.
                 #
                 # ONE lock per call: the row read here is handed to update_execution()
-                # with row_locked=True, so it does not lock the same row a second time. The
-                # Celery path takes no lock here and lets update_execution() take its
-                # own — still one. FOR NO KEY UPDATE (no_key=True) keeps writers
-                # mutually exclusive without blocking the FOR KEY SHARE that every
-                # child-row INSERT takes on this row for its foreign-key check.
-                if execution.queue_message_id is not None:
-                    execution = WorkflowExecution.objects.select_for_update(
-                        no_key=True
-                    ).get(pk=execution.pk)
-                    row_locked = True
-                    protected = {
-                        ExecutionStatus.COMPLETED.value,
-                        ExecutionStatus.STOPPED.value,
-                    }
-                    if (
-                        execution.status in protected
-                        and status_enum.value != execution.status
-                    ):
-                        logger.warning(
-                            f"update_status: refusing to overwrite protected status "
-                            f"'{execution.status}' with '{status_enum.value}' "
-                            f"for execution {id}"
-                        )
-                        return Response(
-                            {
-                                "status": "skipped",
-                                "reason": "already_final",
-                                "execution_id": str(execution.id),
-                                "new_status": execution.status,
-                            }
-                        )
+                # with row_locked=True, so it does not lock the same row a second
+                # time. FOR NO KEY UPDATE (no_key=True) keeps writers mutually
+                # exclusive without blocking the FOR KEY SHARE that every child-row
+                # INSERT takes on this row for its foreign-key check.
+                execution = WorkflowExecution.objects.select_for_update(no_key=True).get(
+                    pk=execution.pk
+                )
+                if (
+                    execution.status in self._protected_statuses(execution)
+                    and status_enum.value != execution.status
+                ):
+                    logger.warning(
+                        "update_status: refusing to overwrite protected status "
+                        "'%s' with '%s' for execution %s",
+                        execution.status,
+                        status_enum.value,
+                        id,
+                    )
+                    return Response(
+                        {
+                            "status": "skipped",
+                            "reason": ALREADY_FINAL_REASON,
+                            "execution_id": str(execution.id),
+                            "new_status": execution.status,
+                        }
+                    )
 
                 execution.update_execution(
                     status=status_enum,
                     error=error_message,
                     increment_attempt=increment_attempt,
-                    row_locked=row_locked,
+                    row_locked=True,
                 )
 
                 # File aggregates are not handled by update_execution; persist
@@ -623,7 +630,13 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 # either way: Django's foreign keys are DEFERRABLE INITIALLY DEFERRED,
                 # so an open insert holds no lock on this row until it commits, and
                 # FOR UPDATE never waited for it.)
-                self._update_file_aggregates(execution, validated_data)
+                if status_enum == ExecutionStatus.STOPPED:
+                    from workflow_manager.execution.abort import write_file_counts
+
+                    # A stopped run's counts come from its file rows, not the worker.
+                    write_file_counts(execution)
+                else:
+                    self._update_file_aggregates(execution, validated_data)
 
                 # Reaper recovery: cascade the terminal status to any non-terminal
                 # file executions so the execution and its files agree (atomic with
@@ -871,6 +884,20 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
         except Exception:
             logger.exception("recover_stuck_pg_executions: failed to recover %s", exec_id)
             return "failed"
+
+    @staticmethod
+    def _protected_statuses(execution: WorkflowExecution) -> set[str]:
+        """Statuses a different status write must not overwrite on this row.
+
+        Any run can be stopped, so STOPPED is protected on every row. COMPLETED
+        stays protected only on rows carrying the PG dispatch marker
+        ``queue_message_id``, keyed on the row and never on a re-read Flipt flag.
+        """
+        from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+        if execution.queue_message_id is None:
+            return {ExecutionStatus.STOPPED.value}
+        return {ExecutionStatus.COMPLETED.value, ExecutionStatus.STOPPED.value}
 
     @staticmethod
     def _cascade_terminal_files(execution, status_enum, error_message) -> None:

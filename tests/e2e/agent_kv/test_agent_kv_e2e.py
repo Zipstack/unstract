@@ -392,7 +392,8 @@ def test_submit_unreadable_pdf_is_400(
     ``backend/agent_kv/tests/test_job_views.py``,
     ``backend/agent_kv/tests/test_dispatch.py``).
     """
-    garbage = b"this is not a pdf file, just garbage bytes" * 20
+    # The header gets it past the content-type check, so pdfplumber refuses it.
+    garbage = b"%PDF-1.4\n" + b"this is not a pdf file, just garbage bytes" * 20
     resp = submit_raw(agent_kv_key, garbage, "garbage.pdf", table_keys())
     assert resp.status_code == 400, (
         f"expected 400 (a 501 here means the agent-kv engine plugin isn't "

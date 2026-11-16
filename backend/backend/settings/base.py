@@ -407,6 +407,10 @@ FILE_ACTIVE_CACHE_REDIS_DB = parse_db(
 INSTANT_WF_POLLING_TIMEOUT = int(
     os.environ.get("INSTANT_WF_POLLING_TIMEOUT", "300")
 )  # 5 minutes
+# A PENDING/EXECUTING run with no activity for this long is listed as stuck.
+STUCK_EXECUTION_THRESHOLD_SECONDS = int(
+    os.environ.get("STUCK_EXECUTION_THRESHOLD_SECONDS", "9000")
+)
 
 # ETL Pipeline minimum schedule interval (in seconds)
 # Default: 1800 seconds (30 minutes)

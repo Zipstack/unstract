@@ -11,7 +11,9 @@ from unittest.mock import patch
 from account_v2.models import Organization
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -19,7 +21,12 @@ from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from dashboard_metrics.management.commands.backfill_metrics import Command
-from dashboard_metrics.models import EventMetricsDaily, EventMetricsMonthly, Granularity
+from dashboard_metrics.models import (
+    EventMetricsDaily,
+    EventMetricsHourly,
+    EventMetricsMonthly,
+    Granularity,
+)
 from dashboard_metrics.tasks import truncate_to_day
 
 
@@ -348,8 +355,11 @@ class TestAPartialMonthRangeKeepsTheMonthlyTotal(TestCase):
                 assert "--skip-monthly" in str(caught.exception)
                 assert self._monthly() == 1000
 
-    def test_whole_months_may_rewrite_the_monthly_total(self):
+    def test_whole_months_may_raise_the_monthly_total(self):
         """The control: a range of whole months is a complete source for them."""
+        EventMetricsMonthly._base_manager.filter(organization=self.org).update(
+            metric_value=0
+        )
         workflow = Workflow.objects.create(
             workflow_name="month-wf", organization=self.org
         )
@@ -373,3 +383,177 @@ class TestAPartialMonthRangeKeepsTheMonthlyTotal(TestCase):
             stdout=StringIO(),
         )
         assert self._monthly() == 1
+
+
+class TestTheRebuildNeverLowersAStoredValue(TestCase):
+    """A recount below the stored value is history the sources lost, not an over-count.
+
+    HITL TTL cleanup moves approved reviews to EXPIRED, and deleting a workflow
+    cascades to its executions, so the sources shrink after they were aggregated.
+    Overwriting would lower history that nothing else holds, and a month older than
+    the previous one is never rederived to put it back.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            organization_id="lower-org", name="lower", display_name="Lower"
+        )
+        self.workflow = Workflow.objects.create(
+            workflow_name="lower-wf", organization=self.org
+        )
+        self.day = truncate_to_day(timezone.now() - timedelta(days=200))
+        execution = WorkflowExecution.objects.create(
+            workflow=self.workflow, status=ExecutionStatus.COMPLETED
+        )
+        stamp = self.day + timedelta(hours=10)
+        for name in ("a.pdf", "b.pdf"):
+            fe = WorkflowFileExecution.objects.create(
+                workflow_execution=execution,
+                file_name=name,
+                status=ExecutionStatus.COMPLETED.value,
+            )
+            WorkflowFileExecution.objects.filter(pk=fe.pk).update(created_at=stamp)
+        WorkflowExecution.objects.filter(pk=execution.pk).update(created_at=stamp)
+        self.hour = stamp.replace(minute=0, second=0, microsecond=0)
+
+    def _store(self, model, period, value, **period_field):
+        model._base_manager.create(
+            organization=self.org,
+            metric_name="documents_processed",
+            project="default",
+            tag="",
+            metric_value=value,
+            metric_count=1,
+            **{period_field.popitem()[0]: period},
+        )
+
+    def _value(self, model, **period):
+        return model._base_manager.get(
+            organization=self.org, metric_name="documents_processed", **period
+        ).metric_value
+
+    def _run(self, **flags):
+        out = StringIO()
+        call_command(
+            "backfill_metrics",
+            start_date=self.day.date().isoformat(),
+            end_date=self.day.date().isoformat(),
+            skip_monthly=True,
+            stdout=out,
+            **flags,
+        )
+        return out.getvalue()
+
+    def test_the_check_is_part_of_the_write(self):
+        """One conditional upsert, with no read of the stored value before it.
+
+        A separate read goes stale when the aggregator writes in between, and a lock
+        taken for it can join a cycle with the monthly rollup.
+        """
+        self._store(EventMetricsDaily, self.day.date(), 1, date=None)
+        with CaptureQueriesContext(connection) as queries:
+            self._run(skip_hourly=True)
+        daily = [
+            q["sql"]
+            for q in queries.captured_queries
+            if "event_metrics_daily" in q["sql"]
+        ]
+        assert len(daily) == 1
+        assert "WHERE EXCLUDED" in daily[0]
+        assert "metric_value" in daily[0].split("WHERE EXCLUDED")[1]
+
+    def test_a_higher_stored_daily_value_is_kept_and_reported(self):
+        self._store(EventMetricsDaily, self.day.date(), 5, date=None)
+        out = self._run(skip_hourly=True)
+        assert self._value(EventMetricsDaily, date=self.day.date()) == 5
+        assert "kept 1" in out
+
+    def test_an_equal_recount_is_written(self):
+        """Only a lower recount is kept back; an equal one still writes."""
+        self._store(EventMetricsDaily, self.day.date(), 2, date=None)
+        out = self._run(skip_hourly=True)
+        assert "kept" not in out
+
+    def test_a_lower_stored_daily_value_is_raised(self):
+        """The control: the repair still fills a hole."""
+        self._store(EventMetricsDaily, self.day.date(), 1, date=None)
+        self._run(skip_hourly=True)
+        assert self._value(EventMetricsDaily, date=self.day.date()) == 2
+
+    def test_a_higher_stored_hourly_value_is_kept(self):
+        """Hourly keys are datetimes, the easiest to mismatch and so lower silently."""
+        self._store(EventMetricsHourly, self.hour, 5, timestamp=None)
+        self._run()
+        assert self._value(EventMetricsHourly, timestamp=self.hour) == 5
+
+    def test_a_higher_stored_monthly_value_is_kept(self):
+        month = self.day.date().replace(day=1)
+        EventMetricsMonthly._base_manager.create(
+            organization=self.org,
+            month=month,
+            metric_name="documents_processed",
+            project="default",
+            tag="",
+            metric_value=1000,
+            metric_count=31,
+        )
+        call_command(
+            "backfill_metrics",
+            start_date=month.isoformat(),
+            end_date=(
+                (month + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+            ).isoformat(),
+            skip_hourly=True,
+            stdout=StringIO(),
+        )
+        assert self._value(EventMetricsMonthly, month=month) == 1000
+
+
+class TestMonthlyIsSummedFromTheGuardedDays(TestCase):
+    """A month whose days were partly kept and partly filled sums to its days.
+
+    Summing the raw recount instead puts the month below its own daily rows, and a
+    month older than the previous one is never rederived to fix it.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            organization_id="mixed-org", name="mixed", display_name="Mixed"
+        )
+        workflow = Workflow.objects.create(
+            workflow_name="mixed-wf", organization=self.org
+        )
+        for day, files in ((1, 7), (2, 5)):
+            stamp = timezone.make_aware(timezone.datetime(2026, 3, day, 12))
+            execution = WorkflowExecution.objects.create(
+                workflow=workflow, status=ExecutionStatus.COMPLETED
+            )
+            WorkflowExecution.objects.filter(pk=execution.pk).update(created_at=stamp)
+            for n in range(files):
+                fe = WorkflowFileExecution.objects.create(
+                    workflow_execution=execution,
+                    file_name=f"{day}-{n}.pdf",
+                    status=ExecutionStatus.COMPLETED.value,
+                )
+                WorkflowFileExecution.objects.filter(pk=fe.pk).update(created_at=stamp)
+        stored = {"organization": self.org, "metric_name": "documents_processed"}
+        EventMetricsDaily._base_manager.create(
+            date=date(2026, 3, 1), metric_value=10, metric_count=1, **stored
+        )
+        EventMetricsMonthly._base_manager.create(
+            month=date(2026, 3, 1), metric_value=10, metric_count=1, **stored
+        )
+
+    def test_monthly_equals_the_sum_of_its_daily_rows(self):
+        call_command(
+            "backfill_metrics",
+            start_date="2026-03-01",
+            end_date="2026-03-31",
+            skip_hourly=True,
+            stdout=StringIO(),
+        )
+        rows = {"organization": self.org, "metric_name": "documents_processed"}
+        days = EventMetricsDaily._base_manager.filter(**rows).order_by("date")
+        assert [d.metric_value for d in days] == [10, 5]
+        month = EventMetricsMonthly._base_manager.get(month=date(2026, 3, 1), **rows)
+        assert month.metric_value == 15
