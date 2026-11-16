@@ -34,4 +34,25 @@ describe("useLogout", () => {
     expect(location.href).toMatch(/\/api\/v1\/logout$/);
     expect(useSessionStore.getState().isLogoutLoading).toBe(true);
   });
+
+  // CASA 6.6.1: the user's data must not outlive the session in the browser.
+  it("clears browser storage before leaving the page", () => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { href: "https://app.example/org/dashboard" },
+    });
+    window.localStorage.setItem("dashboard_metrics_overview", '{"data":{}}');
+    window.localStorage.setItem("unstract.v1.theme", "dark");
+    window.sessionStorage.setItem("oauth-current-connector", "google_drive");
+
+    const { result } = renderHook(() => useLogout());
+    result.current();
+
+    expect(
+      window.localStorage.getItem("dashboard_metrics_overview"),
+    ).toBeNull();
+    expect(window.localStorage.getItem("unstract.v1.theme")).toBe("dark");
+    expect(window.sessionStorage.length).toBe(0);
+    window.localStorage.clear();
+  });
 });
