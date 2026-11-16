@@ -371,9 +371,11 @@ class LegacyExecutor(BaseExecutor):
 
         No-op when the adapter did not produce signature data (e.g.
         non-LLMWhisperer-V2 adapters or modes other than ``document_insights``).
+        A stale sidecar from a previous run is removed in that case.
         """
         extraction_metadata = process_response.extraction_metadata
         if not extraction_metadata:
+            self._write_signature_sidecar(fs, output_file_path, None, None)
             return
         signature_metadata = extraction_metadata.signature_metadata
         signature_page_references = extraction_metadata.signature_page_references
@@ -420,9 +422,20 @@ class LegacyExecutor(BaseExecutor):
         """
         if not output_file_path:
             return
-        if not signature_metadata and not signature_page_references:
-            return
         sidecar_path = LegacyExecutor._signature_sidecar_path(output_file_path)
+        if not signature_metadata and not signature_page_references:
+            # Drop any sidecar left by an earlier document_insights run so
+            # cache hits don't resurrect stale signatures.
+            try:
+                if fs.exists(sidecar_path):
+                    fs.rm(sidecar_path)
+            except Exception as e:
+                logger.warning(
+                    "DOC_INSIGHTS sidecar: failed to remove stale %s: %s",
+                    sidecar_path,
+                    e,
+                )
+            return
         payload = {
             "signature_metadata": signature_metadata or {},
             "signature_page_references": signature_page_references or {},

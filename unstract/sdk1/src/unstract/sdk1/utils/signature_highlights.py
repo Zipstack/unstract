@@ -46,7 +46,7 @@ def _any_signer_matches(signatures: list[Any], answer: str) -> bool:
     """Return True if any signer name in ``signatures`` appears in ``answer``.
 
     Each name is matched as a whole token/phrase (case-insensitive,
-    word-boundary anchored) to avoid signer initials like ``"P S"``
+    anchored by non-word-character lookarounds) to avoid signer initials like ``"P S"``
     matching the gap between ``"Pradeep"`` and ``"Surukanti"`` inside
     ``"Pradeep Surukanti"``.
     """
@@ -56,7 +56,7 @@ def _any_signer_matches(signatures: list[Any], answer: str) -> bool:
         name = (sig.get("name") or "").strip()
         if not name:
             continue
-        pattern = re.compile(r"\b" + re.escape(name) + r"\b", re.IGNORECASE)
+        pattern = re.compile(r"(?<!\w)" + re.escape(name) + r"(?!\w)", re.IGNORECASE)
         if pattern.search(answer):
             return True
     return False

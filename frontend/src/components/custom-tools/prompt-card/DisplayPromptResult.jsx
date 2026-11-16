@@ -280,7 +280,33 @@ function DisplayPromptResult({
         );
       }
       if (typeof data === "object" && !details?.enable_highlight) {
-        return JSON.stringify(data, null, 4);
+        const jsonText = JSON.stringify(data, null, 4);
+        // Signature highlights (document_insights) work without the
+        // enable_highlight toggle, so keep JSON answers clickable.
+        if (indent === 0 && hasHighlightData(highlightData)) {
+          return (
+            <Typography.Text
+              wrap
+              onClick={() =>
+                handleSelectHighlight(
+                  highlightData,
+                  promptDetails?.prompt_id,
+                  profileId,
+                  undefined,
+                )
+              }
+              className={`prompt-output-result json-value clickable ${
+                selectedHighlight?.highlightedPrompt ===
+                promptDetails?.prompt_id
+                  ? "selected"
+                  : ""
+              }`}
+            >
+              {jsonText}
+            </Typography.Text>
+          );
+        }
+        return jsonText;
       }
 
       if (typeof data === "string") {

@@ -91,3 +91,12 @@ class TestBuildSignaturePageReferences:
 
         assert references["0"]["line_metadata_index"] == 1
         assert references["0"]["coords"] == [0, 320, 31, 3168]
+
+
+def test_signer_name_ending_in_punctuation_matches() -> None:
+    from unstract.sdk1.utils.signature_highlights import _any_signer_matches
+
+    sigs = [{"name": "J. D."}]
+    assert _any_signer_matches(sigs, "J. D.")
+    assert _any_signer_matches(sigs, "signed by J. D. yesterday")
+    assert not _any_signer_matches([{"name": "P S"}], "Pradeep Surukanti")
