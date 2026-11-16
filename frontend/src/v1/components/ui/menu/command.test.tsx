@@ -218,6 +218,18 @@ describe("Command", () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
+  it("moves and runs rows from the list too, if focus ever lands there", () => {
+    const onSelect = vi.fn();
+    render(<Command label="Search" groups={GROUPS} onSelect={onSelect} />);
+    const list = screen.getByRole("listbox");
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    expect(activeLabel()).toBe("New project");
+    fireEvent.keyDown(list, { key: "Enter" });
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "new" }),
+    );
+  });
+
   it("marks checked rows, and gives the whole group a check column", () => {
     render(
       <Command

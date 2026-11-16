@@ -219,7 +219,8 @@ export function Command({
     }
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  // On the input, and on the list too in case assistive tech moves focus there.
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.nativeEvent.isComposing) {
       return;
     }
@@ -275,13 +276,15 @@ export function Command({
           className="ui:h-10 ui:min-w-0 ui:flex-1 ui:border-0 ui:bg-transparent ui:font-sans ui:text-body-small ui:text-foreground ui:outline-none ui:placeholder:text-muted-foreground"
         />
       </div>
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: the combobox input runs rows from the keyboard; this click handler serves the pointer and screen readers. */}
       <div
         role="listbox"
         id={listId}
-        // Focusable from script only: focus stays in the search box.
+        // Focusable from script only; a mousedown anywhere in it is prevented,
+        // so the pointer never takes focus from the search box.
         tabIndex={-1}
+        onMouseDown={preventFocusLoss}
         onClick={onListClick}
+        onKeyDown={onKeyDown}
         aria-label={label}
         // An empty listbox fails the accessibility scan; the status row speaks instead.
         hidden={status !== null}
@@ -380,8 +383,8 @@ type CommandOptionProps = Readonly<{
 
 /**
  * One `role="option"` row. Focus stays on the combobox input, so the row is
- * only focusable from script, and its mousedown is default-prevented to keep
- * the input focused. A click on it is handled by the list (`onListClick`).
+ * only focusable from script. The list prevents its mousedown, to keep the
+ * input focused, and handles its click (`onListClick`).
  */
 function CommandOption({
   item,
@@ -396,8 +399,6 @@ function CommandOption({
     <div
       id={id}
       role="option"
-      // Focusable from script only; mousedown is prevented, so a click never
-      // takes focus from the input.
       tabIndex={-1}
       aria-selected={active}
       aria-checked={item.checked}
@@ -408,7 +409,6 @@ function CommandOption({
       data-disabled={unavailable ? "" : undefined}
       data-destructive={item.destructive || undefined}
       className={menuItemClass(item)}
-      onMouseDown={preventFocusLoss}
       onMouseMove={unavailable || active ? undefined : activate}
     >
       <MenuItemBody
