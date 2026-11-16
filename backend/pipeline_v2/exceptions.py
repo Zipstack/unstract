@@ -28,7 +28,7 @@ class InactivePipelineError(APIException):
     ):
         if pipeline_name:
             self.default_detail = (
-                f"Pipeline '{pipeline_name}' is inactive, " "please activate the pipeline"
+                f"Pipeline '{pipeline_name}' is inactive, please activate the pipeline"
             )
         super().__init__(detail, code)
 

@@ -26,8 +26,7 @@ LIST_FILTER_PARAMETERS = [
         ListParam.LAST_TEST_STATUS,
         OpenApiTypes.STR,
         enum=[ConnectionStatus.CONNECTED, ConnectionStatus.FAILED, NEVER_TESTED],
-        description="Lists only profiles with this status. Any other value is "
-        "ignored.",
+        description="Lists only profiles with this status. Any other value is ignored.",
     ),
 ]
 

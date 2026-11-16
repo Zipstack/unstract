@@ -2,6 +2,8 @@ import hashlib
 import logging
 import uuid
 
+from backend.constants import RequestHeader
+from backend.internal_api_constants import INTERNAL_API_PREFIX
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from utils.constants import Account
@@ -13,8 +15,6 @@ from account_v2.authentication_plugin_registry import AuthenticationPluginRegist
 from account_v2.authentication_service import AuthenticationService
 from account_v2.constants import Common
 from account_v2.session_tracking import SessionTracker
-from backend.constants import RequestHeader
-from backend.internal_api_constants import INTERNAL_API_PREFIX
 
 logger = logging.getLogger(__name__)
 

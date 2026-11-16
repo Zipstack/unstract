@@ -86,7 +86,7 @@ class Command(BaseCommand):
         try:
             usage = APIDeploymentRateLimiter.get_current_usage(organization)
             self.stdout.write(
-                f'\nCurrent usage: {usage["org_count"]}/{default_limit} concurrent requests'
+                f"\nCurrent usage: {usage['org_count']}/{default_limit} concurrent requests"
             )
 
             if usage["org_count"] >= default_limit:

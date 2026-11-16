@@ -24,7 +24,6 @@ import json
 from typing import Any
 
 from shared.models.file_processing import FileProcessingContext
-
 from unstract.core.data_models import ExecutionStatus, FileHashData, WorkerFileData
 from unstract.core.worker_models import FileProcessingResult, WorkflowExecutionResult
 
