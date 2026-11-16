@@ -219,6 +219,26 @@ class TestFrameExportJsonProfileLookup:
         assert kwargs["is_single_pass_extract"] is False
         _assert_output_uses_profile(_per_prompt_output(result), prompt_profile)
 
+    def test_single_pass_table_prompt_uses_own_profile_and_normal_flag(self) -> None:
+        """Single-pass skips TABLE prompts, which run individually with their
+        own profile and ``is_single_pass_extract=False``; export must validate
+        them the same way.
+        """
+        default_profile = _make_profile("default")
+        prompt_profile = _make_profile("prompt")
+        tool = _make_tool(single_pass=True)
+        prompt = _make_prompt(profile=prompt_profile)
+        prompt.enforce_type = "table"
+
+        filter_call, _ = _run_export(
+            tool=tool, prompt=prompt, default_profile=default_profile
+        )
+
+        filter_call.assert_called_once()
+        kwargs = filter_call.call_args.kwargs
+        assert kwargs["profile_manager"] is prompt_profile
+        assert kwargs["is_single_pass_extract"] is False
+
     def test_force_export_skips_output_lookup_entirely(self) -> None:
         """``force_export=True`` bypasses validation: the filter must
         never be called. Per-prompt JSON still follows single-pass mode

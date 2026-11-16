@@ -393,19 +393,29 @@ class PromptStudioRegistryHelper:
             if not prompt.profile_manager:
                 prompt.profile_manager = default_llm_profile
 
-            # Single-pass runs every prompt via the tool's default profile;
-            # otherwise each prompt uses its own profile_manager.
-            if tool.single_pass_extraction_mode:
-                output_profile = default_llm_profile
-            else:
-                output_profile = prompt.profile_manager
+            # Single-pass runs every prompt via the tool's default profile,
+            # except TABLE/RECORD/AGENTIC_TABLE prompts, which single-pass
+            # skips and which are always run individually with their own
+            # profile (outputs saved with is_single_pass_extract=False).
+            # Other prompts use their own profile_manager outside single-pass.
+            runs_single_pass = tool.single_pass_extraction_mode and (
+                prompt.enforce_type
+                not in (
+                    PromptStudioRegistryKeys.TABLE,
+                    PromptStudioRegistryKeys.RECORD,
+                    PromptStudioRegistryKeys.AGENTIC_TABLE,
+                )
+            )
+            output_profile = (
+                default_llm_profile if runs_single_pass else prompt.profile_manager
+            )
 
             if not force_export:
                 prompt_output = PromptStudioOutputManager.objects.filter(
                     tool_id=tool.tool_id,
                     prompt_id=prompt.prompt_id,
                     profile_manager=output_profile,
-                    is_single_pass_extract=tool.single_pass_extraction_mode,
+                    is_single_pass_extract=runs_single_pass,
                 ).all()
                 if not prompt_output:
                     invalidated_outputs.append(prompt.prompt_key)
