@@ -41,7 +41,7 @@ describe("useLogout", () => {
       configurable: true,
       value: { href: "https://app.example/org/dashboard" },
     });
-    window.localStorage.setItem("dashboard_metrics_overview", '{"data":{}}');
+    window.localStorage.setItem("oauth-cachekey-google_drive", "cache-key");
     window.localStorage.setItem("unstract.v1.theme", "dark");
     window.sessionStorage.setItem("oauth-current-connector", "google_drive");
 
@@ -49,7 +49,7 @@ describe("useLogout", () => {
     result.current();
 
     expect(
-      window.localStorage.getItem("dashboard_metrics_overview"),
+      window.localStorage.getItem("oauth-cachekey-google_drive"),
     ).toBeNull();
     expect(window.localStorage.getItem("unstract.v1.theme")).toBe("dark");
     expect(window.sessionStorage.length).toBe(0);

@@ -1,7 +1,7 @@
+import { clearBrowserStorage } from "@v1";
 import Cookies from "js-cookie";
 import { usePostHog } from "posthog-js/react";
 
-import { clearBrowserStorage } from "../helpers/clearBrowserStorage";
 import { getSessionData } from "../helpers/GetSessionData";
 import { getBaseUrl } from "../helpers/GetStaticData";
 import { useSessionStore } from "../store/session-store";

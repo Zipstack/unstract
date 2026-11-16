@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearBrowserStorage } from "./browserStorage";
+import { clearBrowserStorage, clearUserLocalStorage } from "./browserStorage";
 
 describe("clearBrowserStorage", () => {
   afterEach(() => {
@@ -49,5 +49,21 @@ describe("clearBrowserStorage", () => {
       throw new DOMException("denied", "SecurityError");
     });
     expect(() => clearBrowserStorage()).not.toThrow();
+  });
+
+  // Used when the server reports no session: sessionStorage is per tab and
+  // holds loop guards (silent sign-in), so only localStorage is cleared.
+  it("clearUserLocalStorage leaves sessionStorage alone", () => {
+    window.localStorage.setItem("oauth-cachekey-google_drive", "cache-key");
+    window.localStorage.setItem("unstract.v1.theme", "dark");
+    window.sessionStorage.setItem("unstract:silentSignInAt", "1");
+
+    clearUserLocalStorage();
+
+    expect(
+      window.localStorage.getItem("oauth-cachekey-google_drive"),
+    ).toBeNull();
+    expect(window.localStorage.getItem("unstract.v1.theme")).toBe("dark");
+    expect(window.sessionStorage.getItem("unstract:silentSignInAt")).toBe("1");
   });
 });

@@ -1,11 +1,10 @@
 /*
- * Browser storage cleanup at sign-out. Mirrors v0's clearBrowserStorage
- * (src/helpers/clearBrowserStorage.js), which v1 may not import; change both
- * allowlists together.
+ * Browser storage cleanup when a session ends, for v1 sign-out and (through
+ * `@v1`) v0's logout and expired-session paths.
  *
- * Signing out must not leave the user's data in the browser (the dashboard
- * metrics cache, connector OAuth state, the last signed-in user). Everything
- * goes except UI preferences that say nothing about the user or their data.
+ * A session must not leave the user's data in the browser (connector OAuth
+ * state, the last signed-in user). Everything goes except UI preferences that
+ * say nothing about the user or their data.
  */
 
 const KEPT_KEYS: ReadonlySet<string> = new Set([
@@ -26,13 +25,8 @@ function isKept(key: string): boolean {
   return KEPT_KEYS.has(key) || KEPT_PREFIXES.some((p) => key.startsWith(p));
 }
 
-/** Clears sessionStorage, and localStorage except the preferences above. */
-export function clearBrowserStorage(): void {
-  try {
-    window.sessionStorage.clear();
-  } catch {
-    // Storage unavailable (sandboxed document): nothing to clear.
-  }
+/** Removes every localStorage key except the preferences above. */
+export function clearUserLocalStorage(): void {
   try {
     const storage = window.localStorage;
     // Collect first: removing while iterating by index shifts the indices.
@@ -51,4 +45,14 @@ export function clearBrowserStorage(): void {
   } catch {
     // Storage unavailable (sandboxed document): nothing to clear.
   }
+}
+
+/** At sign-out: all of sessionStorage, and localStorage bar the preferences. */
+export function clearBrowserStorage(): void {
+  try {
+    window.sessionStorage.clear();
+  } catch {
+    // Storage unavailable (sandboxed document): nothing to clear.
+  }
+  clearUserLocalStorage();
 }

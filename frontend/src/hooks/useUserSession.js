@@ -1,7 +1,7 @@
+import { clearUserLocalStorage } from "@v1";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
-import { clearUserLocalStorage } from "../helpers/clearBrowserStorage";
 import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../store/alert-store";
 

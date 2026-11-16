@@ -23,7 +23,7 @@ describe("useUserSession", () => {
     axiosMock.mockRejectedValue({
       response: { data: { message: "Unauthorized" } },
     });
-    window.localStorage.setItem("dashboard_metrics_overview", '{"data":{}}');
+    window.localStorage.setItem("oauth-cachekey-google_drive", "cache-key");
     window.localStorage.setItem("selectedProduct", "unstract");
     window.sessionStorage.setItem("unstract:silentSignInAt", "1");
 
@@ -32,7 +32,7 @@ describe("useUserSession", () => {
 
     expect(session).toBeUndefined();
     expect(
-      window.localStorage.getItem("dashboard_metrics_overview"),
+      window.localStorage.getItem("oauth-cachekey-google_drive"),
     ).toBeNull();
     expect(window.localStorage.getItem("selectedProduct")).toBe("unstract");
     expect(window.sessionStorage.getItem("unstract:silentSignInAt")).toBe("1");
@@ -40,13 +40,13 @@ describe("useUserSession", () => {
 
   it("keeps localStorage when the session request fails for another reason", async () => {
     axiosMock.mockRejectedValue({ response: { status: 502, data: {} } });
-    window.localStorage.setItem("dashboard_metrics_overview", '{"data":{}}');
+    window.localStorage.setItem("oauth-cachekey-google_drive", "cache-key");
 
     const { result } = renderHook(() => useUserSession());
     await result.current();
 
-    expect(window.localStorage.getItem("dashboard_metrics_overview")).toBe(
-      '{"data":{}}',
+    expect(window.localStorage.getItem("oauth-cachekey-google_drive")).toBe(
+      "cache-key",
     );
   });
 });
