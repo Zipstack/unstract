@@ -3986,6 +3986,26 @@ class PublishWorkflow(Workflow):
         out, o = self.plan()
         self.assertEqual((o["prev"], o["exclude"]), ("v1.6.0", "5"), out)
 
+    def test_exclude_oss_is_what_the_previous_oss_pin_shipped(self):
+        # OSS fix #41 merged on main and was picked into ee-v1.6.0, the pin of v1.6.0; v1.7.0's OSS notes drop #41.
+        work = self.repos["oss"][1]
+        base = dev_git(work, "rev-parse", "HEAD")
+        with open(os.path.join(work, "z.txt"), "w") as fh:
+            fh.write("z")
+        dev_git(work, "add", "z.txt")
+        dev_git(work, "commit", "-q", "-m", "[FIX] z (#41)")
+        fix = dev_git(work, "rev-parse", "HEAD")
+        dev_git(work, "tag", "ee-v1.7.0-rc.1")
+        dev_git(work, "checkout", "-q", "-b", "release/1.6", base)
+        dev_git(work, "cherry-pick", "-x", fix)
+        dev_git(work, "tag", "ee-v1.6.0")
+        dev_git(work, "checkout", "-q", "main")
+        dev_git(work, "push", "-q", "--tags", "origin", "main", "release/1.6")
+        self.release("ee-v1.6.0", "v1.6.0")
+        self.release("ee-v1.7.0-rc.1", "v1.7.0-rc.1", "v1.7.0")
+        out, o = self.plan()
+        self.assertEqual(o["exclude_oss"], "41", out)
+
     def test_oss_range_is_the_two_pins(self):
         self.release("ee-v1.6.0", "v1.6.0")
         self.release("ee-v1.7.0-rc.1", "v1.7.0-rc.1", "v1.7.0")
@@ -4052,11 +4072,13 @@ def main():
             OSS="ee-v1.7.0-rc.1",
             PREV_OSS="ee-v1.6.0",
             EXCLUDE="12,14",
+            EXCLUDE_OSS="41",
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn(
             "argv ['--release-version', 'v1.7.0', '--rc-tag', 'v1.7.0-rc.1', '--previous-stable', 'v1.6.0', "
-            "'--current-oss', 'ee-v1.7.0-rc.1', '--previous-oss', 'ee-v1.6.0', '--exclude-prs', '12,14']",
+            "'--current-oss', 'ee-v1.7.0-rc.1', '--previous-oss', 'ee-v1.6.0', '--exclude-prs', '12,14', "
+            "'--exclude-oss-prs', '41']",
             r.stdout,
         )
         self.assertEqual(
@@ -4287,6 +4309,99 @@ sys.exit(int(codes[os.environ["BUILD"].split().index(t)] if len(codes) > 1 else 
         self.assertEqual(pin("true", 1), 1)
         self.assertIn(
             f"--force --reason known gap --notes {self.d}/notes.md", self.read("args")
+        )
+
+
+@unittest.skipUnless(
+    os.path.exists(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")),
+    "the cloud repo's workflows",
+)
+class TakeRcShipped(Workflow):
+    """The RC prerelease leaves out PRs the previous stable shipped, as Publish leaves them out of stable notes."""
+
+    GH = """#!/usr/bin/env python3
+import base64, os, shutil, subprocess, sys
+a, cwd = sys.argv[1:], os.getcwd()
+if a[:2] == ["release", "view"]:
+    sys.exit("release not found")
+if a[:2] == ["release", "create"]:
+    shutil.copy(a[a.index("--notes-file") + 1], os.path.join(os.environ["RUNNER_TEMP"], "sent"))
+elif "/git/matching-refs/tags/" in a[1]:
+    print(subprocess.run(["git", "tag", "-l", "v*"], capture_output=True, text=True).stdout, end="")
+elif "/contents/pyproject.toml" in a[1]:
+    toml = subprocess.run(["git", "show", a[1].split("ref=")[1] + ":pyproject.toml"], capture_output=True).stdout
+    print(base64.b64encode(toml).decode())
+elif a[1].endswith("/releases/generate-notes"):
+    print("## What's Changed")
+    for n in (5, 6):
+        print(f"* [FIX] fix {n} by @dev in https://github.com/Zipstack/unstract-cloud/pull/{n}")
+"""  # a commit's PR lookup prints nothing: no PR
+
+    def prerelease(self, subject):
+        # Fix `subject` merged on main and was picked into v1.6.0; v1.7.0-rc.1 comes from main after it.
+        c = self.cloud
+        with open(os.path.join(c, "pyproject.toml"), "w") as fh:
+            fh.write('unstract-platform-version = "ee-v1.6.0"\n')
+        dev_git(c, "add", "pyproject.toml")
+        dev_git(c, "commit", "-q", "-m", "pin")
+        base = dev_git(c, "rev-parse", "HEAD")
+        with open(os.path.join(c, "y.txt"), "w") as fh:
+            fh.write("y")
+        dev_git(c, "add", "y.txt")
+        dev_git(c, "commit", "-q", "-m", subject)
+        fix = dev_git(c, "rev-parse", "HEAD")
+        dev_git(c, "tag", "v1.7.0-rc.1")
+        dev_git(c, "checkout", "-q", "-b", "release/1.6", base)
+        dev_git(c, "cherry-pick", "-x", fix)
+        dev_git(c, "tag", "v1.6.0")
+        dev_git(c, "checkout", "-q", "main")
+        dev_git(c, "push", "-q", "--tags", "origin", "main", "release/1.6")
+        os.makedirs(os.path.join(c, ".github"))
+        os.symlink(HERE, os.path.join(c, ".github", "release"))
+        bin_ = os.path.join(self.d, "bin-shipped")
+        os.mkdir(bin_)
+        with open(os.path.join(bin_, "gh"), "w") as fh:
+            fh.write(self.GH)
+        os.chmod(os.path.join(bin_, "gh"), 0o755)
+        r = subprocess.run(
+            ["bash", "-e", "-c", step("take-rc-build.yaml", "Create the RC prerelease")],
+            cwd=c,
+            env={
+                **os.environ,
+                "PATH": f"{bin_}:{self.path}",
+                "TAG": "v1.7.0-rc.1",
+                "SHA": fix,
+                "OSS": "ee-v1.6.0",  # the pin did not move: no OSS section
+                "OSS_REPO": self.repos["oss"][1],
+                "BRANCH": "release/1.7",
+                "TARGETS": "cloud",
+                "RC_NOTES": "",
+                "RUNNER_TEMP": self.d,
+                "GITHUB_REPOSITORY": "Zipstack/unstract-cloud",
+                "GITHUB_SERVER_URL": "https://github.com",
+                "GITHUB_RUN_ID": "42",
+                "GITHUB_STEP_SUMMARY": os.path.join(self.d, "summary"),
+            },
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return self.read("sent"), r.stderr
+
+    def test_shipped_prs_are_left_out(self):
+        sent, _ = self.prerelease("[FIX] y (#5)")
+        self.assertNotIn("/pull/5\n", sent)
+        self.assertIn("/pull/6\n", sent)
+        self.assertIn("Leaves out 1 PRs already shipped in `v1.6.0`.", sent)
+
+    def test_a_failed_scan_keeps_every_pr_and_says_so(self):
+        sent, err = self.prerelease("[FIX] y")  # no (#n), and the lookup finds no PR
+        self.assertIn("/pull/5\n", sent)
+        self.assertIn("/pull/6\n", sent)
+        self.assertIn("Could not list the PRs `v1.6.0` already shipped", sent)
+        self.assertIn(
+            "::warning::Zipstack/unstract-cloud: could not list the PRs v1.6.0 shipped",
+            err,
         )
 
 
