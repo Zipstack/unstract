@@ -1,10 +1,14 @@
+import logging
 import uuid
+from datetime import datetime
 
 from account_v2.models import User
+from croniter import CroniterError, croniter
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 from django.db.models import Q
+from django.utils import timezone
 from permissions.models import HasMembersMixin
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from tenant_account_v2.sharing_helpers import (
@@ -20,6 +24,8 @@ from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from backend.constants import FieldLengthConstants as FieldLength
+
+logger = logging.getLogger(__name__)
 
 APP_ID_LENGTH = 32
 PIPELINE_NAME_LENGTH = 32
@@ -181,3 +187,22 @@ class Pipeline(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
 
     def is_active(self) -> bool:
         return bool(self.active)
+
+    def next_run_time(self) -> datetime | None:
+        """Next run from ``cron_string``.
+
+        ``None`` when inactive, unscheduled or the schedule can never fire.
+        """
+        if not self.cron_string or not self.active:
+            return None
+        try:
+            next_run: datetime = croniter(self.cron_string, timezone.now()).get_next(
+                datetime
+            )
+        except CroniterError:
+            return None
+        except Exception:
+            # One bad row must not fail the whole list.
+            logger.exception("Next run failed for pipeline %s", self.pk)
+            return None
+        return next_run

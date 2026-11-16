@@ -117,12 +117,13 @@ Optional knobs (see `groups.yaml` for examples):
 
 ### Frontend groups (`vitest` / `playwright`)
 
-Two groups run Node suites rather than pytest:
+Three groups run Node suites rather than pytest:
 
 | Group | Tier | Runner | What it covers |
 |---|---|---|---|
 | `frontend` | unit | `vitest` | Vitest + React Testing Library over jsdom — the antd→shadcn shims and the components on top of them. Workdir `frontend`. |
 | `ui` | e2e | `playwright` | Browser e2e against the real UI. Specs live in `tests/e2e/ui/`, beside the other e2e suites. |
+| `frontend-v1-e2e` | e2e | `playwright` | Browser e2e for the v1 frontend (epic UN-4257). Specs and harness live in `tests/e2e/ui-v1/`; see its README. |
 
 ```bash
 python -m tests.rig run frontend           # the whole vitest suite
@@ -135,17 +136,28 @@ cd tests/e2e/ui && npx playwright install chromium
 `tests/e2e/ui` is self-contained — specs, `playwright.config.js` and its own
 `node_modules` — so it resolves without reaching into `frontend/`.
 
-Both emit **real JUnit**, so `parse_junit` reports per-test counts exactly like
+All three emit **real JUnit**, so `parse_junit` reports per-test counts exactly like
 a pytest group (unlike `hurl`, which gets one synthetic row). Vitest takes
 `--outputFile`; Playwright reads `PLAYWRIGHT_JUNIT_OUTPUT_NAME`, which the rig
 exports — that is why the config reads it.
 
-Both are `optional`, deliberately. They shell out via `npx --no-install`, so a
+`frontend` and `ui` are `optional`, deliberately. They shell out via `npx --no-install`, so a
 machine or CI image without `node_modules` (or without the browser binaries)
 **skips** instead of failing the build. The runner returns exit 5 — the rig's
 "nothing collected" convention — when `npx` is missing entirely. If a Node
 runner dies before its reporter flushes, the rig backfills a synthetic junit so
 the failure still shows in the summary rather than vanishing as a missing group.
+
+`frontend-v1-e2e` is **not** optional: it gates the build. CI's e2e job
+installs its `node_modules` and browser before the tier runs. To run it
+locally, install them first:
+
+```bash
+cd tests/e2e/ui-v1 && bun install --frozen-lockfile && bunx playwright install chromium
+```
+
+Without them, `npx --no-install` fails and the group is red; with no `npx` at
+all it still exits 5 and reads as skipped, like the other Node groups.
 
 **Auth.** The `ui` suite runs against both deployments. `UNSTRACT_AUTH_MODE`
 picks the flow, or it auto-detects:

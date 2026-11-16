@@ -456,7 +456,7 @@ class Gate(unittest.TestCase):
             out,
             [
                 "release/1.5 is not GA for cloud yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); "
-                "a release manager may override this with force and a reason"
+                "to override, rerun with force and a reason"
             ],
         )
         self.assertEqual(
@@ -607,7 +607,7 @@ class Gate(unittest.TestCase):
             dict(self.lines[0], todo=["take a new RC build first."])
         )  # a message's full stop goes
         order = [
-            "release/1.5 is not GA for cloud yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); a release manager may override this with force and a reason"
+            "release/1.5 is not GA for cloud yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); to override, rerun with force and a reason"
         ]
         todo = f"merge or close conflict PR {rm.pr_link(12)}, then Take RC again"
         self.assertEqual(

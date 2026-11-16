@@ -268,7 +268,7 @@ def decline(slug, pr, reason):
             "--body",
             "Bot could not record the decline: the first commit's message needs exactly one `(cherry picked from "
             "commit <full main sha>)` line, naming the main commit of this branch's name. Decline it with a hand-made empty "
-            "commit carrying that line, or ask the release manager.",
+            "commit carrying that line, or ask whoever runs the release.",
         )
         raise RuntimeError(
             f"#{n}: no single pick trailer for {pr['headRefName']}, decline not recorded"
@@ -451,7 +451,7 @@ def summary(n, sender, rec):
             + "**skipped**: its head has no commit past the base, so nothing was declined",
             (
                 "Next: delete the head by hand to have the fix picked again; to decline it, keep the head until "
-                "the release manager's decline commit is on the base (the PR comment says how)."
+                "the decline commit is on the base (the PR comment says how)."
                 if rec["result"] == "skipped: no pick"
                 else "Next: nothing here; its head no longer holds this PR's commit."
             ),
