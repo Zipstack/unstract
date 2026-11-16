@@ -38,6 +38,7 @@ list_shared_users = PipelineViewSet.as_view(
 )
 
 pipeline_execute = PipelineViewSet.as_view({"post": "execute"})
+pipeline_aggregate = PipelineViewSet.as_view({"get": PipelineViewSet.aggregate.__name__})
 pipeline_share = PipelineViewSet.as_view({"post": "share"})
 pipeline_effective_members = PipelineViewSet.as_view({"get": "effective_members"})
 pipeline_add_owner = PipelineViewSet.as_view({"post": "add_co_owner"})
@@ -47,6 +48,7 @@ pipeline_remove_owner = PipelineViewSet.as_view({"delete": "remove_co_owner"})
 urlpatterns = format_suffix_patterns(
     [
         path("pipeline/", pipeline_list, name=PipelineURL.LIST),
+        path("pipeline/aggregate/", pipeline_aggregate, name="pipeline-aggregate"),
         path("pipeline/<uuid:pk>/", pipeline_detail, name=PipelineURL.DETAIL),
         path(
             "pipeline/<uuid:pk>/executions/",

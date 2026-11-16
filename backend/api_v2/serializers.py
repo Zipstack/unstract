@@ -37,6 +37,10 @@ from utils.input_sanitizer import validate_name_field
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
+from workflow_manager.workflow_v2.list_aggregate_serializers import (
+    FailingRowSerializer,
+    ListAggregateSerializer,
+)
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
@@ -643,6 +647,18 @@ class APIDeploymentListSerializer(ModelSerializer):
     def get_last_5_run_statuses(self, instance) -> list[dict]:
         """Fetch the last 5 execution statuses with timestamps for this API deployment."""
         return WorkflowExecution.get_last_run_statuses(instance.id, limit=5)
+
+
+class FailingDeploymentSerializer(FailingRowSerializer):
+    """An active API deployment whose last five finished runs all ended in error."""
+
+    name = CharField(source="row.display_name")
+
+
+class DeploymentAggregateSerializer(ListAggregateSerializer):
+    """API deployments per status, and the ones failing."""
+
+    failing = FailingDeploymentSerializer(many=True)
 
 
 class APIKeyListSerializer(ModelSerializer):

@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "unstract/pipeline-v2/pipeline-aggregate-response/v1",
+  "type": "object",
+  "required": [
+    "total",
+    "by_status",
+    "failing_count",
+    "failing",
+    "not_scheduled"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "total": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "by_status": {
+      "type": "object",
+      "required": [
+        "success",
+        "partial_success",
+        "error",
+        "never_run",
+        "inactive"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "success": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "partial_success": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "never_run": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inactive": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "failing_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "failing": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/failingRow"
+      }
+    },
+    "not_scheduled": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "$defs": {
+    "failingRow": {
+      "type": "object",
+      "required": [
+        "id",
+        "owner_email",
+        "failures_in_a_row",
+        "failing_since",
+        "last_failure",
+        "last_success",
+        "name",
+        "pipeline_type",
+        "next_run_time"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "owner_email": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failures_in_a_row": {
+          "type": "integer",
+          "minimum": 5
+        },
+        "failing_since": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "last_failure": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "last_success": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pipeline_type": {
+          "type": "string",
+          "enum": [
+            "ETL",
+            "TASK",
+            "DEFAULT",
+            "APP"
+          ]
+        },
+        "next_run_time": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

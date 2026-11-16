@@ -145,7 +145,7 @@ class Scenario(unittest.TestCase):
                 },
             },
         )
-        self.assertEqual(st["backport_targets"]["fix"], ["release/1.5"])
+        self.assertEqual(st["backport_targets"]["rc"], ["release/1.5"])
         self.assertEqual(st["supported"], {"cloud": ["release/1.5"], "on-prem": []})
 
     def test_cloud_ga(self):
@@ -166,16 +166,14 @@ class Scenario(unittest.TestCase):
         self.assertEqual(
             st["backport_targets"],
             {
-                "fix": [],
-                "security_critical": [
-                    {"branch": "release/1.5", "needs_rm_confirmation": True}
-                ],
+                "rc": [],
+                "ga": [{"branch": "release/1.5", "needs_rm_confirmation": True}],
             },
         )
 
     def test_cloud_ga_stabilizes_a_line_with_onprem_pending(self):
         # The live case: on-prem RCs from before cloud GA, no on-prem GA. The first GA ends auto-picks; security and
-        # critical fixes wait for the RM's confirm (Promote's block on them: test_oss.test_promote_held_fixes).
+        # backport/ga fixes wait for confirmation (Promote's block on them: test_oss.test_promote_held_fixes).
         self.onprem_rc()
         st = self.state()
         self.assertEqual(
@@ -196,10 +194,8 @@ class Scenario(unittest.TestCase):
         self.assertEqual(
             st["backport_targets"],
             {
-                "fix": [],
-                "security_critical": [
-                    {"branch": "release/1.5", "needs_rm_confirmation": True}
-                ],
+                "rc": [],
+                "ga": [{"branch": "release/1.5", "needs_rm_confirmation": True}],
             },
         )
         self.assertEqual(st["supported"]["on-prem"], ["release/1.5"])
@@ -266,10 +262,8 @@ class Scenario(unittest.TestCase):
         self.assertEqual(
             st["backport_targets"],
             {
-                "fix": [],
-                "security_critical": [
-                    {"branch": "release/1.5", "needs_rm_confirmation": True}
-                ],
+                "rc": [],
+                "ga": [{"branch": "release/1.5", "needs_rm_confirmation": True}],
             },
         )
         self.assertEqual(st["supported"]["on-prem"], ["release/1.5"])
@@ -295,7 +289,7 @@ class Scenario(unittest.TestCase):
         self.assertEqual(
             (b["state"], b["targets"]["on-prem"]["late"]), ("stabilized", True)
         )
-        self.assertEqual(st["backport_targets"]["fix"], [])
+        self.assertEqual(st["backport_targets"]["rc"], [])
 
     def test_late_onprem_holds_a_line_past_eos_for_cloud(self):
         self.cloud_ga()
@@ -309,11 +303,10 @@ class Scenario(unittest.TestCase):
             (b["state"], b["targets"]["cloud"]["state"]), ("stabilized", "past-eos")
         )
         self.assertEqual(st["retire"], [])
-        self.assertNotIn("release/1.5", st["backport_targets"]["fix"])
+        self.assertNotIn("release/1.5", st["backport_targets"]["rc"])
         self.assertEqual(
             rs.retire_line_refusal(st, "release/1.5"),
-            "on-prem still supported (stabilized, or late with no GA yet); a release manager may retire it inside the "
-            "window with force",
+            "on-prem still supported (stabilized, or late with no GA yet); to retire it inside the window, rerun with force",
         )
         self.assertIsNone(rs.retire_line_refusal(st, "release/1.5", force=True))
         self.push("chart/unstract-platform", "1.5.0", days=0)  # GA after its RC
@@ -333,7 +326,7 @@ class Scenario(unittest.TestCase):
         self.assertEqual(
             (b["state"], b["targets"]["on-prem"]["late"]), ("stabilized", False)
         )
-        self.assertEqual(st["backport_targets"]["fix"], [])
+        self.assertEqual(st["backport_targets"]["rc"], [])
 
     def test_ga_sharing_its_rc_registry_version_is_timed_by_its_tag(self):
         # One repository for RC and stable: the GA tag lands on the RC's version and keeps its push time.
@@ -362,8 +355,8 @@ class Scenario(unittest.TestCase):
         )
         self.assertEqual(
             rs.retire_line_refusal(st, "release/1.5"),
-            "cloud, on-prem still supported (stabilized, or late with no GA yet); a release manager may retire it "
-            "inside the window with force",
+            "cloud, on-prem still supported (stabilized, or late with no GA yet); to retire it inside the window, "
+            "rerun with force",
         )
         self.assertIsNone(rs.retire_line_refusal(st, "release/1.5", force=True))
 
@@ -510,7 +503,7 @@ class Scenario(unittest.TestCase):
             },
         )
         self.assertTrue(all("release/1.7" not in v for v in st["supported"].values()))
-        self.assertIn("release/1.7", st["backport_targets"]["fix"])
+        self.assertIn("release/1.7", st["backport_targets"]["rc"])
 
     def test_tag_not_on_branch(self):
         self.cut_with_rc()
@@ -652,7 +645,7 @@ class Scenario(unittest.TestCase):
 
     def test_promote_blockers(self):
         """Promote order per target: only an older line with the target enabled and not GA for it blocks."""
-        msg = "release/{} is not GA for {} yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); a release manager may override this with force and a reason"
+        msg = "release/{} is not GA for {} yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); to override, rerun with force and a reason"
         self.onprem_rc()
         self.cut("1.6")
         self.push("cloud/backend", "v1.6.0-rc.1", git_ref="release/1.6")
@@ -791,14 +784,15 @@ class Scenario(unittest.TestCase):
         os.path.exists(os.path.join(ROOT, rm.CHART)), "the cloud repo's chart"
     )
 
-    def sed_chart(self, tag):
+    def sed_chart(self, tag, bare=False):
+        """bare: the chart version without the v, as older bumps set it."""
         chart, values = (os.path.join(self.repo, f) for f in (rm.CHART, rm.VALUES))
         subprocess.run(
             [
                 "sed",
                 "-i",
                 "-E",
-                f's/^version: .*/version: {tag[1:]}/; s/^appVersion: .*/appVersion: "{tag}"/',
+                f's/^version: .*/version: {tag[1:] if bare else tag}/; s/^appVersion: .*/appVersion: "{tag}"/',
                 chart,
             ],
             check=True,
@@ -836,16 +830,17 @@ class Scenario(unittest.TestCase):
                 self.g("add", f)
                 self.g("commit", "-q", "-m", f"add {f}")
         self.sed_chart(tag)
-        sha = self.bot_commit(f"release: chart {tag[1:]}", rm.CHART, rm.VALUES)
+        sha = self.bot_commit(f"release: chart {tag}", rm.CHART, rm.VALUES)
         self.g("tag", tag)
         self.g("checkout", "-q", "main")
         return sha
 
-    def ga_commit(self, stable, on, tag=True):
+    def ga_commit(self, stable, on, tag=True, bare=False):
         """Promote's GA commit on the RC commit on, off the line."""
         self.g("checkout", "-q", "--detach", on)
-        self.sed_chart(stable)
-        sha = self.bot_commit(f"release: chart {stable[1:]}", rm.CHART, rm.VALUES)
+        self.sed_chart(stable, bare)
+        ver = stable[1:] if bare else stable
+        sha = self.bot_commit(f"release: chart {ver}", rm.CHART, rm.VALUES)
         if tag:
             self.g("tag", stable)
         self.g("checkout", "-q", "main")
@@ -883,6 +878,10 @@ class Scenario(unittest.TestCase):
         rc2 = self.rc_on_chart("v1.5.1-rc.1")
         self.assertEqual(rm.promote_version(self.repo, "v1.5.1-rc.1"), "v1.5.1")
         self.assertEqual(rm.rc_commit(self.repo, rc2), rc2)
+        # A GA commit made before the chart version had the v still resolves to its RC commit.
+        old = self.ga_commit("v1.5.1", rc2, bare=True)
+        self.assertTrue(rm.is_ga_bump(self.repo, old, rc2, "v1.5.1"))
+        self.assertEqual(rm.rc_commit(self.repo, "v1.5.1"), rc2)
         # A stable tag on a GA commit whose RC commit is off the line is an anomaly.
         self.g("checkout", "-q", "--detach", rc)
         self.g("commit", "-q", "--allow-empty", "-m", "off the line")
@@ -905,10 +904,14 @@ class Scenario(unittest.TestCase):
         rc = self.rc_on_chart("v1.5.0-rc.1")
 
         def stray(
-            edit, msg="release: chart 1.5.0", bot=True, paths=(rm.CHART, rm.VALUES)
+            edit,
+            msg="release: chart v1.5.0",
+            bot=True,
+            paths=(rm.CHART, rm.VALUES),
+            bare=False,
         ):
             self.g("checkout", "-q", "--detach", rc)
-            self.sed_chart("v1.5.0")
+            self.sed_chart("v1.5.0", bare)
             edit()
             self.g("add", *paths)
             if bot:
@@ -929,6 +932,10 @@ class Scenario(unittest.TestCase):
             return edit
 
         self.assertEqual(stray(lambda: None), ([], True))
+        # Older GA commits: chart version and subject without the v.
+        self.assertEqual(
+            stray(lambda: None, "release: chart 1.5.0", bare=True), ([], True)
+        )
 
         def chmod():
             os.chmod(os.path.join(self.repo, rm.CHART), 0o755)
@@ -947,7 +954,7 @@ class Scenario(unittest.TestCase):
                 [f"{rm.VALUES}: +extra: 1"],
             ),
             (
-                append(rm.CHART, "version: 1.5.0\n"),
+                append(rm.CHART, "version: v1.5.0\n"),
                 (rm.CHART, rm.VALUES),
                 [f"{rm.CHART}: version: changed 2 times"],
             ),
@@ -967,13 +974,13 @@ class Scenario(unittest.TestCase):
         self.assertEqual(
             stray(lambda: self.sed_chart("v1.5.9"))[0][:3],
             [
-                f"{rm.CHART}: +version: 1.5.9",
+                f"{rm.CHART}: +version: v1.5.9",
                 f'{rm.CHART}: +appVersion: "v1.5.9"',
                 f"{rm.VALUES}: +UNSTRACT_APPS_VERSION: &UNSTRACT_APPS_VERSION v1.5.9",
             ],
         )
         self.assertFalse(stray(lambda: None, bot=False)[1])
-        self.assertFalse(stray(lambda: None, msg="release: chart 1.5.0-rc.1")[1])
+        self.assertFalse(stray(lambda: None, msg="release: chart v1.5.0-rc.1")[1])
         # Not on the RC commit: a commit in between.
         self.commit("in between", "release/1.5")
         ga = self.ga_commit("v1.5.0", "release/1.5", tag=False)
@@ -981,15 +988,24 @@ class Scenario(unittest.TestCase):
 
     def test_already_bumped(self):
         self.cut("1.5")
+        # Older bumps: version and subject without the v.
         self.chart("1.5.0-rc.1", "release/1.5", "release: chart 1.5.0-rc.1", rm.BOT_EMAIL)
         self.assertTrue(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.1"))
+        self.chart(
+            "v1.5.0-rc.1", "release/1.5", "release: chart 1.5.0-rc.2", rm.BOT_EMAIL
+        )
+        self.assertFalse(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.1"))
+        self.chart(
+            "v1.5.0-rc.3", "release/1.5", "release: chart v1.5.0-rc.3", rm.BOT_EMAIL
+        )
+        self.assertTrue(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.3"))
         self.assertFalse(
             rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.2")
         )  # chart not at the version
         self.commit(
             "fix after the bump", "release/1.5"
         )  # chart still at the version, tip is a normal commit
-        self.assertFalse(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.1"))
+        self.assertFalse(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.3"))
         self.chart(
             "1.5.0-rc.2", "release/1.5", "release: chart 1.5.0-rc.2"
         )  # right subject, not the bot
@@ -1189,10 +1205,11 @@ class Scenario(unittest.TestCase):
 
     def test_rc_chart_tags_are_never_allocated_again(self):
         asked = []
-        chart = {"1.9.0-rc.1": {}, "1.9.0": {}, "latest": {}}
+        # Older RC charts were pushed without the v.
+        chart = {"1.9.0-rc.1": {}, "v1.9.0-rc.2": {}, "1.9.0": {}, "latest": {}}
         tags = rs.rc_chart_tags(lambda a: asked.append(a) or chart)
         self.assertEqual(asked, [rs.RC_CHART])
-        self.assertEqual(tags, {"v1.9.0-rc.1"})
+        self.assertEqual(tags, {"v1.9.0-rc.1", "v1.9.0-rc.2"})
 
     def test_abandon_plan_refusals(self):
         self.built_by_mistake()
@@ -1297,7 +1314,7 @@ class Scenario(unittest.TestCase):
             (["stabilizing", "stabilized", "stabilized"], []),
         )
         self.assertEqual(
-            (st["retire"], st["backport_targets"]["fix"], st["anomalies"]),
+            (st["retire"], st["backport_targets"]["rc"], st["anomalies"]),
             ([], ["release/1.7"], []),
         )
         self.assertEqual(
@@ -1333,7 +1350,7 @@ class Scenario(unittest.TestCase):
         self.assertEqual(
             rs.promote_blockers(st, "release/1.8", "oss"),
             [
-                "release/1.7 is not GA for oss yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); a release manager may override this with force and a reason"
+                "release/1.7 is not GA for oss yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); to override, rerun with force and a reason"
             ],
         )
 
@@ -1386,8 +1403,7 @@ class Scenario(unittest.TestCase):
         )  # on-prem chart in its window
         self.assertEqual(
             refusal(),
-            "on-prem still supported (stabilized, or late with no GA yet); a release manager may retire it inside the "
-            "window with force",
+            "on-prem still supported (stabilized, or late with no GA yet); to retire it inside the window, rerun with force",
         )
         self.assertIsNone(refusal(True))
         self.assertEqual(
@@ -1620,27 +1636,36 @@ class PrFixClass(unittest.TestCase):
 
     def test_pr_fix_class(self):
         c = rm.pr_fix_class
-        nb = ["fix/needs-backport"]
-        self.assertEqual(c("UN-1 [MISC] x", nb), "fix")
-        self.assertEqual(c("UN-1 [FIX] x", nb), "fix")
+        rc = ["backport/rc"]
+        self.assertEqual(c("UN-1 [MISC] x", rc), "rc")
+        self.assertEqual(c("UN-1 [FIX] x", rc), "rc")
         self.assertIsNone(c("UN-1 [FIX] x", ["main-only"]))
         self.assertIsNone(c("UN-1 [MISC] x", ["main-only", "bug"]))
-        self.assertEqual(c("UN-1 [MISC] x", ["fix/security", *nb]), "security")
-        self.assertEqual(c("UN-1 [FEAT] x", ["fix/critical", "bug"]), "critical")
-        self.assertEqual(c("UN-1 [FEAT] x", ["fix/security"]), "security")
+        self.assertEqual(c("UN-1 [FEAT] x", ["backport/ga", "bug"]), "ga")
         for labels in (
+            ["backport/x"],
+            ["Backport/ga"],
+            ["backport-ga"],
+            ["backports/rc"],
             ["fix/typo"],
             ["fix-class/security"],
             ["Fix/security"],
             ["fixclass"],
-            ["fix/security", "fix/critical"],
         ):
-            with self.assertRaises(ValueError, msg=labels) as e:
+            with self.assertRaisesRegex(ValueError, "unknown label", msg=labels) as e:
                 c("UN-1 [FIX] x", labels)
-            if labels != ["fix/security", "fix/critical"]:
-                self.assertIn(
-                    "fix/security, fix/critical, fix/needs-backport", str(e.exception)
-                )
+            self.assertIn("`backport/rc`, `backport/ga` or `main-only`", str(e.exception))
+        with self.assertRaisesRegex(ValueError, "conflicting labels .*: keep one"):
+            c("UN-1 [FIX] x", ["backport/rc", "backport/ga"])
+        # Backport's own status labels must not read as a near-miss.
+        for x in ("backport-conflict", "backport-merged", "backport-declined"):
+            self.assertIsNone(c("UN-1 [FIX] x", ["main-only", x]))
+
+    def test_old_label_names_are_unknown(self):
+        for old in ("fix/needs-backport", "fix/security", "fix/critical"):
+            for labels in ([old], [old, "backport/rc"], [old, "main-only"]):
+                with self.assertRaisesRegex(ValueError, "unknown label", msg=labels):
+                    rm.main_fix_class("UN-1 [FIX] x", labels)
 
     def test_main_needs_one_routing_label(self):
         c = rm.main_fix_class
@@ -1648,15 +1673,15 @@ class PrFixClass(unittest.TestCase):
             for labels in ([], ["bug"]):
                 with self.assertRaisesRegex(
                     ValueError,
-                    "no backport label: add fix/needs-backport .* or main-only",
+                    "no backport label: add `backport/rc`, `backport/ga` or `main-only`",
                 ):
                     c(title, labels)
                 self.assertIsNone(rm.pr_fix_class(title, labels))
             self.assertIsNone(c(title, ["main-only"]))
-            self.assertEqual(c(title, ["fix/needs-backport"]), "fix")
-        for fix in ("fix/needs-backport", "fix/security", "fix/critical"):
+            self.assertEqual(c(title, ["backport/rc"]), "rc")
+        for fix in ("backport/rc", "backport/ga"):
             with self.assertRaisesRegex(
-                ValueError, rf"conflicting labels: main-only with \['{fix}'\]"
+                ValueError, f"conflicting labels `main-only`, `{fix}`: keep one"
             ):
                 c("UN-1 [MISC] x", ["main-only", fix])
         with self.assertRaisesRegex(ValueError, "no recognised"):
@@ -1670,15 +1695,15 @@ class PrFixClass(unittest.TestCase):
             self.assertIsNone(rm.pr_fix_class("UN-1 [FIX] x", labels))
         self.assertIn("no backport label", f("main", []))
         self.assertIn("no backport label", f("main", ["bug"]))
-        for label in ("main-only", "fix/needs-backport", "fix/security", "fix/critical"):
+        for label in ("main-only", "backport/rc", "backport/ga"):
             self.assertIsNone(f("main", [label]), label)
 
     def test_revert_validates_the_inner_title(self):
         c = rm.pr_fix_class
-        nb = ["fix/needs-backport"]
-        self.assertEqual(c('Revert "UN-1 [FIX] x"', nb), "fix")
+        nb = ["backport/rc"]
+        self.assertEqual(c('Revert "UN-1 [FIX] x"', nb), "rc")
         self.assertIsNone(c('Revert "UN-1 [FIX] x"', ["main-only"]))
-        self.assertEqual(c('Revert "Revert "UN-1 [FIX] x""', nb), "fix")
+        self.assertEqual(c('Revert "Revert "UN-1 [FIX] x""', nb), "rc")
         with self.assertRaisesRegex(ValueError, "no backport label"):
             rm.main_fix_class('Revert "UN-1 [FIX] x"')  # GitHub's revert PR is unlabelled
         for title in ('Revert "fix x"', "Revert UN-1 [FIX] x", 'revert "UN-1 [FIX] x"'):
@@ -1686,17 +1711,17 @@ class PrFixClass(unittest.TestCase):
                 c(title, ["main-only"])
         with self.assertRaisesRegex(ValueError, "no recognised"):
             c("no prefix", ["main-only"])
-        # A fix/ label does not excuse a bad title.
-        for labels in (nb, ["fix/security"], ["fix/critical"]):
+        # A backport label does not excuse a bad title.
+        for labels in (nb, ["backport/ga"]):
             with self.assertRaisesRegex(ValueError, "no recognised", msg=labels):
                 c("no prefix", labels)
         self.assertIsNone(c("[MISC] x", ["main-only"]))
 
     def test_ticketless_title_validated(self):
         c = rm.pr_fix_class
-        self.assertEqual(c("[HOT-FIX] x", ["fix/needs-backport"]), "fix")
+        self.assertEqual(c("[HOT-FIX] x", ["backport/rc"]), "rc")
         self.assertIsNone(c("[MISC] x", ["main-only"]))
-        self.assertEqual(c("[FEAT] x", ["fix/security"]), "security")
+        self.assertEqual(c("[FEAT] x", ["backport/ga"]), "ga")
         self.assertIsNone(c('Revert "[FIX] x"', ["main-only"]))
         self.assertIsNone(
             c(" UN-1 [FIX] x", ["main-only"])
@@ -1713,7 +1738,7 @@ class PrFixClass(unittest.TestCase):
             "for PRs into a release/X.Y branch", f("main", ["release-branch-only"])
         )
         self.assertIsNone(f("release/0.192", ["release-branch-only"]))
-        self.assertIsNone(f("main", ["fix/critical"]))
+        self.assertIsNone(f("main", ["backport/ga"]))
 
     def test_main_only_label_refused_on_release(self):
         f = rm.release_only_refusal
@@ -1722,7 +1747,7 @@ class PrFixClass(unittest.TestCase):
             "label `main-only` is for PRs into main; remove it here",
         )
         self.assertIsNone(f("main", ["main-only"]))
-        self.assertIsNone(f("release/0.192", ["fix/needs-backport"]))
+        self.assertIsNone(f("release/0.192", ["backport/rc"]))
 
     def test_rbo_key_ticket_else_pr(self):
         self.assertEqual(rm.rbo_key("UN-1 [FIX] x", "45"), "UN-1")
