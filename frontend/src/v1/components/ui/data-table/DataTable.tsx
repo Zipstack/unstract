@@ -6,7 +6,7 @@ import {
   type Row,
   useReactTable,
 } from "@tanstack/react-table";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import {
   InlineAlert,
   Skeleton,
@@ -85,6 +85,11 @@ const OWN_CLICK =
 
 function fromControl(event: MouseEvent<HTMLElement>): boolean {
   const target = event.target as Element | null;
+  // React bubbles events out of portals: a click on the row menu, rendered
+  // under <body>, reaches the row's handler but is not inside the row.
+  if (!(target && event.currentTarget.contains(target))) {
+    return true;
+  }
   const control = target?.closest?.(OWN_CLICK);
   return (
     control !== null &&
@@ -155,7 +160,22 @@ export function DataTable<TRow>({
   // ── Selection ─────────────────────────────────────────────────────────
   const [ownSelected, setOwnSelected] =
     useState<readonly string[]>(defaultSelectedIds);
-  const selectedList = selectedProp ?? ownSelected;
+  const heldSelection = selectedProp ?? ownSelected;
+  // Without server pagination the table holds every row, so a selected id
+  // that is not in `rows` (filtered out, deleted) is dropped: the bulk bar
+  // must never act on rows the user cannot see. Server pages keep ids from
+  // other pages on purpose.
+  const rowIds = useMemo(
+    () => (server ? null : new Set(rows.map(getRowId))),
+    [server, rows, getRowId],
+  );
+  const selectedList = useMemo(
+    () =>
+      rowIds === null
+        ? heldSelection
+        : heldSelection.filter((id) => rowIds.has(id)),
+    [rowIds, heldSelection],
+  );
   const selected = useMemo(() => new Set(selectedList), [selectedList]);
 
   // ── Expansion and client paging ───────────────────────────────────────
@@ -215,9 +235,13 @@ export function DataTable<TRow>({
         : [{ id: sortColumn, desc: sortDirection === "desc" }],
     [sortColumn, sortDirection],
   );
+  // A page past the end (the rows shrank) shows the last page at once,
+  // rather than one empty render before Pagination corrects it.
+  const lastPageIndex = Math.max(0, Math.ceil(rows.length / ownPageSize) - 1);
+  const shownPageIndex = Math.min(pageIndex, lastPageIndex);
   const paginationState = useMemo(
-    () => ({ pageIndex, pageSize: ownPageSize }),
-    [pageIndex, ownPageSize],
+    () => ({ pageIndex: shownPageIndex, pageSize: ownPageSize }),
+    [shownPageIndex, ownPageSize],
   );
 
   const clientPaged = pagination?.mode === "client";
@@ -298,6 +322,9 @@ export function DataTable<TRow>({
     commitSelection([], selectionAnnouncement(0, null));
   };
 
+  const isOpen = (row: Row<TRow>): boolean =>
+    row.getIsExpanded() && row.getCanExpand();
+
   const toggleExpanded = (id: string, open?: boolean): void => {
     setExpanded((last) => ({ ...last, [id]: open ?? !last[id] }));
   };
@@ -313,6 +340,7 @@ export function DataTable<TRow>({
   const active = pageIds.includes(activeId ?? "")
     ? activeId
     : (pageIds[0] ?? null);
+  const activeIndex = active === null ? -1 : pageIds.indexOf(active);
   const rowElements = useRef(new Map<string, HTMLTableRowElement>());
   const focusTarget = useRef<string | null>(null);
 
@@ -329,6 +357,14 @@ export function DataTable<TRow>({
     measureElement: (element) =>
       Math.max(element.getBoundingClientRect().height, ROW_HEIGHT),
     overscan: 8,
+    // The active row always renders, so Tab can reach the body and a
+    // focused row is not unmounted when it scrolls out of view.
+    rangeExtractor: (range) => {
+      const indexes = defaultRangeExtractor(range);
+      return activeIndex < 0 || indexes.includes(activeIndex)
+        ? indexes
+        : [...indexes, activeIndex].sort((a, b) => a - b);
+    },
     enabled: virtual,
     initialRect: INITIAL_VIEWPORT,
   });
@@ -351,11 +387,16 @@ export function DataTable<TRow>({
       return;
     }
     setActiveId(target.id);
-    focusTarget.current = target.id;
     if (virtual) {
       virtualizer.scrollToIndex(pageRows.indexOf(target));
     }
-    rowElements.current.get(target.id)?.focus();
+    const element = rowElements.current.get(target.id);
+    if (element) {
+      element.focus();
+    } else {
+      // Not rendered yet: the effect focuses it once it is.
+      focusTarget.current = target.id;
+    }
   };
 
   const onRowKeyDown = (
@@ -363,43 +404,71 @@ export function DataTable<TRow>({
     row: Row<TRow>,
     index: number,
   ): void => {
-    if (event.target !== event.currentTarget) {
+    if (
+      event.target !== event.currentTarget ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey
+    ) {
       return;
     }
-    const keys: Record<string, () => void> = {
-      ArrowDown: () => moveTo(index + 1),
-      ArrowUp: () => moveTo(index - 1),
-      Home: () => moveTo(0),
-      End: () => moveTo(pageRows.length - 1),
+    const canExpand = row.getCanExpand();
+    const go = (target: number): boolean => {
+      moveTo(target);
+      return true;
+    };
+    // Each returns false when the key does nothing here, so the browser
+    // keeps it (Space still scrolls a table without selection).
+    const keys: Record<string, () => boolean> = {
+      ArrowDown: () => go(index + 1),
+      ArrowUp: () => go(index - 1),
+      Home: () => go(0),
+      End: () => go(pageRows.length - 1),
       Enter: () => {
         if (onRowClick) {
           onRowClick(row.original);
-        } else if (row.getCanExpand()) {
+        } else if (canExpand) {
           toggleExpanded(row.id);
         }
+        return onRowClick !== undefined || canExpand;
       },
       " ": () => {
         if (selectable) {
           toggleRow(row.id);
         }
+        return selectable;
       },
       ArrowRight: () => {
-        if (row.getCanExpand()) {
+        if (canExpand) {
           toggleExpanded(row.id, true);
         }
+        return canExpand;
       },
       ArrowLeft: () => {
-        if (row.getCanExpand()) {
+        if (canExpand) {
           toggleExpanded(row.id, false);
         }
+        return canExpand;
       },
     };
-    const handler = keys[event.key];
-    if (handler) {
+    if (keys[event.key]?.()) {
       event.preventDefault();
-      handler();
     }
   };
+
+  // ── Row numbers for a virtualised table ───────────────────────────────
+  // aria-rowindex counts the header (1) and every open detail row, so a
+  // screen reader's position matches the rows it can reach.
+  const ariaRowIndex: number[] = [];
+  let openDetails = 0;
+  if (virtual) {
+    pageRows.forEach((row, i) => {
+      ariaRowIndex[i] = i + 2 + openDetails;
+      if (isOpen(row) && renderExpanded) {
+        openDetails += 1;
+      }
+    });
+  }
 
   // ── Layout ────────────────────────────────────────────────────────────
   const columnCount =
@@ -415,7 +484,7 @@ export function DataTable<TRow>({
 
   const renderRow = (row: Row<TRow>, index: number): ReactNode => {
     const isSelected = row.getIsSelected();
-    const isExpanded = row.getIsExpanded();
+    const isExpanded = isOpen(row);
     const tone = getRowTone?.(row.original) ?? "default";
     const rowLabel = getRowLabel(row.original);
     const isActive = interactive && row.id === active;
@@ -499,7 +568,7 @@ export function DataTable<TRow>({
           data-slot="data-table-row"
           data-state={isSelected ? "selected" : undefined}
           data-tone={tone === "failure" ? "failure" : undefined}
-          aria-rowindex={virtual ? index + 2 : undefined}
+          aria-rowindex={virtual ? ariaRowIndex[index] : undefined}
           tabIndex={interactive ? (isActive ? 0 : -1) : undefined}
           className={cn(ROW, ROW_HOVER, onRowClick && "ui:cursor-pointer")}
           onFocus={() => {
@@ -534,7 +603,10 @@ export function DataTable<TRow>({
           ))}
         </tr>
         {isExpanded && renderExpanded && (
-          <tr data-slot="data-table-expanded">
+          <tr
+            data-slot="data-table-expanded"
+            aria-rowindex={virtual ? ariaRowIndex[index] + 1 : undefined}
+          >
             <td
               id={detailId}
               colSpan={columnCount}
@@ -596,27 +668,36 @@ export function DataTable<TRow>({
           )
         : message(empty ?? "Nothing here yet.", "data-table-empty");
   } else if (virtual) {
-    const items = virtualizer.getVirtualItems();
-    const before = items[0]?.start ?? 0;
-    const after = virtualizer.getTotalSize() - (items.at(-1)?.end ?? 0);
-    body = (
-      <>
-        {before > 0 && <Spacer height={before} columns={columnCount} />}
-        {items.map((item) => {
-          const row = pageRows[item.index];
-          return (
-            <tbody
-              key={item.key}
-              data-index={item.index}
-              ref={virtualizer.measureElement}
-            >
-              {renderRow(row, item.index)}
-            </tbody>
-          );
-        })}
-        {after > 0 && <Spacer height={after} columns={columnCount} />}
-      </>
-    );
+    // The rendered rows need not be contiguous (the active row is kept), so
+    // a spacer fills every gap, then the rest of the list.
+    const parts: ReactNode[] = [];
+    let end = 0;
+    for (const item of virtualizer.getVirtualItems()) {
+      if (item.start > end) {
+        parts.push(
+          <Spacer
+            key={`gap-${item.key}`}
+            height={item.start - end}
+            columns={columnCount}
+          />,
+        );
+      }
+      parts.push(
+        <tbody
+          key={item.key}
+          data-index={item.index}
+          ref={virtualizer.measureElement}
+        >
+          {renderRow(pageRows[item.index], item.index)}
+        </tbody>,
+      );
+      end = item.end;
+    }
+    const rest = virtualizer.getTotalSize() - end;
+    if (rest > 0) {
+      parts.push(<Spacer key="rest" height={rest} columns={columnCount} />);
+    }
+    body = parts;
   } else {
     body = <tbody>{pageRows.map((row, index) => renderRow(row, index))}</tbody>;
   }
@@ -624,7 +705,7 @@ export function DataTable<TRow>({
   const sortedColumn = sort?.columnId;
   const header = (
     <thead>
-      <tr>
+      <tr aria-rowindex={virtual ? 1 : undefined}>
         {selectable && (
           <th scope="col" className={cn(HEAD_CELL, UTILITY_CELL)}>
             <span className="ui:inline-flex ui:items-center ui:justify-center">
@@ -697,7 +778,9 @@ export function DataTable<TRow>({
       >
         <table
           aria-label={label}
-          aria-rowcount={virtual ? pageRows.length + 1 : undefined}
+          aria-rowcount={
+            virtual ? pageRows.length + openDetails + 1 : undefined
+          }
           className="ui:w-full ui:table-fixed ui:border-separate ui:border-spacing-0"
         >
           {header}
@@ -716,7 +799,7 @@ export function DataTable<TRow>({
           {pagination && (
             <Pagination
               aria-label={`${label} pages`}
-              page={server ? pagination.page : pageIndex + 1}
+              page={server ? pagination.page : shownPageIndex + 1}
               pageSize={pageSize}
               total={totalRows}
               pageSizeOptions={pagination.pageSizeOptions ?? DEFAULT_PAGE_SIZES}

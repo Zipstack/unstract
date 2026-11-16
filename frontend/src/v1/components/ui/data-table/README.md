@@ -93,8 +93,15 @@ const columns: DataTableColumn<Deployment>[] = [
   A new sort goes back to page 1 with client pagination.
 - **Pagination** uses `Pagination` from `navigation`. `client` pages the
   rows given; `server` shows the rows given as page `page` of `total`.
-  Without `pagination` every row renders.
-- **Selection** is keyed by row id and survives page changes. The header box
+  Without `pagination` every row renders. A client page past the end (the
+  rows shrank) shows the last page; new rows do not go back to page 1 by
+  themselves (a refetch would), so give the table a `key` that changes with
+  the search when a new search should start on page 1. Client `pageSize` is
+  the starting size.
+- **Selection** is keyed by row id. With server pagination it survives page
+  changes; otherwise only ids present in `rows` count, so a row filtered out
+  is not in the bulk bar's count or `selectedIds` (it comes back selected if
+  the filter clears). The header box
   selects or clears the rows on the current page; it shows mixed
   (`aria-checked="mixed"`) when some are selected. The bulk bar (count,
   "Clear selection", then `bulkActions`) sits between the toolbar and the
@@ -139,7 +146,9 @@ const columns: DataTableColumn<Deployment>[] = [
   (`className="ui:h-160"`, or fill a flex parent). Past 50 rows
   (`VIRTUALIZE_ABOVE`) only the rows in view render (TanStack Virtual), with
   `aria-rowcount` and `aria-rowindex` so screen readers still hear the full
-  count. Rows are measured, so expanded rows keep their height.
+  count (open detail rows included). Rows are measured, so expanded rows
+  keep their height. The active row always renders, so Tab still reaches the
+  body after the user scrolls away from it.
 
 ## Seams
 

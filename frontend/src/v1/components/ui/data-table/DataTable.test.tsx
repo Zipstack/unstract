@@ -746,7 +746,7 @@ describe("1,000 rows", () => {
     expect(status()).toBe("Sorted by Last run, descending");
   });
 
-  it("selects all rows from the header box and scrolls to the last row on End", async () => {
+  it("selects all rows from the header box and goes to the last row on End", async () => {
     const { user } = setupLarge();
     await user.click(
       screen.getByRole("checkbox", { name: "Select all rows on this page" }),
@@ -755,21 +755,185 @@ describe("1,000 rows", () => {
       "All 1,000 rows on this page selected, 1,000 in total",
     );
     bodyRows()[0].focus();
-    const frame = document.querySelector<HTMLElement>(
-      "[data-slot=data-table-frame]",
-    );
     const scrollTo = vi.spyOn(HTMLElement.prototype, "scrollTo");
     await user.keyboard("{End}");
-    // The table asked to scroll; happy-dom does not, so do what a browser would.
     expect(scrollTo).toHaveBeenCalled();
-    expect(bodyRows().at(-1)?.textContent).not.toContain(THOUSAND[999].name);
-    (frame as HTMLElement).scrollTop = 1000 * 56 - 560;
-    fireEvent.scroll(frame as HTMLElement);
+    // The active row renders at once, so focus lands on it without waiting
+    // for the scroll; the rows around it follow when the browser scrolls.
+    const last = bodyRows().at(-1);
+    expect(last?.textContent).toContain(THOUSAND[999].name);
+    expect(last?.getAttribute("aria-rowindex")).toBe("1001");
+    expect(document.activeElement).toBe(last);
+  });
+
+  it("keeps the active row rendered when it scrolls out of view", async () => {
+    const { user } = setupLarge();
+    bodyRows()[2].focus();
+    await user.keyboard("{ArrowDown}");
+    const frame = document.querySelector<HTMLElement>(
+      "[data-slot=data-table-frame]",
+    ) as HTMLElement;
+    frame.scrollTop = 500 * 56;
+    fireEvent.scroll(frame);
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
-    const last = bodyRows().at(-1);
-    expect(last?.textContent).toContain(THOUSAND[999].name);
-    expect(document.activeElement).toBe(last);
+    const tabbable = bodyRows().filter((row) => row.tabIndex === 0);
+    expect(tabbable).toHaveLength(1);
+    expect(tabbable[0].textContent).toContain(THOUSAND[3].name);
+    expect(document.activeElement).toBe(tabbable[0]);
+    // And the rows in view are there too, after a spacer for the gap.
+    expect(
+      bodyRows().some((row) => row.textContent?.includes(THOUSAND[500].name)),
+    ).toBe(true);
+    expect(
+      document.querySelectorAll("[data-slot=data-table-spacer]").length,
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it("numbers rows for assistive technology counting open details", async () => {
+    const { user } = setupLarge({
+      renderExpanded: (row) => <p>Detail of {row.name}</p>,
+    });
+    expect(
+      table().querySelector("thead tr")?.getAttribute("aria-rowindex"),
+    ).toBe("1");
+    await user.click(
+      screen.getByRole("button", { name: `Details for ${THOUSAND[1].name}` }),
+    );
+    expect(table().getAttribute("aria-rowcount")).toBe("1002");
+    const detail = table().querySelector("[data-slot=data-table-expanded]");
+    expect(detail?.getAttribute("aria-rowindex")).toBe("4");
+    expect(bodyRows()[2].getAttribute("aria-rowindex")).toBe("5");
+  });
+});
+
+let emptyRenders = 0;
+function EmptyProbe() {
+  emptyRenders += 1;
+  return <p>Empty</p>;
+}
+
+describe("review fixes", () => {
+  it("does not fire the row click when a row menu item is chosen", async () => {
+    const onRowClick = vi.fn();
+    const onEdit = vi.fn();
+    const { user } = setup({
+      onRowClick,
+      rowActions: () => [{ id: "edit", label: "Edit", onSelect: onEdit }],
+    });
+    await user.click(
+      screen.getByRole("button", { name: "Actions for masa_cms" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Edit" }));
+    expect(onEdit).toHaveBeenCalledOnce();
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it("does not pull focus back to a row after the user leaves the table", async () => {
+    const { user, rerender } = setup({
+      onRowClick: vi.fn(),
+      toolbar: <input aria-label="Search" />,
+    });
+    bodyRows()[0].focus();
+    await user.keyboard("{ArrowUp}");
+    await user.click(screen.getByRole("textbox", { name: "Search" }));
+    rerender(
+      <DataTable
+        label="API deployments"
+        columns={GALLERY_COLUMNS}
+        rows={[...FIVE]}
+        getRowId={rowId}
+        getRowLabel={rowLabel}
+        onRowClick={vi.fn()}
+        toolbar={<input aria-label="Search" />}
+      />,
+    );
+    expect(document.activeElement).toBe(
+      screen.getByRole("textbox", { name: "Search" }),
+    );
+  });
+
+  it("shows no detail for a row that cannot expand, even if asked to start open", () => {
+    setup({
+      renderExpanded: (row) => <p>Detail of {row.name}</p>,
+      canExpand: (row) => row.id !== "dep-1",
+      defaultExpandedIds: ["dep-1"],
+    });
+    expect(screen.queryByText("Detail of health-monitoring API")).toBeNull();
+  });
+
+  it("shows the last page at once when the rows shrink under a client page", async () => {
+    const props = {
+      label: "API deployments",
+      columns: GALLERY_COLUMNS,
+      getRowId: rowId,
+      getRowLabel: rowLabel,
+      pagination: { mode: "client", pageSize: 10 } as const,
+      // Rendered only if a render ever shows an empty page.
+      empty: <EmptyProbe />,
+    };
+    const { user, rerender } = renderV1(
+      <DataTable {...props} rows={galleryRows(30)} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Showing 21 to 30 of 30 entries")).toBeTruthy();
+    rerender(<DataTable {...props} rows={galleryRows(12)} />);
+    expect(bodyRows()).toHaveLength(2);
+    expect(screen.getByText("Showing 11 to 12 of 12 entries")).toBeTruthy();
+    expect(emptyRenders).toBe(0);
+  });
+
+  it("never hands the bulk bar rows that are no longer in the table", async () => {
+    const bulk = vi.fn(() => null);
+    const props = {
+      label: "API deployments",
+      columns: GALLERY_COLUMNS,
+      getRowId: rowId,
+      getRowLabel: rowLabel,
+      selectable: true,
+      bulkActions: bulk,
+      defaultSelectedIds: ["dep-1", "dep-2"],
+    };
+    const { rerender } = renderV1(<DataTable {...props} rows={FIVE} />);
+    rerender(<DataTable {...props} rows={FIVE.slice(1)} />);
+    expect(
+      screen.getByRole("region", { name: "Bulk actions" }).textContent,
+    ).toContain("1 selected");
+    expect(bulk).toHaveBeenLastCalledWith(
+      expect.objectContaining({ selectedIds: ["dep-2"] }),
+    );
+    // Server pages keep ids from other pages.
+    rerender(
+      <DataTable
+        {...props}
+        rows={FIVE.slice(1)}
+        pagination={{
+          mode: "server",
+          page: 1,
+          pageSize: 4,
+          total: 5,
+          onPageChange: vi.fn(),
+        }}
+      />,
+    );
+    expect(
+      screen.getByRole("region", { name: "Bulk actions" }).textContent,
+    ).toContain("2 selected");
+  });
+
+  it("leaves modified keys and keys it does not use to the browser", () => {
+    setup({ onRowClick: vi.fn() });
+    const row = bodyRows()[0];
+    row.focus();
+    expect(fireEvent.keyDown(row, { key: "ArrowDown", altKey: true })).toBe(
+      true,
+    );
+    expect(document.activeElement).toBe(row);
+    // No selection, no detail: Space and Right are not the table's.
+    expect(fireEvent.keyDown(row, { key: " " })).toBe(true);
+    expect(fireEvent.keyDown(row, { key: "ArrowRight" })).toBe(true);
+    expect(fireEvent.keyDown(row, { key: "ArrowDown" })).toBe(false);
   });
 });
