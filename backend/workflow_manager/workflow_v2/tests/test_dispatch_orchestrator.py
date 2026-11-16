@@ -21,7 +21,7 @@ class TestDispatchOrchestratorTask:
             task_id = WorkflowHelper._dispatch_orchestrator_task(
                 queue=CeleryQueue.CELERY_API_DEPLOYMENTS,
                 args=["a"],
-                kwargs={"transport": "pg_queue"},
+                kwargs={"use_file_history": True},
                 org_schema="org1",
             )
         # bare msg_id, no "pg:" prefix — matches the worker PgDispatchHandle.id

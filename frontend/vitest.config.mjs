@@ -47,11 +47,16 @@ function jsxInJs() {
  * reported as a failed file, not a failed assertion, and easy to read as
  * unrelated infrastructure noise.
  */
-function optionalPluginImports() {
+export function optionalPluginImports() {
   return {
     name: "optional-plugin-imports",
     resolveId(source, importer) {
-      if (!importer || !source.startsWith(".")) {
+      // v1 has no optional imports; a missing module there must fail.
+      if (
+        !importer ||
+        !source.startsWith(".") ||
+        importer.includes("/src/v1/")
+      ) {
         return null;
       }
       const sourcePath = source.split("?")[0].split("#")[0];
@@ -94,6 +99,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "./src"),
+      // Mirror of the `@v1` alias in vite.config.js.
+      "@v1": path.resolve(import.meta.dirname, "./src/v1"),
     },
   },
   test: {
@@ -107,8 +114,20 @@ export default defineConfig({
      * The Playwright suite (the rig's `ui` group) lives in `tests/e2e/ui`, out
      * of this tree entirely, so vitest's default glob no longer reaches it.
      * `build/` is listed because a production build lands there and its
-     * bundled chunks would otherwise be walked.
+     * bundled chunks would otherwise be walked. `test-fixtures/` holds
+     * known-good and known-bad trees (some with `*.test.ts` files) that
+     * test-fixtures/v1-boundary/boundary.fixtures.mjs lints and type-checks;
+     * they are inputs, not tests.
+     *
+     * `src/v1/` has its own config (vitest.v1.config.mts) and rig groups
+     * (`frontend-v1-*`), so a v1 result never changes this suite's.
      */
-    exclude: ["**/node_modules/**", "**/dist/**", "**/build/**"],
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "test-fixtures/**",
+      "src/v1/**",
+    ],
   },
 });

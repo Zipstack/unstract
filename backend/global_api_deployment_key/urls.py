@@ -21,6 +21,16 @@ urlpatterns = [
         name="global_api_deployment_key_rotate",
     ),
     path(
+        "keys/<uuid:pk>/history/",
+        GlobalApiDeploymentKeyViewSet.as_view({"get": "history"}),
+        name="global_api_deployment_key_history",
+    ),
+    path(
+        "keys/<uuid:pk>/callers/",
+        GlobalApiDeploymentKeyViewSet.as_view({"get": "callers"}),
+        name="global_api_deployment_key_callers",
+    ),
+    path(
         "deployments/",
         GlobalApiDeploymentKeyViewSet.as_view({"get": "deployments"}),
         name="global_api_deployment_key_deployments",

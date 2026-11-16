@@ -11,18 +11,24 @@ from urllib.parse import urlparse
 if TYPE_CHECKING:
     from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from unstract.sdk1.adapters.constants import AdapterDocs, Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
 logger = logging.getLogger(__name__)
 
-# Anthropic models that have deprecated sampling parameters (`temperature`,
-# `top_p`, `top_k`). Anthropic removed the sampling params starting with Claude
-# Opus 4.7, and every model released since — Opus 4.8, Sonnet 5, Fable 5,
-# Mythos 5 — rejects them with a 400 (directly, and through the Bedrock / Azure
-# AI Foundry / Vertex proxies). Opus 4.6 / Sonnet 4.6 and older still accept
-# them, so detection is a narrow allowlist rather than a broad `claude-*` match.
+# Models that reject sampling parameters (`temperature`, `top_p`, `top_k`).
+# Anthropic removed the sampling params starting with Claude Opus 4.7, and every
+# model released since — Opus 4.8, Sonnet 5, Fable 5, Mythos 5 — rejects them
+# with a 400 (directly, and through the Bedrock / Azure AI Foundry / Vertex
+# proxies). Opus 4.6 / Sonnet 4.6 and older still accept them, so detection is
+# a narrow allowlist rather than a broad `claude-*` match.
+#
+# OpenAI's GPT-6 family (`gpt-6-luna`, `gpt-6-sol`, `gpt-6-astra`, and the
+# `gpt-6.1-*` point releases) rejects `temperature` too (observed on AWS
+# Bedrock as `temperature not permitted`). GPT-5.x still accepts it —
+# `gpt-5.6-terra` normalizes to `gpt-5-6-terra`, which the `gpt-6` stem does
+# not match.
 #
 # Detection is a mix of literal stems and Opus family ranges. The Opus ranges
 # cover every Opus release from 4.7 onwards — 4.7, 4.8, 4.9 and every Opus 5+
@@ -48,7 +54,7 @@ logger = logging.getLogger(__name__)
 # Leading text (route prefixes like `converse/`, `invoke/`, `bedrock/`) passes
 # through because the regex is anchored only at the trailing edge.
 # Keep this list current — add a stem here when Anthropic deprecates sampling on
-# a new (non-Opus) model.
+# a new (non-Opus) model, or when another vendor ships a model that rejects them.
 # Trailing anchor allows: end-of-string, or one of `-`/`:`/`@`/`/` (the
 # delimiters used in date suffixes, ARN paths, Vertex `@<date>`, and the
 # `v1:0` tag), or `v` followed by a digit (the version-tag start). A bare
@@ -61,6 +67,7 @@ _SAMPLING_DEPRECATED_MODEL_STEMS: tuple[str, ...] = (
     "claude-sonnet-5",
     "claude-fable-5",
     "claude-mythos-5",
+    "gpt-6",
 )
 # Regex fragments (not escaped) for model families where a whole version range
 # is deprecated. `claude-opus-4-[789]` covers 4.7–4.9 but not a hypothetical
@@ -105,7 +112,7 @@ def _looks_like_opaque_aip_arn(value: str | None) -> bool:
 
     Bedrock AIP ARNs do not carry the underlying foundation-model id in the
     string, so the sampling-strip detector cannot decide whether the call is
-    bound for a sampling-deprecated Claude model (Opus 4.7 and later).
+    bound for a sampling-deprecated model (Claude Opus 4.7 and later, GPT-6).
     """
     return bool(value) and _OPAQUE_AIP_ARN_MARKER in value
 
@@ -118,7 +125,8 @@ def _has_deprecated_sampling_params(model: str | None) -> bool:
     Fable 5, Mythos 5) rejects them too; sending any of them yields a 400 from
     Anthropic and from the providers that proxy it (Bedrock, Azure AI Foundry,
     Vertex AI). Every Opus release from 4.7 onwards (4.7, 4.8, 4.9, Opus 5+)
-    is covered by version-range patterns; see `_SAMPLING_DEPRECATED_MODEL_STEMS`
+    is covered by version-range patterns. OpenAI's GPT-6 family likewise rejects
+    `temperature` (observed on AWS Bedrock). See `_SAMPLING_DEPRECATED_MODEL_STEMS`
     and `_SAMPLING_DEPRECATED_MODEL_FAMILIES` for the covered set.
 
     The check normalizes case and `.`/`_` separators to `-`, then regex-
@@ -296,6 +304,9 @@ class BaseChatCompletionParameters(BaseModel):
     See https://docs.litellm.ai/docs/completion/input#input-params-1
     """
 
+    # Validation errors reach logs and stored results, so they omit the settings.
+    model_config = ConfigDict(hide_input_in_errors=True)
+
     model: str
     # The sampling temperature to be used, between 0 and 2.
     temperature: float | None = Field(default=0.1, ge=0, le=2)
@@ -319,6 +330,9 @@ class BaseChatCompletionParameters(BaseModel):
 
 class BaseEmbeddingParameters(BaseModel):
     """Base parameters for all SDK v1 embedding providers."""
+
+    # Validation errors reach logs and stored results, so they omit the settings.
+    model_config = ConfigDict(hide_input_in_errors=True)
 
     model: str
     timeout: float | int | None = 600
@@ -386,7 +400,7 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
                 "reasoning_effort", "medium"
             )
 
-        return validated
+        return _strip_deprecated_sampling_params(validated)
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
@@ -403,7 +417,7 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
 # and the reasoning-model detector below.
 _OPENAI_PROVIDER_PREFIX = "openai/"
 _CUSTOM_OPENAI_PROVIDER_PREFIX = "custom_openai/"
-_OPENAI_REASONING_MODEL_PATTERN = re.compile(r"^(o1|o3|o4|gpt-5)(?:[-/]|$)")
+_OPENAI_REASONING_MODEL_PATTERN = re.compile(r"^(o1|o3|o4|gpt-5|gpt-6)(?:[-/.]|$)")
 # Keyless gateways still need a non-empty key; the OpenAI SDK rejects a
 # null/blank one before any request reaches the endpoint.
 _NO_AUTH_API_KEY = "no-auth"
@@ -413,7 +427,7 @@ def _is_openai_reasoning_model(model: str) -> bool:
     """Best-effort detection of OpenAI reasoning model names.
 
     The check is conservative — it matches only OpenAI's known reasoning
-    families (o1, o3, o4, gpt-5) after stripping the LiteLLM `custom_openai/`
+    families (o1, o3, o4, gpt-5, gpt-6) after stripping the LiteLLM `custom_openai/`
     prefix and optional `openai/` sub-prefix. Custom gateway model aliases
     that hide a reasoning model behind an unrelated name still need the
     explicit `enable_reasoning` opt-in.
@@ -536,7 +550,9 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
                 len(_CUSTOM_OPENAI_PROVIDER_PREFIX) :
             ]
 
-        return validated
+        # Gateway aliases the reasoning detector does not recognise still carry
+        # the model id; drop sampling params for models that reject them.
+        return _strip_deprecated_sampling_params(validated)
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
@@ -724,6 +740,22 @@ class OpenRouterLLMParameters(BaseChatCompletionParameters):
         return f"{_OPENROUTER_PROVIDER_PREFIX}{model}"
 
 
+def _azure_rejects_sampling_params(model_ids: tuple[str, ...]) -> bool:
+    """Whether an Azure OpenAI deployment serves a model that rejects sampling.
+
+    The deployment name routes the call but need not name the model, so the
+    real model id comes from the optional ``model`` field on the first pass and
+    from ``cost_model`` -- which ``LLM`` passes back on every re-validation --
+    after that. Any of them naming the model is enough.
+    """
+    return any(_has_deprecated_sampling_params(m) for m in model_ids)
+
+
+def _without_sampling_params(validated: dict[str, "Any"]) -> dict[str, "Any"]:
+    """Return a copy of ``validated`` with every sampling param removed."""
+    return {k: v for k, v in validated.items() if k not in _DEPRECATED_SAMPLING_PARAMS}
+
+
 class AzureOpenAILLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/azure/#completion---using-azure_ad_token-api_base-api_version."""
 
@@ -747,8 +779,12 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
-        # Capture user-provided model name before deployment_name overwrites it
-        original_model = adapter_metadata.get("model", "")
+        # Capture user-provided model name before deployment_name overwrites it.
+        # On re-validation `model` holds the deployment, so `LLM` passes the
+        # first pass's `cost_model` back; prefer it so the real id survives.
+        original_model = adapter_metadata.get("cost_model") or adapter_metadata.get(
+            "model", ""
+        )
 
         adapter_metadata["model"] = AzureOpenAILLMParameters.validate_model(
             adapter_metadata
@@ -758,6 +794,10 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
         azure_endpoint = adapter_metadata.get("azure_endpoint", "")
         if azure_endpoint:
             adapter_metadata["api_base"] = azure_endpoint
+
+        sampling_deprecated = _azure_rejects_sampling_params(
+            (original_model, adapter_metadata["model"])
+        )
 
         # Handle Azure OpenAI reasoning configuration
         enable_reasoning = adapter_metadata.get("enable_reasoning", False)
@@ -805,6 +845,9 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
             if not cost_model.startswith("azure/"):
                 cost_model = f"azure/{cost_model}"
             validated["cost_model"] = cost_model
+
+        if sampling_deprecated:
+            validated = _without_sampling_params(validated)
 
         return validated
 

@@ -1,13 +1,16 @@
-import { Copy, Pencil, Plus, Trash2 } from "lucide-react";
+import { Copy, Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
 import { Input, Switch } from "@/components/ui/shims/antd-inputs";
 import { Space } from "@/components/ui/shims/antd-layout";
 import { Modal, Tooltip } from "@/components/ui/shims/antd-overlays";
 import { Table } from "@/components/ui/shims/antd-structure";
 import { Typography } from "@/components/ui/shims/antd-typography";
 
+import { canEditResource } from "../../../helpers/resourceAccess";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useCopyToClipboard } from "../../../hooks/useCopyToClipboard";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
@@ -16,6 +19,23 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import "./ManageKeys.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+
+// A key is a credential, so the table shows only its last four characters
+// until someone asks to see it. Anything on screen is also in the page text
+// a browsing agent reads. Copy takes the full key from the row, so copying
+// never needs a reveal. A key too short for its last four to be a small part
+// of it shows no characters at all. The list API still sends the full key
+// (UN-4562).
+const MIN_LENGTH_TO_SHOW_TAIL = 12;
+const maskApiKey = (key) => {
+  if (!key) {
+    return "";
+  }
+  const text = String(key);
+  return text.length < MIN_LENGTH_TO_SHOW_TAIL
+    ? "••••••••"
+    : `••••••••${text.slice(-4)}`;
+};
 
 const ManageKeys = ({
   isDialogOpen,
@@ -27,8 +47,13 @@ const ManageKeys = ({
   type,
 }) => {
   const { sessionDetails } = useSessionStore();
+  // Keys are managed by the deployment's owner, so a shared user reads them
+  // but cannot add one or change its state (UN-2868).
+  const canEdit = canEditResource(selectedApiRow, sessionDetails);
+  const ownerOnlyTitle = canEdit ? "" : "Only the owner can change this";
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const copyToClipboard = useCopyToClipboard();
   const [isTableLoading, setIsTableLoading] = useState(false);
   const { setAlertDetails } = useAlertStore();
   const [isNewKey, setIsNewKey] = useState(false);
@@ -37,6 +62,17 @@ const ManageKeys = ({
   const [canAdd, setCanAdd] = useState(false);
   const [selectedKeyRow, setSelectedKeyRow] = useState({});
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
+  const [visibleKeyIds, setVisibleKeyIds] = useState(() => new Set());
+
+  // ManageKeys stays mounted while the modal is closed (its callers render it
+  // unconditionally), so a key revealed for one deployment or pipeline must not
+  // still be showing when the modal next opens. Clearing on close means a
+  // revealed key is masked again while the modal fades out; that is intended.
+  useEffect(() => {
+    if (!isDialogOpen) {
+      setVisibleKeyIds(new Set());
+    }
+  }, [isDialogOpen]);
 
   useEffect(() => {
     if (isNewKey) {
@@ -206,21 +242,16 @@ const ManageKeys = ({
       });
   };
 
-  const copyText = (text) => {
-    navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        setAlertDetails({
-          type: "success",
-          content: "API key copied to clipboard",
-        });
-      })
-      .catch((error) => {
-        setAlertDetails({
-          type: "error",
-          content: "Copy failed",
-        });
-      });
+  const toggleKeyVisibility = (id) => {
+    setVisibleKeyIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   const columns = [
@@ -233,22 +264,34 @@ const ManageKeys = ({
       title: "API Key",
       dataIndex: "api_key",
       key: "api_key",
-      render: (_, record) => (
-        <Space direction="horizontal" className="action-items">
-          <div>
-            <Tooltip
-              title="click to copy"
-              className="cursorPointer"
-              onClick={() => copyText(record?.api_key)}
-            >
-              <Copy />
+      render: (_, record) => {
+        const isVisible = visibleKeyIds.has(record?.id);
+        return (
+          <Space direction="horizontal" className="action-items">
+            <Tooltip title="Copy key">
+              <Button
+                type="text"
+                size="small"
+                icon={<Copy />}
+                aria-label="Copy API key"
+                onClick={() => copyToClipboard(record?.api_key, "API key")}
+              />
             </Tooltip>
-          </div>
-          <div>
-            <Typography.Text>{record?.api_key}</Typography.Text>
-          </div>
-        </Space>
-      ),
+            <Typography.Text className="manage-keys__key">
+              {isVisible ? record?.api_key : maskApiKey(record?.api_key)}
+            </Typography.Text>
+            <Tooltip title={isVisible ? "Hide key" : "Show key"}>
+              <Button
+                type="text"
+                size="small"
+                icon={isVisible ? <EyeOff /> : <Eye />}
+                aria-label={isVisible ? "Hide API key" : "Show API key"}
+                onClick={() => toggleKeyVisibility(record?.id)}
+              />
+            </Tooltip>
+          </Space>
+        );
+      },
     },
     {
       title: "Active",
@@ -256,13 +299,16 @@ const ManageKeys = ({
       dataIndex: "is_active",
       align: "center",
       render: (_, record) => (
-        <Switch
-          size="small"
-          checked={record.is_active}
-          onChange={(e) => {
-            updateKeyStatus(record);
-          }}
-        />
+        <Tooltip title={ownerOnlyTitle}>
+          <Switch
+            size="small"
+            checked={record.is_active}
+            disabled={!canEdit}
+            onChange={(e) => {
+              updateKeyStatus(record);
+            }}
+          />
+        </Tooltip>
       ),
     },
     {
@@ -271,13 +317,24 @@ const ManageKeys = ({
       align: "center",
       render: (_, record) => (
         <>
-          <Space className="actions" onClick={() => openEditModal(record)}>
-            <Tooltip title="edit" className="cursorPointer">
+          <Space
+            className="actions"
+            aria-disabled={!canEdit}
+            onClick={() => canEdit && openEditModal(record)}
+          >
+            <Tooltip title={ownerOnlyTitle || "edit"} className="cursorPointer">
               <Pencil />
             </Tooltip>
           </Space>
-          <Space className="actions" onClick={() => showDeleteModal(record)}>
-            <Tooltip title="delete" className="cursorPointer">
+          <Space
+            className="actions"
+            aria-disabled={!canEdit}
+            onClick={() => canEdit && showDeleteModal(record)}
+          >
+            <Tooltip
+              title={ownerOnlyTitle || "delete"}
+              className="cursorPointer"
+            >
               <Trash2 />
             </Tooltip>
           </Space>
@@ -298,14 +355,17 @@ const ManageKeys = ({
         footer={null}
       >
         <div className="display-flex-right new-key-btn">
-          <CustomButton
-            type="primary"
-            size="small"
-            icon={<Plus />}
-            onClick={openAddModal}
-          >
-            New Key
-          </CustomButton>
+          <Tooltip title={ownerOnlyTitle}>
+            <CustomButton
+              type="primary"
+              size="small"
+              icon={<Plus />}
+              disabled={!canEdit}
+              onClick={openAddModal}
+            >
+              New Key
+            </CustomButton>
+          </Tooltip>
         </div>
         <div className="keys-table">
           <Table

@@ -137,7 +137,9 @@ class PlatformEndpoints:
         """Build a ``PlatformEndpoints`` from ``UNSTRACT_*`` env vars.
 
         Used by every runtime so the lookup logic stays single-sourced.
-        Defaults match the dev compose stack at ``docker/docker-compose.yaml``.
+        Defaults are localhost URLs for a developer-managed stack. Not every
+        one is published by ``docker/docker-compose.yaml`` as shipped; see the
+        commented-out loopback ``ports`` entries there.
         """
         return cls(
             backend_url=os.environ.get("UNSTRACT_BACKEND_URL", "http://localhost:8000"),
@@ -315,6 +317,9 @@ class TestcontainersRuntime:
 
     For full platform e2e against testcontainers, use ``ComposeRuntime`` for now
     or set ``UNSTRACT_E2E_RUNTIME=local`` after running ``run-platform.sh``.
+    With ``local``, x2text-service must be reachable at ``UNSTRACT_X2TEXT_URL``
+    (default ``localhost:3004``), which ``docker/docker-compose.yaml`` does not
+    publish: uncomment its loopback ``ports`` entry there.
     """
 
     name: ClassVar[str] = "testcontainers"
@@ -333,14 +338,22 @@ class TestcontainersRuntime:
         # __post_init__ invariant (host without port) is self-cleaning;
         # otherwise a partial spec leaks the four containers we just started.
         try:
-            pg = PostgresContainer("pgvector/pgvector:pg15")
+            # Every xdist worker migrates its own test database in one
+            # transaction, each holding a lock per table and constraint. The
+            # default of 64 overflows the shared lock table intermittently
+            # ("out of shared memory") and errors the whole backend group.
+            pg = PostgresContainer("pgvector/pgvector:pg15").with_command(
+                "postgres -c max_locks_per_transaction=256"
+            )
             pg.start()
             self._stack.append(pg)
             redis = RedisContainer("redis:7.2.3").start()
             self._stack.append(redis)
             rabbit = RabbitMqContainer("rabbitmq:3.13-management").start()
             self._stack.append(rabbit)
-            minio = MinioContainer("minio/minio:latest").start()
+            minio = MinioContainer(
+                "unstract/minio:RELEASE.2026-09-22T19-25-18Z@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1"
+            ).start()
             self._stack.append(minio)
 
             return PlatformEndpoints.from_env(

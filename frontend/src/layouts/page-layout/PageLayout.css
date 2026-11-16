@@ -17,12 +17,16 @@
  * separates the two planes -- without it the bar dissolves into any content
  * that is also white, so it is not decorative.
  */
+/*
+ * 56px tall with 12px gutters, per the Figma top bar (node 1638-44720). The
+ * hairline counts toward the 56, hence 7px below: 8 + 40 + 7 + 1.
+ */
 .topNav {
   background-color: var(--card);
   border-bottom: 1px solid var(--border);
-  padding-block: 14px;
-  padding-inline-start: 20px;
-  padding-inline-end: 12px;
+  min-height: 56px;
+  padding-block: 8px 7px;
+  padding-inline: 12px;
 }
 .logoNoMargin {
   margin-inline-end: 12px;

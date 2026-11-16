@@ -18,6 +18,8 @@ const config = {
     "/favicon.ico",
   logoUrl: runtimeConfig.logoUrl || import.meta.env.VITE_CUSTOM_LOGO_URL,
   version: runtimeConfig.version || import.meta.env.VITE_VERSION,
+  // URL of the Unstract Flow app, when one is deployed alongside.
+  flowUrl: runtimeConfig.flowUrl || import.meta.env.VITE_FLOW_URL,
   // Add more values as OR case, if needed for fallback.
 };
 

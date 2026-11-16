@@ -21,6 +21,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import psycopg2
+import psycopg2.errors
 
 if TYPE_CHECKING:
     from psycopg2.extensions import connection as PgConnection
@@ -39,6 +40,66 @@ CONN_DEAD_ERRORS: tuple[type[Exception], ...] = (
     psycopg2.OperationalError,
     psycopg2.InterfaceError,
 )
+
+# The counterpart: rejections caused by the PAYLOAD rather than the connection.
+# Retrying these can never succeed, so a writer degrades instead of escaping (a
+# write that never lands is a reply that never comes — UN-4126). Hoisted beside
+# CONN_DEAD_ERRORS, and for the same reason: the result backend and the barrier
+# both classify on it and must not drift.
+#
+# ``ProgramLimitExceeded`` (SQLSTATE 54 — "string too long" / "index row size
+# exceeds maximum") is the trap this pairing exists to document: it subclasses
+# OperationalError, so it is absent from ``DataError`` AND present in
+# CONN_DEAD_ERRORS above. Classifying on membership alone therefore misreads an
+# oversized payload as a dead connection and pointlessly re-sends it, so the
+# order is not left to each call site: :func:`is_connection_dead` below is the
+# one place that decides, and every retry site asks it.
+#
+# Deliberately not ``Exception``: a genuine outage recorded as "payload
+# unstorable" is a false diagnosis that sends the next investigator after
+# content while the database is down.
+PAYLOAD_REJECTED_ERRORS: tuple[type[Exception], ...] = (
+    psycopg2.DataError,
+    psycopg2.errors.ProgramLimitExceeded,
+)
+
+
+def is_connection_dead(exc: BaseException) -> bool:
+    """Whether *exc* means the CONNECTION is gone, rather than the payload bad.
+
+    ``isinstance(exc, CONN_DEAD_ERRORS)`` on its own is not that question, and
+    the gap is not hypothetical: ``ProgramLimitExceeded`` subclasses
+    ``OperationalError``, so an oversized payload answers "dead connection",
+    gets its handle discarded, reconnects and re-sends a write that can never
+    succeed — a second pass over a payload that is by definition very large,
+    before the caller's payload-rejection handler finally sees it.
+
+    Payload rejections are therefore tested FIRST. A rejected payload leaves the
+    connection perfectly usable; only the write was refused.
+    """
+    if isinstance(exc, PAYLOAD_REJECTED_ERRORS):
+        return False
+    return isinstance(exc, CONN_DEAD_ERRORS)
+
+
+def is_dead_after_autocommit_error(exc: BaseException) -> bool:
+    """Whether a statement error on an owned AUTOCOMMIT connection means it is dead.
+
+    A connection the server terminated already reads as dead without this: the
+    error is an ``OperationalError`` and psycopg2 marks the connection closed.
+    What autocommit loses is narrower: ``rollback()`` sends nothing, so it no
+    longer exposes a dead connection that psycopg2 still reports as open. So a
+    bare ``DatabaseError`` (one psycopg2 mapped to no SQLSTATE subclass) is
+    treated as dead too; if it was only an unmapped statement error, the cost
+    is one needless reconnect.
+
+    Deliberately separate from :func:`is_connection_dead`: transactional
+    connections (``pg_barrier``) get this detection from a real ``rollback()``,
+    and the retry sites must not start treating a bare ``DatabaseError`` as
+    retryable.
+    """
+    return is_connection_dead(exc) or type(exc) is psycopg2.DatabaseError
+
 
 # Bounded retry for *transient* connect failures (DB restart, PgBouncer pool
 # wait, brief network partition, "too many clients" spikes) — the common cloud

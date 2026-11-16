@@ -181,6 +181,54 @@ class FileStorage(FileStorageInterface):
             else:
                 raise
 
+    def rm_exact(self, path: str) -> None:
+        """Remove a file or directory tree by its EXACT path.
+
+        Use this instead of ``rm`` whenever ``path`` contains a name you don't
+        control (e.g. derived from an uploaded document's filename). ``rm``
+        hands its argument to fsspec, which expands it as a GLOB on every
+        backend that takes fsspec's generic delete path (gcsfs, s3fs, adlfs —
+        but not LocalFileSystem, which uses a plain rmtree). So a path
+        containing ``[``, ``]``, ``*`` or ``?`` — ``Report [Final].pdf`` — is
+        read as a pattern: ``[Final]`` becomes a character class, matches
+        nothing, and ``rm`` raises ``FileNotFoundError`` on GCS/S3 while
+        working fine on LOCAL storage.
+
+        ``find`` walks the tree and ``rm_file`` deletes one named object;
+        neither expands glob characters on any backend. Files are deleted
+        first, then directories deepest-first (needed on LOCAL and on GCS
+        HNS buckets). On flat object storage a prefix disappears with its
+        last object, so ``rmdir`` there raises ``FileNotFoundError`` (s3fs)
+        or does nothing (gcsfs) — only that error is tolerated. Any other
+        failure, a failed file delete or a directory that can't be removed
+        (permissions, not empty), raises, unlike the ``MissingContentMD5``
+        fallback below, so callers learn about it.
+
+        Slower than ``rm`` on object storage — one request per object rather
+        than a bulk delete — so prefer ``rm`` where the path is known not to
+        contain glob characters.
+        """
+        invalidate = getattr(self.fs, "invalidate_cache", None)
+        if callable(invalidate):
+            invalidate(path)  # a stale listing would make find() miss objects
+        entries = self.fs.find(path, withdirs=True, detail=True)
+        files = [n for n, info in entries.items() if info.get("type") != "directory"]
+        dirs = sorted(
+            (n for n, info in entries.items() if info.get("type") == "directory"),
+            key=len,
+            reverse=True,
+        )
+        for file_path in files:
+            try:
+                self.fs.rm_file(file_path)
+            except FileNotFoundError:
+                pass  # already gone (concurrent delete, stale listing)
+        for dir_path in [*dirs, path]:
+            try:
+                self.fs.rmdir(dir_path)
+            except FileNotFoundError:
+                pass  # prefix already gone with its last object
+
     def _rm_files_individually(self, path: str) -> None:
         """Fallback deletion: delete files one at a time.
 

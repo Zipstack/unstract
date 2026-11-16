@@ -203,7 +203,7 @@ def get_pipeline_notifications(request: HttpRequest, pipeline_id: str) -> JsonRe
             status=404,
         )
     except Exception as e:
-        logger.error(f"Error getting pipeline notifications for {pipeline_id}: {e}")
+        logger.exception(f"Error getting pipeline notifications for {pipeline_id}: {e}")
         return JsonResponse(
             {"status": "error", "message": INTERNAL_SERVER_ERROR_MSG}, status=500
         )
@@ -245,7 +245,7 @@ def get_api_notifications(request: HttpRequest, api_id: str) -> JsonResponse:
             {"status": "error", "message": "API deployment not found"}, status=404
         )
     except Exception as e:
-        logger.error(f"Error getting API notifications for {api_id}: {e}")
+        logger.exception(f"Error getting API notifications for {api_id}: {e}")
         return JsonResponse(
             {"status": "error", "message": INTERNAL_SERVER_ERROR_MSG}, status=500
         )
@@ -281,7 +281,7 @@ def get_pipeline_data(request: HttpRequest, pipeline_id: str) -> JsonResponse:
             {"status": "error", "message": "Pipeline not found"}, status=404
         )
     except Exception as e:
-        logger.error(f"Error getting pipeline data for {pipeline_id}: {e}")
+        logger.exception(f"Error getting pipeline data for {pipeline_id}: {e}")
         return JsonResponse(
             {"status": "error", "message": INTERNAL_SERVER_ERROR_MSG}, status=500
         )
@@ -317,7 +317,7 @@ def get_api_data(request: HttpRequest, api_id: str) -> JsonResponse:
             {"status": "error", "message": "API deployment not found"}, status=404
         )
     except Exception as e:
-        logger.error(f"Error getting API data for {api_id}: {e}")
+        logger.exception(f"Error getting API data for {api_id}: {e}")
         return JsonResponse(
             {"status": "error", "message": INTERNAL_SERVER_ERROR_MSG}, status=500
         )

@@ -104,7 +104,7 @@ def track_subscription_usage_if_available(
                             f"Committed subscription usage for file_execution_id {file_execution_id}"
                         )
                     except Exception as commit_error:
-                        logger.error(
+                        logger.exception(
                             f"Error committing subscription usage for "
                             f"file_execution_id {file_execution_id}: {commit_error}"
                         )
@@ -126,7 +126,7 @@ def track_subscription_usage_if_available(
                             f"Discarded subscription usage for file_execution_id {file_execution_id}"
                         )
                     except Exception as discard_error:
-                        logger.error(
+                        logger.exception(
                             f"Error discarding subscription usage for "
                             f"file_execution_id {file_execution_id}: {discard_error}"
                         )

@@ -100,8 +100,21 @@ class TestTheMetricQueriesCanUseTheIndex(TestCase):
         # created_at for every row in whatever database this happens to run against.
         with connection.cursor() as cur:
             cur.execute(
+                # `random() * n * INTERVAL '1 day'`, NOT
+                # `(random() * n || ' days')::interval`. The text form round-trips
+                # the float through its own string representation, and Postgres
+                # renders a small enough double in scientific notation -- which
+                # `::interval` then rejects outright:
+                #
+                #   invalid input syntax for type interval:
+                #   "7.418860519248227e-05 days"
+                #
+                # `random()` returns that whenever it lands below ~1e-04, so this
+                # failed roughly one run in ten thousand per row, as a hard DataError
+                # in a test about index planning. Multiplying an interval by a double
+                # never formats anything, so the whole class of failure is gone.
                 "UPDATE workflow_file_execution SET created_at = %s::timestamptz"
-                " - (random() * %s || ' days')::interval"
+                " - random() * %s * INTERVAL '1 day'"
                 " WHERE workflow_execution_id = %s",
                 [now.isoformat(), _SPAN_DAYS, str(execution.id)],
             )

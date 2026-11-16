@@ -10,6 +10,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from tool_instance_v2.models import ToolInstance
@@ -19,6 +20,7 @@ from utils.organization_utils import filter_queryset_by_organization
 
 # Import new dataclasses for WorkflowDefinitionAPIView
 from unstract.core.data_models import (
+    ALREADY_FINAL_REASON,
     ConnectionType,
     ConnectorInstanceData,
     WorkflowDefinitionResponseData,
@@ -101,7 +103,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             return Response(serializer.data)
 
         except Exception as e:
-            logger.error(f"Error in WorkflowExecution list: {str(e)}")
+            logger.exception(f"Error in WorkflowExecution list: {str(e)}")
             return Response(
                 {"error": "Failed to list workflow executions", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -194,7 +196,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to retrieve workflow execution {kwargs.get('id')}: {str(e)}"
             )
             return Response(
@@ -515,6 +517,27 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 "settings": {},
             }
 
+    # Named execution_status because `status` is the imported DRF module.
+    @action(detail=True, methods=["get"], url_path="status")
+    def execution_status(self, request: Request, id: str | None = None) -> Response:
+        """Lightweight status read; workers poll it between files."""
+        try:
+            execution_id = uuid.UUID(str(id))
+        except ValueError:
+            execution_id = None
+        executions = filter_queryset_by_organization(
+            WorkflowExecution.objects.filter(id=execution_id),
+            request,
+            "workflow__organization",
+        )
+        execution_status = executions.values_list("status", flat=True).first()
+        if execution_status is None:
+            return Response(
+                {"error": "WorkflowExecution not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response({"id": str(execution_id), "status": execution_status})
+
     @action(detail=True, methods=["post"])
     def update_status(self, request, id=None):
         """Update workflow execution status."""
@@ -548,64 +571,72 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             # with failed_files=None, which is_failure_run() reads as a success and
             # silently bypasses notify_on_failures subscribers.
             with transaction.atomic():
-                # Concurrency guard for PG-transport executions, identified by the
-                # durable ``queue_message_id`` marker — NOT a re-evaluated Flipt flag.
-                # Keying on the row's own transport keeps the invariant correct even
-                # if the rollout flag is toggled off or Flipt is unreachable while a
-                # PG execution is still finalizing (per the "transport carried on the
-                # row, never re-read from Flipt" rule).
-                #
-                # Protect COMPLETED and STOPPED — the two statuses that assert a
-                # deliberate final outcome. COMPLETED is set exclusively by a
-                # successful callback (its redelivery is skipped, see
-                # _callback_already_ran); STOPPED records an explicit user/operator
-                # stop. Under the PG path's high concurrency ~15 call sites write
-                # status via unlocked read-modify-write, so a stale writer can commit
-                # AFTER one of these and clobber it (lost update → execution stranded
-                # in EXECUTING, a confusing success→failed flip, or a straggler
-                # callback erasing a user's stop). Lock the row and refuse to overwrite
-                # either with a different status.
+                # Lock the row and refuse to overwrite a deliberate final outcome:
+                # COMPLETED (set only by a successful callback) and STOPPED (an
+                # explicit stop). Under high concurrency ~15 call sites write status
+                # via unlocked read-modify-write, so a stale writer can commit AFTER
+                # one of these and clobber it (lost update → execution stranded in
+                # EXECUTING, a confusing success→failed flip, or a straggler callback
+                # erasing a user's stop). See _protected_statuses for which rows
+                # protect which status.
                 #
                 # ERROR is deliberately NOT protected: other paths (upstream error,
                 # the reaper) can set it BEFORE the first real callback, which then
                 # legitimately corrects the row to COMPLETED when the files actually
                 # succeeded — blocking that would freeze a genuinely successful run at
-                # a premature ERROR. Celery executions (queue_message_id NULL) keep the
-                # legacy path.
-                if execution.queue_message_id is not None:
-                    execution = WorkflowExecution.objects.select_for_update().get(
-                        pk=execution.pk
+                # a premature ERROR.
+                #
+                # ONE lock per call: the row read here is handed to update_execution()
+                # with row_locked=True, so it does not lock the same row a second
+                # time. FOR NO KEY UPDATE (no_key=True) keeps writers mutually
+                # exclusive without blocking the FOR KEY SHARE that every child-row
+                # INSERT takes on this row for its foreign-key check.
+                execution = WorkflowExecution.objects.select_for_update(no_key=True).get(
+                    pk=execution.pk
+                )
+                if (
+                    execution.status in self._protected_statuses(execution)
+                    and status_enum.value != execution.status
+                ):
+                    logger.warning(
+                        "update_status: refusing to overwrite protected status "
+                        "'%s' with '%s' for execution %s",
+                        execution.status,
+                        status_enum.value,
+                        id,
                     )
-                    protected = {
-                        ExecutionStatus.COMPLETED.value,
-                        ExecutionStatus.STOPPED.value,
-                    }
-                    if (
-                        execution.status in protected
-                        and status_enum.value != execution.status
-                    ):
-                        logger.warning(
-                            f"update_status: refusing to overwrite protected status "
-                            f"'{execution.status}' with '{status_enum.value}' "
-                            f"for execution {id}"
-                        )
-                        return Response(
-                            {
-                                "status": "skipped",
-                                "reason": "already_final",
-                                "execution_id": str(execution.id),
-                                "new_status": execution.status,
-                            }
-                        )
+                    return Response(
+                        {
+                            "status": "skipped",
+                            "reason": ALREADY_FINAL_REASON,
+                            "execution_id": str(execution.id),
+                            "new_status": execution.status,
+                        }
+                    )
 
                 execution.update_execution(
                     status=status_enum,
                     error=error_message,
                     increment_attempt=increment_attempt,
+                    row_locked=True,
                 )
 
-                # File aggregates are not handled by update_execution; persist separately.
-                self._update_file_aggregates(execution, validated_data)
+                # File aggregates are not handled by update_execution; persist
+                # separately. The floor's file-row count runs here, AFTER the lock,
+                # on purpose: any status writer we waited behind (e.g. the reaper
+                # cascading files to ERROR) has committed by now, and a count taken
+                # before the wait would miss its rows and let failed_files be written
+                # too low. (A file row whose INSERT has not committed is not counted
+                # either way: Django's foreign keys are DEFERRABLE INITIALLY DEFERRED,
+                # so an open insert holds no lock on this row until it commits, and
+                # FOR UPDATE never waited for it.)
+                if status_enum == ExecutionStatus.STOPPED:
+                    from workflow_manager.execution.abort import write_file_counts
+
+                    # A stopped run's counts come from its file rows, not the worker.
+                    write_file_counts(execution)
+                else:
+                    self._update_file_aggregates(execution, validated_data)
 
                 # Reaper recovery: cascade the terminal status to any non-terminal
                 # file executions so the execution and its files agree (atomic with
@@ -626,7 +657,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         except Exception as e:
-            logger.error(f"Failed to update workflow execution status {id}: {str(e)}")
+            logger.exception(f"Failed to update workflow execution status {id}: {str(e)}")
             return Response(
                 {"error": "Failed to update workflow execution status", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -791,7 +822,9 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
         try:
             with transaction.atomic():
-                execution = WorkflowExecution.objects.select_for_update().get(pk=exec_id)
+                execution = WorkflowExecution.objects.select_for_update(no_key=True).get(
+                    pk=exec_id
+                )
                 # Re-check under lock: skip if it reached terminal or was just
                 # touched (no longer stuck) — never race a live execution.
                 if execution.status in terminal or execution.modified_at >= cutoff:
@@ -826,7 +859,9 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                     computed = ExecutionStatus.STOPPED
                 else:
                     computed = ExecutionStatus.COMPLETED
-                execution.update_execution(status=computed)
+                # Already locked above; hand the locked read over so the row is
+                # not locked a second time.
+                execution.update_execution(status=computed, row_locked=True)
                 self._restamp_execution_time_from_files(execution)
                 self._update_file_aggregates(
                     execution,
@@ -849,6 +884,20 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
         except Exception:
             logger.exception("recover_stuck_pg_executions: failed to recover %s", exec_id)
             return "failed"
+
+    @staticmethod
+    def _protected_statuses(execution: WorkflowExecution) -> set[str]:
+        """Statuses a different status write must not overwrite on this row.
+
+        Any run can be stopped, so STOPPED is protected on every row. COMPLETED
+        stays protected only on rows carrying the PG dispatch marker
+        ``queue_message_id``, keyed on the row and never on a re-read Flipt flag.
+        """
+        from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+        if execution.queue_message_id is None:
+            return {ExecutionStatus.STOPPED.value}
+        return {ExecutionStatus.COMPLETED.value, ExecutionStatus.STOPPED.value}
 
     @staticmethod
     def _cascade_terminal_files(execution, status_enum, error_message) -> None:
@@ -934,14 +983,61 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
     @staticmethod
     def _update_file_aggregates(execution, validated_data) -> None:
-        """Persist total / successful / failed file counts when present."""
+        """Persist total / failed / successful file counts when present.
+
+        Floored at what the file rows say, because the worker's aggregate only
+        counts files it was dispatched and misses any rejected before that.
+        """
         update_fields: list[str] = []
         for field in ("total_files", "successful_files", "failed_files"):
             if validated_data.get(field) is not None:
                 setattr(execution, field, validated_data[field])
                 update_fields.append(field)
-        if update_fields:
-            execution.save(update_fields=update_fields)
+        if not update_fields:
+            return
+
+        WorkflowExecutionInternalViewSet._floor_counters_at_file_rows(
+            execution, update_fields
+        )
+        execution.save(update_fields=update_fields)
+
+    @staticmethod
+    def _count_file_rows(execution) -> dict:
+        """Count this execution's file rows, total and ERROR, in one query.
+
+        Returns ``{"total": int, "errored": int}``. Errors are left to propagate:
+        the request then fails and the transaction rolls back, so the worker retries
+        instead of committing counters the floor never checked (an under-counted
+        failed_files would read as a success and skip failure notifications).
+        """
+        from django.db.models import Count, Q
+
+        from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+        return WorkflowFileExecution.objects.filter(
+            workflow_execution_id=execution.pk
+        ).aggregate(
+            total=Count("id"),
+            errored=Count("id", filter=Q(status=ExecutionStatus.ERROR.value)),
+        )
+
+    @staticmethod
+    def _floor_counters_at_file_rows(execution, update_fields: "list[str]") -> None:
+        """Raise the counters being written to match the file rows on disk.
+
+        Only ever corrects upward, and only to a count already true, so a run
+        with nothing rejected is left alone.
+        """
+        wants_failed = "failed_files" in update_fields
+        wants_total = "total_files" in update_fields
+        if not (wants_failed or wants_total):
+            return
+
+        counts = WorkflowExecutionInternalViewSet._count_file_rows(execution)
+        if wants_failed:
+            execution.failed_files = max(execution.failed_files or 0, counts["errored"])
+        if wants_total:
+            execution.total_files = max(execution.total_files or 0, counts["total"])
 
 
 class FileBatchCreateAPIView(APIView):
@@ -1023,7 +1119,7 @@ class FileBatchCreateAPIView(APIView):
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            logger.error(f"Failed to create file batch: {str(e)}")
+            logger.exception(f"Failed to create file batch: {str(e)}")
             return Response(
                 {"error": "Failed to create file batch", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1087,7 +1183,7 @@ class ToolExecutionInternalAPIView(APIView):
             return Response(response_data)
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to get tool instances for workflow {workflow_id}: {str(e)}"
             )
             return Response(
@@ -1493,7 +1589,7 @@ class WorkflowFileExecutionAPIView(APIView):
             )
 
         except Exception as e:
-            logger.error(f"Failed to get/create workflow file execution: {str(e)}")
+            logger.exception(f"Failed to get/create workflow file execution: {str(e)}")
             return Response(
                 {
                     "error": "Failed to get/create workflow file execution",
@@ -1570,7 +1666,7 @@ class WorkflowExecuteFileAPIView(APIView):
                 )
 
             except Exception as exec_error:
-                logger.error(f"Workflow execution failed: {str(exec_error)}")
+                logger.exception(f"Workflow execution failed: {str(exec_error)}")
                 return Response(
                     {
                         "status": "error",
@@ -1581,7 +1677,7 @@ class WorkflowExecuteFileAPIView(APIView):
                 )
 
         except Exception as e:
-            logger.error(f"Failed to execute workflow for file: {str(e)}")
+            logger.exception(f"Failed to execute workflow for file: {str(e)}")
             return Response(
                 {"error": "Failed to execute workflow for file", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1615,12 +1711,12 @@ class WorkflowEndpointAPIView(APIView):
                 "usercontext_org_name": organization_from_context.display_name
                 if organization_from_context
                 else None,
-                "headers": dict(request.headers),
                 "internal_service": getattr(request, "internal_service", False),
                 "authenticated_via": getattr(request, "authenticated_via", None),
                 "path": request.path,
             }
-            logger.info(f"WorkflowEndpointAPIView debug - {request_debug}")
+            # Headers omitted: they carry the internal service bearer key.
+            logger.debug("WorkflowEndpointAPIView debug - %s", request_debug)
 
             # Get workflow using the DefaultOrganizationManagerMixin which automatically filters by organization
             try:
@@ -1699,7 +1795,9 @@ class WorkflowEndpointAPIView(APIView):
             return Response(response_data, status=status.HTTP_200_OK)
 
         except Exception as e:
-            logger.error(f"Failed to get workflow endpoints for {workflow_id}: {str(e)}")
+            logger.exception(
+                f"Failed to get workflow endpoints for {workflow_id}: {str(e)}"
+            )
             return Response(
                 {"error": "Failed to get workflow endpoints", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1905,7 +2003,7 @@ class FileCountIncrementAPIView(APIView):
             )
 
         except Exception as e:
-            logger.error(f"Failed to increment file count: {str(e)}")
+            logger.exception(f"Failed to increment file count: {str(e)}")
             return Response(
                 {"error": "Failed to increment file count", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2349,7 +2447,9 @@ class PipelineTypeAPIView(APIView):
                 )
 
         except Exception as e:
-            logger.error(f"Failed to determine pipeline type for {pipeline_id}: {str(e)}")
+            logger.exception(
+                f"Failed to determine pipeline type for {pipeline_id}: {str(e)}"
+            )
             return Response(
                 {"error": "Failed to determine pipeline type", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2413,6 +2513,11 @@ class BatchStatusUpdateAPIView(APIView):
                             execution.execution_time = update["execution_time"]
 
                         execution.save()
+                        # This write bypasses update_execution, so it registers
+                        # the inbox hook itself.
+                        from inbox.events import notify_on_terminal_status
+
+                        notify_on_terminal_status(execution.pk, status_value)
 
                         successful_updates.append(
                             {
@@ -2446,7 +2551,7 @@ class BatchStatusUpdateAPIView(APIView):
             )
 
         except Exception as e:
-            logger.error(f"Failed to process batch status update: {str(e)}")
+            logger.exception(f"Failed to process batch status update: {str(e)}")
             return Response(
                 {"error": "Failed to process batch status update", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2553,7 +2658,7 @@ class WorkflowExecutionCleanupAPIView(APIView):
             )
 
         except Exception as e:
-            logger.error(f"Failed to process cleanup request: {str(e)}")
+            logger.exception(f"Failed to process cleanup request: {str(e)}")
             return Response(
                 {"error": "Failed to process cleanup request", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2642,7 +2747,7 @@ class WorkflowExecutionMetricsAPIView(APIView):
             return Response(metrics)
 
         except Exception as e:
-            logger.error(f"Failed to get execution metrics: {str(e)}")
+            logger.exception(f"Failed to get execution metrics: {str(e)}")
             return Response(
                 {"error": "Failed to get execution metrics", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2760,7 +2865,7 @@ class FileHistoryBatchCheckView(APIView):
             )
 
         except Exception as e:
-            logger.error(f"File history batch check failed: {str(e)}")
+            logger.exception(f"File history batch check failed: {str(e)}")
             return Response(
                 {"error": "File history batch check failed", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2901,7 +3006,7 @@ class FileHistoryCreateView(APIView):
             )
 
         except Exception as e:
-            logger.error(f"File history creation failed: {str(e)}")
+            logger.exception(f"File history creation failed: {str(e)}")
             return Response(
                 {"error": "File history creation failed", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -3012,7 +3117,7 @@ class PipelineNameAPIView(APIView):
             )
 
         except Exception as e:
-            logger.error(f"Error fetching pipeline name for {pipeline_id}: {str(e)}")
+            logger.exception(f"Error fetching pipeline name for {pipeline_id}: {str(e)}")
             return Response(
                 {
                     "error": "Failed to fetch pipeline name",

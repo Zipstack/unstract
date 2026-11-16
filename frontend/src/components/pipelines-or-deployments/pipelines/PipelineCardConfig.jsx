@@ -21,6 +21,7 @@ import { Avatar, Tag } from "@/components/ui/shims/antd-leaves";
 import { Tooltip } from "@/components/ui/shims/antd-overlays";
 import { Typography } from "@/components/ui/shims/antd-typography";
 import { formattedDateTime } from "../../../helpers/GetStaticData";
+import { canEditResource } from "../../../helpers/resourceAccess";
 import { useSessionStore } from "../../../store/session-store";
 import {
   ApiEndpointSection,
@@ -312,6 +313,13 @@ function createPipelineCardConfig({
         ],
       };
 
+      // Enabling or disabling is use, not configuration, so anyone the
+      // pipeline is shared with may do it -- the backend admits an
+      // activation-only PATCH for exactly this.
+      const toggleTitle = pipeline.active
+        ? "Disable pipeline"
+        : "Enable pipeline";
+
       return (
         <div className="card-list-content">
           {/* Header Row: Name + Actions */}
@@ -323,9 +331,7 @@ function createPipelineCardConfig({
             </Tooltip>
 
             <Space size={16} className="card-list-actions">
-              <Tooltip
-                title={pipeline.active ? "Disable pipeline" : "Enable pipeline"}
-              >
+              <Tooltip title={toggleTitle}>
                 <Switch
                   size="small"
                   checked={pipeline.active}

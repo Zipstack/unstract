@@ -3,12 +3,14 @@ from typing import Any
 
 from account_v2.models import User
 from django.shortcuts import get_object_or_404
+from platform_audit.actions import Action
+from platform_audit.resources import record_resource_event
 from plugins import get_plugin
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
-from tenant_account_v2.sharing_helpers import serialize_owner_refs
+from tenant_account_v2.sharing_helpers import retained_user_ids, serialize_owner_refs
 
 from permissions.membership_serializers import AddOwnerSerializer, RemoveOwnerSerializer
 
@@ -40,8 +42,12 @@ class OwnerManagementMixin:
             data=request.data, context={"request": request, "resource": resource}
         )
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        changed = serializer.save()
         added_user = User.objects.get(id=serializer.validated_data["user_id"])
+        if changed:
+            _record_co_owner(
+                request, Action.RESOURCE_CO_OWNER_ADDED, resource, added_user
+            )
         self._notify_owner_added(resource, added_user, request.user)
         return Response(
             {"id": str(resource.pk), "co_owners": self._owner_refs(resource)},
@@ -63,7 +69,10 @@ class OwnerManagementMixin:
             },
         )
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        if serializer.save():
+            _record_co_owner(
+                request, Action.RESOURCE_CO_OWNER_REMOVED, resource, user_to_remove
+            )
         self.on_owner_removed(resource, user_to_remove)
         self._notify_owner_removed(resource, user_to_remove, request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -86,6 +95,11 @@ class OwnerManagementMixin:
     # --- notifications: reuse the user-sharing service, best-effort ---
 
     def _notification_context(self, resource: Any) -> tuple[str, str] | None:
+        """``(resource_type, resource_name)``, or ``None`` if not notifiable.
+
+        Also used by ``ResourceShareManagementMixin``, which every host mixes
+        in alongside this one.
+        """
         if not notification_plugin or not self.notification_resource_name_field:
             return None
         resource_type = self.get_notification_resource_type(resource)
@@ -115,6 +129,13 @@ class OwnerManagementMixin:
         ctx = self._notification_context(resource)
         if ctx is None:
             return
+        # The OWNER row is already gone by the time this runs (serializer.save()
+        # ran first) -- but the demoted user may still reach the resource another
+        # way (a group, a direct share, an org-wide share, org admin), same as
+        # the direct-share and group-revoke paths already check.
+        retained = retained_user_ids(resource)
+        if retained is None or user.pk in retained:
+            return
         resource_type, resource_name = ctx
         try:
             notification_plugin["service_class"]().send_access_removed_notification(
@@ -127,3 +148,14 @@ class OwnerManagementMixin:
             )
         except Exception as e:
             logger.exception("Failed to send co-owner removed notification: %s", e)
+
+
+def _record_co_owner(request: Request, action: str, resource: Any, user: User) -> None:
+    """Searchable by the co-owner's e-mail, like a group membership change."""
+    record_resource_event(
+        request,
+        action,
+        resource,
+        summary=user.email,
+        metadata={"user_id": user.pk, "email": user.email},
+    )

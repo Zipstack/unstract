@@ -9,3 +9,9 @@ class DashboardMetricsConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "dashboard_metrics"
     verbose_name = "Dashboard Metrics"
+
+    def ready(self) -> None:
+        from .attention import OSS_PROVIDERS, register_attention_provider
+
+        for provider in OSS_PROVIDERS:
+            register_attention_provider(provider)
