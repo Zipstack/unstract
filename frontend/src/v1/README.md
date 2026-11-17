@@ -172,8 +172,11 @@ only when a v1 page first renders.
   localStorage (`unstract.v1.oldVersion.<userId>`). `setOldVersion(on)` sets
   it, and the switch then moves the user to the mapped screen without a
   reload. `unstract.v1.lastUser` lets a reload apply it before the session
-  loads; on a shared browser that is the previous user's choice until the
-  session says otherwise.
+  loads. Logout, and v0 finding the session ended, remove `lastUser`
+  (`lib/browserStorage.ts`); the per-user `oldVersion` entries are kept. It
+  can still name the previous user when neither has run, e.g. the session
+  expired and the next page load starts on a v1 URL; until the session
+  loads, that user's choice applies.
 - Until the v1 session lands (P0-T06), the switch learns the user only from
   v0's session, which v0 loads in `PersistentLogin`, a v0 route. A page load
   that starts on a v1 URL never loads it, so the switch has only

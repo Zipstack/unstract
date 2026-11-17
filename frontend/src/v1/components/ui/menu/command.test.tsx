@@ -1,0 +1,657 @@
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { useState } from "react";
+import { describe, expect, it, vi } from "vitest";
+import {
+  Command,
+  type CommandGroup,
+  type CommandItem,
+  filterGroups,
+  matchesQuery,
+  nextEnabled,
+} from "./Command";
+import { CommandPalette, useCommandPaletteShortcut } from "./CommandPalette";
+import { MenuButton } from "./MenuTrigger";
+import { SearchMenu, type SearchMenuProps } from "./SearchMenu";
+
+const GROUPS: readonly CommandGroup[] = [
+  {
+    id: "pages",
+    heading: "Pages",
+    items: [
+      { id: "workflows", label: "Workflows", keywords: ["pipelines"] },
+      { id: "logs", label: "Logs", disabled: true },
+    ],
+  },
+  {
+    id: "actions",
+    heading: "Actions",
+    items: [
+      {
+        id: "new",
+        label: "New project",
+        description: "Create a Prompt Studio project",
+      },
+      { id: "export", label: "Export", loading: true },
+      { id: "clear", label: "Clear history", destructive: true },
+    ],
+  },
+];
+
+const input = () => screen.getByRole("combobox");
+const activeLabel = () => {
+  const id = input().getAttribute("aria-activedescendant");
+  return id
+    ? document.getElementById(id)?.querySelector(".ui\\:truncate")?.textContent
+    : undefined;
+};
+
+describe("matchesQuery, filterGroups and nextEnabled", () => {
+  const item: CommandItem = { id: "a", label: "Workflows", keywords: ["ETL"] };
+
+  it("matches a case-insensitive substring of the label or a keyword", () => {
+    expect(matchesQuery(item, "FLOW")).toBe(true);
+    expect(matchesQuery(item, "etl")).toBe(true);
+    expect(matchesQuery(item, "  ")).toBe(true);
+    expect(matchesQuery(item, "logs")).toBe(false);
+  });
+
+  it("drops groups left empty, and only empty groups when not filtering", () => {
+    expect(filterGroups(GROUPS, "pipe", true).map((g) => g.id)).toEqual([
+      "pages",
+    ]);
+    const withEmpty = [...GROUPS, { id: "none", items: [] }];
+    expect(filterGroups(withEmpty, "zzz", false).map((g) => g.id)).toEqual([
+      "pages",
+      "actions",
+    ]);
+  });
+
+  it("wraps and skips disabled and loading rows", () => {
+    const rows = GROUPS.flatMap((g) => g.items);
+    expect(nextEnabled(rows, 0, 1)).toBe(2);
+    expect(nextEnabled(rows, 2, 1)).toBe(4);
+    expect(nextEnabled(rows, 4, 1)).toBe(0);
+    expect(nextEnabled(rows, 0, -1)).toBe(4);
+    expect(nextEnabled([{ id: "x", label: "x", disabled: true }], -1, 1)).toBe(
+      -1,
+    );
+  });
+});
+
+describe("Command", () => {
+  it("is a combobox over a listbox of grouped options", () => {
+    render(<Command label="Search commands" groups={GROUPS} />);
+    expect(input()).toHaveFocus();
+    expect(input().getAttribute("aria-controls")).toBe(
+      screen.getByRole("listbox", { name: "Search commands" }).id,
+    );
+    expect(screen.getByRole("group", { name: "Pages" })).toBeInTheDocument();
+    expect(activeLabel()).toBe("Workflows");
+    const option = screen.getByRole("option", { name: "New project" });
+    expect(option).toHaveAccessibleDescription(
+      "Create a Prompt Studio project",
+    );
+    expect(
+      screen
+        .getByRole("option", { name: "Logs" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
+    expect(
+      screen.getByRole("option", { name: "Clear history" }).dataset.destructive,
+    ).toBe("true");
+  });
+
+  it("moves with the arrows, wrapping and skipping unavailable rows, and runs the active row on Enter", async () => {
+    const onSelect = vi.fn();
+    const onItem = vi.fn();
+    const user = userEvent.setup();
+    const groups: readonly CommandGroup[] = [
+      GROUPS[0],
+      {
+        ...GROUPS[1],
+        items: GROUPS[1].items.map((item) =>
+          item.id === "clear" ? { ...item, onSelect: onItem } : item,
+        ),
+      },
+    ];
+    render(<Command label="Search" groups={groups} onSelect={onSelect} />);
+    await user.keyboard("{ArrowDown}");
+    expect(activeLabel()).toBe("New project");
+    await user.keyboard("{ArrowDown}");
+    expect(activeLabel()).toBe("Clear history");
+    await user.keyboard("{ArrowDown}");
+    expect(activeLabel()).toBe("Workflows");
+    await user.keyboard("{ArrowUp}");
+    expect(activeLabel()).toBe("Clear history");
+    await user.keyboard("{Enter}");
+    expect(onItem).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "clear" }),
+    );
+  });
+
+  it("filters as you type, matching keywords", async () => {
+    const user = userEvent.setup();
+    render(<Command label="Search" groups={GROUPS} />);
+    await user.keyboard("pipe");
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Workflows",
+    ]);
+    expect(screen.queryByRole("group", { name: "Actions" })).toBeNull();
+    expect(activeLabel()).toBe("Workflows");
+  });
+
+  it("moves the active row to the first match on typing, even when the old one still matches", async () => {
+    const user = userEvent.setup();
+    render(<Command label="Search" groups={GROUPS} />);
+    await user.keyboard("{ArrowUp}");
+    expect(activeLabel()).toBe("Clear history");
+    await user.keyboard("c");
+    expect(screen.getAllByRole("option").map((o) => o.id)).toHaveLength(2);
+    expect(screen.getByRole("option", { name: "Clear history" })).toBeVisible();
+    expect(activeLabel()).toBe("New project");
+  });
+
+  it("moves off an active row that becomes unavailable", () => {
+    const groups = (exportLoading: boolean): readonly CommandGroup[] => [
+      {
+        id: "g",
+        items: [
+          { id: "a", label: "Alpha" },
+          { id: "b", label: "Beta", loading: exportLoading },
+        ],
+      },
+    ];
+    const { rerender } = render(
+      <Command label="Search" groups={groups(false)} />,
+    );
+    fireEvent.keyDown(input(), { key: "ArrowDown" });
+    expect(activeLabel()).toBe("Beta");
+    rerender(<Command label="Search" groups={groups(true)} />);
+    expect(activeLabel()).toBe("Alpha");
+  });
+
+  it("scrolls the active row into view", () => {
+    const scroll = vi.fn();
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scroll;
+    try {
+      render(<Command label="Search" groups={GROUPS} />);
+      fireEvent.keyDown(input(), { key: "ArrowUp" });
+      expect(scroll).toHaveBeenLastCalledWith({ block: "nearest" });
+      expect(scroll.mock.contexts.at(-1)).toBe(
+        screen.getByRole("option", { name: "Clear history" }),
+      );
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
+  });
+
+  it("says so when nothing matches, without an empty listbox", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    render(
+      <Command
+        label="Search"
+        groups={GROUPS}
+        emptyText="No matching pages"
+        onSelect={onSelect}
+      />,
+    );
+    await user.keyboard("zzz");
+    expect(screen.getByRole("status").textContent).toBe("No matching pages");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(input().getAttribute("aria-activedescendant")).toBeNull();
+    await user.keyboard("{Enter}");
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("shows the loading state instead of rows", () => {
+    render(<Command label="Search" groups={GROUPS} loading />);
+    expect(screen.getByRole("status").textContent).toBe("Loading…");
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(input().getAttribute("aria-activedescendant")).toBeNull();
+  });
+
+  it("leaves filtering to the caller with filter={false} and a controlled query", async () => {
+    const user = userEvent.setup();
+    const onQueryChange = vi.fn();
+    function Search() {
+      const [query, setQuery] = useState("");
+      return (
+        <Command
+          label="Search"
+          filter={false}
+          query={query}
+          onQueryChange={(next) => {
+            onQueryChange(next);
+            setQuery(next);
+          }}
+          items={[{ id: "server", label: "Server result" }]}
+        />
+      );
+    }
+    render(<Search />);
+    await user.keyboard("zz");
+    expect(onQueryChange).toHaveBeenLastCalledWith("zz");
+    expect(input()).toHaveValue("zz");
+    expect(screen.getByRole("option", { name: "Server result" })).toBeVisible();
+  });
+
+  it("follows the pointer and runs a clicked row, but not an unavailable one", async () => {
+    const onSelect = vi.fn();
+    const user = userEvent.setup();
+    render(<Command label="Search" groups={GROUPS} onSelect={onSelect} />);
+    fireEvent.mouseMove(screen.getByRole("option", { name: "New project" }));
+    expect(activeLabel()).toBe("New project");
+    fireEvent.mouseMove(screen.getByRole("option", { name: "Logs" }));
+    expect(activeLabel()).toBe("New project");
+    await user.click(screen.getByRole("option", { name: "Logs" }));
+    expect(onSelect).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("option", { name: "Workflows" }));
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "workflows" }),
+    );
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(input()).toHaveFocus();
+  });
+
+  it("runs a row on a bare click, as a screen reader sends it, but not an unavailable one", () => {
+    const onSelect = vi.fn();
+    render(<Command label="Search" groups={GROUPS} onSelect={onSelect} />);
+    fireEvent.click(screen.getByRole("option", { name: "Export" }));
+    fireEvent.click(screen.getByText("Create a Prompt Studio project"));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "new" }),
+    );
+    fireEvent.click(screen.getByRole("listbox"));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it("moves and runs rows from the list too, if focus ever lands there", () => {
+    const onSelect = vi.fn();
+    render(<Command label="Search" groups={GROUPS} onSelect={onSelect} />);
+    const list = screen.getByRole("listbox");
+    fireEvent.keyDown(list, { key: "ArrowDown" });
+    expect(activeLabel()).toBe("New project");
+    fireEvent.keyDown(list, { key: "Enter" });
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "new" }),
+    );
+  });
+
+  it("marks checked rows, and gives the whole group a check column", () => {
+    render(
+      <Command
+        label="Columns"
+        items={[
+          { id: "a", label: "Name", checked: true },
+          { id: "b", label: "Owner", checked: false },
+        ]}
+      />,
+    );
+    expect(
+      screen.getByRole("option", { name: "Name" }).getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByRole("option", { name: "Owner" })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
+  });
+
+  it("gives rows valid DOM ids even when their ids hold spaces", async () => {
+    const user = userEvent.setup();
+    render(
+      <Command
+        label="Search"
+        items={[
+          { id: "first row", label: "First" },
+          { id: "second row", label: "Second" },
+        ]}
+      />,
+    );
+    await user.keyboard("{ArrowDown}");
+    const ref = input().getAttribute("aria-activedescendant") ?? "";
+    expect(ref).not.toMatch(/\s/);
+    expect(document.getElementById(ref)?.textContent).toBe("Second");
+  });
+
+  it("reports the list collapsed while a status row replaces it", async () => {
+    const user = userEvent.setup();
+    render(<Command label="Search" groups={GROUPS} />);
+    expect(input().getAttribute("aria-expanded")).toBe("true");
+    await user.keyboard("zzz");
+    expect(input().getAttribute("aria-expanded")).toBe("false");
+    expect(input().getAttribute("aria-controls")).toBeNull();
+  });
+
+  it("keeps the status region mounted, so a change to no results is announced", async () => {
+    const user = userEvent.setup();
+    render(<Command label="Search" groups={GROUPS} />);
+    const region = screen.getByRole("status");
+    expect(region.textContent).toBe("");
+    await user.keyboard("zzz");
+    expect(screen.getByRole("status")).toBe(region);
+    expect(region.textContent).toBe("No results");
+  });
+
+  it("names a group whose id holds spaces", () => {
+    render(
+      <Command
+        label="Search"
+        groups={[
+          {
+            id: "recent files",
+            heading: "Recent files",
+            items: [{ id: "a", label: "a.pdf" }],
+          },
+        ]}
+      />,
+    );
+    expect(
+      screen.getByRole("group", { name: "Recent files" }),
+    ).toBeInTheDocument();
+  });
+
+  it("ignores Enter while composing text (IME)", () => {
+    const onSelect = vi.fn();
+    render(<Command label="Search" groups={GROUPS} onSelect={onSelect} />);
+    fireEvent.keyDown(input(), { key: "Enter", isComposing: true });
+    // Safari: the composition has ended, but the confirming Enter keeps keyCode 229.
+    fireEvent.keyDown(input(), { key: "Enter", keyCode: 229 });
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.keyDown(input(), { key: "Enter" });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects prop combinations that would freeze the search or drop rows", () => {
+    const noop = () => undefined;
+    const typeChecks = [
+      // @ts-expect-error a controlled query needs onQueryChange, or typing is dropped.
+      <Command key="1" label="S" items={[]} query="x" />,
+      // @ts-expect-error filter={false} needs onQueryChange, or the list never changes.
+      <Command key="2" label="S" items={[]} filter={false} />,
+      // @ts-expect-error groups and items together: one would be ignored.
+      <Command key="3" label="S" items={[]} groups={[]} />,
+      // @ts-expect-error neither groups nor items.
+      <Command key="4" label="S" />,
+      <Command key="5" label="S" items={[]} query="x" onQueryChange={noop} />,
+    ];
+    expect(typeChecks).toHaveLength(5);
+  });
+});
+
+describe("SearchMenu", () => {
+  function renderSearchMenu(
+    props: Partial<
+      Pick<SearchMenuProps, "closeOnSelect" | "listClassName" | "onOpenChange">
+    > = {},
+  ) {
+    const onSelect = vi.fn();
+    render(
+      <SearchMenu
+        label="Search columns"
+        items={[
+          { id: "name", label: "Name" },
+          { id: "owner", label: "Owned by" },
+        ]}
+        onSelect={onSelect}
+        trigger={<MenuButton>Columns</MenuButton>}
+        {...props}
+      />,
+    );
+    return onSelect;
+  }
+
+  it("opens from its trigger with the search box focused, filters, and closes on Enter", async () => {
+    const user = userEvent.setup();
+    const onSelect = renderSearchMenu();
+    const trigger = screen.getByRole("button", { name: "Columns" });
+    await user.click(trigger);
+    expect(
+      screen.getByRole("dialog", { name: "Search columns" }),
+    ).toBeVisible();
+    expect(input()).toHaveFocus();
+    await user.keyboard("own{Enter}");
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "owner" }),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("stays open with closeOnSelect={false}", async () => {
+    const user = userEvent.setup();
+    const onSelect = renderSearchMenu({ closeOnSelect: false });
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    await user.keyboard("{Enter}");
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("dialog")).toBeVisible();
+  });
+
+  it("opens on a fresh search when the caller closed it", async () => {
+    const user = userEvent.setup();
+    function Controlled() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(false)}>
+            Apply
+          </button>
+          <SearchMenu
+            open={open}
+            onOpenChange={setOpen}
+            label="Search columns"
+            items={[
+              { id: "name", label: "Name" },
+              { id: "owner", label: "Owned by" },
+            ]}
+            trigger={<MenuButton>Columns</MenuButton>}
+          />
+        </>
+      );
+    }
+    render(<Controlled />);
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    await user.keyboard("own");
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    expect(input()).toHaveValue("");
+    expect(screen.getAllByRole("option")).toHaveLength(2);
+  });
+
+  it("adds the caller's list classes to its own", async () => {
+    const user = userEvent.setup();
+    renderSearchMenu({ listClassName: "ui:max-h-120" });
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    expect(screen.getByRole("listbox").className).toContain("ui:max-h-120");
+  });
+
+  it("closes on Escape and opens again on a fresh search", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    renderSearchMenu({ onOpenChange });
+    const trigger = screen.getByRole("button", { name: "Columns" });
+    await user.click(trigger);
+    await user.keyboard("own");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+    expect(trigger).toHaveFocus();
+    await user.click(trigger);
+    expect(input()).toHaveValue("");
+    expect(screen.getAllByRole("option")).toHaveLength(2);
+  });
+});
+
+describe("CommandPalette", () => {
+  it("is a named dialog that runs a command and asks to close", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    const onSelect = vi.fn();
+    render(
+      <CommandPalette
+        open
+        onOpenChange={onOpenChange}
+        groups={GROUPS}
+        onSelect={onSelect}
+      />,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Command palette" });
+    expect(
+      within(dialog).getByRole("combobox", { name: "Search commands" }),
+    ).toHaveFocus();
+    expect(within(dialog).getByText("to select")).toBeInTheDocument();
+    await user.keyboard("{Enter}");
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "workflows" }),
+    );
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("asks to close on Escape, and keeps open after a select when told", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    render(
+      <CommandPalette
+        open
+        onOpenChange={onOpenChange}
+        groups={GROUPS}
+        closeOnSelect={false}
+        footer={<div>Custom footer</div>}
+      />,
+    );
+    expect(screen.getByText("Custom footer")).toBeInTheDocument();
+    await user.keyboard("{Enter}");
+    expect(onOpenChange).not.toHaveBeenCalled();
+    await user.keyboard("{Escape}");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("drops the key hints with footer={null}", () => {
+    render(
+      <CommandPalette
+        open
+        onOpenChange={vi.fn()}
+        groups={GROUPS}
+        footer={null}
+      />,
+    );
+    expect(screen.queryByText("to select")).toBeNull();
+  });
+
+  it("returns focus to the control that had it when the palette opened", async () => {
+    const user = userEvent.setup();
+    function Shell() {
+      const [open, setOpen] = useState(false);
+      useCommandPaletteShortcut(() => setOpen(true));
+      return (
+        <>
+          <button type="button">Opener</button>
+          <CommandPalette open={open} onOpenChange={setOpen} groups={GROUPS} />
+        </>
+      );
+    }
+    render(<Shell />);
+    const opener = screen.getByRole("button", { name: "Opener" });
+    opener.focus();
+    await user.keyboard("{Control>}k{/Control}");
+    expect(screen.getByRole("combobox")).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(opener).toHaveFocus();
+  });
+
+  it("merges a caller's className into the search body", () => {
+    render(
+      <CommandPalette
+        open
+        onOpenChange={vi.fn()}
+        groups={GROUPS}
+        className="caller-class"
+      />,
+    );
+    const body = screen
+      .getByRole("dialog")
+      .querySelector('[data-slot="command"]');
+    expect(body?.className).toContain("caller-class");
+    expect(body?.className).toContain("ui:flex-1");
+  });
+});
+
+describe("useCommandPaletteShortcut", () => {
+  function Shortcut({
+    onOpen,
+    shortcutKey,
+  }: Readonly<{ onOpen: () => void; shortcutKey?: string }>) {
+    useCommandPaletteShortcut(onOpen, shortcutKey);
+    return null;
+  }
+
+  function onPlatform(platform: string) {
+    return vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
+  }
+
+  it("leaves handled, composing and key-less events alone, and takes an upper-case key", () => {
+    const onOpen = vi.fn();
+    render(<Shortcut onOpen={onOpen} shortcutKey="K" />);
+    const handled = new KeyboardEvent("keydown", {
+      key: "k",
+      ctrlKey: true,
+      cancelable: true,
+    });
+    handled.preventDefault();
+    document.dispatchEvent(handled);
+    fireEvent.keyDown(document, { key: "k", ctrlKey: true, isComposing: true });
+    // Autofill: a keydown whose key is undefined, not "".
+    const keyless = Object.assign(new Event("keydown"), { ctrlKey: true });
+    expect(() => document.dispatchEvent(keyless)).not.toThrow();
+    expect(onOpen).not.toHaveBeenCalled();
+    fireEvent.keyDown(document, { key: "k", ctrlKey: true });
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires on Ctrl+K off Apple platforms, on any layout, and stops listening on unmount", () => {
+    const platform = onPlatform("Win32");
+    try {
+      const onOpen = vi.fn();
+      const { unmount } = render(<Shortcut onOpen={onOpen} />);
+      fireEvent.keyDown(document, { key: "k", ctrlKey: true });
+      // A Cyrillic layout types "л" on the K key.
+      fireEvent.keyDown(document, { key: "л", code: "KeyK", ctrlKey: true });
+      expect(onOpen).toHaveBeenCalledTimes(2);
+      fireEvent.keyDown(document, { key: "k", metaKey: true });
+      fireEvent.keyDown(document, { key: "k" });
+      fireEvent.keyDown(document, { key: "k", ctrlKey: true, shiftKey: true });
+      fireEvent.keyDown(document, { key: "k", ctrlKey: true, altKey: true });
+      fireEvent.keyDown(document, { key: "j", code: "KeyJ", ctrlKey: true });
+      expect(onOpen).toHaveBeenCalledTimes(2);
+      unmount();
+      fireEvent.keyDown(document, { key: "k", ctrlKey: true });
+      expect(onOpen).toHaveBeenCalledTimes(2);
+    } finally {
+      platform.mockRestore();
+    }
+  });
+
+  it("fires on ⌘K on a Mac and leaves Ctrl+K to text fields", () => {
+    const platform = onPlatform("MacIntel");
+    try {
+      const onOpen = vi.fn();
+      render(<Shortcut onOpen={onOpen} />);
+      const ctrlK = fireEvent.keyDown(document, { key: "k", ctrlKey: true });
+      expect(ctrlK).toBe(true);
+      expect(onOpen).not.toHaveBeenCalled();
+      const metaK = fireEvent.keyDown(document, { key: "k", metaKey: true });
+      expect(metaK).toBe(false);
+      expect(onOpen).toHaveBeenCalledTimes(1);
+    } finally {
+      platform.mockRestore();
+    }
+  });
+});

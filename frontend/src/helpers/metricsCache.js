@@ -1,6 +1,12 @@
 /**
- * LocalStorage cache utility for dashboard metrics.
+ * sessionStorage cache utility for dashboard metrics.
  * Provides TTL-based caching matching backend cache TTLs.
+ *
+ * sessionStorage, not localStorage: the cache holds the organization's
+ * business data, so no other tab or later visitor may read it. Logout clears
+ * it; a session found ended (expiry, or the /landing a logout ends on) clears
+ * it too (useUserSession), which also removes a reply that landed after the
+ * logout cleanup.
  */
 
 const CACHE_PREFIX = "dashboard_metrics_";
@@ -50,14 +56,14 @@ function buildCacheKey(endpoint, params) {
 function getCached(endpoint, params = {}) {
   try {
     const key = buildCacheKey(endpoint, params);
-    const cached = localStorage.getItem(key);
+    const cached = sessionStorage.getItem(key);
     if (!cached) {
       return null;
     }
 
     const { data, expiry } = JSON.parse(cached);
     if (Date.now() > expiry) {
-      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
       return null;
     }
     return data;
@@ -84,9 +90,9 @@ function setCache(endpoint, params = {}, data) {
       expiry: Date.now() + ttl,
       timestamp: Date.now(),
     };
-    localStorage.setItem(key, JSON.stringify(entry));
+    sessionStorage.setItem(key, JSON.stringify(entry));
   } catch (error) {
-    // Handle localStorage quota errors
+    // Handle storage quota errors
     console.warn("Cache write error:", error);
     // Try to clear old cache entries if quota exceeded
     if (error.name === "QuotaExceededError") {
@@ -97,22 +103,22 @@ function setCache(endpoint, params = {}, data) {
 
 /**
  * Remove expired metrics cache entries.
- * Call on dashboard mount to prevent localStorage bloat from old date ranges.
+ * Call on dashboard mount to prevent sessionStorage bloat from old date ranges.
  */
 function evictExpiredCache() {
   try {
-    const keys = Object.keys(localStorage).filter((k) =>
+    const keys = Object.keys(sessionStorage).filter((k) =>
       k.startsWith(CACHE_PREFIX),
     );
     keys.forEach((k) => {
       try {
-        const { expiry } = JSON.parse(localStorage.getItem(k));
+        const { expiry } = JSON.parse(sessionStorage.getItem(k));
         if (!expiry || Date.now() > expiry) {
-          localStorage.removeItem(k);
+          sessionStorage.removeItem(k);
         }
       } catch {
         // Malformed cache entry — remove it
-        localStorage.removeItem(k);
+        sessionStorage.removeItem(k);
       }
     });
   } catch (error) {
@@ -126,11 +132,11 @@ function evictExpiredCache() {
  */
 function clearMetricsCache() {
   try {
-    const keys = Object.keys(localStorage).filter((k) =>
+    const keys = Object.keys(sessionStorage).filter((k) =>
       k.startsWith(CACHE_PREFIX),
     );
     keys.forEach((k) => {
-      localStorage.removeItem(k);
+      sessionStorage.removeItem(k);
     });
   } catch (error) {
     console.warn("Cache clear error:", error);
@@ -147,7 +153,7 @@ function clearMetricsCache() {
 function getCacheInfo(endpoint, params = {}) {
   try {
     const key = buildCacheKey(endpoint, params);
-    const cached = localStorage.getItem(key);
+    const cached = sessionStorage.getItem(key);
     if (!cached) {
       return null;
     }

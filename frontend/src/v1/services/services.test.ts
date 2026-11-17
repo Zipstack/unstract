@@ -14,6 +14,7 @@ import {
 } from "vitest";
 import { ApiError, REQUEST_ID_HEADER } from "./errors";
 import { http } from "./http";
+import { signOutWhenSignedOutElsewhere } from "./logout";
 import {
   listOrganizations,
   OrganizationError,
@@ -215,7 +216,20 @@ describe("signOutAndLeave", () => {
       .spyOn(window.location, "assign")
       .mockImplementation(() => undefined);
   });
-  afterEach(() => assign.mockRestore());
+  afterEach(() => {
+    assign.mockRestore();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+
+  /** Records how many keys each storage held when the page was left. */
+  function storageAtLeave(): number[] {
+    const counts: number[] = [];
+    assign.mockImplementation(() => {
+      counts.push(window.localStorage.length, window.sessionStorage.length);
+    });
+    return counts;
+  }
 
   test("resets analytics and opens the returned URL", async () => {
     reply.data = { redirect_url: "https://id.example.com/v2/logout" };
@@ -223,6 +237,21 @@ describe("signOutAndLeave", () => {
     expect(sent[0].headers?.["X-CSRFToken"]).toBe("tok123");
     expect(reset).toHaveBeenCalledTimes(1);
     expect(assign).toHaveBeenCalledWith("https://id.example.com/v2/logout");
+  });
+
+  // CASA 6.6.1: the user's data must not outlive the session in the browser.
+  test("clears browser storage before leaving, keeping UI preferences", async () => {
+    reply.data = { redirect_url: "https://id.example.com/v2/logout" };
+    window.localStorage.setItem("dashboard_metrics_overview", '{"data":{}}');
+    window.localStorage.setItem("unstract.v1.theme", "dark");
+    window.sessionStorage.setItem("oauth-current-connector", "google_drive");
+    const atLeave = storageAtLeave();
+    await signOutAndLeave();
+    expect(
+      window.localStorage.getItem("dashboard_metrics_overview"),
+    ).toBeNull();
+    expect(window.localStorage.getItem("unstract.v1.theme")).toBe("dark");
+    expect(atLeave).toEqual([1, 0]);
   });
 
   test("a failed POST resets analytics, logs, and falls back to the GET logout", async () => {
@@ -237,11 +266,46 @@ describe("signOutAndLeave", () => {
     logged.mockRestore();
   });
 
+  // The fallback is a sign-out path too: storage must go even when the POST
+  // fails, and before the page is left.
+  test("a failed POST still clears browser storage before leaving", async () => {
+    const logged = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    reply = { status: 403, data: {} };
+    window.localStorage.setItem("oauth-cachekey-google_drive", "cache-key");
+    window.sessionStorage.setItem("oauth-current-connector", "google_drive");
+    const atLeave = storageAtLeave();
+
+    await signOutAndLeave();
+
+    expect(assign).toHaveBeenCalledWith("/api/v1/logout");
+    expect(atLeave).toEqual([0, 0]);
+    logged.mockRestore();
+  });
+
   test("a reply without a redirect URL falls back to the GET logout", async () => {
     reply.data = {};
     await signOutAndLeave();
     expect(reset).toHaveBeenCalledTimes(1);
     expect(assign).toHaveBeenCalledWith("/api/v1/logout");
     expect(assign).not.toHaveBeenCalledWith(undefined);
+  });
+});
+
+describe("signOutWhenSignedOutElsewhere", () => {
+  test("a sign-out in another tab signs this tab out through the GET logout", async () => {
+    const assign = vi
+      .spyOn(window.location, "assign")
+      .mockImplementation(() => undefined);
+    const stop = signOutWhenSignedOutElsewhere();
+    const otherTab = new BroadcastChannel("unstract.session");
+    otherTab.postMessage({ type: "signed-out", sentAt: Date.now() });
+    await vi.waitFor(() =>
+      expect(assign).toHaveBeenCalledWith("/api/v1/logout"),
+    );
+    otherTab.close();
+    stop();
+    assign.mockRestore();
   });
 });

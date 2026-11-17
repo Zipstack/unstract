@@ -1,3 +1,4 @@
+import { clearBrowserStorage } from "@v1";
 import Cookies from "js-cookie";
 import { usePostHog } from "posthog-js/react";
 
@@ -20,6 +21,7 @@ function useLogout() {
     setSessionDetails(getSessionData(null));
     posthog.reset();
     clearSessionCookies();
+    clearBrowserStorage();
     // A page navigation, not a request: the backend redirects to the identity
     // provider's logout, which answers no CORS request from this origin, and
     // the provider sends the browser on to /landing.
