@@ -333,7 +333,6 @@ describe("cross-field rules", () => {
       message: "Passwords do not match",
       path: ["confirm"],
     });
-  type Passwords = z.infer<typeof passwords>;
 
   function PasswordForm({
     onSave,
@@ -351,7 +350,7 @@ describe("cross-field rules", () => {
         )}
       >
         {(["name", "password", "confirm"] as const).map((key) => (
-          <FormField<Passwords> key={key} form={form} name={key} label={key}>
+          <FormField key={key} form={form} name={key} label={key}>
             {(field) => <Input {...field} />}
           </FormField>
         ))}
