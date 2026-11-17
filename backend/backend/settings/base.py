@@ -295,6 +295,20 @@ AGENT_KV_MAX_CALCULATIONS_BYTES = int(
 )
 AGENT_KV_MAX_SCHEMA_BYTES = int(os.environ.get("AGENT_KV_MAX_SCHEMA_BYTES", 262_144))
 AGENT_KV_RESULT_TTL_DAYS = int(os.environ.get("AGENT_KV_RESULT_TTL_DAYS", 7))
+# How long an OCR document-cache entry may live. DERIVED from the result TTL
+# rather than chosen: the cache holds the document's extracted TEXT, so it must
+# not outlive the job data it came from, and defaulting it to the same number
+# means one knob moves both unless an operator deliberately splits them.
+#
+# It needs its own sweep because the entries are CONTENT-addressed
+# (`{prefix}/{org}/cache/{doc_sha256}-...`) with no job row to hang off, so
+# neither `delete_job_files` nor the row-driven TTL cleanup could ever reach
+# them -- and an object-store lifecycle rule cannot either, because `org_id`
+# sits ABOVE `cache/` in the path and S3/MinIO lifecycle prefixes are literal.
+# Reported by greptile on unstract-cloud#1816.
+AGENT_KV_CACHE_TTL_DAYS = int(
+    os.environ.get("AGENT_KV_CACHE_TTL_DAYS", AGENT_KV_RESULT_TTL_DAYS)
+)
 AGENT_KV_MAX_TIMEOUT_SECONDS = int(os.environ.get("AGENT_KV_MAX_TIMEOUT_SECONDS", 300))
 AGENT_KV_CONCURRENT_LIMIT = int(os.environ.get("AGENT_KV_CONCURRENT_LIMIT", 5))
 AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE = int(
@@ -342,6 +356,43 @@ AGENT_KV_CALCULATIONS_ENABLED = (
 )
 AGENT_KV_STRUCTURED_OUTPUT_ENABLED = (
     os.environ.get("AGENT_KV_STRUCTURED_OUTPUT_ENABLED", "false").lower() == "true"
+)
+
+#: Whether this deployment ACCEPTS `kv` submits. False by default, and that
+#: default is the whole point.
+#:
+#: `EXTRACTOR_ROUTES` records where an extractor's work is dispatched. It cannot
+#: record whether anything DRAINS that queue, and the backend has no way to see
+#: the worker fleet's subscription list -- the engine probe in `SubmitView`
+#: (`get_plugin("agent_kv")`) is per-deployment, so it is already truthy
+#: wherever the `table` extractor shipped and says nothing about `kv`.
+#:
+#: A routed-but-undrained extractor is the worst shape available: the submit is
+#: accepted with a 202, the file is staged, a concurrency slot is taken, and the
+#: row sits in DISPATCHED until the sweep force-fails it -- with no error at the
+#: producer and nothing in any log naming the cause.
+#:
+#: The CHART sets this flag in the same values file that adds
+#: `celery_executor_agentic_kv` to the executor fleet's queue list, which is
+#: what keeps those two together on that surface. It is NOT an invariant of
+#: every surface, and an earlier version of this comment claimed it was: the
+#: compose stacks in this repo add that queue (`docker/docker-compose.yaml`,
+#: `tests/compose/docker-compose.test.yaml`, `workers/run-worker.sh`) and set
+#: this flag nowhere, so they ship drained-but-not-accepting. That direction is
+#: the safe one -- a refusal, not a hang -- but it is drift, so do not read
+#: "they travel together" as a guarantee.
+#:
+#: Nor does one values file give one cutover. The backend and executor
+#: Deployments roll independently inside a single `helm upgrade`, so a backend
+#: replica can pick the flag up before the executor fleet has replaced its
+#: pods, and for the length of that window a `kv` submit takes the accepted-
+#: but-undrained path below. Order the rollout (subscription first) if that
+#: window matters. Defaulting false is what makes merge ORDER safe: this
+#: repo merges before the chart (the cloud half imports `unstract-agent-kv-schema`
+#: from here), and until the chart lands a `kv` submit is refused at validation
+#: rather than accepted into a queue nothing serves.
+AGENT_KV_KV_EXTRACTOR_ENABLED = (
+    os.environ.get("AGENT_KV_KV_EXTRACTOR_ENABLED", "false").lower() == "true"
 )
 
 
@@ -407,6 +458,10 @@ FILE_ACTIVE_CACHE_REDIS_DB = parse_db(
 INSTANT_WF_POLLING_TIMEOUT = int(
     os.environ.get("INSTANT_WF_POLLING_TIMEOUT", "300")
 )  # 5 minutes
+# A PENDING/EXECUTING run with no activity for this long is listed as stuck.
+STUCK_EXECUTION_THRESHOLD_SECONDS = int(
+    os.environ.get("STUCK_EXECUTION_THRESHOLD_SECONDS", "9000")
+)
 
 # ETL Pipeline minimum schedule interval (in seconds)
 # Default: 1800 seconds (30 minutes)
@@ -465,6 +520,22 @@ NOTIFICATION_MAX_DISPATCH_ATTEMPTS = int(
 PLATFORM_AUDIT_RETENTION_DAYS = int(
     os.environ.get("PLATFORM_AUDIT_RETENTION_DAYS", "365")
 )
+# How often API key usage (last used, daily call counts) moves from Redis to the
+# database. Opening Settings > API keys also moves it, so the page is current
+# unless a flush is already running then.
+API_KEY_USAGE_FLUSH_INTERVAL_SECONDS = int(
+    os.environ.get("API_KEY_USAGE_FLUSH_INTERVAL_SECONDS", "300")
+)
+# Whether the first use in each interval starts that flush in a background
+# thread. Off only in tests, which flush inline.
+API_KEY_USAGE_BACKGROUND_FLUSH = True
+# Prefix of every Redis key API key usage writes.
+API_KEY_USAGE_REDIS_PREFIX = "api_key_usage"
+# Longest a key's request waits on Redis to record its use. A slower Redis loses
+# that count instead of slowing the request.
+API_KEY_USAGE_REDIS_TIMEOUT_SECONDS = float(
+    os.environ.get("API_KEY_USAGE_REDIS_TIMEOUT_SECONDS", "0.5")
+)
 ATOMIC_REQUESTS = CommonUtils.str_to_bool(
     os.environ.get("DJANGO_ATOMIC_REQUESTS", "False")
 )
@@ -479,7 +550,8 @@ SECRET_KEY = get_required_setting("DJANGO_SECRET_KEY")
 ENCRYPTION_KEY = get_required_setting("ENCRYPTION_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Off unless DJANGO_DEBUG asks for it: the published image runs settings.dev.
+DEBUG = CommonUtils.str_to_bool(os.environ.get("DJANGO_DEBUG", "False"))
 
 ALLOWED_HOSTS = ["*"]
 CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL, WEB_APP_ORIGIN_URL_WITH_WILD_CARD]
@@ -572,11 +644,14 @@ SHARED_APPS = (
     "commands",
     # health checks
     "health",
+    # Platform-wide Prometheus /metrics
+    "platform_metrics",
     "migrating.v2",
     "connector_auth_v2",
     "tenant_account_v2",
     "connector_v2",
     "adapter_processor_v2",
+    "connection_check",
     "file_management",
     "workflow_manager.file_execution",
     "workflow_manager.endpoint_v2",
@@ -589,6 +664,7 @@ SHARED_APPS = (
     "mcp_server",
     "usage_v2",
     "notification_v2",
+    "inbox",
     "prompt_studio.prompt_profile_manager_v2",
     "prompt_studio.prompt_studio_v2",
     "prompt_studio.prompt_studio_core_v2",
@@ -602,6 +678,7 @@ SHARED_APPS = (
     "platform_api",
     "global_api_deployment_key",
     "platform_audit",
+    "api_key_usage",
     "global_search",
     "agent_kv",
 )
@@ -988,6 +1065,9 @@ else:
     }
 
 SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
+# Dotted path to `callable(ip: str) -> str | None` naming an approximate location
+# for a signed-in session. Unset, sessions are listed without one.
+SESSION_LOCATION_RESOLVER = os.environ.get("SESSION_LOCATION_RESOLVER") or None
 
 RQ_QUEUES = {
     "default": {"USE_REDIS_CACHE": "default"},
@@ -1143,6 +1223,97 @@ WHITELISTED_PATHS.extend(
 
 # Whitelisting health check API
 WHITELISTED_PATHS.append("/health")
+
+# Platform-wide Prometheus /metrics (platform_metrics). Mounted at the root
+# like /health, outside every public ingress prefix, so it is served on the
+# backend service for in-cluster scraping only. Exempt from session auth; set
+# PLATFORM_METRICS_TOKEN to additionally require `Authorization: Bearer <token>`.
+WHITELISTED_PATHS.append("/metrics")
+PLATFORM_METRICS_TOKEN = os.environ.get("PLATFORM_METRICS_TOKEN", "")
+# How long one pod's refresh of a metric group is shared via Redis.
+PLATFORM_METRICS_CACHE_TTL_SECONDS = int(
+    os.environ.get("PLATFORM_METRICS_CACHE_TTL_SECONDS", 15)
+)
+# Postgres statement timeout for each group's refresh.
+PLATFORM_METRICS_QUERY_TIMEOUT_MS = int(
+    os.environ.get("PLATFORM_METRICS_QUERY_TIMEOUT_MS", 5000)
+)
+# unstract_workflow_executions_recent counts executions that went terminal
+# within this window...
+PLATFORM_METRICS_RECENT_WINDOW_SECONDS = int(
+    os.environ.get("PLATFORM_METRICS_RECENT_WINDOW_SECONDS", 3600)
+)
+# ...among executions created within this lookback, which keeps the query on
+# the created_at index instead of scanning the whole history.
+PLATFORM_METRICS_RECENT_LOOKBACK_SECONDS = int(
+    os.environ.get("PLATFORM_METRICS_RECENT_LOOKBACK_SECONDS", 86400)
+)
+# Same variable and default as the PG reaper, so unstract_batches_stuck counts
+# exactly what the reaper treats as stranded.
+PLATFORM_METRICS_BATCH_STUCK_TIMEOUT_SECONDS = int(
+    os.environ.get("WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS", 9000)
+)
+# Connect and read timeout for the metrics endpoint's own Redis pool, so a
+# stalled Redis fails a scrape over to the per-process fallback instead of
+# hanging it (KEDA's metrics-api client gives up after 3s).
+PLATFORM_METRICS_REDIS_TIMEOUT_SECONDS = float(
+    os.environ.get("PLATFORM_METRICS_REDIS_TIMEOUT_SECONDS", 1)
+)
+# Queue counts older than this are left out of the scrape instead of being
+# served as current, so a dashboard shows a gap and a KEDA trigger errors into
+# its fallback rather than scaling on a frozen value. Kept above the worst
+# healthy age (the cache TTL plus the 30s refresh-lock floor).
+PLATFORM_METRICS_QUEUE_MAX_STALENESS_SECONDS = int(
+    os.environ.get("PLATFORM_METRICS_QUEUE_MAX_STALENESS_SECONDS", 60)
+)
+# Queues always reported (as 0 when empty), on top of any queue that currently
+# holds messages. Defaults to the queues the PG consumers in
+# docker/docker-compose.yaml consume; override with a comma-separated list
+# where a deployment runs others.
+PLATFORM_METRICS_QUEUES = [
+    queue.strip()
+    for queue in os.environ.get(
+        "PLATFORM_METRICS_QUEUES",
+        ",".join(
+            [
+                "agent_kv_callback",
+                "api_file_processing",
+                "api_file_processing_callback",
+                "celery",
+                "celery_api_deployments",
+                "celery_callback",
+                "celery_executor_agentic",
+                "celery_executor_agentic_kv",
+                "celery_executor_agentic_table",
+                "celery_executor_legacy",
+                "celery_executor_lookup_test",
+                "celery_executor_simple_prompt_studio",
+                "celery_executor_smart_table",
+                "celery_executor_table",
+                "dashboard_metric_events",
+                "file_processing",
+                "file_processing_callback",
+                "file_processing_priority",
+                "ide_callback",
+                "notifications",
+                "notifications_email",
+                "notifications_priority",
+                "notifications_sms",
+                "notifications_webhook",
+                # The sandbox codegen fleet's PG queue. Listed for the same
+                # reason as every sibling: `QueueMetricGroup.families()`
+                # reports `configured | observed`, and the table holds only
+                # undelivered rows, so an UNLISTED queue vanishes from the
+                # scrape the moment it drains instead of reporting 0 --
+                # indistinguishable from a broken scrape to a dashboard or a
+                # queue-depth autoscaler.
+                "sandbox_codegen",
+                "scheduler",
+            ]
+        ),
+    ).split(",")
+    if queue.strip()
+]
 
 # These path will work without organization in request.
 # `whoami` resolves the organisation from the API key itself, so it carries no

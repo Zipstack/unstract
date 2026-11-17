@@ -298,7 +298,7 @@ class PromptStudioCoreView(
             select_choices: dict[str, Any] = PromptStudioHelper.get_select_fields()
             return Response(select_choices, status=status.HTTP_200_OK)
         except Exception as e:
-            logger.error("Error occurred while fetching select fields: %s", e)
+            logger.exception("Error occurred while fetching select fields: %s", e)
             return Response(select_choices, status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["get"])
@@ -319,7 +319,7 @@ class PromptStudioCoreView(
             strategies = get_retrieval_strategy_metadata()
             return Response(strategies, status=status.HTTP_200_OK)
         except Exception as e:
-            logger.error("Error occurred while fetching retrieval strategies: %s", e)
+            logger.exception("Error occurred while fetching retrieval strategies: %s", e)
             return Response(
                 {"error": "Failed to fetch retrieval strategies"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1038,7 +1038,7 @@ class PromptStudioCoreView(
         if PromptStudioHelper.uploads_use_image_output_mode(default_profile):
             for uploaded_file, file_type in zip(uploaded_files, file_types, strict=True):
                 PromptStudioHelper.validate_upload_page_count_for_image_mode(
-                    uploaded_file, file_type
+                    uploaded_file, file_type, default_profile
                 )
 
         documents = []
@@ -1275,7 +1275,7 @@ class PromptStudioCoreView(
             return response
 
         except Exception as exc:
-            logger.error("Error exporting project: %s", exc)
+            logger.exception("Error exporting project: %s", exc)
             return Response(
                 {"error": "Failed to export project"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1316,7 +1316,7 @@ class PromptStudioCoreView(
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             except Exception as e:
-                logger.error("Error creating profile manager: %s", e)
+                logger.exception("Error creating profile manager: %s", e)
                 return Response(
                     {"error": "Failed to create profile manager"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1344,7 +1344,7 @@ class PromptStudioCoreView(
             return Response(response_data, status=status.HTTP_201_CREATED)
 
         except Exception as exc:
-            logger.error("Error importing project: %s", exc)
+            logger.exception("Error importing project: %s", exc)
             return Response(
                 {"error": "Failed to import project"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

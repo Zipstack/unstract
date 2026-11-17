@@ -5,11 +5,13 @@ from typing import Any
 from urllib.parse import urlencode, urlparse
 
 import requests
+from api_key_usage.recorder import record_key_use
 from configuration.config_registry import ConfigurationRegistry
 from configuration.models import Configuration
 from django.conf import settings
 from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
 from global_api_deployment_key.models import GlobalApiDeploymentKey
+from platform_audit.actions import TargetType
 from plugins.workflow_manager.workflow_v2.api_hub_usage_utils import APIHubUsageUtil
 from rest_framework.request import Request
 from rest_framework.serializers import Serializer
@@ -115,6 +117,12 @@ class DeploymentHelper(BaseAPIKeyValidator):
             )
             global_key = KeyHelper.validate_global_api_deployment_key(
                 api_key=api_key, api_deployment=api_deployment
+            )
+            record_key_use(
+                key_type=TargetType.GLOBAL_API_DEPLOYMENT_KEY,
+                key_id=global_key.id,
+                organization_id=global_key.organization_id,
+                api_deployment_id=api_deployment.id,
             )
             logger.info(
                 "API '%s' authorized via global API deployment key '%s' (%s).",
@@ -287,11 +295,15 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 use_file_history=use_file_history,
             )
         except Exception as error:
+            logger.exception("Failed to stage files for execution %s", execution_id)
             # Isolate the DB error-marking so cleanup still runs if it raises.
+            stored_status = ExecutionStatus.ERROR.value
             try:
-                WorkflowExecutionServiceHelper.update_execution_err(
+                marked = WorkflowExecutionServiceHelper.update_execution_err(
                     str(execution_id), str(error)
                 )
+                # An aborted run stays STOPPED; answer with what is stored.
+                stored_status = marked.status if marked else stored_status
             except Exception:
                 logger.exception(f"Failed to mark execution {execution_id} as ERROR")
 
@@ -309,7 +321,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 ExecutionResponse(
                     workflow_id=workflow_id,
                     execution_id=execution_id,
-                    execution_status=ExecutionStatus.ERROR.value,
+                    execution_status=stored_status,
                     error=str(error),
                 )
             ).data
@@ -341,8 +353,6 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 workflow_id=str(workflow_id), execution_id=str(execution_id)
             )
             if execution is not None:
-                # Separate blocks: independent obligations, so a failure in one
-                # must not silence the other.
                 try:
                     # This response carries the results, so mark them consumed or a
                     # later GET /status serves them again.
@@ -352,6 +362,11 @@ class DeploymentHelper(BaseAPIKeyValidator):
                         f"Failed to acknowledge results for execution {execution_id}"
                     )
 
+            # An aborted run was already reported by the abort.
+            if (
+                execution is not None
+                and execution.status == ExecutionStatus.COMPLETED.value
+            ):
                 try:
                     # Terminalising here bypasses the usual notifier, so subscribers
                     # would otherwise hear nothing.

@@ -55,9 +55,9 @@ class MCPTool:
         consumes_result: True when *reading* is itself destructive — the result
             store is one-shot, so a successful read acknowledges the execution
             and the payload cannot be fetched again. ``getExecutionStatus`` on
-            a COMPLETED execution is the case: it neither writes configuration
-            nor spends money, so ``writes``/``billable`` are both false, but
-            calling it twice loses data. Without this flag the derivation below
+            a finished execution is the case: it neither writes
+            configuration nor spends money, so ``writes``/``billable`` are both
+            false, but calling it twice loses data. Without this flag the derivation below
             would advertise ``readOnlyHint: true`` and tell an agent it is safe
             to poll freely — the opposite of the truth.
         preflight: Optional ``preflight(context, **arguments)`` run *before* the
@@ -266,14 +266,14 @@ def build_deployment_registry() -> MCPToolRegistry:
                 "Fetch the status and, once available, the result of an "
                 "extraction previously started by `extractDocument`. Pass the "
                 "`execution_id` that call returned.\n\n"
-                "Returns an `execution_status` of PENDING, EXECUTING, COMPLETED "
-                "or ERROR. Poll while it is PENDING or EXECUTING, leaving a few "
+                "Returns an `execution_status` of PENDING, EXECUTING, COMPLETED, "
+                "ERROR or STOPPED. Poll while it is PENDING or EXECUTING, leaving a few "
                 "seconds between calls."
             ),
             input_schema=get_execution_status_schema(),
             handler=get_execution_status,
-            # Reading a COMPLETED execution acknowledges it and the result
-            # store is one-shot, so the payload cannot be fetched again.
+            # Reading a finished execution acknowledges it and the
+            # result store is one-shot, so the payload cannot be fetched again.
             # Not `writes` (no configuration changes) and not `billable`
             # (no spend), but emphatically not read-only either.
             consumes_result=True,
@@ -714,14 +714,14 @@ def build_platform_registry() -> MCPToolRegistry:
                 "Poll for the result of an extraction started by "
                 "extractDocument. Free to call.\n\n"
                 "If extractDocument already returned execution_status "
-                "COMPLETED, the result is in that response and no polling is "
-                "needed. Otherwise poll this until COMPLETED or ERROR, "
+                "COMPLETED, ERROR or STOPPED, that response is final and no "
+                "polling is needed. Otherwise poll this until one of those, "
                 "pausing a few seconds between calls."
             ),
             input_schema=platform_execution_status_schema(),
             handler=get_platform_execution_status,
-            # Reading a COMPLETED execution acknowledges it and the result
-            # store is one-shot, so the payload cannot be fetched again.
+            # Reading a finished execution acknowledges it and the
+            # result store is one-shot, so the payload cannot be fetched again.
             # Not `writes` (no configuration changes) and not `billable`
             # (no spend), but emphatically not read-only either.
             consumes_result=True,

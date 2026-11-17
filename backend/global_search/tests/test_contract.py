@@ -14,18 +14,19 @@ from pathlib import Path
 from unittest.mock import patch
 
 import jsonschema
-from django.db import connection
 from account_v2.models import Organization
+from django.db import connection
 from django.test import TestCase
 from django.urls import resolve
 from permissions.roles import ResourceRole
 from permissions.tests.base import CoOwnerOrgTestMixin, make_user
 from tenant_account_v2.models import OrganizationMember
+from utils.tests.auth_seam import admin_role, builtin_auth_service
 
 from global_search.constants import OSSSearchType as T
-from global_search.oss_providers import AdapterProvider, OSS_PROVIDERS, WorkflowProvider
+from global_search.oss_providers import OSS_PROVIDERS, AdapterProvider, WorkflowProvider
 from global_search.providers import SearchProvider
-from global_search.tests.base import OSS_BUILDERS, search
+from global_search.tests.base import ADAPTER_TYPES, OSS_BUILDERS, search
 from global_search.views import GlobalSearchView
 
 APP_DIR = Path(__file__).parents[1]
@@ -65,7 +66,7 @@ class SearchContractTests(CoOwnerOrgTestMixin, TestCase):
             T.API_DEPLOYMENT: parent(T.API_DEPLOYMENT),
             T.ETL_PIPELINE: parent(T.ETL_PIPELINE),
             T.TASK_PIPELINE: parent(T.TASK_PIPELINE),
-            T.ADAPTER: "LLM · openai",
+            **{key: f"{kind} · openai" for key, kind in ADAPTER_TYPES.items()},
             T.CONNECTOR: "minio",
         }
         for type_key, item in items.items():
@@ -73,11 +74,13 @@ class SearchContractTests(CoOwnerOrgTestMixin, TestCase):
                 result = results[type_key]
                 self.assertEqual(result["context"], expected_context[type_key])
                 expected_params = {"id": str(item.pk)}
-                if type_key == T.ADAPTER:
-                    expected_params["adapter_type"] = "LLM"
+                route_key = f"{type_key}.detail"
+                if type_key in ADAPTER_TYPES:
+                    expected_params["adapter_type"] = ADAPTER_TYPES[type_key]
+                    route_key = "adapter.detail"
                 self.assertEqual(
                     result["route"],
-                    {"key": f"{type_key}.detail", "params": expected_params},
+                    {"key": route_key, "params": expected_params},
                 )
 
     def test_owner_context_skips_service_accounts_and_takes_the_earliest(self) -> None:
@@ -136,16 +139,15 @@ class SearchContractTests(CoOwnerOrgTestMixin, TestCase):
         other = Organization.objects.create(
             name="org-b", display_name="Org B", organization_id="org-b"
         )
-        OrganizationMember.objects.create(organization=other, user=self.admin, role="admin")
         # The built-in session auth, so a distribution's auth plugin cannot
-        # 401 the request first; the org check runs after either.
-        no_plugin = patch(
-            "account_v2.custom_auth_middleware.AuthenticationPluginRegistry"
-            ".is_plugin_available",
-            return_value=False,
+        # 401 the request first; the org check runs after either. Test
+        # sessions have no plugin hook yet. The admin's rows then take the
+        # built-in service's role name.
+        self.enterContext(builtin_auth_service())
+        OrganizationMember.objects.filter(user=self.admin).update(role=admin_role())
+        OrganizationMember.objects.create(
+            organization=other, user=self.admin, role=admin_role()
         )
-        no_plugin.start()
-        self.addCleanup(no_plugin.stop)
         self.client.force_login(self.admin)
         session = self.client.session
         session["organization"] = self.org.organization_id

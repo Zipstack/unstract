@@ -151,7 +151,7 @@ class WorkflowAPIClient(BaseAPIClient, WorkflowOperationMixin):
                 message="Successfully retrieved workflow definition",
             )
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to get workflow definition for {validated_workflow_id}: {str(e)}"
             )
             return WorkflowDefinitionResponse.error_response(
@@ -186,7 +186,7 @@ class WorkflowAPIClient(BaseAPIClient, WorkflowOperationMixin):
                 message="Successfully retrieved workflow endpoints",
             )
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to get workflow endpoints for {validated_workflow_id}: {str(e)}"
             )
             return WorkflowEndpointConfigResponse.error_response(

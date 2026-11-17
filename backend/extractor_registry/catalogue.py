@@ -67,10 +67,10 @@ EXTRACTOR_AGENTS: dict[str, ExtractorAgentSpec] = {
         kind=ExtractorAgentKind.PRIMARY,
         executor=EXECUTOR_AGENTIC,
         ide_operation="agentic_extract",
-        # No blind-API door at all. The API's namespace declares `kv` and
-        # `table`; only `table` is routable today. Declared as None rather than
-        # omitted from the catalogue, because the Studio does offer this agent
-        # and `api_routes()` is what decides API exposure.
+        # No blind-API door at all. The API's namespace is `kv` and `table`.
+        # Declared as None rather than omitted from the catalogue, because the
+        # Studio does offer this agent and `api_routes()` is what decides API
+        # exposure.
         api_operation=None,
         api_extractor=None,
         supports_multimodal=True,
@@ -89,10 +89,10 @@ EXTRACTOR_AGENTS: dict[str, ExtractorAgentSpec] = {
         api_extractor="kv",
         # Multi-modality is a checkbox on both Primary agents.
         supports_multimodal=True,
-        # NOT DEPLOYED: `workers/plugins/agentic_kv` is on no main branch in
-        # either repo, so neither door may run it. Flipping this True without
-        # the plugin accepts a submit with a 202 onto a queue with no consumer.
-        # Not sufficient on its own either -- see `available` in `spec.py`.
+        # NOT OFFERED IN THE STUDIO YET. The engine has merged and the blind
+        # API routes `kv` (gated by `AGENT_KV_KV_EXTRACTOR_ENABLED`, not by
+        # this flag), but the Studio waits on the staging proof (UN-4213) and
+        # a cloud-side parameter builder. See `available` in `spec.py`.
         available=False,
     ),
     ExtractorAgentKey.TABLE: ExtractorAgentSpec(
@@ -172,13 +172,18 @@ def default_primary_key() -> str:
 def api_routes() -> dict[str, tuple[str, str]]:
     """The blind API's view: ``{extractor_name: (executor, api_operation)}``.
 
-    AVAILABILITY IS ENFORCED HERE, and this is the function's main job. Only
-    agents that are both deployed (``available``) and have an API door appear,
-    so an undeployed extractor is absent from the mapping exactly as it was
-    when the API kept its own hand-maintained table. That absence is what
-    turns a submit for it into a 400 at the serializer, because
-    ``SUPPORTED_EXTRACTORS`` is derived from these keys — rather than a 202
-    onto a queue nothing drains.
+    Every agent with an API door appears. ``available`` is deliberately NOT
+    consulted: it says whether the Studio offers an agent, and the API gates
+    acceptance separately, per extractor, in
+    ``agent_kv.execution_serializers.enabled_extractors()``. That split is
+    what lets ``kv`` be routed (and accepted where its setting allows) while
+    the Studio still withholds ``multi_stage``.
+
+    Being routed is not being accepted. A routed extractor with no gate
+    decision is refused at submit, and
+    ``test_every_routed_extractor_has_a_gate_entry`` derives that requirement
+    from these keys -- so a new API door cannot slip through as a 202 onto a
+    queue nothing drains.
 
     Built fresh on each call rather than computed once at import, so a test may
     patch ``EXTRACTOR_AGENTS`` and see the derived view change with it.
@@ -193,7 +198,7 @@ def api_routes() -> dict[str, tuple[str, str]]:
     doors = [
         spec
         for spec in EXTRACTOR_AGENTS.values()
-        if spec.available and spec.api_operation and spec.api_extractor
+        if spec.api_operation and spec.api_extractor
     ]
     names = [spec.api_extractor for spec in doors]
     if len(names) != len(set(names)):

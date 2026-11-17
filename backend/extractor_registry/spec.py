@@ -67,8 +67,9 @@ class ExtractorAgentSpec:
             ``"agentic_table"``). Shared by both doors — the executor is the
             same process either way. Whether this executor's derived
             ``celery_executor_<executor>`` queue has a consumer is a separate
-            fact, per row: ``agentic_table``'s does, ``agentic_kv``'s
-            deliberately does not (see ``available`` below).
+            fact about the deployment, pinned by
+            ``agent_kv/tests/test_queue_wiring_is_derived.py`` rather than
+            stated here.
         ide_operation: Operation the STUDIO dispatches. Resolves adapters from
             stored configuration.
         api_operation: Operation the BLIND API dispatches, or ``None`` where
@@ -98,12 +99,14 @@ class ExtractorAgentSpec:
         requires_target_table: Whether the agent needs a ``target_table`` hint
             in ``ExtractorAgentConfig.agent_settings`` -- true for the Table
             Extractor, whose engine cannot run without one.
-        available: Whether the agent's executor is deployed. Necessary but
-            NOT sufficient at either door: ``api_routes()`` also requires
-            ``api_operation`` and ``api_extractor``, and the Studio also
-            requires a parameter builder, which lives in the cloud tree where
-            OSS CI cannot see it. Flipping this True without the matching
-            cloud-side builder is the mistake it guards -- see
+        available: Whether the STUDIO may offer the agent. The blind API does
+            not read it: ``api_routes()`` routes every row with an API door,
+            and the API gates acceptance per extractor in
+            ``agent_kv.execution_serializers.enabled_extractors()``. Necessary
+            but NOT sufficient for the Studio, which also requires a parameter
+            builder in the cloud tree where OSS CI cannot see it. Flipping
+            this True without the matching cloud-side builder is the mistake
+            it guards -- see
             ``agentic_studio_v1.services.agent_dispatch.is_dispatchable``,
             which cloud PR #1894 adds (it is not on cloud main yet).
     """

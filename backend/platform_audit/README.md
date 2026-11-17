@@ -197,7 +197,7 @@ Expected emitters outside this PR:
 | Task | Action | Notes |
 |---|---|---|
 | PB-T05 (UN-4360) | `key.expiry_set` | target per key type; cloud review keys may register their own `review_key.*` actions |
-| PB-T08 (UN-4318) | `execution.aborted` | target `execution`; actor is the owner or admin who aborted |
+| PB-T08 (UN-4318) | `execution.aborted` | target `execution` |
 
 ## Action vocabulary
 
@@ -281,13 +281,13 @@ made any other way are not recorded: identity-provider or SCIM changes, cloud
 staff and admin routes, Django admin, invitation acceptance, and cloud-only
 features (until cloud code emits them).
 
-`resource.created` and `resource.deleted` come from the OSS viewsets only.
-These cloud paths create or delete the same kinds of resource without an
-event: Prompt Studio clone (`prompt-studio/clone/`, also mounted on-prem), the
-Agentic Studio connector views that create and delete adapters, and
-frictionless onboarding (the default adapters and the sample project). A
-project cloned and later deleted through the OSS viewset therefore shows a
-`resource.deleted` with no matching `resource.created`.
+`resource.created` and `resource.deleted` come from the OSS viewsets and, on
+cloud, from Prompt Studio clone (`prompt-studio/clone/`, also on-prem; the
+target is the new project, and the summary `clone of <source project name>`
+names the project it was copied from), the Agentic Studio connector views
+(adapters), the Agentic Studio project and lookup views (the cloud-only kinds
+`agentic_project` and `lookup`), and frictionless onboarding (the default
+adapters and the sample project, recorded as the `system` actor).
 
 Side effects that change a member's default adapter are not recorded. Among
 them: creating an adapter when the member has no default of that type makes it

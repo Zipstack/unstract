@@ -137,7 +137,9 @@ class PlatformEndpoints:
         """Build a ``PlatformEndpoints`` from ``UNSTRACT_*`` env vars.
 
         Used by every runtime so the lookup logic stays single-sourced.
-        Defaults match the dev compose stack at ``docker/docker-compose.yaml``.
+        Defaults are localhost URLs for a developer-managed stack. Not every
+        one is published by ``docker/docker-compose.yaml`` as shipped; see the
+        commented-out loopback ``ports`` entries there.
         """
         return cls(
             backend_url=os.environ.get("UNSTRACT_BACKEND_URL", "http://localhost:8000"),
@@ -315,6 +317,9 @@ class TestcontainersRuntime:
 
     For full platform e2e against testcontainers, use ``ComposeRuntime`` for now
     or set ``UNSTRACT_E2E_RUNTIME=local`` after running ``run-platform.sh``.
+    With ``local``, x2text-service must be reachable at ``UNSTRACT_X2TEXT_URL``
+    (default ``localhost:3004``), which ``docker/docker-compose.yaml`` does not
+    publish: uncomment its loopback ``ports`` entry there.
     """
 
     name: ClassVar[str] = "testcontainers"

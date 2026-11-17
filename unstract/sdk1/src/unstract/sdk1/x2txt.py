@@ -105,13 +105,7 @@ class X2Text:
         if fs is None:
             fs = FileStorage(provider=FileStorageProvider.LOCAL)
         mime_type = fs.mime_type(input_file_path)
-        text_extraction_result: TextExtractionResult = None
-        if mime_type == MimeType.TEXT:
-            extracted_text = fs.read(path=input_file_path, mode="r", encoding="utf-8")
-            text_extraction_result = TextExtractionResult(
-                extracted_text=extracted_text, extraction_metadata=None
-            )
-        text_extraction_result = self._x2text_instance.process(
+        text_extraction_result: TextExtractionResult = self._x2text_instance.process(
             input_file_path, output_file_path, fs, **kwargs
         )
         # Usage is reported after every extraction.

@@ -41,5 +41,10 @@ class OSSSearchType:
     API_DEPLOYMENT = "api_deployment"
     ETL_PIPELINE = "etl_pipeline"
     TASK_PIPELINE = "task_pipeline"
-    ADAPTER = "adapter"
+    # Adapters split by kind, one type per rail destination. OCR adapters
+    # are not searchable: v1 drops OCR (decided 5 Nov 2026).
+    LLM = "llm"
+    VECTOR_DB = "vector_db"
+    EMBEDDING = "embedding"
+    TEXT_EXTRACTOR = "text_extractor"
     CONNECTOR = "connector"

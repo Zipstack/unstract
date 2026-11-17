@@ -129,5 +129,139 @@
   "assist": {
     "enabled": true,
     "actions": { "source": { "organizeImports": "on" } }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["src/v1/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "prop-types": "v1 is typed with TypeScript; PropTypes are not used under src/v1.",
+                  "antd": "antd is not used under src/v1.",
+                  "react-icons": "Lucide is the only icon library under src/v1; brand marks go through @v1/components/ui/BrandMark.",
+                  "@tabler/icons-react": "Lucide is the only icon library under src/v1; brand marks go through @v1/components/ui/BrandMark.",
+                  "@remixicon/react": "Lucide is the only icon library under src/v1; brand marks go through @v1/components/ui/BrandMark.",
+                  "hugeicons-react": "Lucide is the only icon library under src/v1; brand marks go through @v1/components/ui/BrandMark."
+                },
+                "patterns": [
+                  {
+                    "group": [
+                      "../**",
+                      "..",
+                      "./../**",
+                      "/**",
+                      "@/**",
+                      "src/**"
+                    ],
+                    "message": "v1 imports nothing outside src/v1, and never with '../'. Use './' within a folder and '@v1/...' across folders."
+                  },
+                  {
+                    "group": ["@ant-design/**", "antd/**"],
+                    "message": "antd is not used under src/v1."
+                  },
+                  {
+                    "group": [
+                      "react-icons/**",
+                      "@tabler/**",
+                      "@remixicon/**",
+                      "@hugeicons/**",
+                      "hugeicons-react/**",
+                      "@heroicons/**",
+                      "@phosphor-icons/**",
+                      "@radix-ui/react-icons",
+                      "@mui/icons-material",
+                      "@mui/icons-material/**",
+                      "@fortawesome/**",
+                      "country-flag-icons",
+                      "country-flag-icons/**",
+                      "react-world-flags",
+                      "flag-icons",
+                      "flag-icons/**"
+                    ],
+                    "message": "Lucide is the only icon library under src/v1; brand marks and flags go through @v1/components/ui/BrandMark."
+                  },
+                  {
+                    "group": ["prop-types/**"],
+                    "message": "v1 is typed with TypeScript; PropTypes are not used under src/v1."
+                  },
+                  {
+                    "group": [
+                      "**/*.css",
+                      "**/*.less",
+                      "**/*.sass",
+                      "**/*.scss",
+                      "**/*.styl",
+                      "**/*.stylus",
+                      "**/*.pcss",
+                      "**/*.postcss",
+                      "**/*.sss",
+                      "!@v1/styles/**"
+                    ],
+                    "message": "No component .css under src/v1; style with tokens and Tailwind. Global v1 styles live in @v1/styles/."
+                  }
+                ]
+              }
+            }
+          },
+          "a11y": {
+            "noLabelWithoutControl": "error",
+            "noNoninteractiveElementInteractions": "error",
+            "noRedundantRoles": "error",
+            "noStaticElementInteractions": "error",
+            "useAriaPropsSupportedByRole": "error",
+            "useButtonType": "error",
+            "useFocusableInteractive": "error",
+            "useGenericFontNames": "error",
+            "useKeyWithClickEvents": "error",
+            "useSemanticElements": "error",
+            "useValidAnchor": "error"
+          },
+          "suspicious": {
+            "noExplicitAny": "error"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/v1/styles/tokens.css"],
+      "formatter": { "enabled": false }
+    },
+    {
+      "includes": ["src/**", "!src/v1/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@v1/**",
+                      "@/v1",
+                      "@/v1/**",
+                      "src/v1",
+                      "src/v1/**",
+                      "/src/v1",
+                      "/src/v1/**",
+                      "./v1",
+                      "./v1/**",
+                      "../**/v1",
+                      "../**/v1/**",
+                      "!@v1"
+                    ],
+                    "message": "v0 may import only the v1 public entry, as '@v1'."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

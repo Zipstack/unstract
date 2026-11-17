@@ -15,6 +15,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
+from account_usage.models import PageUsage
 from account_v2.models import Organization
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
@@ -340,8 +341,8 @@ def _rollup_monthly_from_daily(month_start: date, skip: set | None = None) -> in
     before it.
 
     Upsert-only, per the design agreed on UN-3973: a monthly row the daily tier
-    no longer produces *at all* is left in place rather than deleted. A stale total
-    is recoverable with backfill_metrics; a deleted one is not, because the daily
+    no longer produces *at all* is left in place rather than deleted. A total that is
+    too low is recoverable with backfill_metrics; a deleted one is not, because the daily
     rows that would rebuild it are exactly what is missing.
 
     A month the daily tier covers only *partially* is a different case: date is not
@@ -854,21 +855,33 @@ def _aggregate_org(
 
 
 def _active_org_ids(end_date: datetime, window_start: datetime) -> set:
-    """Organizations with execution activity in the prefilter lookback.
+    """Organizations with execution or page activity in the prefilter lookback.
 
     Never narrower than the caller's own query window: a widened
     source_window_days must not be prefiltered back down to the default
     lookback, or the reconciliation pass skips the orgs it exists to repair.
+
+    Page usage is unioned in because Prompt Studio records pages without a
+    workflow execution; an org using only Prompt Studio would get no rows.
     """
     cutoff = min(
         window_start,
         end_date - timedelta(days=DASHBOARD_ACTIVE_ORG_LOOKBACK_DAYS),
     )
-    return set(
+    executing = set(
         WorkflowExecution.objects.filter(created_at__gte=cutoff)
         .values_list("workflow__organization_id", flat=True)
         .distinct()
     )
+    # PageUsage keys orgs by their string identifier, not the PK.
+    paging = set(
+        Organization.objects.filter(
+            organization_id__in=PageUsage.objects.filter(created_at__gte=cutoff).values(
+                "organization_id"
+            )
+        ).values_list("id", flat=True)
+    )
+    return executing | paging
 
 
 def _build_result(

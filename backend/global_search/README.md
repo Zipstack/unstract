@@ -66,7 +66,7 @@ changes.
 - `context` is a single display-only line, or `null`. Do not parse it.
 - `route.key` is a route-registry name, not a URL. `route.params` values are
   strings. It is one of the keys the table below lists for the result's
-  type; adapters have two (see below the table). A client that does not
+  type; the adapter types have two (see below the table). A client that does not
   know a key should render the result without a link, never guess a
   screen.
 - `type` is an open string. A client should render an unknown type with its
@@ -117,8 +117,25 @@ empty 200 (see the errors above).
 | 40 | `api_deployment` | API deployments | `api_deployment.detail` | `id` | parent workflow name |
 | 50 | `etl_pipeline` | ETL pipelines | `etl_pipeline.detail` | `id` | parent workflow name |
 | 60 | `task_pipeline` | Task pipelines | `task_pipeline.detail` | `id` | parent workflow name |
-| 80 | `adapter` | Adapters | `adapter.detail` / `adapter.info` | `id`, `adapter_type` | adapter type · provider |
+| 80 | `llm` | LLMs | `adapter.detail` / `adapter.info` | `id`, `adapter_type` | adapter type · provider |
+| 81 | `vector_db` | Vector DBs | `adapter.detail` / `adapter.info` | `id`, `adapter_type` | adapter type · provider |
+| 82 | `embedding` | Embedding | `adapter.detail` / `adapter.info` | `id`, `adapter_type` | adapter type · provider |
+| 83 | `text_extractor` | Text Extractor | `adapter.detail` / `adapter.info` | `id`, `adapter_type` | adapter type · provider |
 | 90 | `connector` | Connectors | `connector.detail` | `id` | provider |
+
+Adapters are split by kind into four types, one per rail destination
+(`adapter_type` `LLM`, `VECTOR_DB`, `EMBEDDING` and `X2TEXT`), each with its
+own `limit` and `has_more`. OCR adapters are not searchable. All four kinds
+share the `adapter.*` route keys (the notifications inbox sends `adapter.info`
+with the same params); `adapter_type` in the params says which adapter page to
+open.
+
+**Changed (UN-4628):** these four types replace the single `adapter` type
+(order 80, label "Adapters") that the endpoint returned from v0.194.0. A
+request for `types=adapter` now returns no adapter groups, since unknown keys
+are ignored, and OCR adapters, which `adapter` returned, are no longer
+returned at all. No released client used the `adapter` key when it was
+removed: the frontend panel (P2-T10) was not built yet.
 
 An adapter opens on `adapter.detail` only for a caller who may edit it
 (owner or co-owner, org admin, service account), the same rule as the

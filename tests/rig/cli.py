@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 import uuid
+import xml.etree.ElementTree as ET
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -952,6 +953,11 @@ def _execute_group(
         # backfill one to keep a red run visible in the summary.
         if not junit.exists():
             _write_synthetic_junit_safe(junit, group.name, exit_code)
+        elif exit_code == 0 and _junit_test_count(junit) == 0:
+            # vitest under `passWithNoTests` exits 0 having run nothing. Report
+            # it with the rig's "nothing collected" code, as pytest would, so
+            # it reads ⚪ rather than a green row that verified nothing.
+            exit_code = 5
     elif (isolation_error := _config_isolation_error(group, workdir)) is not None:
         print(isolation_error, file=sys.stderr)
         # 4 is pytest's usage-error code, so this gates like any hard failure.
@@ -1247,6 +1253,8 @@ def _node_command(
             "--reporter=junit",
             f"--outputFile={junit}",
         ]
+        if group.vitest_config is not None:
+            cmd += ["--config", group.vitest_config]
         # `paths` are optional for vitest: with none it runs the whole suite,
         # which is what the `frontend` group wants.
         cmd += [str(p) for p in group.paths if p not in (".", "")]
@@ -1259,6 +1267,24 @@ def _node_command(
     cmd = ["npx", "--no-install", "playwright", "test"]
     cmd += [str(p) for p in group.paths if p not in (".", "")]
     return cmd
+
+
+def _junit_test_count(junit: Path) -> int | None:
+    """The `tests` total a junit report declares, or None if it can't tell."""
+    try:
+        root = ET.parse(junit).getroot()
+    except (ET.ParseError, OSError):
+        return None
+    suites = root.findall("testsuite") if root.tag == "testsuites" else [root]
+    counted = [s for s in suites if "tests" in s.attrib] or (
+        [root] if "tests" in root.attrib else []
+    )
+    if not counted:
+        return None
+    try:
+        return sum(int(s.attrib["tests"]) for s in counted)
+    except ValueError:
+        return None
 
 
 def _hurl_command(group: GroupDefinition, workdir: Path) -> list[str]:

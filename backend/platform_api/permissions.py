@@ -49,8 +49,9 @@ class CanManageApiKeys(BasePermission):
     """Admins, or members when the org lets members manage API keys.
 
     For the global deployment key actions members may use (list, create,
-    retrieve, rotate, deployments); the view narrows what a member may do to a given key.
-    Editing and deleting keys stay ``IsOrganizationAdmin``.
+    retrieve, rotate, history, callers, deployments); the view narrows what a
+    member may do to a given key. Editing and deleting keys stay
+    ``IsOrganizationAdmin``.
     """
 
     message = "Manage API keys is restricted to organisation admins."
@@ -59,6 +60,12 @@ class CanManageApiKeys(BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
         return is_org_admin_session(request, view) or member_may_manage_keys(request)
+
+
+PREVIOUS_SECRET_MESSAGE = (
+    "This key was rotated. Use its new secret to manage it; the old one only "
+    "works for API calls until its grace period ends."
+)
 
 
 class CanRotatePlatformApiKey(BasePermission):
@@ -93,6 +100,12 @@ class CanRotatePlatformApiKey(BasePermission):
             return False
         platform_key = getattr(request, "platform_api_key", None)
         if platform_key is not None:
+            if getattr(request, "platform_api_key_is_previous", False):
+                # A secret the key was rotated away from works only until its
+                # grace period ends. Rotating with it would return the new
+                # secret, which never expires, and could cut off the owner's.
+                self.message = PREVIOUS_SECRET_MESSAGE
+                return False
             # Key-based caller: only a full_access key may rotate. Prevents a
             # read_write key from rotating a full_access key and reading its new
             # secret from the response (privilege escalation) — see docstring.

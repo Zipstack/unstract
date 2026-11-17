@@ -23,63 +23,54 @@ from extractor_registry import (
 )
 
 
-class ApiRoutesEnforcesAvailabilityTest(SimpleTestCase):
-    """`api_routes()` is the blind API's admission gate, not a convenience view.
+class ApiRoutesIgnoresAvailabilityTest(SimpleTestCase):
+    """`api_routes()` decides what the blind API ROUTES, and only that.
 
     `SUPPORTED_EXTRACTORS` in `agent_kv.execution_serializers` is
-    `tuple(EXTRACTOR_ROUTES)`, which is now `tuple(api_routes())`. So whether a
-    row appears here decides whether a submit gets a 400 at the serializer or a
-    202 onto a queue that may have no consumer. That is the whole reason the
-    old hand-written table omitted `kv` rather than marking it somehow.
+    `tuple(EXTRACTOR_ROUTES)`, which is `tuple(api_routes())`. What a submit
+    may ACCEPT is a separate gate, `enabled_extractors()`, driven by a
+    per-extractor setting (`AGENT_KV_KV_EXTRACTOR_ENABLED` for `kv`).
+
+    An earlier revision of this module made `available` the API's admission
+    gate too, so an unavailable row vanished from the routes. That stopped
+    being true when the Agent-KV engine merged: `kv` is routed and gated by
+    its setting, while the Studio still withholds `multi_stage`. One flag
+    cannot say both, so `available` now speaks for the Studio door only.
     """
 
-    def test_an_unavailable_agent_is_omitted(self) -> None:
+    def test_the_kv_door_is_routed_while_the_studio_withholds_it(self) -> None:
+        """The state the split exists for, pinned from both sides."""
         routes = api_routes()
-        self.assertNotIn("kv", routes)
-        # ...and the reason is availability, not a missing API door: the row
-        # declares both halves of its door, so omission can only come from the
-        # flag. Without this, the test would still pass if someone deleted the
-        # api_extractor/api_operation instead.
-        kv = get_agent(ExtractorAgentKey.MULTI_STAGE)
-        self.assertEqual(kv.api_extractor, "kv")
-        self.assertEqual(kv.api_operation, "kv_extract")
-        self.assertFalse(kv.available)
-
-    def test_flipping_available_adds_the_route(self) -> None:
-        """The inverse, so the omission above is attributable to the flag.
-
-        This pins the FLAG's effect on `api_routes()` and nothing more. It is
-        deliberately not evidence for the re-enable procedure as a whole: a
-        real flip also reds the guards that pin the omission (see
-        `agent_kv.constants`), and it cannot reach `EXTRACTOR_ROUTES` at all,
-        which is an import-time snapshot taken before any test body runs. The
-        derivation itself is pinned in
-        `agent_kv/tests/test_table_extractor_routing.py`.
-
-        If `kv` is ever deliberately re-enabled this test does NOT go red --
-        it patches `available=True` onto a row that is already True and
-        becomes tautological, which is harder to notice than a failure. The
-        assertion below is what makes that loud. Delete this test then, and
-        say so, rather than leaving it passing for no reason.
-        """
+        self.assertEqual(routes["kv"], ("agentic_kv", "kv_extract"))
         kv = get_agent(ExtractorAgentKey.MULTI_STAGE)
         self.assertFalse(
             kv.available,
-            "multi_stage is now available, so this test is tautological -- "
-            "delete it rather than leaving it green.",
+            "multi_stage is now available to the Studio. That is a product "
+            "decision (it waits on UN-4213); if it was made deliberately, this "
+            "assertion is what to update.",
         )
+
+    def test_availability_does_not_gate_the_api_door(self) -> None:
+        """Withdraw the Table row from the Studio and the API still routes it.
+
+        Fixtured on `table`, which IS available, so the patch changes the
+        flag rather than restating it -- on `multi_stage` the same patch would
+        be a no-op and the test would pass for no reason.
+        """
+        table = get_agent(ExtractorAgentKey.TABLE)
+        self.assertTrue(table.available, "fixture assumes table is available")
         with patch.dict(
             EXTRACTOR_AGENTS,
-            {ExtractorAgentKey.MULTI_STAGE: ExtractorAgentSpec(
-                **{**kv.__dict__, "available": True}
+            {ExtractorAgentKey.TABLE: ExtractorAgentSpec(
+                **{**table.__dict__, "available": False}
             )},
         ):
             routes = api_routes()
-        self.assertEqual(routes["kv"], ("agentic_kv", "kv_extract"))
+        self.assertEqual(routes["table"], ("agentic_table", "table_extract_api"))
 
     def test_an_agent_with_no_api_door_never_appears(self) -> None:
-        """`simple` is Studio-only. The API's namespace declares `kv` and
-        `table`; only `table` is routable today.
+        """`simple` is Studio-only. The API's namespace is `kv` and `table`,
+        and both are routed.
 
         Assert on the namespace `api_routes()` keys on -- its own
         `api_extractor` -- not on the Studio key. `assertNotIn("simple", ...)`
@@ -95,7 +86,7 @@ class ApiRoutesEnforcesAvailabilityTest(SimpleTestCase):
         BOTH halves yields a None key, which `assertNotIn` below catches.
         """
         routes = api_routes()
-        self.assertEqual(set(routes), {"table"})
+        self.assertEqual(set(routes), {"kv", "table"})
         self.assertNotIn(None, routes)
         simple = get_agent(ExtractorAgentKey.SIMPLE)
         self.assertTrue(simple.available, "simple IS deployed")
@@ -145,7 +136,7 @@ class PerDoorColumnsTest(SimpleTestCase):
         job would stop describing it the moment the agent was withdrawn.
         """
         self.assertIsNotNone(api_agent("kv"))
-        self.assertNotIn("kv", api_routes())
+        self.assertFalse(get_agent(ExtractorAgentKey.MULTI_STAGE).available)
 
     def test_a_half_declared_api_door_is_refused(self) -> None:
         """Both halves or neither -- one alone fails invisibly until a submit."""
@@ -234,7 +225,7 @@ class CatalogueShapeTest(SimpleTestCase):
         and for four revisions its docstring claimed it did while it did not.
         """
         multi = get_agent(ExtractorAgentKey.MULTI_STAGE)
-        self.assertFalse(multi.available, "fixture assumes multi_stage is undeployed")
+        self.assertFalse(multi.available, "fixture assumes multi_stage is unavailable")
 
         with self.assertRaises(ValueError) as caught:
             ExtractorAgentSpec(**{**multi.__dict__, "is_default": True})

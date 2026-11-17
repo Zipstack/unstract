@@ -3,8 +3,10 @@ import logging
 from typing import Any
 
 from account_v2.serializer import UserSerializer
+from connection_check.serializers import profile_status_fields
 from cryptography.fernet import Fernet
 from django.conf import settings
+from permissions.permission import IsOwner
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer, ValidationError
 from tenant_account_v2.sharing_helpers import (
@@ -277,6 +279,36 @@ class AdapterListSerializer(BaseAdapterSerializer):
         rep["is_owner"] = instance.is_owner(request.user) if request else False
         rep["co_owners_count"] = instance.co_owners_count()
 
+        return rep
+
+
+def _status_fields(adapter: AdapterInstance, context: dict[str, Any]) -> dict[str, Any]:
+    """Stored-test keys, with the failure reason only for callers who can edit."""
+    fields = profile_status_fields(adapter)
+    request = context.get("request")
+    # The reason can quote provider text, and viewers are kept from the settings.
+    if not request or not IsOwner().has_object_permission(
+        request, context.get("view"), adapter
+    ):
+        fields["last_failure_reason"] = None
+    return fields
+
+
+class AdapterInstanceWithStatusSerializer(AdapterInstanceSerializer):
+    """Adapter CRUD response plus the stored connection-test status."""
+
+    def to_representation(self, instance: AdapterInstance) -> dict[str, Any]:
+        rep: dict[str, Any] = super().to_representation(instance)
+        rep.update(_status_fields(instance, self.context))
+        return rep
+
+
+class AdapterListWithStatusSerializer(AdapterListSerializer):
+    """Adapter list row plus the stored connection-test status."""
+
+    def to_representation(self, instance: AdapterInstance) -> dict[str, Any]:
+        rep: dict[str, Any] = super().to_representation(instance)
+        rep.update(_status_fields(instance, self.context))
         return rep
 
 

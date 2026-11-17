@@ -36,7 +36,7 @@ class LogAPIClient(BaseAPIClient):
             )
 
         except Exception as e:
-            logger.error(f"Exception getting workflow executions: {e}")
+            logger.exception(f"Exception getting workflow executions: {e}")
             return APIResponse.error_response(
                 error=str(e), message="Failed to get workflow executions"
             )
@@ -62,7 +62,7 @@ class LogAPIClient(BaseAPIClient):
             )
 
         except Exception as e:
-            logger.error(f"Exception getting file executions: {e}")
+            logger.exception(f"Exception getting file executions: {e}")
             return APIResponse.error_response(
                 error=str(e), message="Failed to get file executions"
             )
@@ -104,7 +104,7 @@ class LogAPIClient(BaseAPIClient):
             )
 
         except Exception as e:
-            logger.error(f"Exception validating execution references: {e}")
+            logger.exception(f"Exception validating execution references: {e}")
             return APIResponse.error_response(
                 error=str(e), message="Failed to validate execution references"
             )
@@ -138,7 +138,7 @@ class LogAPIClient(BaseAPIClient):
             )
 
         except Exception as e:
-            logger.error(f"Exception getting log batch: {e}")
+            logger.exception(f"Exception getting log batch: {e}")
             return APIResponse.error_response(
                 error=str(e), message="Failed to get log batch from cache"
             )

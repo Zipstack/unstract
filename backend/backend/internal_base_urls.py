@@ -198,6 +198,8 @@ urlpatterns = [
         include("dashboard_metrics.internal_urls"),
         name="dashboard_metrics_internal",
     ),
+    # Daily inbox purge, called by the worker task the PG scheduler fires.
+    path("v1/inbox/", include("inbox.internal_urls"), name="inbox_internal"),
     # Workflow management and pipeline APIs
     path(
         "v1/workflow-manager/",

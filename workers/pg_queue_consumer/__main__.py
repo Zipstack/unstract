@@ -22,6 +22,17 @@ Launch via ``python -m pg_queue_consumer`` or ``./run-worker.sh pg-queue-consume
 
 
 def _bootstrap_and_run() -> None:
+    # Clear the dumpable flag FIRST, before the concurrency branch below. This
+    # is the launcher process -- PID 1, after the entrypoint's `exec` -- the
+    # flag is inherited across `fork`, and `execve` RESETS it, so this is the
+    # one site that covers PID 1 on both the supervisor and single-process
+    # paths plus every forked child. A no-op for pools that do not execute
+    # untrusted code; see the function's docstring for why it cannot be sited
+    # in `workers/sandbox/`.
+    from pg_queue_consumer._bootstrap import drop_dumpable_for_untrusted_code_pools
+
+    drop_dumpable_for_untrusted_code_pools()
+
     # CONCURRENCY > 1 → run a prefork supervisor: N isolated consumer
     # children, the PG analogue of Celery --pool=prefork --concurrency=N. The
     # supervisor forks the children (each does its OWN worker bootstrap, so no

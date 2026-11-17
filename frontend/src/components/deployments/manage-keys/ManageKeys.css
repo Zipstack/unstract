@@ -21,3 +21,11 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* Wide enough for a full UUID key, so revealing it does not move the eye
+   button sideways. */
+.manage-keys__key {
+  display: inline-block;
+  min-width: 36ch;
+  font-family: monospace;
+}

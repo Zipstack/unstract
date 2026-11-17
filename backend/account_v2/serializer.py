@@ -169,3 +169,16 @@ class ProductPreferenceSerializer(serializers.Serializer):
 
 class ProductPreferenceUpdateSerializer(serializers.Serializer):
     product = serializers.ChoiceField(choices=Product.choices)
+
+
+class SignedInSessionSerializer(serializers.Serializer):
+    """One entry of `users/sessions/`. The IP is recorded but never returned."""
+
+    id = serializers.CharField()
+    browser = serializers.CharField(allow_null=True)
+    os = serializers.CharField(allow_null=True)
+    device_label = serializers.CharField(allow_null=True)
+    location = serializers.CharField(allow_null=True)
+    last_active = serializers.DateTimeField()
+    created = serializers.DateTimeField()
+    is_current = serializers.BooleanField()

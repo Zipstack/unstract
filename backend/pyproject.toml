@@ -31,6 +31,7 @@ dependencies = [
     # contract published clients are generated from.
     "drf-spectacular==0.30.0",
     "psycopg2-binary==2.9.9",
+    "prometheus-client>=0.17.0,<1.0.0", # Platform /metrics exporter
     "python-dotenv==1.2.2",
     "python-magic==0.4.27", # For file upload/download
     "python-socketio==5.17.0", # For log_events
@@ -81,6 +82,7 @@ test = [
     "pytest>=8.0.1",
     "pytest-django>=4.12.0",
     "jsonschema>=4.18.6,<5.0",
+    "rfc3339-validator>=0.1.4", # jsonschema checks date-time only with this
 ]
 deploy = [
     "gunicorn~=23.0", # For serving the application

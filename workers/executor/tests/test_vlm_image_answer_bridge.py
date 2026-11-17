@@ -365,3 +365,49 @@ class TestUnsupportedOperationGuard:
                 execution_source="ide",
             )  # no raise
         resolve.assert_not_called()
+
+
+class TestPerImageLimitMapping:
+    def test_single_oversized_page_maps_to_its_own_code(self):
+        from executor.executors.vlm_image_answer import IMAGE_PAGE_TOO_LARGE
+
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            PageImageTooLargeError,
+        )
+
+        plugin = MagicMock()
+        plugin.run_with_metrics.side_effect = PageImageTooLargeError(
+            "Page 2 is too big",
+            page_store_dir="/p",
+            page_number=2,
+            limit_kind="bytes",
+            actual=10,
+            limit=5,
+        )
+        with (
+            patch(
+                "executor.executors.vlm_image_answer.ExecutorPluginLoader.get",
+                return_value=plugin,
+            ),
+            patch("executor.executors.vlm_image_answer.FileUtils.get_fs_instance"),
+        ):
+            with pytest.raises(VlmImageAnswerError) as excinfo:
+                run_vlm_image_answer(
+                    output={"name": "p1"},
+                    shim=MagicMock(),
+                    llm=MagicMock(),
+                    extract_file_path="/d/extract/doc.txt",
+                    execution_source="ide",
+                    metadata={},
+                    metrics={},
+                    x2text_config={},
+                )
+        assert excinfo.value.error_code == IMAGE_PAGE_TOO_LARGE == "IMAGE_PAGE_TOO_LARGE"
+
+    def test_bridge_codes_come_from_the_sdk(self):
+        from executor.executors import vlm_image_answer as bridge
+
+        from unstract.sdk1.utils.image_limits import codes
+
+        assert bridge.IMAGE_PAGE_CAP_EXCEEDED is codes.IMAGE_PAGE_CAP_EXCEEDED
+        assert bridge.IMAGE_REQUEST_TOO_LARGE is codes.IMAGE_REQUEST_TOO_LARGE

@@ -22,9 +22,9 @@ repos:
       - id: check-docstring-first
       - id: check-ast
       - id: check-json
-        # Both files are JSONC — their tooling (VS Code, tsc) allows comments,
+        # These files are JSONC — their tooling (VS Code, tsc) allows comments,
         # but this hook parses with strict `json.loads`, which does not.
-        exclude: "(\\.vscode/launch\\.json|frontend/tsconfig\\.json)$"
+        exclude: "(\\.vscode/launch\\.json|frontend/(src/v1/)?tsconfig\\.json)$"
       - id: check-executables-have-shebangs
       - id: check-shebang-scripts-are-executable
       - id: check-toml

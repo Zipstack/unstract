@@ -53,6 +53,7 @@ from unstract.workflow_execution.workflow_execution import WorkflowExecutionServ
 from ...api.internal_client import InternalAPIClient
 from ...infrastructure.logging import WorkerLogger
 from ...utils.error_utils import get_user_friendly_error_message
+from ...utils.manual_review_factory import AUTO_ENABLE_HIGHLIGHT
 from ..destination_connector import (
     DestinationConfig,
     WorkerDestinationConnector,
@@ -70,6 +71,9 @@ class WorkerWorkflowExecutionService:
         self.api_client = api_client
         self.logger = logger
         self._last_execution_error = None
+        # (execution_id, context) of the file being processed, reused by the
+        # source/destination config lookups.
+        self._execution_context: tuple[str, dict] | None = None
 
     def execute_workflow_for_file(
         self,
@@ -556,19 +560,38 @@ class WorkerWorkflowExecutionService:
     def _get_workflow_execution_context(
         self, execution_id: str, workflow_id: str, organization_id: str
     ) -> tuple[dict, list]:
-        """Get workflow execution context and tool instances."""
-        execution_response = self.api_client.get_workflow_execution(execution_id)
-        if not execution_response.success:
-            raise Exception(
-                f"Failed to get workflow execution: {execution_response.error}"
-            )
+        """Get workflow execution context and tool instances.
+
+        The context is fetched fresh for each file (connector settings can change
+        during a long batch) and kept for this file's config lookups.
+        """
+        execution_context = self._fetch_execution_context(execution_id)
+        self._execution_context = (str(execution_id), execution_context)
 
         tool_instances_response = self.api_client.get_tool_instances_by_workflow(
             workflow_id=workflow_id,
             organization_id=organization_id,
         )
 
-        return execution_response.data, tool_instances_response.tool_instances
+        return execution_context, tool_instances_response.tool_instances
+
+    def _fetch_execution_context(self, execution_id: str) -> dict:
+        """Fetch the execution context, without its file-execution rows."""
+        execution_response = self.api_client.get_workflow_execution(execution_id)
+        if not execution_response.success:
+            raise Exception(
+                f"Failed to get workflow execution: {execution_response.error}"
+            )
+        return execution_response.data
+
+    def _get_cached_execution_context(self, execution_id: str) -> dict:
+        """Execution context already loaded for this file, else fetch it."""
+        cached = self._execution_context
+        if cached is not None and cached[0] == str(execution_id):
+            return cached[1]
+        execution_context = self._fetch_execution_context(execution_id)
+        self._execution_context = (str(execution_id), execution_context)
+        return execution_context
 
     def _get_workflow(
         self, workflow_id: str, organization_id: str
@@ -847,7 +870,12 @@ class WorkerWorkflowExecutionService:
                     # Continue with normal execution if check fails
 
             # Step 3: Build and execute workflow
-            self._build_and_execute_workflow(execution_service, file_name)
+            review_config = file_processing_context.file_data.manual_review_config
+            self._build_and_execute_workflow(
+                execution_service,
+                file_name,
+                auto_enable_highlight=review_config.get(AUTO_ENABLE_HIGHLIGHT, False),
+            )
 
             return True
 
@@ -969,7 +997,10 @@ class WorkerWorkflowExecutionService:
             raise file_prep_error
 
     def _build_and_execute_workflow(
-        self, execution_service: WorkflowExecutionService, file_name: str
+        self,
+        execution_service: WorkflowExecutionService,
+        file_name: str,
+        auto_enable_highlight: bool = False,
     ) -> None:
         """Build and execute the workflow.
 
@@ -977,7 +1008,9 @@ class WorkerWorkflowExecutionService:
         execute_structure_tool task instead of the Docker container flow.
         """
         if self._is_structure_tool_workflow(execution_service):
-            self._execute_structure_tool_workflow(execution_service, file_name)
+            self._execute_structure_tool_workflow(
+                execution_service, file_name, auto_enable_highlight
+            )
         else:
             # Original Docker-based flow (unchanged)
             execution_service.build_workflow()
@@ -1015,7 +1048,10 @@ class WorkerWorkflowExecutionService:
         return False
 
     def _execute_structure_tool_workflow(
-        self, execution_service: WorkflowExecutionService, file_name: str
+        self,
+        execution_service: WorkflowExecutionService,
+        file_name: str,
+        auto_enable_highlight: bool = False,
     ) -> None:
         """Execute structure tool as a task instead of a Docker container.
 
@@ -1061,6 +1097,7 @@ class WorkerWorkflowExecutionService:
             "messaging_channel": getattr(execution_service, "messaging_channel", ""),
             "file_hash": metadata.get("source_hash", ""),
             "exec_metadata": metadata,
+            AUTO_ENABLE_HIGHLIGHT: auto_enable_highlight,
         }
 
         # Call synchronously (same process, in-band)
@@ -1703,15 +1740,10 @@ class WorkerWorkflowExecutionService:
     def _get_destination_config(
         self, workflow_id: str, execution_id: str
     ) -> dict[str, Any] | None:
-        """Get destination configuration for the workflow via API."""
+        """Get destination configuration from this file's execution context."""
         try:
             # Get workflow execution context which includes destination config
-            execution_response = self.api_client.get_workflow_execution(execution_id)
-            if not execution_response.success:
-                raise Exception(
-                    f"Failed to get execution context: {execution_response.error}"
-                )
-            execution_context = execution_response.data
+            execution_context = self._get_cached_execution_context(execution_id)
             destination_config = execution_context.get("destination_config", {})
 
             if not destination_config:
@@ -1734,15 +1766,10 @@ class WorkerWorkflowExecutionService:
     def _get_source_config(
         self, workflow_id: str, execution_id: str
     ) -> dict[str, Any] | None:
-        """Get source configuration for the workflow via API."""
+        """Get source configuration from this file's execution context."""
         try:
             # Get workflow execution context which includes source config
-            execution_response = self.api_client.get_workflow_execution(execution_id)
-            if not execution_response.success:
-                raise Exception(
-                    f"Failed to get execution context: {execution_response.error}"
-                )
-            execution_context = execution_response.data
+            execution_context = self._get_cached_execution_context(execution_id)
             source_config = execution_context.get("source_config", {})
 
             if not source_config:

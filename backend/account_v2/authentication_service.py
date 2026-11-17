@@ -334,7 +334,7 @@ class AuthenticationService:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to set default user: {str(e)}")
+            logger.exception(f"Failed to set default user: {str(e)}")
             return False
 
     def _get_or_create_user(self, organization: Organization | None) -> User:

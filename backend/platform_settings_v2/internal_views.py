@@ -69,7 +69,7 @@ class InternalPlatformKeyView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         except Exception as e:
-            logger.error(f"Error getting platform key for org {org_id}: {str(e)}")
+            logger.exception(f"Error getting platform key for org {org_id}: {str(e)}")
             return Response(
                 {"error": "Internal server error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

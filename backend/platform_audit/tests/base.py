@@ -1,14 +1,15 @@
 """Shared fixtures: one org with an admin and a member, a second org, and a
-helper that calls a view the way a request would and runs its on-commit writes."""
+helper that calls a view the way a request would and runs its on-commit writes.
+"""
 
 import secrets
 from typing import Any
-from unittest.mock import patch
 
 from account_v2.models import Organization, User
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory, force_authenticate
 from tenant_account_v2.models import OrganizationMember
+from utils.tests.auth_seam import admin_role, member_role
 from utils.user_context import UserContext
 
 from platform_audit.models import PlatformAuditEvent
@@ -22,17 +23,6 @@ def make_user(email: str, **kwargs: Any) -> User:
 
 class AuditTestBase(TestCase):
     def setUp(self) -> None:
-        # The built-in auth service, whatever plugin the distribution installs:
-        # these tests use its role names ("admin", "user") and patch its
-        # identity-provider calls. Under a plugin such as cloud's Auth0, a
-        # role="admin" row is not an admin, and the patches would miss.
-        no_plugin = patch(
-            "account_v2.authentication_plugin_registry.AuthenticationPluginRegistry"
-            ".is_plugin_available",
-            return_value=False,
-        )
-        no_plugin.start()
-        self.addCleanup(no_plugin.stop)
         self.org = Organization.objects.create(
             name="org-a", display_name="Org A", organization_id="org-a"
         )
@@ -40,13 +30,14 @@ class AuditTestBase(TestCase):
             name="org-b", display_name="Org B", organization_id="org-b"
         )
         self.use_org(self.org)
+        self.admin_role, self.member_role = admin_role(), member_role()
         self.admin = make_user("Admin@Example.com", first_name="Ada", last_name="Min")
         self.member = make_user("member@example.com")
         OrganizationMember.objects.create(
-            organization=self.org, user=self.admin, role="admin"
+            organization=self.org, user=self.admin, role=self.admin_role
         )
         OrganizationMember.objects.create(
-            organization=self.org, user=self.member, role="user"
+            organization=self.org, user=self.member, role=self.member_role
         )
         self.factory = APIRequestFactory()
 
