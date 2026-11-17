@@ -2,6 +2,7 @@ import { clearUserLocalStorage } from "@v1";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
+import { clearMetricsCache } from "../helpers/metricsCache.js";
 import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../store/alert-store";
 
@@ -23,9 +24,11 @@ const useUserSession = () => {
     } catch (error) {
       if (error?.response?.data?.message === "Unauthorized") {
         // No session, e.g. it expired without a logout: drop what the last
-        // user left in localStorage. sessionStorage is per tab and holds the
-        // silent sign-in loop guard, so it is left alone here.
+        // user left in localStorage, and the dashboard metrics cached in this
+        // tab. The rest of sessionStorage holds the silent sign-in loop
+        // guard, so it is left alone here.
         clearUserLocalStorage();
+        clearMetricsCache();
         return;
       }
 

@@ -82,30 +82,53 @@ function signedOut(sentAt: number = Date.now()) {
   return { type: "signed-out", sentAt };
 }
 
-/** Resolves once pending channel messages have been delivered. */
-function delivered(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 20));
-}
-
+// No fixed waits: messages reach a receiver in the order they were posted, so
+// once the listener has handled the last one, it has handled every earlier
+// one. Each test waits for that and then counts what got past the filter.
 describe("sign-out across tabs", () => {
+  const cleanups: (() => void)[] = [];
+
+  /** Mounts the listener in this tab; `isSignedOut` counts what reached it. */
+  function listen(signedOutHere = false) {
+    const isSignedOut = vi.fn(() => signedOutHere);
+    cleanups.push(signOutWhenSignedOutElsewhere(isSignedOut));
+    return isSignedOut;
+  }
+
+  function stubAssign() {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+    return assign;
+  }
+
+  function tab(): BroadcastChannel {
+    const channel = otherTab();
+    cleanups.push(() => channel.close());
+    return channel;
+  }
+
   afterEach(() => {
+    for (const cleanup of cleanups.splice(0)) {
+      cleanup();
+    }
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     window.localStorage.clear();
     window.sessionStorage.clear();
   });
 
   it("announces the sign-out to the other tabs", async () => {
-    const tab = otherTab();
-    const received: unknown[] = [];
-    tab.onmessage = (event) => received.push(event.data);
+    const other = tab();
+    const received = new Promise((resolve) => {
+      other.onmessage = (event) => resolve(event.data);
+    });
 
     clearBrowserStorage();
-    await delivered();
 
-    expect(received).toEqual([
-      { type: "signed-out", sentAt: expect.any(Number) },
-    ]);
-    tab.close();
+    expect(await received).toEqual({
+      type: "signed-out",
+      sentAt: expect.any(Number),
+    });
   });
 
   // CASA 6.6.1: an open tab still shows the previous user's data after a
@@ -113,77 +136,86 @@ describe("sign-out across tabs", () => {
   // It signs out rather than reloading: the server may not have ended the
   // session yet when the message arrives.
   it("clears this tab's sessionStorage and signs it out on a sign-out elsewhere", async () => {
-    const assign = vi.fn();
-    vi.stubGlobal("location", { ...window.location, assign });
+    const assign = stubAssign();
     window.sessionStorage.setItem("dashboard_metrics_overview", "{}");
-    const stop = signOutWhenSignedOutElsewhere();
-    const tab = otherTab();
+    const isSignedOut = listen();
+    const other = tab();
 
-    tab.postMessage("something-else");
-    tab.postMessage("signed-out");
-    tab.postMessage({ type: "something-else", sentAt: Date.now() });
-    await delivered();
-    expect(assign).not.toHaveBeenCalled();
-    expect(window.sessionStorage.length).toBe(1);
+    other.postMessage("something-else");
+    other.postMessage("signed-out");
+    other.postMessage({ type: "something-else", sentAt: Date.now() });
+    other.postMessage(signedOut());
+    await vi.waitFor(() => expect(assign).toHaveBeenCalled());
 
-    tab.postMessage(signedOut());
-    await delivered();
+    expect(isSignedOut).toHaveBeenCalledTimes(1);
     expect(assign).toHaveBeenCalledTimes(1);
     expect(assign).toHaveBeenCalledWith("/api/v1/logout");
     expect(window.sessionStorage.length).toBe(0);
+  });
 
-    stop();
-    tab.postMessage(signedOut());
-    await delivered();
-    expect(assign).toHaveBeenCalledTimes(1);
-    tab.close();
+  it("does nothing after unsubscribe", async () => {
+    const stopped = vi.fn(() => true);
+    signOutWhenSignedOutElsewhere(stopped)();
+    // A listener mounted now shares the channel: once it has the message,
+    // the stopped one would have had it too.
+    const live = listen(true);
+
+    tab().postMessage(signedOut());
+    await vi.waitFor(() => expect(live).toHaveBeenCalled());
+
+    expect(stopped).not.toHaveBeenCalled();
   });
 
   // Review finding: an anonymous share viewer or /landing has no session to
   // end; sending it through the identity provider's logout loses the page.
   it("only clears sessionStorage in a tab known to be signed out", async () => {
-    const assign = vi.fn();
-    vi.stubGlobal("location", { ...window.location, assign });
+    const assign = stubAssign();
     window.sessionStorage.setItem("dashboard_metrics_overview", "{}");
-    const stop = signOutWhenSignedOutElsewhere(() => true);
-    const tab = otherTab();
+    const isSignedOut = listen(true);
 
-    tab.postMessage(signedOut());
-    await delivered();
+    tab().postMessage(signedOut());
+    await vi.waitFor(() => expect(isSignedOut).toHaveBeenCalled());
 
     expect(assign).not.toHaveBeenCalled();
     expect(window.sessionStorage.length).toBe(0);
-    stop();
-    tab.close();
   });
 
   // Review finding: a frozen tab runs a queued message when it thaws. If
   // someone signed in again meanwhile, acting on it would end the new session.
   it("ignores a stale sign-out", async () => {
-    const assign = vi.fn();
-    vi.stubGlobal("location", { ...window.location, assign });
-    window.sessionStorage.setItem("dashboard_metrics_overview", "{}");
-    const stop = signOutWhenSignedOutElsewhere();
-    const tab = otherTab();
+    const assign = stubAssign();
+    const isSignedOut = listen();
+    const other = tab();
 
-    tab.postMessage(signedOut(Date.now() - 60_000));
-    await delivered();
+    other.postMessage(signedOut(Date.now() - 60_000));
+    other.postMessage(signedOut());
+    await vi.waitFor(() => expect(assign).toHaveBeenCalled());
 
-    expect(assign).not.toHaveBeenCalled();
-    expect(window.sessionStorage.length).toBe(1);
-    stop();
-    tab.close();
+    expect(isSignedOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("still signs out when this tab's storage is unavailable", async () => {
+    const assign = stubAssign();
+    vi.spyOn(window, "sessionStorage", "get").mockImplementation(() => {
+      throw new DOMException("denied", "SecurityError");
+    });
+    listen();
+
+    tab().postMessage(signedOut());
+
+    await vi.waitFor(() =>
+      expect(assign).toHaveBeenCalledWith("/api/v1/logout"),
+    );
   });
 
   it("does not act on the tab's own sign-out", async () => {
-    const assign = vi.fn();
-    vi.stubGlobal("location", { ...window.location, assign });
-    const stop = signOutWhenSignedOutElsewhere();
+    const isSignedOut = listen(true);
 
     clearBrowserStorage();
-    await delivered();
+    // Posted after this tab's own message, so handled after it.
+    tab().postMessage(signedOut());
+    await vi.waitFor(() => expect(isSignedOut).toHaveBeenCalled());
 
-    expect(assign).not.toHaveBeenCalled();
-    stop();
+    expect(isSignedOut).toHaveBeenCalledTimes(1);
   });
 });

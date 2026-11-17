@@ -1,7 +1,7 @@
 import { clearBrowserStorage } from "@v1";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { getCached, setCache } from "./metricsCache.js";
+import { evictExpiredCache, getCached, setCache } from "./metricsCache.js";
 
 describe("metricsCache", () => {
   afterEach(() => {
@@ -25,5 +25,24 @@ describe("metricsCache", () => {
     setCache("summary", { org: "org_1" }, { executions: 42 });
 
     expect(window.localStorage.length).toBe(0);
+  });
+
+  it("evicts expired entries from sessionStorage and keeps live ones", () => {
+    const now = Date.now();
+    window.sessionStorage.setItem(
+      "dashboard_metrics_overview_old",
+      JSON.stringify({ data: {}, expiry: now - 1 }),
+    );
+    window.sessionStorage.setItem("dashboard_metrics_overview_bad", "{");
+    window.sessionStorage.setItem(
+      "dashboard_metrics_overview_live",
+      JSON.stringify({ data: {}, expiry: now + 60_000 }),
+    );
+
+    evictExpiredCache();
+
+    expect(Object.keys(window.sessionStorage)).toEqual([
+      "dashboard_metrics_overview_live",
+    ]);
   });
 });

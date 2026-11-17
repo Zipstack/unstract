@@ -3,8 +3,10 @@
  * `@v1`) v0's logout and expired-session paths.
  *
  * A session must not leave the user's data in the browser (connector OAuth
- * state, the last signed-in user). Everything goes except UI preferences that
- * say nothing about the user or their data.
+ * state, the last signed-in user). Everything goes except the UI preferences
+ * listed below. One of them is keyed by user id (Human Review's old-version
+ * choice, `unstract.v1.oldVersion.<userId>`), so those ids outlive a logout;
+ * the entry holds only that choice.
  *
  * Other open tabs are told too: they still show the user's data and hold it
  * in their own sessionStorage, so on a sign-out elsewhere they clear it and
@@ -123,6 +125,10 @@ export function clearBrowserStorage(): void {
  * does not load the v0 session) signs out, so no user data is left on screen.
  * A stale message (see SIGNED_OUT_MAX_AGE_MS) is ignored: that tab's next
  * request finds the session gone.
+ *
+ * It uses the GET logout, as v0 does. When the backend drops GET logout (see
+ * `signOutAndLeave` in services/session.ts), this call site must move to the
+ * POST too, without announcing the sign-out again.
  */
 export function signOutWhenSignedOutElsewhere(
   isSignedOut: () => boolean = () => false,

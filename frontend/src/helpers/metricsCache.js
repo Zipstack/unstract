@@ -3,9 +3,10 @@
  * Provides TTL-based caching matching backend cache TTLs.
  *
  * sessionStorage, not localStorage: the cache holds the organization's
- * business data, so it must die with the tab. A reply that lands in another
- * tab after logout then stays in that tab and is gone when it closes, instead
- * of waiting in localStorage for the next person on the browser.
+ * business data, so no other tab or later visitor may read it. Logout clears
+ * it; a session found ended (expiry, or the /landing a logout ends on) clears
+ * it too (useUserSession), which also removes a reply that landed after the
+ * logout cleanup.
  */
 
 const CACHE_PREFIX = "dashboard_metrics_";

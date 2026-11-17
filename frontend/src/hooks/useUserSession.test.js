@@ -9,6 +9,7 @@ vi.mock("../hooks/useExceptionHandler.jsx", () => ({
 }));
 
 const { useUserSession } = await import("./useUserSession.js");
+const { getCached, setCache } = await import("../helpers/metricsCache.js");
 
 describe("useUserSession", () => {
   afterEach(() => {
@@ -38,9 +39,37 @@ describe("useUserSession", () => {
     expect(window.sessionStorage.getItem("unstract:silentSignInAt")).toBe("1");
   });
 
-  it("keeps localStorage when the session request fails for another reason", async () => {
-    axiosMock.mockRejectedValue({ response: { status: 502, data: {} } });
+  // The org's dashboard metrics are cached in sessionStorage. A session that
+  // expired, or a reply that landed after logout, must not leave them for the
+  // next sign-in in this tab. This also runs on /landing after every logout.
+  it("drops the tab's cached dashboard metrics when the server reports no session", async () => {
+    axiosMock.mockRejectedValue({
+      response: { data: { message: "Unauthorized" } },
+    });
+    setCache("overview", { org: "org_1" }, { total: 3 });
+    window.sessionStorage.setItem("unstract:silentSignInAt", "1");
+
+    const { result } = renderHook(() => useUserSession());
+    await result.current();
+
+    expect(
+      Object.keys(window.sessionStorage).filter((key) =>
+        key.startsWith("dashboard_metrics_"),
+      ),
+    ).toEqual([]);
+    expect(window.sessionStorage.getItem("unstract:silentSignInAt")).toBe("1");
+  });
+
+  it.each([
+    ["a 502", { response: { status: 502, data: {} } }],
+    [
+      "an ended subscription",
+      { response: { status: 403, data: { type: "subscription_error" } } },
+    ],
+  ])("keeps stored data when the session request fails with %s", async (_, error) => {
+    axiosMock.mockRejectedValue(error);
     window.localStorage.setItem("oauth-cachekey-google_drive", "cache-key");
+    setCache("overview", { org: "org_1" }, { total: 3 });
 
     const { result } = renderHook(() => useUserSession());
     await result.current();
@@ -48,5 +77,6 @@ describe("useUserSession", () => {
     expect(window.localStorage.getItem("oauth-cachekey-google_drive")).toBe(
       "cache-key",
     );
+    expect(getCached("overview", { org: "org_1" })).toEqual({ total: 3 });
   });
 });

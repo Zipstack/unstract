@@ -181,6 +181,19 @@ describe("signOutAndLeave", () => {
     assign.mockReset();
     vi.stubGlobal("location", { ...window.location, assign });
   });
+  afterEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+
+  /** Records how many keys each storage held when the page was left. */
+  function storageAtLeave(): number[] {
+    const counts: number[] = [];
+    assign.mockImplementation(() => {
+      counts.push(window.localStorage.length, window.sessionStorage.length);
+    });
+    return counts;
+  }
 
   test("resets analytics and opens the returned URL", async () => {
     reply.data = { redirect_url: "https://id.example.com/v2/logout" };
@@ -190,18 +203,18 @@ describe("signOutAndLeave", () => {
   });
 
   // CASA 6.6.1: the user's data must not outlive the session in the browser.
-  test("clears browser storage, keeping UI preferences", async () => {
+  test("clears browser storage before leaving, keeping UI preferences", async () => {
     reply.data = { redirect_url: "https://id.example.com/v2/logout" };
     window.localStorage.setItem("dashboard_metrics_overview", '{"data":{}}');
     window.localStorage.setItem("unstract.v1.theme", "dark");
     window.sessionStorage.setItem("oauth-current-connector", "google_drive");
+    const atLeave = storageAtLeave();
     await signOutAndLeave();
     expect(
       window.localStorage.getItem("dashboard_metrics_overview"),
     ).toBeNull();
     expect(window.localStorage.getItem("unstract.v1.theme")).toBe("dark");
-    expect(window.sessionStorage.length).toBe(0);
-    window.localStorage.clear();
+    expect(atLeave).toEqual([1, 0]);
   });
 
   test("a failed POST resets analytics, logs, and falls back to the GET logout", async () => {
@@ -213,6 +226,24 @@ describe("signOutAndLeave", () => {
     expect(reset).toHaveBeenCalledTimes(1);
     expect(assign).toHaveBeenCalledWith("/api/v1/logout");
     expect(logged).toHaveBeenCalledTimes(1);
+    logged.mockRestore();
+  });
+
+  // The fallback is a sign-out path too: storage must go even when the POST
+  // fails, and before the page is left.
+  test("a failed POST still clears browser storage before leaving", async () => {
+    const logged = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    reply = { status: 403, data: {} };
+    window.localStorage.setItem("oauth-cachekey-google_drive", "cache-key");
+    window.sessionStorage.setItem("oauth-current-connector", "google_drive");
+    const atLeave = storageAtLeave();
+
+    await signOutAndLeave();
+
+    expect(assign).toHaveBeenCalledWith("/api/v1/logout");
+    expect(atLeave).toEqual([0, 0]);
     logged.mockRestore();
   });
 
