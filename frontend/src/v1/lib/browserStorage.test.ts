@@ -95,10 +95,15 @@ describe("sign-out across tabs", () => {
     return isSignedOut;
   }
 
-  function stubAssign() {
+  function stubLocation() {
     const assign = vi.fn();
-    vi.stubGlobal("location", { ...window.location, assign });
-    return assign;
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign, reload });
+    return { assign, reload };
+  }
+
+  function stubAssign() {
+    return stubLocation().assign;
   }
 
   function tab(): BroadcastChannel {
@@ -180,18 +185,33 @@ describe("sign-out across tabs", () => {
     expect(window.sessionStorage.length).toBe(0);
   });
 
-  // Review finding: a frozen tab runs a queued message when it thaws. If
-  // someone signed in again meanwhile, acting on it would end the new session.
-  it("ignores a stale sign-out", async () => {
-    const assign = stubAssign();
-    const isSignedOut = listen();
-    const other = tab();
+  // Review findings: a frozen tab runs a queued message when it thaws. If
+  // someone signed in again meanwhile, logging out would end the new session;
+  // ignoring the message would leave the previous user's data on screen. It
+  // clears its storage and reloads, which loads whatever session exists now.
+  it("on a stale sign-out, clears sessionStorage and reloads instead of logging out", async () => {
+    const { assign, reload } = stubLocation();
+    window.sessionStorage.setItem("dashboard_metrics_overview", "{}");
+    listen();
 
-    other.postMessage(signedOut(Date.now() - 60_000));
-    other.postMessage(signedOut());
-    await vi.waitFor(() => expect(assign).toHaveBeenCalled());
+    tab().postMessage(signedOut(Date.now() - 60_000));
+    await vi.waitFor(() => expect(reload).toHaveBeenCalled());
 
-    expect(isSignedOut).toHaveBeenCalledTimes(1);
+    expect(assign).not.toHaveBeenCalled();
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it("a tab known to be signed out stays put on a stale sign-out too", async () => {
+    const { assign, reload } = stubLocation();
+    window.sessionStorage.setItem("dashboard_metrics_overview", "{}");
+    const isSignedOut = listen(true);
+
+    tab().postMessage(signedOut(Date.now() - 60_000));
+    await vi.waitFor(() => expect(isSignedOut).toHaveBeenCalled());
+
+    expect(reload).not.toHaveBeenCalled();
+    expect(assign).not.toHaveBeenCalled();
+    expect(window.sessionStorage.length).toBe(0);
   });
 
   it("still signs out when this tab's storage is unavailable", async () => {
