@@ -208,12 +208,36 @@ Enforced by `compile_schema` regardless of the byte-size cap below (`SchemaCaps`
 | Max constraints | 30 |
 
 **The description cap is not counted on the `description` you send.** `compile.py`
-checks `len(kspec.effective_description)`, and `effective_description` is
-`f"{breadcrumb}: {description}"` — the dotted field path prefixed onto your text. So
-the budget is smaller than 500 and shrinks with nesting depth: a `description` of 480
-characters compiles at the top level and is a 400 on
-`vendor.address.billing.contact.name`. Measure against the effective string, not the
-one you wrote.
+checks `len(kspec.effective_description)`, and `kv_schema.py` builds that as:
+
+```python
+breadcrumb = " > ".join(path_parts)            # NOT the dotted `path`
+effective_description = f"{breadcrumb}: {node['description']}"
+```
+
+Note the separator: the breadcrumb joins the field names with `" > "`, **not** with
+the `.` used by `kspec.path`. So the overhead on your text is
+
+```text
+len(" > ".join(path_parts)) + 2        # the 2 is the ": "
+```
+
+which for a leaf at depth *d* is `sum(len(name)) + 3*(d - 1) + 2`. Reading the
+separator as a dot understates the overhead by 2 characters per level, which is
+enough to turn a submit you calculated as exactly at the limit into a 400:
+`vendor.name` with a 487-character `description` gives `vendor > name: …` = **502**,
+rejected, where the dotted reading predicts exactly 500 and passes.
+
+The budget therefore shrinks with nesting depth. A `description` of 480 characters
+compiles at the top level and is a 400 on `vendor.address.billing.contact.name`.
+
+**Array columns are the exception, and they are cheap.** `_walk_array` compiles each
+column with `[col_name]` as its *whole* path — row-local, as the column paths are
+everywhere else — so a column's breadcrumb is just its own name and the enclosing
+array's path contributes nothing. `line_items.tax.breakdown`'s `amount` column pays
+`len("amount") + 2`, the same as a top-level `amount` would, however deep the array
+sits. The cap is still enforced on them: `_enforce_leaf_caps` walks
+`_every_leaf(key_specs, array_specs)`, so scalars and array columns are both checked.
 
 These caps are hardcoded in the compiler (not env-configurable); what **is**
 env-configurable is the raw byte size of the whole `keys` document
