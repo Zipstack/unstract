@@ -314,6 +314,20 @@ class GetExecutionStatusTest(SimpleTestCase):
         assert result["result"][0]["result"]["output"]["total"] == 42
         assert result["execution_id"] == EXECUTION_ID
 
+    def test_stopped_execution_is_enriched_too(self) -> None:
+        response = ExecutionResponse(
+            workflow_id="wf",
+            execution_id=EXECUTION_ID,
+            execution_status="STOPPED",
+            result=[{"file": "invoice.pdf", "result": {"output": {"total": 42}}}],
+        )
+
+        result, process = self._run(response, include_metrics=True)
+
+        process.assert_called_once()
+        assert process.call_args.kwargs["include_metrics"] is True
+        assert result["execution_status"] == "STOPPED"
+
     def test_pending_execution_is_not_enriched(self) -> None:
         response = ExecutionResponse(
             workflow_id="wf",

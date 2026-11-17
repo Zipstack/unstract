@@ -4,9 +4,11 @@ Lives here because the backend and the workers must answer the same question
 identically. Keep in sync with LLMWhisperer's supported types.
 """
 
+import lzma
 import re
 import xml.etree.ElementTree as ElementTree
 import zipfile
+import zlib
 
 import magic
 
@@ -25,6 +27,24 @@ PDF_HEADER_PATTERN = re.compile(rb"%PDF-\d\.\d")
 
 # A package's declaration members are small; anything larger is not one.
 PACKAGE_MEMBER_LIMIT = 65536
+
+# Everything reading an untrusted archive can raise when the archive, not the
+# platform, is at fault. Beyond a malformed directory, `zipfile` raises
+# RuntimeError for an encrypted member, NotImplementedError for an unknown
+# compression method, and EOFError for a truncated stream; a corrupt stream
+# surfaces as the decompressor's own error, and bz2's is an OSError. Any of
+# these escaping is a crafted upload failing the caller's whole request.
+ARCHIVE_READ_ERRORS = (
+    zipfile.BadZipFile,
+    OSError,
+    KeyError,
+    ValueError,
+    RuntimeError,
+    NotImplementedError,
+    EOFError,
+    zlib.error,
+    lzma.LZMAError,
+)
 
 # Those members never carry a DTD, so refusing one keeps entity expansion away
 # from the parser rather than trusting the parser to be safe about it.
@@ -89,7 +109,7 @@ def _read_member(archive: zipfile.ZipFile, name: str) -> bytes | None:
             return None
         with archive.open(info) as member:
             return member.read(PACKAGE_MEMBER_LIMIT)
-    except (KeyError, OSError, zipfile.BadZipFile, ValueError):
+    except ARCHIVE_READ_ERRORS:
         return None
 
 
@@ -209,7 +229,7 @@ def identify_zip_container(path: str) -> str | None:
                     return _identify_odf(archive, declared)
             if {"[Content_Types].xml", "_rels/.rels"} <= set(names):
                 return _identify_ooxml(archive, names)
-    except (zipfile.BadZipFile, OSError, KeyError, ValueError):
+    except ARCHIVE_READ_ERRORS:
         return None
     return None
 

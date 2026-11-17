@@ -4,7 +4,6 @@ from typing import Any
 from account_v2.custom_exceptions import DuplicateData
 from connection_check.filters import filter_by_test_status
 from connection_check.models import ConnectorTestResult
-from connection_check.pagination import FailingCountPagination
 from connection_check.schema import LIST_FILTER_PARAMETERS, connection_test_schema
 from connection_check.serializers import ConnectionCheckResultSerializer
 from connection_check.services import run_and_record
@@ -23,6 +22,10 @@ from permissions.resource_share_views import ResourceShareManagementMixin
 from platform_audit.actions import Action
 from platform_audit.resources import record_resource_event, resource_ref
 from plugins import get_plugin
+from resource_usage.constants import ProfileKind
+from resource_usage.pagination import UsageCountPagination
+from resource_usage.schema import USAGE_LIST_PARAMETERS, usage_schema
+from resource_usage.views import ProfileUsageMixin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -52,13 +55,20 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
-@extend_schema_view(list=extend_schema(parameters=LIST_FILTER_PARAMETERS))
+@extend_schema_view(
+    list=extend_schema(parameters=LIST_FILTER_PARAMETERS + USAGE_LIST_PARAMETERS),
+    usage=usage_schema(ProfileKind.CONNECTOR),
+)
 class ConnectorInstanceViewSet(
-    OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+    ProfileUsageMixin,
+    OwnerManagementMixin,
+    ResourceShareManagementMixin,
+    viewsets.ModelViewSet,
 ):
+    usage_kind = ProfileKind.CONNECTOR
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceWithStatusSerializer
-    pagination_class = FailingCountPagination
+    pagination_class = UsageCountPagination
     # `pk` tiebreaker keeps paging deterministic when modified_at collides.
     ordering = ["-modified_at", "pk"]
     ordering_fields = ["connector_name", "created_at", "modified_at"]
@@ -97,10 +107,13 @@ class ConnectorInstanceViewSet(
         # The test-status filters are for the list only.
         if self.action == "list":
             queryset = filter_by_test_status(queryset, self.request.query_params)
+            queryset = self.filter_by_usage(queryset)
         return queryset
 
     def get_status_base_queryset(self) -> QuerySet:
-        """Visible connectors with every list filter except the test-status ones."""
+        """Visible connectors with every list filter except the test-status and
+        usage ones.
+        """
         # Avoid per-row queries for owner/co-owner + creator fields in list views
         queryset = (
             ConnectorInstance.objects.for_user(self.request.user)

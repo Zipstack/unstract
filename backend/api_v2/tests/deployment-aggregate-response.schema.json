@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "unstract/api-v2/deployment-aggregate-response/v1",
+  "type": "object",
+  "required": [
+    "total",
+    "by_status",
+    "failing_count",
+    "failing"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "total": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "by_status": {
+      "type": "object",
+      "required": [
+        "success",
+        "partial_success",
+        "error",
+        "never_run",
+        "inactive"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "success": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "partial_success": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "never_run": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inactive": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "failing_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "failing": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/failingRow"
+      }
+    }
+  },
+  "$defs": {
+    "failingRow": {
+      "type": "object",
+      "required": [
+        "id",
+        "owner_email",
+        "failures_in_a_row",
+        "failing_since",
+        "last_failure",
+        "last_success",
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "owner_email": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failures_in_a_row": {
+          "type": "integer",
+          "minimum": 5
+        },
+        "failing_since": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "last_failure": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "last_success": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -783,7 +783,9 @@ class WorkflowHelper:
                 return ExecutionResponse(
                     workflow_id, execution_id, ExecutionStatus.EXECUTING.value
                 )
-            WorkflowExecutionServiceHelper.update_execution_err(execution_id, str(error))
+            marked = WorkflowExecutionServiceHelper.update_execution_err(
+                execution_id, str(error)
+            )
             logger.exception(
                 f"Error while enqueuing async job for WF '{workflow_id}', "
                 f"execution '{execution_id}'"
@@ -791,7 +793,8 @@ class WorkflowHelper:
             return ExecutionResponse(
                 workflow_id,
                 execution_id,
-                ExecutionStatus.ERROR.value,
+                # An aborted run stays STOPPED.
+                marked.status if marked else ExecutionStatus.ERROR.value,
                 error=str(error),
             )
 

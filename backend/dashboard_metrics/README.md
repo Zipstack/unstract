@@ -392,9 +392,10 @@ The `aggregate_metrics_from_sources` task:
    - Groups by time period (hour/day/month)
 3. **Upserts results** into the hourly and daily tables
 4. **Rolls monthly up from the daily tier** for all orgs at once, streamed and batched. Upsert-only:
-   a monthly row the daily tier no longer produces is left in place. A stale total is
-   recoverable with `backfill_metrics`; a deleted one is not, because the daily rows
-   that would rebuild it are exactly what is missing
+   a monthly row the daily tier no longer produces is left in place. A total that is
+   too low is recoverable with `backfill_metrics`; a deleted one is not, because the daily
+   rows that would rebuild it are exactly what is missing. `backfill_metrics` never lowers
+   a stored value, so a total that is too high needs a manual correction
 5. **Uses `_base_manager`** to bypass Django's organization filter in Celery context
 
 ```python
@@ -404,8 +405,8 @@ daily_start = truncate_to_day(end_date - source_window_days)  # 2 days, 7 on rec
 monthly_start = first_of_previous_month                       # summed from daily
 ```
 
-The monthly tier has no source queries of its own. `backfill_metrics` still computes
-monthly from source, so within the rollup window (current + previous month) its output
+The monthly tier has no source queries of its own. `backfill_metrics` sums monthly
+from the daily rows it has just written (from source only under `--skip-daily`), so within the rollup window (current + previous month) its output
 is overwritten by the sum of the daily tier on the next daily/monthly pass — see that
 command's help text. **Backfill daily before relying on monthly:** where a month's
 stored total is already higher than what daily now sums to, the rollup keeps the
@@ -1110,6 +1111,12 @@ caveats that do not fit one line):
   --skip-daily      Leave the daily tier short; the rollup then freezes the month
   --skip-monthly    Largely a no-op inside the rollup window
 ```
+
+It never lowers a stored `metric_value`. HITL TTL cleanup expires approved reviews and
+deleting a workflow removes its executions, so a recount can come out below what
+was aggregated at the time; the stored row is kept and the run logs how many. The
+scheduled aggregator still rewrites rows inside its own window. Monthly is summed from
+the daily rows after that check, unless `--skip-daily` is passed.
 
 ---
 
