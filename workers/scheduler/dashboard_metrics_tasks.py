@@ -140,6 +140,15 @@ def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
             result["errors"],
             result.get("organizations_processed", "?"),
         )
+    if result.get("prefetch_failed"):
+        # The figures are still correct: the backend fell back to per-org queries.
+        # WARNING because the run paid the per-org scan cost again, and the backend's
+        # own ERROR line does not reach this log.
+        logger.warning(
+            "%s: the cross-org documents_processed prefetch failed; fell back to "
+            "per-org queries (figures are correct)",
+            name,
+        )
     if stale := monthly.get("needs_daily_repair"):
         # Same wording as the backend's own line: these months were KEPT, not
         # overwritten. Saying "lowered" here points at a rollback when the fix is a
