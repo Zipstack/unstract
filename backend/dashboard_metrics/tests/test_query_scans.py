@@ -71,7 +71,12 @@ class DocumentsProcessedByOrgTests(_Seed, TestCase):
         super().setUp()
         # Two orgs with completed files in several hours and days, plus rows each
         # filter must drop: another status, before the window, and after its end.
-        for org, hours in ((self.org_a, (1, 1, 3, 30)), (self.org_b, (2, 26, 27))):
+        # Hours 0 and 48 sit exactly on the bounds of the 2-day window below, so
+        # both ends stay inclusive like the per-org query.
+        for org, hours in (
+            (self.org_a, (0, 1, 1, 3, 30, 48)),
+            (self.org_b, (2, 26, 27, 48)),
+        ):
             workflow = self._workflow(org)
             for h in hours:
                 self._file(self._execution(workflow, h + 0.5), h)
@@ -218,15 +223,23 @@ class DocumentsProcessedByOrgTests(_Seed, TestCase):
         self.assertTrue(expected["hourly"] and expected["daily"])
         EventMetricsHourly._base_manager.all().delete()
         EventMetricsDaily._base_manager.all().delete()
-        with mock.patch.object(
-            MetricsQueryService,
-            "get_documents_processed_by_org",
-            side_effect=RuntimeError("boom"),
+        with (
+            mock.patch.object(
+                MetricsQueryService,
+                "get_documents_processed_by_org",
+                side_effect=RuntimeError("boom"),
+            ),
+            self.assertLogs("dashboard_metrics.tasks", level="INFO") as logs,
         ):
             self.assertEqual(self._run(), expected)
-        # Correct metrics, but the run must say it fell back.
+        # Correct metrics, but the run must say it fell back, in the result and in
+        # the level of the completion line.
         self.assertEqual(self.result["errors"], 0)
         self.assertIs(self.result["prefetch_failed"], True)
+        completed = [
+            r for r in logs.records if r.getMessage().startswith("Aggregation completed")
+        ]
+        self.assertEqual([r.levelname for r in completed], ["WARNING"])
 
     def test_a_database_error_in_the_prefetch_does_not_abort_the_run(self) -> None:
         # Inside a request transaction (DJANGO_ATOMIC_REQUESTS) a failed statement
