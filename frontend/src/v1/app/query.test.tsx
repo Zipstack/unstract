@@ -217,6 +217,19 @@ describe("paging", () => {
     expect(name(result.current.data)).toBe("Claude");
   });
 
+  it("never keeps another filter's page on screen", async () => {
+    mockApi(...adapterHandlers(DEFAULT_SESSION));
+    const { result, rerender } = renderHookV1(
+      ({ adapterType }: { adapterType: "LLM" | "EMBEDDING" }) =>
+        useQuery(adapterQueries.page({ adapterType, page: 1, pageSize: 1 })),
+      { initialProps: { adapterType: "LLM" } },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    rerender({ adapterType: "EMBEDDING" });
+    expect(result.current.isPlaceholderData).toBe(false);
+    expect(result.current.data).toBeUndefined();
+  });
+
   it("never keeps another organisation's page on screen", async () => {
     const other = makeSession({ organization: { id: "org-2" } });
     mockApi(...adapterHandlers(DEFAULT_SESSION), ...adapterHandlers(other));

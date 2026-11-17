@@ -5,7 +5,7 @@ import {
   type Page,
   type PageParams,
   pageQuery,
-  previousPageInOrg,
+  previousPageOfList,
 } from "./page";
 
 /* Adapters (LLM, embedding, vector DB, text extractor, OCR) in the current organisation. */
@@ -94,7 +94,7 @@ export const adapterQueries = {
       queryKey,
       queryFn: ({ queryKey: [org], signal }) =>
         listAdaptersPage(params, { signal, org }),
-      placeholderData: previousPageInOrg(queryKey),
+      placeholderData: previousPageOfList(queryKey),
     });
   },
 };

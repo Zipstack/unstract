@@ -272,6 +272,38 @@ describe("OrganizationSwitcher", () => {
     expect(assign).not.toHaveBeenCalled();
   });
 
+  test("a failed load shows the failed request's id", async () => {
+    list.mockRejectedValue(
+      new ApiError({ kind: "server", message: "Boom", requestId: "req-7" }),
+    );
+    await open();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Could not load your organisations.");
+    expect(alert).toHaveTextContent("Request ID req-7");
+  });
+
+  test("a refused switch shows the refused request's id", async () => {
+    list.mockResolvedValue([zipstack, personal]);
+    switchTo.mockRejectedValue(
+      new OrganizationError(
+        "access-removed",
+        {},
+        new ApiError({ kind: "forbidden", message: "No", requestId: "req-8" }),
+      ),
+    );
+    await open();
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Switch to Tanushree’s organisation",
+      }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Switch organisation" }),
+    );
+    expect(await screen.findByText("Request ID")).toBeInTheDocument();
+    expect(screen.getByText("req-8")).toBeInTheDocument();
+  });
+
   test("a failed switch says so and stays put", async () => {
     list.mockResolvedValue([zipstack, personal]);
     switchTo.mockRejectedValue(new Error("HTTP 403"));

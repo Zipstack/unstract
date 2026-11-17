@@ -80,6 +80,35 @@ describe("each kind, from the backend's own error bodies", () => {
     );
   });
 
+  it("validation: a body with no items keeps the server's message", async () => {
+    const error = await failureFor(
+      json(
+        { type: "validation_error", errors: [], detail: "Bad request." },
+        400,
+      ),
+    );
+    expect(error).toMatchObject({
+      kind: "validation",
+      message: "Bad request.",
+    });
+  });
+
+  it("subscription: an inactive subscription's 403, not forbidden", async () => {
+    const error = await failureFor(
+      json(
+        {
+          type: "subscription_inactive",
+          errors: "Your subscription is inactive.",
+        },
+        403,
+      ),
+    );
+    expect(error).toMatchObject({
+      kind: "subscription",
+      message: "Your subscription is inactive.",
+    });
+  });
+
   it("subscription: the plugin's 402 body", async () => {
     const error = await failureFor(
       json(
@@ -285,7 +314,9 @@ describe("isCancelled and isTransient", () => {
     const failure = (kind: ApiError["kind"], status?: number) =>
       new ApiError({ kind, message: "m", status });
     expect(isTransient(failure("network"))).toBe(true);
+    expect(isTransient(failure("server", 502))).toBe(true);
     expect(isTransient(failure("server", 503))).toBe(true);
+    expect(isTransient(failure("server", 504))).toBe(true);
     expect(isTransient(failure("server", 500))).toBe(false);
     expect(isTransient(failure("validation", 400))).toBe(false);
     expect(isTransient(new CanceledError())).toBe(false);

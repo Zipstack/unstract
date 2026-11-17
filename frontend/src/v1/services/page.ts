@@ -1,4 +1,4 @@
-import type { QueryKey } from "@tanstack/react-query";
+import { hashKey, type QueryKey } from "@tanstack/react-query";
 
 // The backend's paged-list contract (DRF PageNumberPagination): `?page=&page_size=`.
 
@@ -19,14 +19,27 @@ export function pageQuery({ page, pageSize }: PageParams) {
   return { page, page_size: pageSize } as const;
 }
 
+/* The key without its page number: the same organisation, list and filters. */
+const listKey = (key: QueryKey): string =>
+  hashKey(
+    key.map((part) =>
+      typeof part === "object" && part !== null && "page" in part
+        ? { ...part, page: undefined }
+        : part,
+    ),
+  );
+
 /**
  * A paged query's `placeholderData`: the previous page stays on screen while
- * the next loads, but never one from another organisation (keys start with it).
+ * another page of the same list loads. Another organisation or filter shows
+ * the loading state instead.
  */
-export const previousPageInOrg =
+export const previousPageOfList =
   <K extends QueryKey>(queryKey: K) =>
   <T>(
     previous: T | undefined,
     previousQuery?: { queryKey: K },
   ): T | undefined =>
-    previousQuery?.queryKey[0] === queryKey[0] ? previous : undefined;
+    previousQuery && listKey(previousQuery.queryKey) === listKey(queryKey)
+      ? previous
+      : undefined;

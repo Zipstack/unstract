@@ -174,6 +174,27 @@ describe("401", () => {
     expect(second).toMatchObject({ kind: "unauthenticated" });
   });
 
+  it("still rejects with the ApiError when the handler throws, and logs it", async () => {
+    mockApi(
+      mock.get(URL, () =>
+        HttpResponse.json({ message: "Unauthorized" }, { status: 401 }),
+      ),
+    );
+    const logged = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const cleanup = onSessionExpired(() => {
+      throw new Error("handler broke");
+    });
+    const error = await createHttpClient()
+      .get(URL)
+      .catch((e: unknown) => e);
+    cleanup();
+    expect(error).toMatchObject({ kind: "unauthenticated" });
+    expect(logged).toHaveBeenCalledTimes(1);
+    logged.mockRestore();
+  });
+
   it("is not treated as expiry for other statuses", async () => {
     mockApi(mock.get(URL, () => HttpResponse.json({}, { status: 403 })));
     const expired = vi.fn();

@@ -51,10 +51,18 @@ it("only logs, with the request id, when the caller shows the error", () => {
   );
 });
 
-it("reports nothing for a cancellation or an expired session", () => {
+it("reports nothing for a cancellation, and only logs an expired session", () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
   reportApiError(new CanceledError());
+  expect(warn).not.toHaveBeenCalled();
   reportApiError(failure("unauthenticated"));
   expect(shown).toEqual([]);
+  expect(warn).toHaveBeenCalledWith(
+    "[v1 api] %s (request %s)",
+    "unauthenticated message",
+    "req-1",
+  );
+  warn.mockRestore();
 });
 
 it("logs the cause of an unexpected failure and still shows it", () => {

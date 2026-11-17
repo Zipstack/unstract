@@ -28,21 +28,31 @@ export const adapterFixtures = {
   ],
 } satisfies Record<string, Adapter[]>;
 
-/* The link to `page`, or null when it is out of range. */
+/* The link to `page`, or null when it is out of range; DRF drops `page` for page 1. */
 function pageLink(url: URL, page: number, last: number): string | null {
   if (page < 1 || page > last) {
     return null;
   }
   const link = new URL(url);
-  link.searchParams.set("page", String(page));
+  if (page === 1) {
+    link.searchParams.delete("page");
+  } else {
+    link.searchParams.set("page", String(page));
+  }
   return link.href;
 }
 
-/* As the backend pages it: an envelope only when the caller asks for a page. */
+// DRF's NotFound for a page past the end, as drf-standardized-errors shapes it.
+const INVALID_PAGE = {
+  type: "client_error",
+  errors: [{ code: "not_found", detail: "Invalid page.", attr: null }],
+};
+
+/* As the backend pages it: an envelope only when asked for a page; null past the end. */
 function answer(
   url: URL,
   rows: readonly Adapter[],
-): readonly Adapter[] | AdapterPage {
+): readonly Adapter[] | AdapterPage | null {
   const page = Number(url.searchParams.get("page") || 0);
   const size = Number(url.searchParams.get("page_size") || 0);
   if (!page && !size) {
@@ -51,6 +61,9 @@ function answer(
   const current = page || 1;
   const perPage = size || 50;
   const last = Math.ceil(rows.length / perPage);
+  if (current > Math.max(1, last)) {
+    return null;
+  }
   return {
     count: rows.length,
     next: pageLink(url, current + 1, last),
@@ -69,6 +82,9 @@ export const adapterHandlers = (
   http.get(apiPath(session, "/adapter/"), ({ request }) => {
     const url = new URL(request.url);
     seen.push(url);
-    return HttpResponse.json(answer(url, rows));
+    const body = answer(url, rows);
+    return body === null
+      ? HttpResponse.json(INVALID_PAGE, { status: 404 })
+      : HttpResponse.json(body);
   }),
 ];

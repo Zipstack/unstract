@@ -53,7 +53,18 @@ it("fetches one page with typed page params", async () => {
     results: [adapterFixtures.llm[1]],
     failing_count: 0,
   });
-  expect(page.previous).toContain("page=1");
+  expect(page.previous).not.toContain("page=");
+});
+
+it("rejects a page past the end as not found, as the backend does", async () => {
+  setOrganizationId(DEFAULT_SESSION.organization.id);
+  mockApi(...adapterHandlers(DEFAULT_SESSION));
+  const error = await listAdaptersPage({
+    adapterType: "LLM",
+    page: 3,
+    pageSize: 1,
+  }).catch((e: unknown) => e);
+  expect(error).toMatchObject({ kind: "not_found", message: "Invalid page." });
 });
 
 it("keys queries by organisation, so two organisations never share a cache entry", () => {

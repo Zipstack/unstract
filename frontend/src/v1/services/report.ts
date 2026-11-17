@@ -1,5 +1,5 @@
 import { notify } from "@v1/lib/notify";
-import { isCancelled, toApiError } from "./errors";
+import { type ApiError, isCancelled, toApiError } from "./errors";
 
 export type ReportOptions = Readonly<{
   /** False when the caller shows the error itself; it is then only logged. */
@@ -8,10 +8,17 @@ export type ReportOptions = Readonly<{
   id?: string;
 }>;
 
+const logApiError = (apiError: ApiError): void =>
+  console.warn(
+    "[v1 api] %s (request %s)",
+    apiError.message,
+    apiError.requestId ?? "none",
+  );
+
 /**
  * Reports a failed request: a toast through notify(), or a log line with its
- * request id when the caller shows it. Cancellations and session expiry
- * (already redirected) report nothing.
+ * request id when the caller shows it. Cancellations report nothing; session
+ * expiry (the page is leaving) is only logged.
  */
 export function reportApiError(
   error: unknown,
@@ -22,14 +29,14 @@ export function reportApiError(
   }
   const apiError = toApiError(error);
   if (apiError.kind === "unauthenticated") {
+    logApiError(apiError);
     return;
   }
   if (apiError.kind === "unknown") {
     console.error("[v1 api] unexpected failure", apiError.cause);
   }
   if (options.notify === false) {
-    const requestId = apiError.requestId ?? "none";
-    console.warn("[v1 api] %s (request %s)", apiError.message, requestId);
+    logApiError(apiError);
     return;
   }
   notify({

@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
 import { adapterQueries } from "@v1/services/adapters";
-import { setOrganizationId } from "@v1/services/context";
+import { onSessionExpired, setOrganizationId } from "@v1/services/context";
 import {
   apiPath,
+  createTestQueryClient,
   DEFAULT_SESSION,
   delay,
   HttpResponse,
@@ -63,6 +64,41 @@ it("shows the error with its request id, and Retry fetches again", async () => {
   await expect(container).toHaveNoA11yViolations();
   await user.click(screen.getByRole("button", { name: "Retry" }));
   expect(await screen.findByText("OpenAI GPT-4o, Claude")).toBeInTheDocument();
+});
+
+it("swaps the alert for the skeleton as soon as Retry is clicked", async () => {
+  vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  let requests = 0;
+  mockApi(
+    mock.get(ADAPTERS, async () => {
+      requests += 1;
+      if (requests === 1) {
+        return HttpResponse.json({ error: "Database down" }, { status: 500 });
+      }
+      await delay(50);
+      return HttpResponse.json(adapterFixtures.llm);
+    }),
+  );
+  const { user, container } = renderV1(<Names />);
+  await user.click(await screen.findByRole("button", { name: "Retry" }));
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(container.querySelector("[data-slot='skeleton-text']")).not.toBeNull();
+  expect(await screen.findByText("OpenAI GPT-4o, Claude")).toBeInTheDocument();
+  expect(requests).toBe(2);
+});
+
+it("offers no Retry when the first fetch finds the session expired", async () => {
+  vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  const cleanup = onSessionExpired(vi.fn());
+  mockApi(
+    mock.get(ADAPTERS, () =>
+      HttpResponse.json({ message: "Unauthorized" }, { status: 401 }),
+    ),
+  );
+  renderV1(<Names />);
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  cleanup();
 });
 
 it("takes a custom loading view", () => {
@@ -198,6 +234,47 @@ it("leaves a select that throws to the error boundary", async () => {
     </Boundary>,
   );
   expect(await screen.findByText("Caught bad select")).toBeInTheDocument();
+});
+
+it("shows the loading view, not undefined data, while a select that throws waits on a fetch", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  mockApi(
+    mock.get(ADAPTERS, async () => {
+      await delay(50);
+      return HttpResponse.json(adapterFixtures.llm);
+    }),
+  );
+  const queryClient = createTestQueryClient();
+  queryClient.setQueryData(
+    adapterQueries.list({ adapterType: "LLM" }).queryKey,
+    adapterFixtures.llm,
+  );
+  const given: unknown[] = [];
+  function Broken(): JSX.Element {
+    const query = useQuery({
+      ...adapterQueries.list({ adapterType: "LLM" }),
+      select: (): never => {
+        throw new TypeError("bad select");
+      },
+    });
+    return (
+      <QueryView query={query} loading={<p>Loading</p>}>
+        {(rows) => {
+          given.push(rows);
+          return <p>Rows</p>;
+        }}
+      </QueryView>
+    );
+  }
+  renderV1(
+    <Boundary>
+      <Broken />
+    </Boundary>,
+    { queryClient },
+  );
+  expect(screen.getByText("Loading")).toBeInTheDocument();
+  expect(await screen.findByText("Caught bad select")).toBeInTheDocument();
+  expect(given).toEqual([]);
 });
 
 it("leaves a select that throws after a failed refresh to the error boundary", async () => {

@@ -6,7 +6,7 @@ import axios, {
 import { currentOrganizationId, expireSession } from "./context";
 import { REQUEST_ID_HEADER, toApiError } from "./errors";
 
-// The one HTTP client for v1 and its backend paths; only services/ and plugins' services/ import it (README.md).
+// The one HTTP client for v1 and its backend paths; who may import it: src/v1/README.md (Data layer).
 
 const CSRF_COOKIE = "csrftoken";
 const CSRF_HEADER = "X-CSRFToken";
@@ -78,6 +78,15 @@ function addHeaders(
   return config;
 }
 
+// A handler that throws must not replace the ApiError the caller gets.
+function leaveOnExpiry(): void {
+  try {
+    expireSession();
+  } catch (error) {
+    console.error("[v1 api] session-expiry handler failed", error);
+  }
+}
+
 /** A client with its own session-expiry latch; services use `http`. */
 export function createHttpClient(): AxiosInstance {
   const client = axios.create();
@@ -91,7 +100,7 @@ export function createHttpClient(): AxiosInstance {
     // Once per page load, so concurrent 401s redirect once; the handler leaves the page.
     if (apiError.kind === "unauthenticated" && !expired) {
       expired = true;
-      expireSession();
+      leaveOnExpiry();
     }
     return Promise.reject(apiError);
   });

@@ -61,7 +61,7 @@ await user.click(screen.getByRole("button", { name: "Add" }));
   `{ advanceTimers: vi.advanceTimersByTime }` with fake timers.
 - `queryClient`: a fresh client per render, with no retries, no refetch on
   focus and no garbage collection mid-test. Pass `queryClient` to share one,
-  or `createQueryClient()` from `@v1/app/query` for the app's retry policy.
+  or `createQueryClient()` from `@v1/test` for the app's retry policy.
 - `portal`: the `#v1-portal` container, themed like the root.
 - `theme`: what the test rendered with.
 

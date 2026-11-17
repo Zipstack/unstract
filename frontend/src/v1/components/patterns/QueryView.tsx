@@ -21,22 +21,37 @@ export function QueryView<T>({
   loading,
   children,
 }: QueryViewProps<T>): JSX.Element {
+  const skeleton = <>{loading ?? <SkeletonText />}</>;
   if (query.status === "pending") {
-    return <>{loading ?? <SkeletonText />}</>;
+    return skeleton;
   }
   // The first fetch failed: decided on the cache, as app/query.ts does, not on `select`'s result.
   if (query.isError && query.dataUpdatedAt === 0) {
-    const error = toApiError(query.error);
-    return (
-      <InlineAlert title={error.message} onRetry={() => void query.refetch()}>
-        {error.requestId ? (
-          <>
-            Request ID{" "}
-            <InlineCode variant="plain">{error.requestId}</InlineCode>
-          </>
-        ) : null}
-      </InlineAlert>
-    );
+    return <FirstFetchError query={query} />;
+  }
+  // A select that throws during a fetch has no data; the boundary gets it once the fetch settles.
+  if (query.isError && query.isFetching && query.data === undefined) {
+    return skeleton;
   }
   return <>{children(query.data as T)}</>;
+}
+
+/* Retry puts the query back to loading; an expired session gets none, as the page is leaving. */
+function FirstFetchError({
+  query,
+}: Readonly<{ query: UseQueryResult<unknown> }>): JSX.Element {
+  const error = toApiError(query.error);
+  const retry = () => void query.refetch();
+  return (
+    <InlineAlert
+      title={error.message}
+      onRetry={error.kind === "unauthenticated" ? undefined : retry}
+    >
+      {error.requestId ? (
+        <>
+          Request ID <InlineCode variant="plain">{error.requestId}</InlineCode>
+        </>
+      ) : null}
+    </InlineAlert>
+  );
 }
