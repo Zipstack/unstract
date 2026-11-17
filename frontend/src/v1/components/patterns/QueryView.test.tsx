@@ -87,16 +87,23 @@ it("swaps the alert for the skeleton as soon as Retry is clicked", async () => {
   expect(requests).toBe(2);
 });
 
-it("offers no Retry when the first fetch finds the session expired", async () => {
+it("keeps the skeleton, with no alert or Retry, when the first fetch finds the session expired", async () => {
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
-  const cleanup = onSessionExpired(vi.fn());
+  const expired = vi.fn();
+  const cleanup = onSessionExpired(expired);
   mockApi(
     mock.get(ADAPTERS, () =>
       HttpResponse.json({ message: "Unauthorized" }, { status: 401 }),
     ),
   );
-  renderV1(<Names />);
-  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  const { container } = renderV1(<Names />);
+  await waitFor(() => expect(expired).toHaveBeenCalledTimes(1));
+  await waitFor(() =>
+    expect(
+      container.querySelector("[data-slot='skeleton-text']"),
+    ).not.toBeNull(),
+  );
+  expect(screen.queryByRole("alert")).toBeNull();
   expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   cleanup();
 });
