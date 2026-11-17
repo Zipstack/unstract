@@ -20,6 +20,19 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
+/*
+ * FORCE THE PLUGIN ABSENT, rather than relying on this checkout not having
+ * one (Greptile P2 on #2494). `RequireGuest` imports the product store
+ * optionally, so in a tree with the cloud overlay applied — which is how the
+ * cloud suite runs, and how a local checkout looks after `copy_cloud_deps` —
+ * the REAL store loads and these assertions would turn on whether that
+ * deployment configures a Flow URL. They passed here for that reason and not
+ * for the right one. An empty module makes the accessor undefined, the call
+ * throws into the same `try` the missing import throws into, and the OSS
+ * contract is asserted the same way in both checkouts.
+ */
+vi.mock("../../../plugins/store/select-product-store.js", () => ({}));
+
 vi.mock("../../../store/session-store", () => ({
   useSessionStore: () => ({
     sessionDetails: {
