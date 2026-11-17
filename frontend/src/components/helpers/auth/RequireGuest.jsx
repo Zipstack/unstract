@@ -71,7 +71,9 @@ const externalProductHome = (search) => {
     // appends hoping to be redirected to it -- answers `null`. This cannot
     // send anybody anywhere the deployment has not already published.
     const asked = new URLSearchParams(search || "").get("selectedProduct");
-    return (asked && selectedProductStore.externalHomeForProduct(asked)) || null;
+    return (
+      (asked && selectedProductStore.externalHomeForProduct(asked)) || null
+    );
   } catch {
     return null;
   }
