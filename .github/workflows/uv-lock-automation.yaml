@@ -67,7 +67,11 @@ jobs:
               exit 0
             fi
             echo "::warning::uv python install 3.12.9 failed (attempt ${attempt}/5)"
-            sleep $((attempt * 10))
+            # Not after the last one: there is nothing left to wait for, and a
+            # job that is going to fail should say so 50s sooner.
+            if [ "$attempt" -lt 5 ]; then
+              sleep $((attempt * 10))
+            fi
           done
           echo "::error::could not download CPython 3.12.9 after 5 attempts"
           exit 1
