@@ -5,7 +5,7 @@ import {
   onSignedOutElsewhere,
 } from "./browserStorage";
 
-// What services/session.ts passes in: the GET logout.
+// What services/logout.ts passes in: the GET logout.
 const signOut = () => window.location.assign("/api/v1/logout");
 
 describe("clearBrowserStorage", () => {

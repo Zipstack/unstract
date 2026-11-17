@@ -1,12 +1,12 @@
-// What the HTTP client takes from the session (UN-4314): the org and expiry handling.
+import { LOGOUT_PATH } from "./logout";
 
-// v0's target too. GET goes when v0 retires (account_v2/views.py), so UN-4314's handler uses the POST sign-out.
-const SESSION_EXPIRED_URL = "/api/v1/logout";
+// What the HTTP client takes from the session (UN-4314): the org and expiry handling.
 
 export type SessionExpiredHandler = () => void;
 
+// v0's target too. GET goes when v0 retires (account_v2/views.py), so UN-4314's handler uses the POST sign-out.
 const leaveForLogin: SessionExpiredHandler = () => {
-  window.location.assign(SESSION_EXPIRED_URL);
+  window.location.assign(LOGOUT_PATH);
 };
 
 let sessionExpiredHandler: SessionExpiredHandler = leaveForLogin;
@@ -30,6 +30,7 @@ export function currentOrganizationId(): string {
 /**
  * Replaces what happens on session expiry (default: v0's logout redirect).
  * The handler must leave the page: the client calls it once per page load.
+ * One that throws or rejects falls back to the default.
  * Returns a cleanup that restores the default if this handler is current.
  */
 export function onSessionExpired(handler: SessionExpiredHandler): () => void {
@@ -41,7 +42,19 @@ export function onSessionExpired(handler: SessionExpiredHandler): () => void {
   };
 }
 
-/** Runs the current session-expiry handler; the client calls it once. */
+function fallBackToLogin(error: unknown): void {
+  console.error("[v1 api] session-expiry handler failed; signing out", error);
+  leaveForLogin();
+}
+
+/** Runs the current session-expiry handler; the client calls it once, so a failing one still leaves. */
 export function expireSession(): void {
-  sessionExpiredHandler();
+  try {
+    const result: unknown = sessionExpiredHandler();
+    if (result instanceof Promise) {
+      result.catch(fallBackToLogin);
+    }
+  } catch (error) {
+    fallBackToLogin(error);
+  }
 }

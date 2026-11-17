@@ -43,6 +43,30 @@ describe("session expiry", () => {
     expect(assign).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    [
+      "throws",
+      () => {
+        throw new Error("handler broke");
+      },
+    ],
+    ["rejects", () => Promise.reject(new Error("handler broke"))],
+  ])("signs out by default when the handler %s, and logs it", async (_, handler) => {
+    const assign = vi
+      .spyOn(window.location, "assign")
+      .mockImplementation(() => undefined);
+    const logged = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const cleanup = onSessionExpired(handler);
+    expireSession();
+    await vi.waitFor(() =>
+      expect(assign).toHaveBeenCalledWith("/api/v1/logout"),
+    );
+    expect(logged).toHaveBeenCalledTimes(1);
+    cleanup();
+  });
+
   it("keeps a newer handler when an older one's cleanup runs", () => {
     const older = onSessionExpired(vi.fn());
     const newer = vi.fn();

@@ -33,8 +33,8 @@ export async function signOutAndLeave(): Promise<void> {
     destination = await signOut();
   } catch (error) {
     // Logged so a failing POST shows up: the backend drops GET logout once v0
-    // goes. signOutWhenSignedOutElsewhere (logout.ts) uses the GET too and
-    // must move with it.
+    // goes. Every use of LOGOUT_PATH as a GET (logout.ts, context.ts) must
+    // move with it.
     console.error("Sign-out POST failed; falling back to GET", error);
     // The GET logout ends the session too and redirects itself (v0's path).
     destination = LOGOUT_PATH;

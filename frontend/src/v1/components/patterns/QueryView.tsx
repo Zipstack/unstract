@@ -13,8 +13,9 @@ export type QueryViewProps<T> = Readonly<{
 
 /**
  * Renders a query's three states: a skeleton while loading, an InlineAlert
- * with Retry when the first fetch failed, and `children(data)` otherwise
- * (a failed refresh keeps the data; app/query.ts toasts it).
+ * with Retry when the first fetch failed (a 401 keeps the skeleton), and
+ * `children(data)` otherwise (a failed refresh keeps the data; app/query.ts
+ * toasts it).
  */
 export function QueryView<T>({
   query,

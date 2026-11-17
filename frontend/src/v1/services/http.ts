@@ -78,15 +78,6 @@ function addHeaders(
   return config;
 }
 
-// A handler that throws must not replace the ApiError the caller gets.
-function leaveOnExpiry(): void {
-  try {
-    expireSession();
-  } catch (error) {
-    console.error("[v1 api] session-expiry handler failed", error);
-  }
-}
-
 /** A client with its own session-expiry latch; services use `http`. */
 export function createHttpClient(): AxiosInstance {
   const client = axios.create();
@@ -100,7 +91,7 @@ export function createHttpClient(): AxiosInstance {
     // Once per page load, so concurrent 401s redirect once; the handler leaves the page.
     if (apiError.kind === "unauthenticated" && !expired) {
       expired = true;
-      leaveOnExpiry();
+      expireSession();
     }
     return Promise.reject(apiError);
   });

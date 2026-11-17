@@ -9,7 +9,7 @@ or error handling.
 | File | Holds |
 | --- | --- |
 | `http.ts` | The one HTTP client, and `orgPath()`. Adds `X-CSRFToken` (from the `csrftoken` cookie) to same-origin POST, PUT, PATCH and DELETE, and a new `X-Request-ID` to every request; rejects with an `ApiError`; treats the auth middleware's 401 as session expiry, once per page load, so concurrent 401s redirect once. Who may import it: the Data layer section of `src/v1/README.md`. |
-| `context.ts` | What the client takes from the session: `setOrganizationId()` (the org `orgPath()` uses) and `onSessionExpired()` (default: v0's `/api/v1/logout` redirect; a handler must leave the page). The session (P0-T06, UN-4314) sets both. |
+| `context.ts` | What the client takes from the session: `setOrganizationId()` (the org `orgPath()` uses) and `onSessionExpired()` (default: v0's `/api/v1/logout` redirect; a handler must leave the page, and one that throws or rejects falls back to the default). The session (P0-T06, UN-4314) sets both. |
 | `errors.ts` | `ApiError`, `toApiError()`, `isCancelled()`, `mapFieldErrors()`. |
 | `report.ts` | `reportApiError()`: a toast through `notify()`, or a log line with the request id. |
 | `page.ts` | `Page<T>` (the backend's `{count, next, previous, results}`), `PageParams`, `pageQuery()` and `previousPageOfList()`. |
@@ -92,7 +92,7 @@ download service makes `http.ts` parse JSON Blob errors, with a test.
 | Read whose first fetch fails (also a next page) | Inline, by `QueryView` (`components/patterns/`): an `InlineAlert` with Retry and the request id, after a skeleton (or, for a next page, the previous page). Also logged. |
 | Refresh that fails while the query's data is on screen | A toast, replaced rather than stacked while the same query keeps failing. Every query that cannot reach the server shares one toast. |
 | A `select` that throws | The page's error boundary once no fetch is in flight: it is a bug, not a failed request. |
-| 401 | One redirect to sign in; no toast or alert (`QueryView` keeps its skeleton), only a log line. |
+| 401 | One redirect to sign in; no toast (`QueryView` keeps its skeleton), only a log line. |
 | Subscription | Mutation or refresh: a toast that stays until dismissed. First fetch: inline only, like any other. |
 | Cancellation | Nothing. |
 

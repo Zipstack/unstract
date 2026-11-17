@@ -19,20 +19,20 @@ export function pageQuery({ page, pageSize }: PageParams) {
   return { page, page_size: pageSize } as const;
 }
 
-/* The key without its page number: the same organisation, list and filters. */
+/* The key without its paging: the same organisation, list and filters. */
 const listKey = (key: QueryKey): string =>
   hashKey(
     key.map((part) =>
       typeof part === "object" && part !== null && "page" in part
-        ? { ...part, page: undefined }
+        ? { ...part, page: undefined, pageSize: undefined }
         : part,
     ),
   );
 
 /**
  * A paged query's `placeholderData`: the previous page stays on screen while
- * another page of the same list loads. Another organisation or filter shows
- * the loading state instead.
+ * another page, or page size, of the same list loads. Another organisation or
+ * filter shows the loading state instead.
  */
 export const previousPageOfList =
   <K extends QueryKey>(queryKey: K) =>

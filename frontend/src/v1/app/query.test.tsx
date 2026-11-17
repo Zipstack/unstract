@@ -217,6 +217,21 @@ describe("paging", () => {
     expect(name(result.current.data)).toBe("Claude");
   });
 
+  it("keeps the rows on screen while another page size loads", async () => {
+    mockApi(...adapterHandlers(DEFAULT_SESSION));
+    const { result, rerender } = renderHookV1(
+      ({ pageSize }: { pageSize: number }) =>
+        useQuery(adapterQueries.page({ ...LLM, page: 1, pageSize })),
+      { initialProps: { pageSize: 1 } },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    rerender({ pageSize: 10 });
+    expect(result.current.isPlaceholderData).toBe(true);
+    expect(result.current.data?.results).toHaveLength(1);
+    await waitFor(() => expect(result.current.isPlaceholderData).toBe(false));
+    expect(result.current.data?.results).toHaveLength(2);
+  });
+
   it("never keeps another filter's page on screen", async () => {
     mockApi(...adapterHandlers(DEFAULT_SESSION));
     const { result, rerender } = renderHookV1(
