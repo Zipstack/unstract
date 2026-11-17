@@ -97,12 +97,14 @@ not a v1 gap unique to this feature.
 
 ## 2. The extraction schema (`keys` field)
 
-> **This section describes the `kv` extractor's schema language, which is not
-> routable on this deployment** (see [§3](#3-submit--post-agent-kv-multipart)).
-> It is documented here because the compiler ships and the language is frozen,
-> so an integration can be written against it ahead of the extractor's release.
-> The `table` extractor's `keys` is just `{"target_table": "<name>"}` and needs
-> none of this.
+> **This section describes the `kv` extractor's schema language.** It is what
+> you send as `keys` when `extractors[].name` is `"kv"` (see
+> [§3](#3-submit--post-agent-kv-multipart)). The `table` extractor's `keys` is
+> just `{"target_table": "<name>"}` and needs none of this.
+>
+> This note used to open "which is not routable on this deployment", with the
+> language documented ahead of the extractor's release. The extractor is
+> released; the language is unchanged, as it was frozen then.
 
 The `keys` submit field — spec-called "keys.json" — is a JSON object describing what to
 extract. It compiles through `unstract.agent_kv_schema.compile_schema`
@@ -231,21 +233,21 @@ The request is **extractor-scoped**: a per-extractor schema and its knobs live i
 
 | Field | Required | Notes |
 |---|---|---|
-| `name` | yes | Which extractor. **`table` is the only supported value on this deployment**; anything else, `kv` included, ⇒ 400 (see the note below). More than one entry ⇒ 400 — the format is in place for multi-extractor jobs, the execution is not built yet. |
-| `keys` | yes | This extractor's own request. For `table`, `{"target_table": "<the table to extract>"}` — the engine's one required extraction parameter. |
-| `adapters` | yes (for `table`) | The platform adapter instances this extraction runs on: `{"llm": "<uuid>", "lite_llm": "<uuid>", "x2text": "<uuid>"}`. All three required. See **§3a** below. |
+| `name` | yes | **Which engine runs: `table` or `kv`.** This is the whole selector — one endpoint, one parameter, two extractors. `table` is agentic table extraction; `kv` is agentic key-value extraction. Anything else ⇒ 400 naming the value. More than one entry ⇒ 400 — the format is in place for multi-extractor jobs, the execution is not built yet. |
+| `keys` | yes | This extractor's own request, in that extractor's own grammar. For `table`, `{"target_table": "<the table to extract>"}` — the engine's one required extraction parameter. For `kv`, the key schema in **§4** — a nested object, not a fixed field set. |
+| `adapters` | yes | The platform adapter instances this extraction runs on: `{"llm": "<uuid>", "lite_llm": "<uuid>", "x2text": "<uuid>"}`. All three required, for **both** extractors — `kv` was env-credentialed until the adapter migration and is not any more. See **§3a** below. |
 | `options` | no | This extractor's own knobs (below). An unrecognised option ⇒ 400, so a knob aimed at the wrong extractor fails loudly instead of being silently dropped. |
 
 ### 3a. `adapters` — you supply the models and the OCR credentials
 
-The `table` extractor runs on **your own platform adapters**, named by id. Create
+Both extractors run on **your own platform adapters**, named by id. Create
 them once in Unstract (Settings → Adapters, or the adapter API) and pass their ids
 on every submit:
 
 | Role | Adapter type | What it does |
 |---|---|---|
-| `llm` | `LLM` | Structure detection and extraction — the quality-critical model. |
-| `lite_llm` | `LLM` | Per-page table-presence detection. Runs once per page, so this is the cost-critical one; a cheap fast model belongs here. |
+| `llm` | `LLM` | The quality-critical model — structure detection and extraction for `table`; extraction and the challenger pass for `kv`. |
+| `lite_llm` | `LLM` | Per-page presence detection — table presence for `table`, key presence for `kv`. Runs once per page, so this is the cost-critical one; a cheap fast model belongs here. |
 | `x2text` | `X2TEXT` | OCR. An LLMWhisperer adapter, which also carries the endpoint — there is no separate base-URL field. |
 
 Each id is validated at submit, against **your organization** and against the
@@ -272,8 +274,10 @@ choice and LLM spend sit on your account**, per job.
 >
 > Consequences worth knowing: the API is no longer usable by a caller who has never
 > signed in, since adapters must exist first; and the six `AGENT_KV_LLM_*` /
-> `AGENT_KV_LLMWHISPERER_*` environment variables are **not read on the table path**
-> (they remain in place for the `kv` extractor, which is still env-configured).
+> `AGENT_KV_LLMWHISPERER_*` environment variables are **not read on either path**
+> and are no longer provisioned by the chart. The `kv` extractor was still
+> env-configured when this note was first written; it is not any more, and the
+> rollout consequences of that are in §12 item 5.
 >
 > One thing this does not honour: adapters carry per-user visibility within an
 > organization, and an Agent-KV key resolves to an organization rather than a user.
@@ -281,12 +285,41 @@ choice and LLM spend sit on your account**, per job.
 > organization-level credential, so this is a deliberate decision rather than an
 > oversight — but treat key issuance accordingly.
 
-> **Why `kv` returns 400 here.** This deployment ships the table extractor only.
-> The `kv` extractor's engine runs on its own release track and nothing on this
-> deployment consumes its queue, so the API refuses a `kv` submit outright
-> rather than accepting it with a `202` for a job that would never run. The
-> wire format is unchanged: when `kv` ships, it becomes a second accepted value
-> of `name` and nothing else about this document changes.
+> **`kv` is accepted where the deployment enables it — same endpoint, same
+> request, one parameter apart.**
+> Switching engines means sending `"name": "kv"` with `keys` in the §4 schema
+> grammar and KV's own `options`; everything else is identical, including the
+> file part, `adapters`, the page range, staging, the page cap and the
+> concurrency limit. There is no separate KV endpoint.
+>
+> **Acceptance is gated on `AGENT_KV_KV_EXTRACTOR_ENABLED`, which defaults
+> false.** Where it is not set, a `kv` submit is refused with
+> `400 extractor 'kv' is not enabled on this deployment` — the deployment, not
+> the request, is what has to change, so do not debug the payload. Ask the
+> operator; see §11 item 11 (deploy checklist) and §12 (environment
+> reference). `table` is unaffected.
+>
+> This paragraph previously explained why `kv` returned 400: the engine ran on
+> its own release track and nothing consumed `celery_executor_agentic_kv`, so
+> the API refused the submit rather than accepting it with a `202` for a job
+> that would never run. Both halves have changed — the engine ships, and every
+> executor fleet **the derivation reads** drains that queue: the dev compose,
+> the e2e test compose, and `run-worker.sh`'s PG executor role (derived on
+> every test run from `EXTRACTOR_ROUTES` by
+> `backend/agent_kv/tests/test_queue_wiring_is_derived.py`, rather than
+> asserted from a list someone has to remember to update; any declaration that
+> is absent is skipped). That is three declarations and not a universal —
+> `run-worker.sh`'s Celery-mode executor role and `run-worker-docker.sh`'s both
+> carry only `celery_executor_legacy` and are outside the derivation, and it
+> says nothing at all about a Kubernetes fleet. It is precisely because nothing here can see a
+> chart-deployed fleet that acceptance is gated on the flag above rather than
+> on the routing table.
+>
+> What stays true: adding an extractor to that table without a fleet draining
+> its queue is accepted with a `202` and sits in `DISPATCHED` until the sweep
+> force-fails it as `FAILED "Job timed out"` — with no error at the producer
+> and nothing in any log naming the cause. That is the failure the derivation,
+> and the flag above, exist to catch.
 
 **`kv` options:**
 
@@ -385,7 +418,7 @@ that middleware to resolve an organization from. Cloud-only: an OSS-only
 deployment returns `501` before ever reaching it.
 `400`: serializer/schema validation failure — nothing billed.
 
-### Example — `table` (the only extractor this deployment accepts)
+### Example — `table` (agentic table extraction)
 
 ```bash
 curl -X POST https://api.unstract.example/api/v1/agent-kv/ \
@@ -411,11 +444,14 @@ curl -X POST https://api.unstract.example/api/v1/agent-kv/ \
 The three adapter ids are yours, from your own organization — see §3a. Omit any of
 them and the submit is a 400.
 
-### Example — `kv`
+### Example — `kv` (agentic key-value extraction)
 
-Shown for the wire format only; **`kv` returns 400 on this deployment** (see the
-note above). Note it takes no `adapters` block: the `kv` extractor is
-env-configured on the operator side.
+The same endpoint and the same request as the `table` example above. Three
+things differ and nothing else: `name`, the `keys` grammar (§4's schema rather
+than `{"target_table": ...}`), and the options. `adapters` is required here
+exactly as it is there — an earlier version of this example omitted it and said
+the `kv` extractor was env-configured on the operator side, which was true
+before the adapter migration and is not now.
 
 ```bash
 curl -X POST https://api.unstract.example/api/v1/agent-kv/ \
@@ -436,10 +472,19 @@ curl -X POST https://api.unstract.example/api/v1/agent-kv/ \
           },
           "_constraints": ["count(\"line_items\") >= 1"]
         },
-        "options": {"challenge": false}
+        "options": {"challenge": false},
+        "adapters": {
+          "llm":      "7f3c1a90-0000-4000-8000-000000000001",
+          "lite_llm": "7f3c1a90-0000-4000-8000-000000000002",
+          "x2text":   "7f3c1a90-0000-4000-8000-000000000003"
+        }
       }]' \
   -F "webhook_url=https://example.com/hooks/agent-kv"
 ```
+
+To run the same document through the other engine, change `name` to `table` and
+replace `keys` with `{"target_table": "<name>"}`. Everything else — the file
+part, `adapters`, `page_start`/`page_end`, `webhook_url` — is unchanged.
 
 ## 4. Status — `GET /api/v1/agent-kv/{job_id}`
 
@@ -495,8 +540,10 @@ internal stage-report endpoint rather than persisted (`backend/agent_kv/internal
 the caller chose them and is paying for them: naming the wrong `llm` id yields a
 correct-looking result at a different price, and the only other record of what
 was spent is in `usage_v2`, which the caller cannot read. **Ids only, never
-adapter metadata** — that is where provider credentials live. `{}` for an
-env-configured extractor (`kv`) and for any job predating the field.
+adapter metadata** — that is where provider credentials live. `{}` for any
+job predating the field. (It was also `{}` for `kv` while that extractor
+was env-credentialed; it no longer is -- all three roles are required for both
+extractors, so a new job of either kind always carries them.)
 
 `status` is lowercased (`pending`, `dispatched`, `running`, `completed`, `failed`,
 `cancelled`); `error` is included (only) when `status == "failed"`. `adapters`,
@@ -522,9 +569,10 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
   not evidence that the data is still yours to read ([§7](#7-delete--delete-agent-kvjob_id)).
 - **`COMPLETED`**: `200` with the engine's full result object, unchanged (record,
   normalized_record, per-field audit trail, `qa_passed`, `challenge_passed`,
-  `consistency_violations`, `cost_summary`, `timing` — spec §4; this repo does not
-  shape or re-validate that payload, it stores and replays exactly what the executor's
-  finalize call sent).
+  `consistency_violations`, `cost_summary`, `timing`, plus the advisory markers that
+  qualify `qa_passed`/`challenge_passed` — spec §4; this repo does not shape or
+  re-validate that payload, it stores and replays exactly what the executor's finalize
+  call sent, so **this document is the only deprecation path for a change to it**).
 - **`FAILED`**: `200` with
   `{"success": false, "status": "failed", "error": "<user-safe message>"}`.
 - **`CANCELLED`**: `200` with `{"success": false, "status": "cancelled"}` — unless
@@ -540,20 +588,114 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
 `AGENT_KV_CALCULATIONS_ENABLED=true`): a `COMPLETED` result adds these fields to the
 engine's standard result object:
 
-- `calculations_applied: true` — indicates calculation codegen ran.
+- `calculations_applied: bool` — **branch on this first.** `true` means codegen ran and
+  the fields below are present; `false` means the per-job token ceiling skipped the
+  `code_generator` stage, and then `execution` and `codegen_validation_passed` are
+  **absent entirely** (see "Budget-skipped calculations" below). The key itself is
+  absent on a job that requested no `calculations` at all, so read it with
+  `result.get("calculations_applied")` rather than treating a missing key as `false`.
 - `execution: {success: bool, rows_written: int, error: string|null}` — sandbox worker
   execution status. `success` is `true` if the generated code ran without error;
   `rows_written` is the count of rows the code emitted; `error` is `null` on success, or
   a user-safe message (e.g., `"Runtime error: division by zero"`) on failure.
-- `codegen_validation_passed: bool` — whether the AST gate (layer 1 of a 5-layer
-  defense-in-depth model) accepted the generated code syntax.
-- `calculation_rows: [...]` — an array of computed JSONL rows (size-capped). If the code
-  produced more rows than the cap allows, this array is empty and `calculation_rows_truncated: true`
-  is present instead.
+  **Present only when `calculations_applied` is `true`.**
+- `codegen_validation_passed: bool` — whether the generated code passed a **flake8
+  lint** (`flake8 --ignore=E501,W503 --max-line-length=120`). **It is not the AST safety
+  gate**, despite the name. This field is a code-*quality* signal with no security
+  meaning. The AST gate is a separate, fail-closed, server-side control re-run inside
+  the sandbox worker (the engine's client-side copy is never trusted), and a gate
+  rejection is **never** visible here: it makes the whole job **fail**, so the result is
+  the `FAILED` body above — which carries no `execution` block and no
+  `codegen_validation_passed` at all.
+
+  **In the shipped worker image this field is `false` on every calculations job that
+  ran codegen** (i.e. wherever `calculations_applied` is `true`; on a budget-skipped job
+  the key is absent instead). flake8 is not reachable there — it is not a declared
+  dependency of the plugin, and the worker's virtualenv `bin` directory is not on the
+  process `PATH` — so the lint subprocess raises `FileNotFoundError`, the lint never
+  runs, and a lint that did not run is reported as not passed.
+  `codegen_validation_skipped: true` is emitted alongside it, and that marker is how you
+  tell "did not run" from "ran and found problems". Do **not** read `false` here as "the
+  code-safety gate rejected the generated code" — today it means nothing more than
+  "not linted".
+
+  So `true` means, and only means, "the lint ran and found nothing". The field is
+  strictly a boolean — it was briefly the string `"skipped"`, which is truthy and so
+  still read as "lint clean" to every `if passed:` consumer; that value is gone and will
+  not come back. Present only when `calculations_applied` is `true`.
+- `calculation_rows: [...]` — an array of computed JSONL rows. Present on any
+  `COMPLETED` result for a job that supplied `calculations`, including a budget-skipped
+  one, where it is `[]`. A `FAILED` body carries no engine blob, so the key is
+  absent there. A `CANCELLED` body carries it **whenever it carries an `extractors`
+  block** — the raced-cancel case in the status bullets above, where the extraction
+  finished before the cancel landed and the stored result is served. Those are exactly
+  the cancelled jobs that were billed for the work, so a consumer that skips
+  `calculation_rows` on `CANCELLED` drops output it paid for.
 
 If the sandbox worker fails to execute, the job completes with `success: false` and a
 user-safe `error` (e.g., `"Calculation execution timed out"`); the `execution` field
 carries the inner error details.
+
+**Budget-skipped calculations — a `success: true` shape with fields missing.** When the
+per-job token ceiling is reached before the `code_generator` stage, the job still
+completes successfully (the extraction was already paid for and is returned), but:
+
+- `calculations_applied: false`
+- `calculation_rows: []`
+- **no `execution` key and no `codegen_validation_passed` key** — omitted rather than
+  zeroed, because a `{"success": false, "rows_written": 0}` block would read as "ran and
+  produced nothing"
+- `budget_exhausted: true`, and `budget_skipped_stages` naming `code_generator`
+
+A consumer that reads `result["execution"]["error"]` to find out why calculations are
+missing raises `KeyError` on this shape. **Branch on `calculations_applied`**, then read
+`budget_skipped_stages` when it is `false`.
+
+**Removed: `calculation_rows_truncated`.** Earlier revisions of this document described
+over-cap calculation output as returning `calculation_rows: []` plus
+`calculation_rows_truncated: true` on an otherwise successful, fully billed job. **No
+code path emits that flag** (grepped across both repos 2026-10-23: the only occurrences
+are explanatory comments, one test asserting its absence, and this document). Returning
+success with the computed rows silently discarded was the defect, not the contract, so
+over-cap output now **fails the job** — in both places it can be detected:
+
+- the sandbox worker fails closed on its own output cap
+  (`"execution failed: output exceeds size cap"`, and a sibling row cap), so a
+  successful sandbox reply's rows are always inside that cap; and
+- the executor's own read guard fails the job with `"extraction failed: calculation
+  output exceeded the executor's read cap; raise SANDBOX_MAX_OUTPUT_BYTES on the
+  executor to match the sandbox"` — reachable only when the two pods' cap settings
+  disagree.
+
+A malformed JSONL row likewise fails the job (`"calculations produced invalid output"`)
+rather than being dropped, and so does an output file that cannot be READ at all
+(`"calculations produced no readable output; the extraction could not be returned"`) — the engine
+reported that codegen ran, so an unreadable file is a real I/O fault rather than an
+empty result, and the previous behaviour reported `calculation_rows: []` for it on a
+fully billed job with no log at any level.
+
+So `calculation_rows` on a `success: true` job is complete: there is no truncation flag
+to check, because there is no truncated success.
+
+**On a failed calculation the extraction is retained inside the executor but does NOT
+reach you**, and the error strings say so rather than implying otherwise. They went
+through two wrong wordings first, both worth knowing because a consumer may have been
+written against either: `"the extraction is in \`data\`"` pointed at a field no caller
+can reach, and `"the extraction was kept"` made the same promise one step vaguer
+instead of retracting it. They now say **"the extraction could not be returned"**.
+
+What is retained, and where: the document's `record`, `normalized_record` and `keys`
+survive the failure inside the executor's own result object rather than being
+discarded, because the job was billed for them — and the markers that qualify them
+(`extraction_degraded`, `extraction_dropped`, `qa_passed`, `qa_unchecked`,
+`qa_partial`, `challenge_passed`, `challenge_unchecked`, `budget_exhausted`,
+`budget_skipped_stages`, `document_class`) travel with them, so a salvaged record can
+never read as fully validated. They are all dropped before the API: the callback
+forwards no `data` on the failure arm, and the finalize view writes only the error. So
+a `FAILED` body still carries no engine blob, exactly as the status bullets above say.
+The retention exists so that wiring it through is a change to those two hops rather
+than a re-extraction; until then, do not write a consumer that expects a partial
+record on a failed job.
 
 **Drift from the spec:** §7.3 sketches the failed-job body as
 `{success: false, error, timing}`. The shipped body
@@ -580,7 +722,7 @@ alongside the authoritative total:
       "record": {"quotation_number": "Q-10234", "customer": {"name": "Acme Corp"}},
       "normalized_record": {"quotation_number": "Q-10234", "customer": {"name": "Acme Corp"}},
       "keys": [
-        {"key_path": "quotation_number", "qa_status": "pass", "challenge_status": "pass"}
+        {"key_path": "quotation_number", "qa_status": "passed", "challenge_status": "passed"}
       ],
       "qa_passed": true,
       "challenge_passed": true,
@@ -614,6 +756,84 @@ multi-extractor job can be attributed. With one extractor they are the same numb
 Note the **failed** and **cancelled** payloads above are NOT extractor-keyed: a
 failure belongs to the job, not to one extractor.
 
+### `qa_passed` / `challenge_passed`, and the advisory markers that qualify them
+
+`qa_passed` and `challenge_passed` are positive assertions, and **a positive
+assertion is emitted only by the stage that computed it**. When the stage did not
+run — it was never in the graph (`qa: false` / `challenge: false` on the job), the
+token ceiling skipped it, or it raised — the field is **absent entirely**, and the
+matching `*_unchecked` marker is present. Read a missing `qa_passed` as "not
+checked", never as either verdict.
+
+They used to be emitted unconditionally, carrying a default: `qa_passed` fell back
+to reconciliation's much weaker "every required key was found", and
+`challenge_passed` to its dataclass default `true`. A job with both stages off
+therefore published `qa_passed: true, challenge_passed: true` with neither marker
+set. Advisory markers carry the distinction — the table below is the list; do not
+count them from this sentence. They are the whole mitigation, so a consumer that acts on either flag must
+read them. They sit in the **same per-extractor block** as `qa_passed` itself
+(`extractors.<name>.*`), not at the top level.
+
+**Convention: each marker is present only when it applies, and its absence means the
+benign state.** The boolean markers are never emitted as `false` — read a missing key as
+`false` (`result.get("qa_unchecked", False)`), not as missing data; for the **two**
+list markers — `budget_skipped_stages` and `extraction_dropped` — read a missing key
+as `[]` (`result.get("budget_skipped_stages", [])`). An
+ordinary clean job's shape is unchanged by any of this, which is why they are omitted
+rather than always present.
+
+| Marker | Type | Present when | What it means for the field it qualifies |
+| --- | --- | --- | --- |
+| `qa_unchecked` | `true` | the `kv_qa` stage did not run — absent from the graph, skipped by the ceiling, or it raised | `qa_passed` is **absent** — read its absence as "not checked", per the rule stated above this table. No format check, no grounding check and no re-extraction ran. |
+| `challenge_unchecked` | `true` | at least one key's **final** value was never challenged | `challenge_passed: true` means "nothing was found wrong about the values that WERE judged", which is not the same as a clean challenge of the record you are reading. |
+| `budget_exhausted` | `true` | the per-job token ceiling bit anywhere | Some work the job was asked to do did not happen. |
+| `budget_skipped_stages` | `string[]` | the ceiling skipped at least one whole stage | Names the stages that never started, e.g. `["kv_qa", "code_generator"]`. **Never present as `[]`** — see the first edge case below. |
+| `qa_partial` | `true` | QA ran and the ceiling bit mid-loop | QA started but abandoned part of its work, so `qa_passed` reflects an incomplete pass. Distinct from `qa_unchecked`, which means the stage never started; the two are mutually exclusive. |
+| `extraction_degraded` | `true` | the engine isolated at least one failure | The record may be short through no fault of the document. Paired with `extraction_dropped`; `success: true` with missing keys is otherwise indistinguishable from "the document does not contain them". |
+| `extraction_dropped` | `string[]` | alongside `extraction_degraded` | Sorted reason codes for what was isolated. **Closed vocabulary of exactly seventeen values.** Key extraction: `empty_response`, `unparseable_response`, `results_not_a_list`, `results_wrong_shape`, `key_path_unmatched`, `key_value_without_found`, `key_tool_args_not_a_dict`, `whole_doc:error`, `page:error`. Array extraction: `array:error` (the fan-out isolated a whole array), plus `array_empty_response`, `array_unparseable_response`, `array_rows_not_a_list`, `array_rows_wrong_shape`, `array_rows_no_declared_column`, `array_columns_unmatched`, `array_tool_args_not_a_dict`. The two `*_wrong_shape` codes mean the response's top-level shape was right and its per-row shape was not — a positional table instead of an array of objects, or a row missing its `key` field — so **some or all** rows were discarded; `array_rows_no_declared_column` means a row matched none of the declared columns, and `array_columns_unmatched` means a declared column appears as a key in **no** row while the model supplied keys nobody asked for — the per-column signal for a renamed or re-cased column, which the row-level one cannot see when only some columns were renamed. Both are judged on key PRESENCE in the model's raw row, never on whether a cell had a value: a declared column that is correctly named and simply empty is a legitimately blank cell and is reported as nothing at all. `key_path_unmatched` is the key-path twin of `array_columns_unmatched`: a result named a path outside the spec, which a model produces by re-casing, prefixing or abbreviating a key name, and which was previously discarded silently by reconciliation. `key_value_without_found` means a result carried a value while `found` was false or absent; the value is replaced with the empty string at the point of coercion, because leaving it let the value skip format validation and grounding and still finalize as `passed`. Classes only, never document content, and counts go to the log rather than onto the wire. An earlier revision suffixed the exception class name (`page:OSError`), which exported a third-party implementation detail as contract; a guard test asserts EQUALITY between this set and what the code emits, across every emitting module, so a new code arrives as a deliberate change to this table. |
+| `codegen_validation_skipped` | `true` | the flake8 lint could not run | `codegen_validation_passed: false` means "not linted", not "lint failed". See the calculation result shape above. |
+
+Edge cases that a reader checking only the happy path gets wrong (count them from
+the bullets, not from this sentence — the same rule this section states for the
+reason-code table):
+
+- **`budget_exhausted: true` can arrive with NO `budget_skipped_stages` at all.** The
+  ceiling is also checked *inside* the QA retry loop, so a job whose QA loop stopped
+  early mid-round has exhausted its budget without any whole stage having been skipped.
+  That case now carries **`qa_partial: true`** and omits `budget_skipped_stages`
+  entirely; there is no `qa_unchecked` either, because QA did run, just not to
+  completion. Read `budget_exhausted` as "something was cut short" and
+  `budget_skipped_stages` as "these stages never started" — they are not the same claim.
+
+  **This changed.** An earlier revision emitted `budget_skipped_stages: []` in this
+  case — "something is missing, and here is the empty list of what" — and a revision
+  before that put the synthetic string `"kv_qa (partial)"` in the list, which no
+  consumer testing `"kv_qa" in skipped` matched and which contradicted what the list
+  asserts about every other member. A consumer reading the field with the documented
+  `result.get("budget_skipped_stages", [])` default is unaffected by the change; one
+  that branched on the key being present with an empty value must now read
+  `qa_partial`.
+- **`qa_unchecked` is not implied by `budget_exhausted`,** and vice versa. Check both.
+- **`extraction_degraded` has nothing to do with the budget either.** It means a
+  per-page, whole-document or array call failed and was isolated so the rest of the run
+  could continue. The job is still `success: true` and still billed, so a consumer that
+  treats a short record as "this document has few keys" will be wrong on exactly these
+  jobs. Check it before drawing conclusions from absent keys.
+- **`challenge_unchecked` has nothing to do with the budget**, and its meaning is
+  narrower than it looks. It is set whenever **at least one key's final value was never
+  challenged**, which happens on a job with budget left and therefore **no
+  `budget_exhausted` marker at all**. A consumer that treats `budget_exhausted` as the
+  one "something was skipped" flag will read `challenge_passed: true` on that job as a
+  clean challenge. These markers are independent signals; none subsumes another.
+
+  **This is a change in meaning.** An earlier revision described it as "the challenger
+  came back with no usable verdict at all" — i.e. no round was ever readable. That left
+  two paths unmarked, both of which publish a verdict about a value the record no longer
+  holds: a key the challenger REPLACED after judging it, and a key whose later round was
+  unreadable so the earlier round's verdict stood. Each key is now decided by the last
+  readable verdict that judged **the value it still holds**, and the marker answers the
+  question a consumer of `challenge_passed` actually has.
+
 **`cost_summary` dollars are always `0.0` and are not a billing figure**: the executor
 zeroes the engine's per-token price fields (they were stale hardcoded list prices), so
 `total_cost` and every per-agent `cost` come back `0.0` — metering is what bills, from
@@ -627,6 +847,19 @@ entry carries more than the example above shows — this one is verbatim from a 
 "unchecked", "qa_attempts": 0, "line_start": 5, "line_end": 5, "normalized_value":
 "INV-…"}` (`qa_status` is `"unchecked"` with `qa_attempts: 0` when the job ran with
 `qa=false`).
+
+Both statuses take the values `"unchecked"`, `"passed"` or `"failed"` — not
+`"pass"`/`"fail"`, which earlier revisions of the example above showed. Presence depends
+on the entry's `kind`:
+
+- **`kind: "scalar"`** (a `key_path` entry, as above) — `qa_status` is always present;
+  `challenge_status` is **omitted when it would be `"unchecked"`**.
+- **array entries** (the other shape concatenated into `keys[]`) — **both** are omitted
+  when they would be `"unchecked"`.
+
+So read either with a default (`entry.get("challenge_status", "unchecked")`) rather than
+by subscript; a missing status means that check never produced a verdict for that entry,
+not that the data is absent.
 
 (The exact result shape beyond `success` is the cloud engine's contract — spec §4 — not
 re-specified or validated by this repo.)
@@ -775,7 +1008,7 @@ so a **follow-up notification** carrying `result_available: true` is delivered
 when this happens — see [§8](#8-webhook-delivery).
 
 > **This was reverted three times before it shipped, and the reason is worth
-> knowing before you touch it.** `DELETE /api/v1/agent-kv/{job_id}/` guarantees that a
+> knowing before you touch it.** `DELETE /api/v1/agent-kv/{job_id}` guarantees that a
 > purged job cannot be resurrected, and it used to guarantee that *by relying on*
 > the late finalize deleting its own orphaned write. Keeping the result removes
 > exactly that cleanup, and every attempt to rebuild the guarantee from the job's
@@ -1092,23 +1325,29 @@ beyond `docker compose up`:
 2. **Executor worker fleet queue — nothing to add for this release.** The dispatcher
    derives the queue name from the EXECUTOR name as `celery_executor_{executor_name}`
    (`unstract/sdk1/src/unstract/sdk1/execution/dispatcher.py`), and this deployment
-   routes `table` only, to the **`agentic_table`** executor
-   (`EXTRACTOR_ROUTES`, `backend/agent_kv/constants.py`). So the queue this API
-   actually uses is **`celery_executor_agentic_table`**, which every fleet already
-   drains: it is in `workers/run-worker.sh`'s executor default list, and in
+   routes **both** extractors: `table` to **`agentic_table`** and `kv` to
+   **`agentic_kv`** (`EXTRACTOR_ROUTES`, `backend/agent_kv/constants.py`). So this
+   API uses two queues — **`celery_executor_agentic_table`** and
+   **`celery_executor_agentic_kv`** — and every fleet must drain both:
+   `workers/run-worker.sh`'s executor default list, `docker/docker-compose.yaml`,
+   `tests/compose/docker-compose.test.yaml`, and
    `workerPgExecutor.env.WORKER_PG_QUEUE_CONSUMER_QUEUE` in the cloud chart.
 
-   > **Do not add `celery_executor_agentic_kv`.** Earlier revisions of this checklist
-   > told operators to, and it is wrong in this release: `kv` is not routable
-   > (§1), nothing produces to that queue, and nothing consumes it. The chart asserts
-   > its absence deliberately — `AKV-Q5b` in
-   > `charts/unstract-platform/unittests/agent_kv_wiring_test.yaml` fails the build if
-   > the name appears anywhere in the chart, because a queue with a consumer and no
-   > producer wastes a fleet lane, and one with a producer and no consumer accepts
-   > work and drains nothing with no error anywhere. It becomes the right queue only
-   > when `kv` is re-enabled in `EXTRACTOR_ROUTES`, and
+   > **Both queues are required now. Do not remove either.** An earlier revision of
+   > this checklist said the opposite — "do not add `celery_executor_agentic_kv`" —
+   > because `kv` was unroutable, nothing produced to that queue and nothing consumed
+   > it. It also described `AKV-Q5b` as failing the build if the name appeared
+   > anywhere in the chart. Neither is true: that test was inverted when the consumer
+   > shipped and now asserts the executor ConfigMap **does** subscribe to
+   > `celery_executor_agentic_kv`.
+   >
+   > The ordering that made this safe is worth keeping in mind for the next
+   > extractor: the consumer shipped first and sat idle, and the route was added
+   > afterwards. The reverse — a route with no consumer — accepts work with a `202`
+   > and drains nothing, with no error anywhere.
    > `backend/agent_kv/tests/test_queue_wiring_is_derived.py` derives the expectation
-   > from that constant so the two cannot disagree.
+   > for every fleet from `EXTRACTOR_ROUTES`, so a route added without wiring fails
+   > there rather than in production.
 
    Note the knob name too: since Celery was removed (UN-4078) the deployed fleet is
    the PostgreSQL queue consumer, so the setting that matters is
@@ -1208,9 +1447,9 @@ beyond `docker compose up`:
    > staged documents and results stay in the bucket indefinitely, which is a
    > retention failure, not just a disk-usage one.
    >
-   > Note this deployment routes `table` only, and that extractor needs the cloud
-   > `agentic_table` plugin — so a pure-OSS install cannot dispatch an Agent-KV job
-   > at all, and has no stranded rows to reap until it ships an engine plugin.
+   > Note both extractors need a cloud engine plugin — `agentic_table` for `table`,
+   > `agentic_kv` for `kv` — so a pure-OSS install cannot dispatch an Agent-KV job
+   > at all, and has no stranded rows to reap until it ships one.
 
    **Chart keys (cloud repo)**: `backend.agentKvCronJobs` in
    `charts/unstract-platform/values.yaml` — `enabled: false` there (on-prem never runs
@@ -1219,72 +1458,77 @@ beyond `docker compose up`:
    `{name: sweep, command: agent_kv_sweep, schedule: "*/15 * * * *"}` and
    `{name: ttl-cleanup, command: agent_kv_ttl_cleanup, schedule: "17 * * * *"}` — offset
    from sweep's :00/:15/:30/:45 ticks so the two CronJobs never contend on the same
-   rows. Neither job needs the `agentKv` shared-config group (LLM/LLMWhisperer
-   creds — only the executor touches those): sweep only needs `database`/`redis`,
+   rows. Neither job needs the `agentKv` shared-config group (operator knobs only
+   the executor reads — the group holds no credential at all; see item 5): sweep
+   only needs `database`/`redis`,
    ttl-cleanup additionally needs `storage` for `AGENT_KV_FILE_STORAGE_CREDENTIALS`
    (see item 6 below) — both already on the `backend` deployment's config list.
 5. **Env vars**: every `AGENT_KV_*` setting plus `AGENT_KV_FILE_STORAGE_CREDENTIALS` —
    see [§6](#12-environment-reference) and `docker/sample.env`.
 
-   > **For the `table` extractor, the executor-side credential group below must be
-   > left UNSET — not merely "is not required".** That path resolves the caller's
-   > own platform adapters (see §3a), so none of the six `AGENT_KV_LLM_*` /
-   > `AGENT_KV_LLMWHISPERER_*` values is read on it. The group only has to be
-   > configured where the `kv` extractor is deployed, which is a separate release
-   > track. A table-only deployment leaves
-   > `global.sharedConfigs.agentKv.enabled: false` and the API works.
+   > **NO EXECUTOR-SIDE CREDENTIAL EXISTS ANY MORE, on either extractor.** Both
+   > the `table` and the `kv` path resolve the caller's own platform adapters
+   > from the request (see §3a): `llm`, `lite_llm` and `x2text`, each validated
+   > against the Bearer key's organization. The six values this section used to
+   > require — `AGENT_KV_LLM_PROVIDER`, `AGENT_KV_LITE_MODEL`,
+   > `AGENT_KV_ADVANCED_MODEL`, `AGENT_KV_LLM_API_KEY`,
+   > `AGENT_KV_LLMWHISPERER_API_KEY`, `AGENT_KV_LLMWHISPERER_BASE_URL` — have no
+   > reader, are not declared in the chart, have no External Secrets mapping and
+   > need no GCP Secret Manager entry. `AgentKVConfig.from_env()` requires
+   > nothing at all. Do not set them; they are not "optional", they are gone.
+   >
+   > This replaces an arrangement in which every org's extractions ran on one
+   > operator LLM key and one operator LLMWhisperer key, billed against an
+   > `agent_kv:{provider}/{model}` sentinel rather than the caller's adapter.
    >
    > **Deploy order: cloud worker first, then the backend.** The two repos deploy
    > independently and nothing on the wire marks the capability. A new backend
    > against an *old* worker sends validated `adapters` in `executor_params` to a
-   > worker that has no `ParamKeys.ADAPTERS`; it ignores the key and calls
-   > `ExtractionConfig.from_env()`. If those six values are set it runs on
-   > **operator** credentials, bills the `agent_kv:{provider}/{model}` sentinel, and
-   > returns a 202 with a correct-looking result — while the adapters the caller
-   > named were never used. Nothing in either repo's logs reveals it. With the group
-   > unset the same old worker fails loudly with "Missing required Agent-KV env
-   > vars", which is what a half-finished rollout should look like. The reverse
-   > order is safe by construction: the new worker hard-fails "Missing required
-   > adapters" rather than falling back to env.
+   > worker that has no `ParamKeys.ADAPTERS`; it ignores the key and falls back
+   > to env credentials. With the group no longer carrying any, that old worker
+   > fails loudly with "Missing required Agent-KV env vars" — which is what a
+   > half-finished rollout should look like, and is now the only thing it can do,
+   > rather than something an operator had to arrange by leaving values unset. The
+   > reverse order is safe by construction: the new worker hard-fails "Missing
+   > required adapters" rather than falling back to env.
    >
-   > Two operator knobs are still read on the table path, independently of that
-   > group: `AGENT_KV_STORAGE_DIR_PREFIX` (which must match the backend's — the
-   > executor derives the job's expected directory from it to enforce the tenant
-   > boundary on the staged input) and `AGENT_KV_PARALLEL_PAGES`.
+   > Operator knobs are still read, independently of any credential:
+   > `AGENT_KV_STORAGE_DIR_PREFIX` (which must match the backend's — the executor
+   > derives the job's expected directory from it to enforce the tenant boundary
+   > on the staged input) and `AGENT_KV_PARALLEL_PAGES` on both paths, plus
+   > `AGENT_KV_MAX_TOKENS`, `AGENT_KV_MAX_JOB_TOKENS`,
+   > `AGENT_KV_SANDBOX_CODEGEN_QUEUE` and `AGENT_KV_ENGINE_VERSION` on the `kv`
+   > path.
 
    The executor-side vars
    (read by the cloud `agentic_kv` plugin, not by the backend settings in §13) are a
    separate chart group: `global.sharedConfigs.agentKv`
-   (`charts/unstract-platform/values.yaml`, cloud repo) —
-   `AGENT_KV_LLM_PROVIDER`, `AGENT_KV_LITE_MODEL`, `AGENT_KV_ADVANCED_MODEL`,
-   `AGENT_KV_LLM_API_KEY`, `AGENT_KV_LLMWHISPERER_API_KEY`,
-   `AGENT_KV_LLMWHISPERER_BASE_URL`, `AGENT_KV_MAX_TOKENS`, `AGENT_KV_PARALLEL_PAGES`,
-   `AGENT_KV_ENGINE_VERSION`. Of those, two are ESO (External Secrets Operator)
-   secrets rather than plain values — `AGENT_KV_LLM_API_KEY` and
-   `AGENT_KV_LLMWHISPERER_API_KEY`, mapped in `global.externalSecrets.groups.agentKv`
-   to the GCP Secret Manager suffixes `agent-kv-llm-api-key` /
-   `agent-kv-llmwhisperer-api-key`. `AGENT_KV_LLM_PROVIDER` is a v1 hard allowlist of
-   two values — `anthropic` and `openai` (`SUPPORTED_PROVIDERS` in the executor's LLM
-   adapter) — anything else raises `ConfigError` at dispatch, before any LLM call.
+   (`charts/unstract-platform/values.yaml`, cloud repo). Every key in it is a
+   non-secret operator knob, every one is optional with a code default, and
+   `AGENT_KV_PARALLEL_PAGES` lives in the `storage` group instead (one value for
+   both paths' readers). The group has no `global.externalSecrets.groups.agentKv`
+   entry, so it ships inline in every mode — cloud and on-prem alike.
 
-   **Rollout order is strict, and getting it wrong takes down the whole executor
-   fleet.** Both executor fleets mount this group with `envFrom: secretRef:
-   <release>-agent-kv`, so no executor pod of any kind — not just Agent-KV ones —
-   can start until that Secret exists: enabling the group ahead of its contents
-   leaves `workerExecutorV2` and `workerPgExecutor` in `CreateContainerConfigError`.
-   Per environment, in this order: (1) create the two GCP Secret Manager secrets
-   `<externalSecrets.prefix>-agent-kv-llm-api-key` and
-   `<externalSecrets.prefix>-agent-kv-llmwhisperer-api-key`; (2) set the three
-   non-secret keys — `AGENT_KV_LLM_PROVIDER`, `AGENT_KV_LITE_MODEL`,
-   `AGENT_KV_ADVANCED_MODEL` — in that environment's own values file (under ESO they
-   are emitted as inline literals in the ExternalSecret's `target.template`, and a nil
-   value is silently **dropped**, so leaving them unset ships a Secret without them and
-   every Agent-KV job then fails at dispatch with `ConfigError: Missing required
-   Agent-KV env vars`); (3) only then roll the fleets out. `cloud.values.yaml` enables
-   the group fleet-wide, so step 2 is a per-environment prerequisite, not an optional
-   extra. In inline (non-ESO) mode the same three keys are enforced at render time by a
-   `fail` guard in `charts/unstract-platform/templates/shared/agent-kv-secret.yaml`, so
-   a mistake there is a loud deploy-time failure instead of a per-job runtime one.
+   **Rollout is one step: set `global.sharedConfigs.agentKv.enabled: true` in that
+   environment's values file.** Nothing else, in no particular order. Dev
+   namespaces get it from `dev.base.values.yaml`; `cloud.values.yaml` holds it
+   `false`, so staging and production are the same one-line flip when wanted.
+
+   It used to be three strict steps, and the warning that went with them is worth
+   keeping in view because the blast radius has not changed: every executor fleet
+   mounts this group with `envFrom: secretRef: <release>-agent-kv` and **no
+   `optional: true`**, so no executor pod of any kind — not just Agent-KV ones —
+   can start until that Secret exists. Enabling the group ahead of its contents
+   left `workerPgExecutor` in `CreateContainerConfigError`: the whole fleet, every
+   workflow execution. That is why the credentials were deleted rather than
+   defaulted, and why `agentKv` was dropped from the External Secrets groups — an
+   ExternalSecret pointing at a GCP secret that was never created never syncs, the
+   Secret never appears, and that non-optional `secretRef` does the rest. With the
+   group empty of credentials, enabling it renders an empty Secret, which
+   satisfies the mount. Chart-side this is pinned by
+   `unittests/agent_kv_wiring_test.yaml::AKV-K4`, which renders the group enabled
+   with nothing set and asserts both that it does not fail and that none of the
+   six retired names is present.
 6. **Object storage**: `AGENT_KV_FILE_STORAGE_CREDENTIALS` must point at a real bucket
    in production (defaults to the same shared MinIO instance as workflow execution).
    Paths are prefix- and org-rooted
@@ -1397,20 +1641,32 @@ beyond `docker compose up`:
     `host.docker.internal` (the compose host-gateway mapping). The lane also
     covers sync-wait submits (`timeout` → 200 with the inline result) and an
     `.xlsx` document (`fixtures/invoice.xlsx`, the no-pre-OCR-page-count path).
-11. **Sandbox worker — calculations codegen fleet. NOT APPLICABLE TO THIS
-    RELEASE; do not action this item.** `calculations` belongs to the `kv`
-    extractor, and `EXTRACTOR_ROUTES` accepts only `table`, whose options
-    reject the field — so no job this release can accept reaches the sandbox,
-    whatever `AGENT_KV_CALCULATIONS_ENABLED` is set to. No sandbox fleet ships
-    here, and deploying one buys nothing until `kv` is routable.
+11. **Sandbox worker — calculations codegen fleet. APPLICABLE FROM THIS
+    RELEASE.** `calculations` belongs to the `kv` extractor, and `kv` is now in
+    `EXTRACTOR_ROUTES` with an options serializer that accepts the field — so a
+    job *can* reach the sandbox, and this release ships the fleet
+    (`docker/docker-compose.yaml`, `workers/sandbox/`).
 
-    Kept because it is the deployment order to follow WHEN that happens, and
-    the order is the part that is easy to get wrong. Everything below is
-    future KV-only work.
+    Two gates stand between that and a live calculation job, and both must be
+    open: `AGENT_KV_KV_EXTRACTOR_ENABLED` (whether this deployment accepts `kv`
+    at all) and `AGENT_KV_CALCULATIONS_ENABLED` (whether a `kv` job may ask for
+    codegen). Both default false.
+
+    An earlier revision of this item read "NOT APPLICABLE TO THIS RELEASE; do
+    not action this item", on the premise that `EXTRACTOR_ROUTES` accepted only
+    `table`. That premise is gone. An operator who followed it and then set
+    `AGENT_KV_CALCULATIONS_ENABLED=true` would get exactly the failure the
+    strict-order paragraph below warns about.
 
     The optional `calculations` field
     invokes out-of-process codegen and execution in a dedicated sandbox worker fleet
-    consuming the `sandbox_codegen` Celery queue. **Deployment order is strict:**
+    consuming the `sandbox_codegen` queue **on the PG transport** — not Celery.
+    The shipped service runs `pg-queue-consumer` with
+    `WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=sandbox` and
+    `WORKER_PG_QUEUE_CONSUMER_QUEUE=sandbox_codegen`; UN-4046 retired the broker
+    as a task transport, so a broker-only consumer provisioned from an earlier
+    reading of this line accepts work and drains none, silently.
+    **Deployment order is strict:**
     deploy the sandbox worker (Deployment healthy, actively consuming tasks from
     `sandbox_codegen`) **before** flipping `AGENT_KV_CALCULATIONS_ENABLED=true`.
     With the flag on but the sandbox down, calculation jobs fail user-safely at the
@@ -1418,10 +1674,14 @@ beyond `docker compose up`:
     without a healthy sandbox fleet**, as all jobs with `calculations` will eventually
     exceed their timeouts and return failures to callers.
 
-    **Security posture:** The sandbox pod carries no LLM, OCR, or storage secrets and
-    runs with default-deny egress — it only executes generated calculation code against
-    the extracted record in-memory. This no-secrets/deny-all-egress posture is the
-    **Kubernetes/chart deployment guarantee**. The reference `docker-compose.yaml`
+    **Security posture:** The sandbox pod carries no LLM, OCR or storage secret, and
+    not the platform `ENCRYPTION_KEY`, and runs with default-deny egress — it only
+    executes generated calculation code against the extracted record in-memory. The
+    **deny-all-egress** half is the Kubernetes/chart deployment guarantee.
+    **The pod is NOT secret-free**: `workerPgSandbox.additionalConfigs` is
+    `[database]`, so it necessarily mounts `DB_HOST/DB_USER/DB_PASSWORD/DB_NAME` —
+    on the PG transport the queue IS Postgres. An earlier revision called the whole
+    posture a guarantee; R12 in `docs/agent-kv-architecture.md` is the authority. The reference `docker-compose.yaml`
     included here is a best-effort dev mirror only, not that guarantee: its
     `worker-sandbox` service shares the same full worker env-file (`workers/.env`) as
     every other worker for operational simplicity, so on that stack the untrusted-code
@@ -1434,25 +1694,56 @@ beyond `docker compose up`:
     **best-effort** layer-1 control — a fail-closed denylist that closes the cheap,
     demonstrated bypasses and raises the cost of the rest, not a provably airtight
     sandbox by itself. The *enforced* containment is layers 2–5: the runner's
-    env-scrub + rlimits (layer 2) and the pod's non-root/read-only-rootfs/no-secrets/
-    deny-all-egress/per-job isolation (layers 3–5), with `runtimeClass: gvisor` as the
+    env-scrub + rlimits (layer 2) and the pod's non-root/read-only-rootfs/
+    deny-all-egress posture (layers 3–5), with `runtimeClass: gvisor` as the
     deferred syscall-sandbox mitigation (see the accepted v1 residual below). Do not
     treat an AST-gate pass alone as proof generated code is safe.
+
+    **This list no longer says "no-secrets" or "per-job isolation".** Both were in
+    an earlier revision of this item and both are false — see R12 in
+    `docs/agent-kv-architecture.md`, which establishes them by execution.
 
     **Accepted v1 residual (in-pod file reads):** because generated code
     legitimately needs the `open()` builtin for its input and output files, untrusted
     calculation code can read a world-readable file inside its own sandbox pod and
     return the contents to the submitter. The import allowlist is exactly `{json, math,
     statistics, decimal, datetime, re, collections, itertools, functools, sys}` —
-    `pathlib`, `os`, `io`, `socket` and `urllib` are all outside it, so this is a single
-    read of a known path, not directory traversal and not an exfiltration path. This is contained — not by the AST gate, but
-    by the pod's layers 2–5: no secrets in the pod (not even the platform
-    `ENCRYPTION_KEY`), non-root on a read-only rootfs, default-deny egress (no
-    exfiltration), per-job isolation, and results returned only to the submitting
-    key — so the worst case is disclosure of a non-sensitive container file to the
-    customer who submitted the job. The deferred hardening for this is a
-    `runtimeClass: gvisor` sandbox. Consequently the sandbox pod's default-deny egress
-    and no-secrets posture are load-bearing and must not be relaxed.
+    `pathlib`, `os`, `io`, `socket` and `urllib` are all outside it.
+
+    **Read R12 in `docs/agent-kv-architecture.md` before signing this item off.**
+    It is the authority for this residual, and it corrects four claims an earlier
+    revision of this paragraph made. The first and fourth are false by execution;
+    the second and third are false against the chart manifests. They are named
+    here so nobody restores them from an older copy:
+
+    - *"a single read of a known path, not an exfiltration path"* — `open()` needs
+      no import, so the allowlist does not bound which paths it reads.
+    - *"no secrets in the pod"* — `workerPgSandbox.additionalConfigs` is
+      `[database]`, because on the PG transport the queue **is** Postgres, so the
+      pod necessarily mounts `DB_HOST/DB_USER/DB_PASSWORD/DB_NAME`. **Only the
+      unqualified claim is false.** The parenthetical the old text carried —
+      "not even the platform `ENCRYPTION_KEY`" — is TRUE and R12 affirms it: no
+      *platform* secrets, and specifically not the master `ENCRYPTION_KEY`. Do
+      not read this bullet as licence to mount it.
+    - *"per-job isolation"* — there is none. The child runs as the **same UID** as
+      the worker, and the fleet runs `CONCURRENCY 2` sharing one PID namespace and
+      one `/tmp`, so co-resident lanes are two jobs of possibly different tenants
+      with no boundary between them. (`CONCURRENCY 2` is
+      `workerPgSandbox.env.WORKER_PG_QUEUE_CONSUMER_CONCURRENCY` on the chart
+      branch, unstract-cloud#1816 — a forward reference; the compose stacks here
+      pin 1.)
+    - *"the worst case is disclosure of a non-sensitive container file"* — the true
+      worst case is **credential disclosure plus database reach beyond the job's own
+      input**.
+
+    What does contain it is narrower than that list claimed: read-only rootfs,
+    non-root, a per-job tempdir, default-deny egress *except* Postgres and DNS, and
+    results returned only to the submitting key. **Default-deny egress is
+    load-bearing and must not be relaxed**; "no secrets" must not be cited as an
+    invariant for this pod until the credential is actually removed from it. The
+    deferred hardening for this is a
+    `runtimeClass: gvisor` sandbox, together with a distinct UID per child, which is
+    what would actually close the two residuals above.
 
 ## 12. Environment reference
 
@@ -1476,6 +1767,7 @@ with the default shown:
 | `AGENT_KV_STUCK_JOB_GRACE_SECONDS` | `21600` | Age (from `dispatched_at`) before a `DISPATCHED`/`RUNNING` job is eligible for the sweep's stuck-job phase — force-failed as `"Job timed out"` (6 hours). |
 | `AGENT_KV_CALCULATIONS_ENABLED` | `false` | Gates the submit `calculations` field; the engine cannot execute it yet, so submit 400s while this is off. |
 | `AGENT_KV_STRUCTURED_OUTPUT_ENABLED` | `false` | Gates the submit `structured_output` field; the engine cannot execute it yet, so submit 400s while this is off. |
+| `AGENT_KV_KV_EXTRACTOR_ENABLED` | `false` | Whether this deployment accepts `kv` submits at all. Set `true` only where the executor fleet drains `celery_executor_agentic_kv`; otherwise a `kv` submit 400s with `extractor 'kv' is not enabled on this deployment`. See §11 item 11. |
 | `AGENT_KV_STORAGE_DIR_PREFIX` | `unstract/agent_kv` | Bucket-rooted object-store root for staged inputs/results (`{prefix}/{org_id}/{job_id}/…`), mirroring `WORKFLOW_EXECUTION_DIR_PREFIX`/`API_EXECUTION_DIR_PREFIX`. The **first segment is the bucket** and must already exist. The cloud executor reads the same variable and keys its OCR cache under `{prefix}/{org_id}/cache/…`, so both fleets must agree. Trailing `/` is stripped. |
 | `AGENT_KV_FILE_STORAGE_CREDENTIALS` | *(none — must be set)* | JSON credentials for the `AGENT_KV` `FileStorageType` (`unstract/filesystem`), same shape as `WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS`: `{"provider": "minio", "credentials": {"endpoint_url": "...", "key": "...", "secret": "..."}}`. |
 

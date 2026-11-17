@@ -25,6 +25,7 @@ class WorkerType(str, Enum):
     SCHEDULER = "scheduler"
     EXECUTOR = "executor"
     IDE_CALLBACK = "ide_callback"
+    SANDBOX = "sandbox"
 
     @classmethod
     def from_directory_name(cls, name: str) -> "WorkerType":
@@ -139,6 +140,11 @@ class WorkerType(str, Enum):
             WorkerType.SCHEDULER: 8087,
             WorkerType.EXECUTOR: 8088,
             WorkerType.IDE_CALLBACK: 8089,
+            # 8090/8091 are reserved; the sandbox's fixed slot is 8092. Without
+            # this entry `.get(self, 8080)` returned API_DEPLOYMENT's port, so a
+            # sandbox worker started without a launcher (which exports
+            # SANDBOX_HEALTH_PORT) bound 8080 and collided with it.
+            WorkerType.SANDBOX: 8092,
         }
         return port_mapping.get(self, 8080)
 
@@ -188,6 +194,9 @@ class QueueName(str, Enum):
     # Agent-KV terminal-callback queue (agent_kv_complete / agent_kv_error;
     # spec §5.3). Consumed by the IDE_CALLBACK worker alongside IDE_CALLBACK.
     AGENT_KV_CALLBACK = "agent_kv_callback"
+
+    # Sandbox codegen queue (sandboxed code execution)
+    SANDBOX_CODEGEN = "sandbox_codegen"
 
     def to_env_var_name(self) -> str:
         """Convert queue name to environment variable name.
