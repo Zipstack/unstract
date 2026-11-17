@@ -1,18 +1,25 @@
-"""Submit-serializer rules for the table extractor.
+"""Submit-serializer rules, exercised mostly through the `table` extractor.
 
-This deployment routes `table` and nothing else (`EXTRACTOR_ROUTES`), so every
-submit built here names `table`. The request-level rules -- file type, size,
-page cap, page range, timeout, the extractor-scoped wire format -- are the same
-for any extractor and are exercised through that one.
+Both extractors are routed (`EXTRACTOR_ROUTES`), but the request-level rules --
+file type, size, page cap, page range, timeout, the extractor-scoped wire
+format -- are the same for either, so most cases here name `table` and drive
+them through that one.
 
-`KVOptionsSerializer` is still in the tree and still tested, but it is tested
-*directly* rather than through a submit: with `kv` out of `EXTRACTOR_ROUTES` a
-`kv` entry is refused at `validate_name` before any options validator runs, so
-driving those rules through `SubmitSerializer` would assert nothing about them.
+The `kv` cases that do exist carry
+`@override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=True)`: routing `kv` is not
+the same as accepting it, and the production default is off until a deployment
+states that its fleet drains `celery_executor_agentic_kv`.
+
+`KVOptionsSerializer` is additionally tested *directly*, which is how it was
+covered while `kv` was unroutable and remains the cheaper way to exercise the
+option grammar without building a whole submit.
 """
 
+import io
 import json
 import os
+import struct
+import zipfile
 from unittest import mock
 
 import django
@@ -24,9 +31,14 @@ if not apps.ready:
     django.setup()
 
 from django.conf import settings  # noqa: E402
-from django.core.files.uploadedfile import SimpleUploadedFile  # noqa: E402
+from django.core.files.uploadedfile import (  # noqa: E402
+    SimpleUploadedFile,
+    TemporaryUploadedFile,
+)
+from django.test import override_settings  # noqa: E402
 from rest_framework import serializers  # noqa: E402
 
+from agent_kv.constants import TABLE_EXTRACTOR_NAME, V1_EXTRACTOR_NAME  # noqa: E402
 from agent_kv.execution_serializers import (  # noqa: E402
     ExtractorSerializer,
     KVOptionsSerializer,
@@ -113,20 +125,57 @@ def _defaults(m):
     m.AGENT_KV_MAX_TIMEOUT_SECONDS = 300
     m.AGENT_KV_CALCULATIONS_ENABLED = False
     m.AGENT_KV_STRUCTURED_OUTPUT_ENABLED = False
+    # Production default. `kv` is routed but not accepted until a deployment
+    # says its fleet drains the queue -- see `enabled_extractors()`.
+    m.AGENT_KV_KV_EXTRACTOR_ENABLED = False
 
 
 # ---------------------------------------------------------------------------
 # The routing this deployment actually ships
 # ---------------------------------------------------------------------------
-def test_a_kv_submit_is_refused_at_the_serializer():
-    """The guard on the single most important line in this carve-out.
+@override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=True)
+def test_a_kv_submit_is_accepted_through_the_same_endpoint():
+    """One API, one selector: `extractors[].name` picks the engine.
 
-    `agentic_kv` is not deployed here, so nothing consumes
-    `celery_executor_agentic_kv`. If `kv` were routable, this submit would
-    return 202, dispatch into a queue with no consumer, and sit in DISPATCHED
-    forever -- no error at the producer, nothing in any log to find. A 400 at
-    the serializer is the whole difference between a clear refusal and a job
-    that silently never runs.
+    This is the whole of the feature. The payload differs from a `table` submit
+    in three places -- the name, a schema-shaped `keys` instead of
+    `{"target_table": ...}`, and KV's own options -- and in nothing else: same
+    endpoint, same file part, same staging, same page cap, same adapters block.
+
+    It replaces `test_a_kv_submit_is_refused_at_the_serializer`, which asserted
+    the 400 that stood while the engine shipped on its own branch and nothing
+    drained `celery_executor_agentic_kv`. That refusal was never the intended
+    end state; it was load-bearing for exactly as long as the queue was
+    undrained, and `test_queue_wiring_is_derived.py` now derives that
+    precondition from `EXTRACTOR_ROUTES` on every run.
+    """
+    s = SubmitSerializer(
+        data=_data(
+            extractors=json.dumps(
+                [
+                    {
+                        "name": "kv",
+                        "keys": {"total": {"description": "Grand total"}},
+                        "adapters": TABLE_ADAPTERS,
+                        "options": {"qa": False},
+                    }
+                ]
+            )
+        )
+    )
+    assert s.is_valid(), _errs(s)
+    entry = s.validated_data["extractors"][0]
+    assert entry["name"] == "kv"
+    assert entry["options"]["qa"] is False
+
+
+@override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=True)
+def test_a_kv_submit_without_adapters_is_refused_at_submit():
+    """The KV executor requires all three roles
+    (`agentic_kv.constants.ParamKeys.REQUIRED_ADAPTERS`) and fails the job
+    naming whichever is missing. That failure costs a concurrency slot and the
+    staging it already billed, so the same requirement is enforced here, before
+    any of that -- the same bargain the table extractor already made.
     """
     s = SubmitSerializer(
         data=_data(
@@ -136,14 +185,14 @@ def test_a_kv_submit_is_refused_at_the_serializer():
         )
     )
     assert not s.is_valid()
-    assert "unknown extractor" in _errs(s)
-    assert "'kv'" in _errs(s)
+    errs = _errs(s)
+    assert "llm" in errs and "x2text" in errs
 
 
-def test_table_is_the_only_supported_extractor():
+def test_both_extractors_are_supported():
     from agent_kv.execution_serializers import SUPPORTED_EXTRACTORS
 
-    assert SUPPORTED_EXTRACTORS == ("table",)
+    assert set(SUPPORTED_EXTRACTORS) == {"kv", "table"}
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +223,160 @@ def test_disallowed_extension_rejected():
     s = SubmitSerializer(data=_data(file=bad))
     assert not s.is_valid()
     assert "file" in s.errors
+
+
+def _fixture_upload(fixture, name, content_type="application/octet-stream"):
+    with open(os.path.join(FIXTURES, fixture), "rb") as f:
+        return SimpleUploadedFile(name, f.read(), content_type=content_type)
+
+
+def _zip_bytes(members):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, data in members:
+            z.writestr(name, data)
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param(_zip_bytes([("payload.txt", b"hello")]), id="zip"),
+        pytest.param(b"MZ\x90\x00" + b"\x00" * 60 + b"PE\x00\x00", id="executable"),
+        pytest.param(b"<html><script>alert(1)</script></html>", id="html"),
+    ],
+)
+def test_content_that_is_not_a_pdf_is_rejected_despite_its_pdf_name(body):
+    """The extension and the declared content type are the caller's claim; a
+    file renamed `.pdf` must be refused on what its bytes are (CASA 5.2.1).
+    """
+    spoofed = SimpleUploadedFile("doc.pdf", body, content_type="application/pdf")
+    s = SubmitSerializer(data=_data(file=spoofed))
+    assert not s.is_valid()
+    assert "does not match its '.pdf' extension" in str(s.errors["file"])
+
+
+def test_a_pdf_renamed_to_a_spreadsheet_extension_is_rejected():
+    s = SubmitSerializer(data=_data(file=_pdf_upload(name="doc.xlsx")))
+    assert not s.is_valid()
+    assert "does not match its '.xlsx' extension" in str(s.errors["file"])
+
+
+@pytest.mark.parametrize(
+    "fixture,name",
+    [("table.xlsx", "table.xlsx"), ("table.xls", "table.xls")],
+)
+def test_real_spreadsheets_pass_the_content_check(fixture, name):
+    # `table.xls` reads as a wrapper type from its first 8 KiB (`CDFV2` or
+    # `x-ole-storage`, depending on the libmagic version), like real-world
+    # workbooks do, so this also covers the path re-classification.
+    s = SubmitSerializer(data=_data(file=_fixture_upload(fixture, name)))
+    assert s.is_valid(), s.errors
+    assert s.validated_data["file"].tell() == 0
+
+
+def test_an_xlsx_whose_content_types_member_is_not_first_still_passes():
+    """Such a package reads as `application/zip` from a sample, so it is
+    identified from its declared main part instead.
+    """
+    with zipfile.ZipFile(os.path.join(FIXTURES, "table.xlsx")) as src:
+        members = [(n, src.read(n)) for n in src.namelist()]
+    members.sort(key=lambda m: m[0] == "[Content_Types].xml")
+    upload = SimpleUploadedFile("table.xlsx", _zip_bytes(members))
+    s = SubmitSerializer(data=_data(file=upload))
+    assert s.is_valid(), s.errors
+
+
+def _ooxml_shaped_zip_with_patched_headers(local_offset, central_offset, value):
+    """A zip naming the OOXML declaration members, with one header field set
+    in every local and central entry -- `zipfile` will not write these itself.
+    """
+    body = bytearray(
+        _zip_bytes([("[Content_Types].xml", b"<x/>"), ("_rels/.rels", b"<x/>")])
+    )
+    for signature, offset in (
+        (b"PK\x03\x04", local_offset),
+        (b"PK\x01\x02", central_offset),
+    ):
+        at = 0
+        while (at := body.find(signature, at)) != -1:
+            body[at + offset : at + offset + 2] = struct.pack("<H", value)
+            at += len(signature)
+    return bytes(body)
+
+
+def _ooxml_shaped_zip_with_corrupt_declaration():
+    """A zip naming the OOXML declaration members, whose deflated
+    `[Content_Types].xml` data is overwritten so `zlib` cannot inflate it.
+    """
+    body = bytearray(
+        _zip_bytes([("[Content_Types].xml", b"<Types/>" * 512), ("_rels/.rels", b"<x/>")])
+    )
+    name_length, extra_length = struct.unpack("<HH", body[26:30])
+    data_at = 30 + name_length + extra_length
+    body[data_at : data_at + 4] = b"\xff\xff\xff\xff"
+    return bytes(body)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # Corrupt deflate data: reading the member raises `zlib.error`.
+        pytest.param(_ooxml_shaped_zip_with_corrupt_declaration(), id="corrupt-data"),
+        # General-purpose flag bit 0: `zipfile` raises RuntimeError on open.
+        pytest.param(_ooxml_shaped_zip_with_patched_headers(6, 8, 0x1), id="encrypted"),
+        # Compression method 99: `zipfile` raises NotImplementedError on open.
+        pytest.param(
+            _ooxml_shaped_zip_with_patched_headers(8, 10, 99), id="unknown-compression"
+        ),
+    ],
+)
+def test_an_unreadable_package_is_a_file_error_not_a_server_error(body):
+    upload = SimpleUploadedFile("table.xlsx", body)
+    s = SubmitSerializer(data=_data(file=upload))
+    assert not s.is_valid()
+    assert "does not match its '.xlsx' extension" in str(s.errors["file"])
+
+
+def test_any_error_reading_the_package_is_a_file_error():
+    # A truncated stream raises EOFError, and the next archive quirk will
+    # raise something else; none of them may surface as a 500.
+    upload = SimpleUploadedFile(
+        "table.xlsx", _ooxml_shaped_zip_with_patched_headers(6, 8, 0x0)
+    )
+    with mock.patch(
+        "agent_kv.execution_serializers.identify_zip_container",
+        side_effect=EOFError("truncated"),
+    ):
+        s = SubmitSerializer(data=_data(file=upload))
+        assert not s.is_valid()
+    assert "does not match its '.xlsx' extension" in str(s.errors["file"])
+
+
+def test_a_large_upload_is_classified_from_its_temporary_file():
+    """Uploads over Django's memory limit arrive as temp files; the wrapper
+    re-classification reads that path rather than spilling a second copy.
+    """
+    with open(os.path.join(FIXTURES, "table.xls"), "rb") as f:
+        body = f.read()
+    upload = TemporaryUploadedFile(
+        "table.xls", "application/vnd.ms-excel", len(body), None
+    )
+    upload.write(body)
+    upload.seek(0)
+    try:
+        from agent_kv import execution_serializers
+
+        with mock.patch.object(
+            execution_serializers.magic,
+            "from_file",
+            wraps=execution_serializers.magic.from_file,
+        ) as from_file:
+            s = SubmitSerializer(data=_data(file=upload))
+            assert s.is_valid(), s.errors
+        from_file.assert_called_once_with(upload.temporary_file_path(), mime=True)
+    finally:
+        upload.close()
 
 
 def test_oversize_file_rejected():
@@ -312,15 +515,17 @@ def test_page_range_validation():
 
 
 def test_unreadable_pdf_is_field_error_and_stream_is_rewound():
-    bad = SimpleUploadedFile("doc.pdf", b"not a pdf", content_type="application/pdf")
+    # A PDF header, so the content check passes and pdfplumber is what refuses.
+    body = b"%PDF-1.4\nnot a pdf"
+    bad = SimpleUploadedFile("doc.pdf", body, content_type="application/pdf")
     s = SubmitSerializer(data=_data(file=bad))
     assert not s.is_valid()
-    assert "file" in s.errors
+    assert "Unreadable PDF" in str(s.errors["file"])
     # The `finally: f.seek(0)` in validate() must run on the error path too,
     # so a downstream reader (e.g. the view persisting the upload) still sees
     # the whole stream from the start.
     assert bad.tell() == 0
-    assert bad.read() == b"not a pdf"
+    assert bad.read() == body
 
 
 # ---------------------------------------------------------------------------
@@ -418,11 +623,15 @@ def test_unknown_key_on_the_extractor_entry_is_rejected():
 # ---------------------------------------------------------------------------
 # KVOptionsSerializer, tested directly.
 #
-# The class is dormant on this deployment -- `kv` is not routable, so nothing
-# reaches it through a submit -- but it stays in the tree so the branch that
-# carries the KV engine re-enables the extractor with one line rather than a
-# content merge. Dormant and untested is how a one-line re-enable turns into a
-# regression, so its rules are asserted here against the serializer itself.
+# Reached through a real submit now that `kv` is routable (see
+# `test_a_kv_submit_is_accepted_through_the_same_endpoint`); these exercise the
+# serializer directly because its rules are easier to state one at a time than
+# through a multipart payload.
+#
+# This section was written while the class was DORMANT -- `kv` was unroutable,
+# so nothing reached it through a submit -- on the reasoning that dormant and
+# untested is how a one-line re-enable turns into a regression. That one line
+# has now been added, and these tests are why it was one line.
 # ---------------------------------------------------------------------------
 def _kv_options(**over):
     s = KVOptionsSerializer(data=over)
@@ -573,10 +782,15 @@ def test_table_keys_are_validated_through_the_keys_serializer():
 # the attribute must not quietly delete the 400, which is the only reason the
 # call is there.
 #
-# The branch is DORMANT on this deployment: `kv` is the only extractor without
-# a keys serializer and `validate_name` refuses it before `_validated_keys`
-# runs, so it is reached by calling it directly. That is the point -- it is the
-# contract for the next extractor added without one, and nothing else covers it.
+# `kv` is the one extractor with no entry in `_KEYS_SERIALIZERS`, deliberately:
+# its `keys` IS a compiled schema rather than a fixed field set, so it falls
+# through to the compiler. That fallthrough is live -- a `kv` submit reaches it
+# -- and it is also the contract for any future extractor added without a keys
+# serializer.
+#
+# It used to be unreachable through a submit (`validate_name` refused `kv`
+# before `_validated_keys` ran) and was tested by calling it directly. The
+# direct calls are kept: they state one rule at a time.
 # ---------------------------------------------------------------------------
 
 
@@ -662,3 +876,39 @@ def test_the_submit_check_matches_what_the_sink_allows():
     assert 'allowed_schemes=("https",)' in source
     # DNS stays off the request thread; `getaddrinfo` honours no timeout.
     assert "resolve=False" in source
+
+
+@pytest.mark.parametrize(
+    ("extractor", "keys"),
+    [
+        (V1_EXTRACTOR_NAME, {"total": {"description": "Grand total"}}),
+        (TABLE_EXTRACTOR_NAME, {"target_table": "Line items"}),
+    ],
+)
+@override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=True)
+def test_an_unknown_adapter_role_is_refused_and_names_its_extractor(extractor, keys):
+    """Pins the `extractor_name` indirection the adapters refactor introduced.
+
+    The unknown-adapters message used to interpolate a hardcoded
+    `TABLE_EXTRACTOR_NAME`; it now reads a base-class attribute that defaults
+    to `""`. Nothing exercised that path for either subclass, so setting
+    BOTH subclasses' `extractor_name` to `""` left the whole suite green and
+    the API would have reported `unknown adapters for extractor '': [...]`.
+
+    The refusal itself matters as much as the name: an adapter role the caller
+    named and the engine will not use is a resource silently ignored behind a
+    202 -- the same shape the entry-level unknown-key check exists to prevent.
+    """
+    adapters = dict(TABLE_ADAPTERS)
+    adapters["embedding"] = "7f3c1a90-0000-4000-8000-000000000009"
+    s = SubmitSerializer(
+        data=_data(
+            extractors=json.dumps(
+                [{"name": extractor, "keys": keys, "adapters": adapters}]
+            )
+        )
+    )
+    assert not s.is_valid()
+    msg = str(s.errors)
+    assert "embedding" in msg, msg
+    assert f"'{extractor}'" in msg, msg

@@ -19,6 +19,8 @@ from queue_backend.pg_barrier import (
 
 # Import shared worker infrastructure
 from shared.api import InternalAPIClient
+from shared.clients.base_client import InternalAPIClientError
+from shared.clients.execution_client import refused_as_stopped
 
 # Import from shared worker modules
 from shared.constants import Account
@@ -289,7 +291,9 @@ def _raise_if_execution_terminal(
         )
 
 
-def _terminal_skip_result(batch_data: FileBatchData) -> dict[str, Any]:
+def _terminal_skip_result(
+    batch_data: FileBatchData, status: str | None = None
+) -> dict[str, Any]:
     """Batch result for a batch skipped because its execution is already terminal.
 
     The files were never attempted; they are counted as failed (not left
@@ -297,19 +301,84 @@ def _terminal_skip_result(batch_data: FileBatchData) -> dict[str, Any]:
     so reporting ``failed=total`` keeps a consumer that ever aggregates this
     result from rendering the files as perpetually in-progress. The
     ``SKIPPED_TERMINAL_EXECUTION_KEY`` marker tells ``run_batch_with_barrier`` to
-    bypass the barrier decrement (a terminal execution's barrier is by definition
-    already torn down).
+    bypass the barrier decrement. A STOPPED run gets no marker: the batch counts
+    down and the last one fires the callback, which cleans up.
     """
-    n_files = len(batch_data.files)
-    result = BatchExecutionResult(
+    result = _all_failed_result(
+        len(batch_data.files), batch_data.file_data.organization_id
+    )
+    if status != ExecutionStatus.STOPPED.value:
+        result[SKIPPED_TERMINAL_EXECUTION_KEY] = True
+    return result
+
+
+def _all_failed_result(n_files: int, organization_id: str | None) -> dict[str, Any]:
+    """Batch result that counts every file as failed."""
+    result: dict[str, Any] = BatchExecutionResult(
         total_files=n_files,
         successful_files=0,
         failed_files=n_files,
         execution_time=0.0,
-        organization_id=batch_data.file_data.organization_id,
+        organization_id=organization_id,
     ).to_dict()
-    result[SKIPPED_TERMINAL_EXECUTION_KEY] = True
     return result
+
+
+def _run_stages_under_barrier(
+    file_batch_data: dict[str, Any], celery_task_id: str, batch_index: int
+) -> dict[str, Any]:
+    """Run the batch stages; a stopped run's failed batch still counts down.
+
+    Otherwise the barrier is torn down and the run's callback never fires.
+    """
+    try:
+        return _run_batch_stages(file_batch_data, celery_task_id)
+    except Exception:
+        file_data = file_batch_data.get("file_data") or {}
+        execution_id = file_data.get("execution_id") or ""
+        organization_id = file_data.get("organization_id") or ""
+        api_client = create_api_client(organization_id)
+        if not _stopped_before_error_mark(
+            api_client, execution_id, organization_id, batch_index
+        ):
+            raise
+        logger.exception(
+            "[exec:%s] Batch failed after the run was stopped; counting it down",
+            execution_id,
+        )
+        return _all_failed_result(
+            len(file_batch_data.get("files") or []), organization_id
+        )
+
+
+def _stopped_before_error_mark(
+    api_client: InternalAPIClient,
+    execution_id: str,
+    organization_id: str | None,
+    batch_index: int,
+) -> bool:
+    """Mark the run ERROR; True when the backend refuses because it is STOPPED.
+
+    The backend orders this write and an abort under the run's row lock, so an
+    abort landing just before the batch failed is not missed. The write matches
+    the barrier's own ERROR mark, so the two agree.
+    """
+    try:
+        response = api_client.update_workflow_execution_status(
+            execution_id=execution_id,
+            status=ExecutionStatus.ERROR.value,
+            error_message=f"[pg-barrier-abort] batch {batch_index} failed.",
+            organization_id=organization_id,
+            cascade_terminal_files=True,
+        )
+    except InternalAPIClientError as error:
+        logger.warning(
+            "[exec:%s] Marking the failed batch's run ERROR failed: %s",
+            execution_id,
+            error,
+        )
+        return False
+    return refused_as_stopped(response)
 
 
 def _run_batch_stages(
@@ -324,19 +393,20 @@ def _run_batch_stages(
     # Step 1: Validate and parse input data
     batch_data = _validate_and_parse_batch_data(file_batch_data)
 
-    # Step 2: Setup execution context. The terminal guard inside it may skip a
-    # stale/redelivered batch for an already-terminal execution — see
+    # Step 2: Setup execution context. The terminal guard inside it skips a
+    # batch whose execution is already terminal — see
     # :class:`_TerminalExecutionSkip`.
     try:
         context = _setup_execution_context(batch_data, celery_task_id)
     except _TerminalExecutionSkip as skip:
         logger.warning(
-            f"[exec:{skip.execution_id}] Skipping batch of "
-            f"{len(batch_data.files)} file(s): execution already terminal "
-            f"({skip.status}) — stale/redelivered after reaper-recovery; not "
-            f"reprocessing."
+            "[exec:%s] Skipping batch of %s file(s): execution already terminal "
+            "(%s); not processing.",
+            skip.execution_id,
+            len(batch_data.files),
+            skip.status,
         )
-        return _terminal_skip_result(batch_data)
+        return _terminal_skip_result(batch_data, skip.status)
 
     # Step 3: Handle manual review logic
     # context = _handle_manual_review_logic(context)
@@ -398,7 +468,9 @@ def _process_file_batch_core(
     # the barrier in-body / self-chain the callback.
     return run_batch_with_barrier(
         barrier_context,
-        lambda: _run_batch_stages(file_batch_data, celery_task_id),
+        lambda: _run_stages_under_barrier(
+            file_batch_data, celery_task_id, int(barrier_context["batch_index"])
+        ),
     )
 
 
@@ -482,8 +554,7 @@ def _setup_execution_context(
 
     Raises:
         ValueError: If required context fields are missing
-        _TerminalExecutionSkip: If the execution is already terminal (a
-            stale/redelivered batch after reaper-recovery).
+        _TerminalExecutionSkip: If the execution is already terminal.
     """
     # Extract context using dataclass
     file_data = batch_data.file_data
@@ -523,9 +594,9 @@ def _setup_execution_context(
     execution_context = execution_response.data
     workflow_execution = execution_context.get("execution", {})
 
-    # Validate-first terminal guard — skip a stale/redelivered batch
-    # for an already-terminal execution, before we touch status or process
-    # anything. See :class:`_TerminalExecutionSkip`.
+    # Validate-first terminal guard — skip a batch whose execution is already
+    # terminal, before we touch status or process anything. See
+    # :class:`_TerminalExecutionSkip`.
     _raise_if_execution_terminal(workflow_execution, execution_id)
 
     # Set LOG_EVENTS_ID in StateStore for WebSocket messaging (critical for UI logs)
@@ -675,6 +746,97 @@ def _refactored_pre_create_file_executions(
     return context
 
 
+def _file_item_name(file_item: Any) -> str | None:
+    """File name from a batch file item in any of its formats."""
+    name: str | None = None
+    if isinstance(file_item, (list, tuple)) and len(file_item) == 2:
+        name = file_item[0]
+    elif isinstance(file_item, dict):
+        name = file_item.get("file_name")
+    return name
+
+
+def _file_item_hash(file_item: Any) -> dict[str, Any]:
+    """Hash data from a batch file item in any of its formats; empty if none."""
+    data = file_item
+    if isinstance(file_item, (list, tuple)) and len(file_item) == 2:
+        data = file_item[1]
+    return data if isinstance(data, dict) else {}
+
+
+def _file_item_identifier(file_item: Any) -> str | None:
+    """The ``uuid:path`` id the duplicate skip lists use; None without both parts."""
+    data = _file_item_hash(file_item)
+    uuid, path = data.get("provider_file_uuid"), data.get("file_path")
+    return f"{uuid}:{path}" if uuid and path else None
+
+
+def _is_execution_stopped(api_client: InternalAPIClient, execution_id: str) -> bool:
+    """True when the execution was stopped (aborted) while this batch runs.
+
+    Fails open on an API failure: the next file is processed.
+    """
+    try:
+        status = api_client.get_workflow_execution_status(execution_id)
+    except InternalAPIClientError as error:
+        logger.warning(
+            "[exec:%s] status check before the next file failed (%s); "
+            "processing it anyway",
+            execution_id,
+            error,
+        )
+        return False
+    if status not in {s.value for s in ExecutionStatus}:
+        logger.warning(
+            "[exec:%s] status check before the next file returned %r; "
+            "processing it anyway",
+            execution_id,
+            status,
+        )
+    stopped: bool = status == ExecutionStatus.STOPPED.value
+    return stopped
+
+
+def _mark_file_stopped(api_client: InternalAPIClient, file_execution_id: str) -> None:
+    """Mark one unprocessed file row STOPPED, logging a failed write."""
+    # An APIResponse, whatever the facade's annotation says.
+    response: Any = api_client.update_file_execution_status(
+        file_execution_id=file_execution_id,
+        status=ExecutionStatus.STOPPED.value,
+        error_message="Not processed: execution was stopped",
+    )
+    if not response.success:
+        logger.warning(
+            "Failed to mark file execution %s STOPPED: %s",
+            file_execution_id,
+            response.error,
+        )
+
+
+def _stop_remaining_files(
+    context: WorkflowContextData, remaining: list[Any], result: FileBatchResult
+) -> None:
+    """Count the batch's unprocessed files as failed and mark their rows STOPPED.
+
+    Files already completed in this execution stay uncounted, as in the main loop.
+    """
+    api_client = context.organization_context.api_client
+    already_completed = (context.metadata or {}).get("skipped_already_completed", [])
+    for file_item in remaining:
+        if _file_item_identifier(file_item) in already_completed:
+            continue
+        result.increment_failure()
+        name = _file_item_name(file_item)
+        pre_created = context.pre_created_file_executions.get(name) if name else None
+        if pre_created:
+            _mark_file_stopped(api_client, pre_created.id)
+    logger.warning(
+        "[exec:%s] Execution was stopped; skipped the batch's %s remaining file(s)",
+        context.execution_id,
+        len(remaining),
+    )
+
+
 def _process_individual_files(context: WorkflowContextData) -> WorkflowContextData:
     """Process each file individually through the workflow.
 
@@ -703,6 +865,11 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
 
     # Process each file - handle list, tuple, and dictionary formats
     for file_number, file_item in enumerate(files, 1):
+        # Stop between files once the run is aborted.
+        if _is_execution_stopped(api_client, context.execution_id):
+            _stop_remaining_files(context, files[file_number - 1 :], result)
+            break
+
         # Handle Django list format (from asdict serialization), tuple format, and dictionary format
         if isinstance(file_item, list):
             # Django backend format after asdict(): [file_name, file_hash_dict]
