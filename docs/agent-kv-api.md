@@ -1312,8 +1312,15 @@ production.
   them. An object-store lifecycle rule cannot do it either — `org_id` sits
   ABOVE `cache/` in the path and S3/MinIO lifecycle prefixes are literal with
   no wildcard, so there is no single prefix that matches every org's cache.
-  **Worth knowing for a retention question:** a document's extracted text can
-  outlive the job that produced it, up to this TTL.
+  **Worth knowing for a retention question, and state it carefully:** this is
+  a cleanup THRESHOLD, not a deletion deadline. Passing the TTL makes an entry
+  *eligible*; it goes when a tick happens to examine it. The sweep is capped at
+  a number of objects EXAMINED per call (not deleted) and works through a
+  rotating offset, and a per-object delete failure is tolerated rather than
+  retried — so a large cache, or a bucket refusing deletes, leaves extracted
+  text in place past the TTL with no upper bound this document can state. A
+  document's extracted text can therefore outlive the job that produced it by
+  longer than this number. Do not quote it to a customer as a maximum.
 - **TTL cleanup marks every row it processes `files_purged`**, on the same terms as
   `DELETE` ([§7](#7-delete--delete-agent-kvjob_id)): before the deletes are
   attempted, and whether or not they succeed. The sweep *is* a purge, so it owes
@@ -1897,7 +1904,7 @@ having a constant default.
 | `AGENT_KV_MAX_CALCULATIONS_BYTES` | `20000` | Byte cap on the optional `calculations` field. |
 | `AGENT_KV_MAX_SCHEMA_BYTES` | `262144` | Byte cap on the raw `keys` JSON document (256 KiB). |
 | `AGENT_KV_RESULT_TTL_DAYS` | `7` | Result retention window (and a cancelled job's input, which rides the same TTL — a completed/failed job's input is deleted immediately at finalize instead), stamped at submit time (see [§9](#9-retention-and-ttl)). |
-| `AGENT_KV_CACHE_TTL_DAYS` | *(follows `AGENT_KV_RESULT_TTL_DAYS`)* | How long an OCR document-cache entry may live. **Derived, not chosen**: the cache holds the document's extracted TEXT, so it must not outlive the job data it came from, and defaulting it to the result TTL means one knob moves both unless an operator deliberately splits them. It needs its own sweep because the entries are CONTENT-addressed (`{prefix}/{org}/cache/{doc_sha256}-…`) with no job row to hang off, so neither `delete_job_files` nor the row-driven TTL cleanup can reach them — and an object-store lifecycle rule cannot either, because `org_id` sits ABOVE `cache/` in the path and S3/MinIO lifecycle prefixes are literal. |
+| `AGENT_KV_CACHE_TTL_DAYS` | *(follows `AGENT_KV_RESULT_TTL_DAYS`)* | Age at which an OCR document-cache entry becomes ELIGIBLE for deletion — a cleanup threshold, not a maximum lifetime ([§9](#9-retention-and-ttl) says why the distinction matters). **Derived, not chosen**: the cache holds the document's extracted TEXT, so it must not outlive the job data it came from, and defaulting it to the result TTL means one knob moves both unless an operator deliberately splits them. It needs its own sweep because the entries are CONTENT-addressed (`{prefix}/{org}/cache/{doc_sha256}-…`) with no job row to hang off, so neither `delete_job_files` nor the row-driven TTL cleanup can reach them — and an object-store lifecycle rule cannot either, because `org_id` sits ABOVE `cache/` in the path and S3/MinIO lifecycle prefixes are literal. |
 | `AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE` | `""` (off) | **Test/dev only.** Waives the `webhook_url` https-and-public-host rule at submit AND at delivery — one switch, honoured on both sides, so the e2e webhook lane can post to a receiver on the compose host. Accepts `1`/`true`/`yes`. Never set it in production; see [§8](#8-webhook-delivery). |
 | `AGENT_KV_MAX_TIMEOUT_SECONDS` | `300` | Upper bound on the submit `timeout` (synchronous-wait) field. **This is the bound the serializer checks** — the spec's literal `300` is only this default, so do not document the number as fixed ([§3](#3-submit--post-agent-kv-multipart)). |
 | `AGENT_KV_CONCURRENT_LIMIT` | `5` | Per-organization concurrent in-flight job cap (own Redis namespace). Fails **closed** (429) when Redis is unreachable — see `AGENT_KV_LIMITER_FAIL_OPEN`. |
