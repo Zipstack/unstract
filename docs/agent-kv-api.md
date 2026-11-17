@@ -127,7 +127,29 @@ A schema node is one of three shapes, decided structurally:
   | `format` | no (default `string`) | `string` \| `number` \| `currency` \| `date` \| `enum:v1,v2,…` \| `regex:<pattern>` \| any other free-text hint. `number`/`currency` parse via a strip-then-`float()` check; `date` accepts a fixed set of common formats; `enum` matches case-insensitively; `regex` is `re.fullmatch`. |
   | `required` | no (default `false`) | Completeness is checked separately from format. |
   | `aliases` | no (default `[]`) | Alternate names/labels to help the extractor recognize the field. |
-  | `multivalued` | no (default `false`) | Value is a comma-separated string; each element is format-checked independently. |
+  | `multivalued` | no (default `false`) | Value is a comma-separated string. **Comma handling is not uniform, and the split depends on `format`** — see the note below this table. |
+
+  **`multivalued` and the comma-ambiguous formats.** Validation and
+  normalization disagree about what the elements of a multivalued value are,
+  and for `number`, `currency` and `date` the disagreement is the point.
+
+  * **Validation always splits on commas.** `validators.validate_format` does
+    `[e.strip() for e in value.split(",")]` and format-checks each element, for
+    every format.
+  * **Normalization does not, for the comma-ambiguous ones.**
+    `COMMA_AMBIGUOUS_FORMATS` is `{number, currency, date}`, and for those
+    `normalize_for_output` returns the raw value untouched rather than
+    tokenizing it, because a comma there is a thousands separator or part of
+    "Mon DD, YYYY". Splitting shredded them: `"$1,000, $2,000"` came out as
+    `"1, 0, 2, 0"`. Cross-page union does the same — comma-ambiguous formats are
+    unioned whole instead of CSV-joined, after a single `1,234.56` on one page
+    was corrupted to `1, 234.56` with no multivalue and no duplicate involved.
+
+  So `{"format": "currency", "multivalued": true}` is accepted, and its value
+  comes back as the raw string rather than a list of canonicalised amounts —
+  while validation meanwhile judged it as four elements. Use `multivalued` for
+  selection and text formats; for several amounts or dates, declare an array
+  (`_array`) with one row per value instead.
 
   A node mixing object values and scalar attributes is a **compile-time error**
   ("mixes object children and scalar attributes"), as is a leaf with unknown attribute
@@ -249,10 +271,17 @@ billed**.
 
 ## 3. Submit — `POST /api/v1/agent-kv/` (multipart)
 
-Copied verbatim from spec §7.1 and cross-checked field-by-field against
-`backend/agent_kv/execution_serializers.py::SubmitSerializer` — every row below matches
-the shipped serializer exactly; no drift found in the submit contract itself (see the
-notes after the table for two spec-vs-code nuances worth flagging).
+Derived from spec §7.1 and checked field-by-field against
+`backend/agent_kv/execution_serializers.py::SubmitSerializer`.
+
+This paragraph used to end "every row below matches the shipped serializer
+exactly; no drift found in the submit contract itself". That was not true when
+it was written and it is the reason it stopped being checked: three rows in the
+table below (`tags`, `custom_data`, `webhook_url`) described a contract the
+serializer did not have, and `timeout` and `page_start`/`page_end` contradicted
+notes further down this same document. A summary that certifies itself is
+exactly the one nobody re-reads — so this says what it was checked against and
+when, and claims nothing about what it will be true of later.
 
 The request is **extractor-scoped**: a per-extractor schema and its knobs live inside
 `extractors`, and only fields describing the request itself stay top level.
@@ -264,7 +293,7 @@ The request is **extractor-scoped**: a per-extractor schema and its knobs live i
 | `file` | yes | One document per job (D12). |
 | `extractors` | yes | JSON array (file part or inline JSON string), one entry per extractor. Compiled synchronously; invalid ⇒ 400, nothing billed. |
 | `page_start`, `page_end` | no | 1-based inclusive range. **Job-level, not per-extractor**: there is one shared OCR pass over the document, so the range selects which of its pages the extraction agents read and cannot differ between extractors reading the same document. It does **not** narrow the OCR pass and does **not** reduce the page cap or the bill — the whole file is OCR'd and billed whatever the range — see the page-cap note in [§3a](#3a-adapters--you-supply-the-models-and-the-ocr-credentials) and [§13](#12-environment-reference). |
-| `timeout` | no | Omitted or `0` = pure async (immediate 202). `1–300`: the view polls the job row up to the deadline and returns the result inline if the job completes, else 202 with the job id. |
+| `timeout` | no | Omitted or `0` = pure async (immediate 202). `1`–`AGENT_KV_MAX_TIMEOUT_SECONDS` (default `300`, **deployment-configurable** — the serializer checks the setting, not a literal): the view polls the job row up to the deadline and returns the result inline if the job completes, else 202 with the job id. |
 | `tags` | no | `ListField(child=CharField(max_length=64), max_length=20)` — **a list of at most 20 strings of at most 64 characters**, not a string. Stored on the job row; **not** returned by status or result. |
 | `custom_data` | no | `JSONField` — arbitrary JSON, not a string. Stored on the job row; **not** returned by status or result. |
 | `webhook_url` | no | Terminal-state POST `{job_id, status}` — no result payload. One per job, plus exactly one additive follow-up in the raced-cancel case (§8). **https, public host**, checked at submit by `validate_webhook_url` — but **syntactically only** (`resolve=False`), so a hostname that resolves inward is accepted here and refused at the sink. Acceptance at submit is not a delivery guarantee (§8). |
@@ -448,7 +477,7 @@ endpoint.
 
 `501`: [engine unavailable](#10-when-the-engine-is-unavailable-501-behavior).
 `429`: rate-limited (per-key request rate, or per-org concurrent-job limit — see
-[§6](#12-environment-reference)).
+[§12](#12-environment-reference)).
 `402`: the organization's subscription does not permit the request — its trial has
 expired, or the subscription is inactive. Nothing is dispatched and nothing is
 billed. This is the same gate, the same policy and the same response bodies an
@@ -572,8 +601,8 @@ list for the extractor that actually ran
 Each stage entry always carries `status` (`running`|`done`) and, if reported,
 `seconds`; any additional flat scalar counters the executor reported for that stage
 (e.g. `keys_checked`, `flagged`, `fields_repulled`) ride alongside — nested/list
-counters, and any counter using the reserved keys `status`/`seconds`, are dropped by the
-internal stage-report endpoint rather than persisted (`backend/agent_kv/internal_views.py::_sanitize_counters`).
+counters, and any counter using the reserved keys `status`/`seconds`/`name`, are dropped
+by the internal stage-report endpoint rather than persisted (`backend/agent_kv/internal_views.py::_sanitize_counters`).
 
 `adapters` echoes the platform adapter ids this job was dispatched with, by role
 — the ones the submit named and the gate validated (§3a). It is reported because
@@ -940,6 +969,14 @@ the engine settled on; `table_pages` are the 1-based pages the rows came from; a
 `row_count` is the number of rows extracted. `timing` rides inside the extractor block,
 and `parse_failures` appears only when some page failed to parse.
 
+Two further keys are **conditional**, and a client building a strict response
+model needs them: `sheet_headers` (`{sheet_name: [headers]}`) is emitted when a
+multi-sheet workbook's detection produced per-sheet results, and
+`code_execution` (`{success, output_path, rows_written, error}`) when code
+execution ran. Both come from the engine's own `to_dict`, which omits them
+rather than sending an empty value — so treat absence as "not applicable", not
+as missing data.
+
 **`detected` / `reason` — why an empty result is empty.** A run that finds nothing is
 a *successful* run, and it bills: the detection agents have already been paid for by
 the time the pipeline gives up. Two quite different outcomes used to arrive looking
@@ -1261,11 +1298,22 @@ production.
   `expires_at` passes, or by an explicit `DELETE /api/v1/agent-kv/{job_id}`.
 - **Result retention**: `AGENT_KV_RESULT_TTL_DAYS` (default **7** days, D10's
   engineering default) — results are re-readable until then, then swept by the
-  internal `ttl-cleanup` endpoint ([§6](#11-deploy-checklist)), which blanks
+  internal `ttl-cleanup` endpoint ([§11](#11-deploy-checklist)), which blanks
   `result_ref` (and `input_ref` too, covering the cancelled-job case above, or
   defensively for any input that somehow outlives completion). The job row itself is
   never deleted (audit trail persists past TTL, only the object-store payloads are
   dropped).
+- **The OCR document cache has its own TTL and its own sweep.**
+  `AGENT_KV_CACHE_TTL_DAYS` defaults to `AGENT_KV_RESULT_TTL_DAYS`, so moving
+  the result TTL moves the cache with it unless an operator sets both. It needs
+  a separate sweep rather than riding the one below: cache entries are
+  CONTENT-addressed (`{prefix}/{org}/cache/{doc_sha256}-…`) with no job row to
+  hang off, so neither `delete_job_files` nor the row-driven cleanup can reach
+  them. An object-store lifecycle rule cannot do it either — `org_id` sits
+  ABOVE `cache/` in the path and S3/MinIO lifecycle prefixes are literal with
+  no wildcard, so there is no single prefix that matches every org's cache.
+  **Worth knowing for a retention question:** a document's extracted text can
+  outlive the job that produced it, up to this TTL.
 - **TTL cleanup marks every row it processes `files_purged`**, on the same terms as
   `DELETE` ([§7](#7-delete--delete-agent-kvjob_id)): before the deletes are
   attempted, and whether or not they succeed. The sweep *is* a purge, so it owes
@@ -1346,7 +1394,7 @@ On `noop: true`, the executor **must**:
 Step 2 is not optional. `FinalizeView`'s terminal-state guard (spec §5.4) correctly
 no-ops the status write for an already-terminal job — but its concurrency-slot
 release (`AgentKVConcurrencyLimiter.release`) lives in a `finally`, unconditional on
-whether the guard actually won ([§6](#9-retention-and-ttl) covers the input-deletion
+whether the guard actually won ([§9](#9-retention-and-ttl) covers the input-deletion
 side of this same guard). An executor that treats `noop: true` as "nothing left to do
 here" and skips the finalize call entirely leaks that job's concurrency slot for the
 rest of the limiter's TTL (6 hours) instead of releasing it immediately. This is the
@@ -1360,7 +1408,7 @@ beyond `docker compose up`:
 
 1. **Cloud plugin**: install/enable the `agent_kv` backend capability plugin
    (probed via `plugins.get_plugin("agent_kv")`) — without it, submit always 501s
-   ([§6](#10-when-the-engine-is-unavailable-501-behavior)). This repo ships gated
+   ([§10](#10-when-the-engine-is-unavailable-501-behavior)). This repo ships gated
    dark by design; nothing to do for an OSS-only deployment except accept the 501.
    The marker the probe keys off is the mere presence of
    `backend/plugins/agent_kv/__init__.py` — a cloud image ships it (via the
@@ -1372,9 +1420,35 @@ beyond `docker compose up`:
    **`agentic_kv`** (`EXTRACTOR_ROUTES`, `backend/agent_kv/constants.py`). So this
    API uses two queues — **`celery_executor_agentic_table`** and
    **`celery_executor_agentic_kv`** — and every fleet must drain both:
-   `workers/run-worker.sh`'s executor default list, `docker/docker-compose.yaml`,
-   `tests/compose/docker-compose.test.yaml`, and
-   `workerPgExecutor.env.WORKER_PG_QUEUE_CONSUMER_QUEUE` in the cloud chart.
+   `workers/run-worker.sh`'s executor default list,
+   `docker/docker-compose.yaml` and
+   `tests/compose/docker-compose.test.yaml`.
+
+   > **In the cloud chart the two queues are on DIFFERENT POOLS, and putting
+   > them back together costs money.** `workerPgExecutor` drains
+   > `celery_executor_agentic_table` and six siblings; it does **not** drain
+   > `celery_executor_agentic_kv`, and the chart says so where the queue list
+   > is set: *"celery_executor_agentic_kv is DELIBERATELY absent: it moved to
+   > workerPgAgentKv, which is the same WORKER_TYPE on its own pool so it can
+   > carry MAX_ATTEMPTS=1."*
+   >
+   > That is the whole point of the carve-out. `workerPgAgentKv` sets
+   > `WORKER_PG_QUEUE_CONSUMER_MAX_ATTEMPTS: "1"` — at-most-once for `kv`, so a
+   > hard-killed attempt is not redelivered and the OCR plus LLM spend is paid
+   > once. Adding the queue back to `workerPgExecutor` puts `kv` on its
+   > siblings' redelivery posture and re-opens exactly that duplicate spend;
+   > `unittests/validate-agent-kv-attempts.yaml` refuses the change, so this is
+   > a failed `helm upgrade` rather than a silent regression — but do not go
+   > looking for the queue in `workerPgExecutor` and "fix" its absence.
+   >
+   > An earlier revision of this item told an operator to ensure
+   > `workerPgExecutor.env.WORKER_PG_QUEUE_CONSUMER_QUEUE` carried both. It was
+   > written before the pool split and was wrong in the expensive direction.
+   > On-prem, the pool is reached through the fleet switch rather than named
+   > directly — `sample.on-prem.values.yaml` documents the two knobs.
+   >
+   > The OSS wiring test reads the compose files and `run-worker.sh`, not this
+   > chart, so it cannot catch a chart-side mistake here.
 
    > **Both queues are required now. Do not remove either.** An earlier revision of
    > this checklist said the opposite — "do not add `celery_executor_agentic_kv`" —
@@ -1394,10 +1468,22 @@ beyond `docker compose up`:
 
    Note the knob name too: since Celery was removed (UN-4078) the deployed fleet is
    the PostgreSQL queue consumer, so the setting that matters is
-   **`WORKER_PG_QUEUE_CONSUMER_QUEUE`**, not `CELERY_QUEUES_EXECUTOR`. Both fleets
-   also carry `additionalConfigs: [..., agentKv]`
-   (`charts/unstract-platform/values.yaml`, cloud repo) so the executor pods get the
-   `AGENT_KV_*` LLM/LLMWhisperer env alongside the queue wiring.
+   **`WORKER_PG_QUEUE_CONSUMER_QUEUE`**, not `CELERY_QUEUES_EXECUTOR`.
+
+   Both pools carry `additionalConfigs: [..., agentKv]`
+   (`charts/unstract-platform/values.yaml`, cloud repo) — but **not for LLM or
+   OCR credentials.** An earlier revision of this line said the group exists so
+   the pods get "the `AGENT_KV_*` LLM/LLMWhisperer env"; those six variables
+   (`AGENT_KV_LLM_PROVIDER`, `AGENT_KV_LITE_MODEL`, `AGENT_KV_ADVANCED_MODEL`,
+   `AGENT_KV_LLM_API_KEY`, `AGENT_KV_LLMWHISPERER_API_KEY`,
+   `AGENT_KV_LLMWHISPERER_BASE_URL`) were **deleted** with the adapter
+   migration, are read on neither path, and `agentKv` has no External Secrets
+   group any more. Credentials now come from the caller's own platform adapters
+   ([§3a](#3a-adapters--you-supply-the-models-and-the-ocr-credentials)). The
+   group is still mounted because the deployment refuses an `additionalConfigs`
+   name with no matching group, and because what remains in it is non-secret
+   configuration with code defaults — which is also why enabling it is now a
+   one-line values change (item 5).
 3. **Callback queue**: the `ide_callback` worker must consume `agent_kv_callback`
    alongside its own `ide_callback` queue, or jobs dispatch but never finalize. This is
    already the hardcoded default in both `workers/run-worker-docker.sh` and
@@ -1507,7 +1593,7 @@ beyond `docker compose up`:
    ttl-cleanup additionally needs `storage` for `AGENT_KV_FILE_STORAGE_CREDENTIALS`
    (see item 6 below) — both already on the `backend` deployment's config list.
 5. **Env vars**: every `AGENT_KV_*` setting plus `AGENT_KV_FILE_STORAGE_CREDENTIALS` —
-   see [§6](#12-environment-reference) and `docker/sample.env`.
+   see [§12](#12-environment-reference) and `docker/sample.env`.
 
    > **NO EXECUTOR-SIDE CREDENTIAL EXISTS ANY MORE, on either extractor.** Both
    > the `table` and the `kv` path resolve the caller's own platform adapters
@@ -1790,19 +1876,30 @@ beyond `docker compose up`:
 
 ## 12. Environment reference
 
-All `AGENT_KV_*` settings (`backend/backend/settings/base.py`), each `os.environ.get`
-with the default shown:
+Every `AGENT_KV_*` setting in `backend/backend/settings/base.py`, with the
+default shown. Two of them were missing from this table until now
+(`AGENT_KV_CACHE_TTL_DAYS`, `AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE`), so
+if you are adding a setting, add its row here in the same change — the table is
+only as complete as the last person made it, and it claimed to be exhaustive
+while it was not.
+
+Most are a bare `os.environ.get`; `AGENT_KV_PATH_PREFIX` and
+`AGENT_KV_STORAGE_DIR_PREFIX` are normalised or validated on the way in, and
+`AGENT_KV_CACHE_TTL_DAYS` is **derived from another setting** rather than
+having a constant default.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AGENT_KV_PATH_PREFIX` | `api/v1/agent-kv` | Top-level public URL prefix (whitelisted past tenant middleware). |
+| `AGENT_KV_PATH_PREFIX` | `{PATH_PREFIX}/agent-kv` → `api/v1/agent-kv` | Top-level public URL prefix (whitelisted past tenant middleware). The default is **derived from `PATH_PREFIX`**, not the literal string: it is `f"{PATH_PREFIX}/agent-kv"`, and `PATH_PREFIX` itself defaults to `api/v1`, so a deployment that moves `PATH_PREFIX` moves this with it. Passed through `validate_agent_kv_path_prefix` against `PATH_PREFIX` and `API_DEPLOYMENT_PATH_PREFIX`. |
 | `AGENT_KV_MAX_FILE_SIZE_MB` | `50` | Submit-time file size cap. |
 | `AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS` | `3600` | How long after CANCELLATION a cancelled job's executor is presumed dead, so the sweep's phase 3 may release the concurrency slot it still holds. Must stay **below** `rate_limiter.SLOT_TTL_SECONDS` (6 h) or the window is empty and the phase silently releases nothing. |
 | `AGENT_KV_MAX_PAGES` | `100` | Pre-OCR cap on the pages of the DOCUMENT for PDFs — checked against `pages_total`, **not** against the `page_start`/`page_end` range (§6.1), because the whole file is OCR'd and billed whatever the range. The cloud worker refuses on the same quantity. Excel has no pre-OCR page concept, so it takes the engine's post-OCR virtual-page cap instead; images are not accepted. |
 | `AGENT_KV_MAX_CALCULATIONS_BYTES` | `20000` | Byte cap on the optional `calculations` field. |
 | `AGENT_KV_MAX_SCHEMA_BYTES` | `262144` | Byte cap on the raw `keys` JSON document (256 KiB). |
-| `AGENT_KV_RESULT_TTL_DAYS` | `7` | Result retention window (and a cancelled job's input, which rides the same TTL — a completed/failed job's input is deleted immediately at finalize instead), stamped at submit time (see [§6](#9-retention-and-ttl)). |
-| `AGENT_KV_MAX_TIMEOUT_SECONDS` | `300` | Upper bound on the submit `timeout` (synchronous-wait) field. |
+| `AGENT_KV_RESULT_TTL_DAYS` | `7` | Result retention window (and a cancelled job's input, which rides the same TTL — a completed/failed job's input is deleted immediately at finalize instead), stamped at submit time (see [§9](#9-retention-and-ttl)). |
+| `AGENT_KV_CACHE_TTL_DAYS` | *(follows `AGENT_KV_RESULT_TTL_DAYS`)* | How long an OCR document-cache entry may live. **Derived, not chosen**: the cache holds the document's extracted TEXT, so it must not outlive the job data it came from, and defaulting it to the result TTL means one knob moves both unless an operator deliberately splits them. It needs its own sweep because the entries are CONTENT-addressed (`{prefix}/{org}/cache/{doc_sha256}-…`) with no job row to hang off, so neither `delete_job_files` nor the row-driven TTL cleanup can reach them — and an object-store lifecycle rule cannot either, because `org_id` sits ABOVE `cache/` in the path and S3/MinIO lifecycle prefixes are literal. |
+| `AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE` | `""` (off) | **Test/dev only.** Waives the `webhook_url` https-and-public-host rule at submit AND at delivery — one switch, honoured on both sides, so the e2e webhook lane can post to a receiver on the compose host. Accepts `1`/`true`/`yes`. Never set it in production; see [§8](#8-webhook-delivery). |
+| `AGENT_KV_MAX_TIMEOUT_SECONDS` | `300` | Upper bound on the submit `timeout` (synchronous-wait) field. **This is the bound the serializer checks** — the spec's literal `300` is only this default, so do not document the number as fixed ([§3](#3-submit--post-agent-kv-multipart)). |
 | `AGENT_KV_CONCURRENT_LIMIT` | `5` | Per-organization concurrent in-flight job cap (own Redis namespace). Fails **closed** (429) when Redis is unreachable — see `AGENT_KV_LIMITER_FAIL_OPEN`. |
 | `AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE` | `60` | Per-key request rate limit (submit + validate). Fails **closed** (429) when Redis is unreachable — see `AGENT_KV_LIMITER_FAIL_OPEN`. |
 | `AGENT_KV_LIMITER_FAIL_OPEN` | `false` | What both limiters above do when Redis is unreachable. Default `false` = fail **closed**: the request is refused with a 429. Set `true` to restore the old fail-open behaviour, where an unreachable Redis removed the concurrency ceiling **and** the per-key rate ceiling at once while the API went on accepting billable work — a state that cannot be observed from the outside. A 429 is recoverable by the caller; an unbounded fan-out is not. |

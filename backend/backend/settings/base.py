@@ -326,8 +326,16 @@ AGENT_KV_SWEEP_GRACE_SECONDS = int(os.environ.get("AGENT_KV_SWEEP_GRACE_SECONDS"
 AGENT_KV_STUCK_JOB_GRACE_SECONDS = int(
     os.environ.get("AGENT_KV_STUCK_JOB_GRACE_SECONDS", 21600)
 )
-#: How long after DISPATCH a cancelled job's executor is presumed dead, so the
+#: How long after THE CANCEL a cancelled job's executor is presumed dead, so the
 #: sweep may release the concurrency slot it still holds.
+#:
+#: Measured from `completed_at` (the cancel), NOT from `dispatched_at`. This
+#: comment said "after DISPATCH" and was left behind when that was fixed:
+#: `dispatched_at` records ENQUEUEING, so with a queue backlog longer than the
+#: grace a job could pass a dispatch-age test while its executor had only just
+#: started, and the sweep would free a slot still in use. `maintenance.py`'s
+#: phase 3 carries the full reasoning; the ceiling is the one bound that stays
+#: on `dispatched_at`, because it asks whether Redis still holds the slot.
 #:
 #: Its own setting, and deliberately shorter than both the stuck grace and
 #: `rate_limiter.SLOT_TTL_SECONDS`. Phase 3 of the sweep used the stuck grace
