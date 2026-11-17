@@ -95,8 +95,10 @@ test.describe("P4-T01 API Deployments", { tag: DIST.both }, () => {
   (`[data-ui-version="v1"]`, carrying `data-theme`), and the theme modes and
   storage key from `src/v1/lib/theme.ts`.
 - `specs/P0-T09.demo.spec.ts` proves the switch on P0-T03's demo pages
-  (`/:orgName/v1-demo`, `/:orgName/v1-demo-review`). Those pages load no data,
-  so the five-state helper is proven on `support/state-fixture.ts`.
+  (`/:orgName/v1-demo`, `/:orgName/v1-demo-review`). Their only data, the demo
+  page's adapter list, renders none of the state components the five-state
+  helper looks for (`STATE_TEST_IDS`), so it is proven on
+  `support/state-fixture.ts`.
 
 Still open:
 

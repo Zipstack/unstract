@@ -106,8 +106,8 @@ export function clearBrowserStorage(): void {
 }
 
 /**
- * When another tab signs out, clears this tab's sessionStorage and signs this
- * tab out too. Mount once at the app root; returns the unsubscribe.
+ * When another tab signs out, clears this tab's sessionStorage and calls
+ * `signOut` to sign this tab out too. Returns the unsubscribe.
  *
  * It signs out rather than reloads: the message can arrive before the server
  * has ended the session (v0 logs out by navigating to the GET logout, and v1
@@ -126,11 +126,10 @@ export function clearBrowserStorage(): void {
  * out and the ended-session cleanup runs; with someone signed in again, it
  * shows their session and ends nothing.
  *
- * It uses the GET logout, as v0 does. When the backend drops GET logout (see
- * `signOutAndLeave` in services/session.ts), this call site must move to the
- * POST too, without announcing the sign-out again.
+ * `signOut` comes from services/logout.ts, which owns the backend URL.
  */
-export function signOutWhenSignedOutElsewhere(
+export function onSignedOutElsewhere(
+  signOut: () => void,
   isSignedOut: () => boolean = () => false,
 ): () => void {
   const current = sessionChannel();
@@ -155,7 +154,7 @@ export function signOutWhenSignedOutElsewhere(
       window.location.reload();
       return;
     }
-    window.location.assign("/api/v1/logout");
+    signOut();
   };
   current.addEventListener("message", onMessage);
   return () => current.removeEventListener("message", onMessage);
