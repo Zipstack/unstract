@@ -1,3 +1,4 @@
+import { clearBrowserStorage } from "@v1/lib/browserStorage";
 import { http } from "@v1/lib/http";
 import posthog from "posthog-js";
 
@@ -20,17 +21,20 @@ export async function signOut(): Promise<string> {
   return url.href;
 }
 
-/** Signs out, forgets the analytics identity and leaves the app. */
+/** Signs out, forgets the analytics identity and stored data, and leaves the app. */
 export async function signOutAndLeave(): Promise<void> {
   let destination: string;
   try {
     destination = await signOut();
   } catch (error) {
-    // Logged so a failing POST shows up: the backend drops GET logout once v0 goes.
+    // Logged so a failing POST shows up: the backend drops GET logout once v0
+    // goes. The cross-tab sign-out (signOutWhenSignedOutElsewhere in
+    // lib/browserStorage.ts) uses the GET too and must move with it.
     console.error("Sign-out POST failed; falling back to GET", error);
     // The GET logout ends the session too and redirects itself (v0's path).
     destination = "/api/v1/logout";
   }
   posthog.reset();
+  clearBrowserStorage();
   window.location.assign(destination);
 }
