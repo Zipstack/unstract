@@ -1,52 +1,83 @@
 /*
- * RequireGuest on an OSS-ONLY build — no plugins directory, so no product
- * store at all.
+ * `RequireGuest` deciding where a visitor goes, across the three shapes the
+ * product plugin can take in this repository.
  *
- * UN-4626 made this component read `?selectedProduct=` as a fallback when the
- * store cannot name an external home, which is what lets a visitor handed
- * here by another app reach the product they asked for instead of falling
- * through to Document Studio. The plugin that answers that question is
- * overlay-only: `frontend/src/plugins/` does not exist in this repository, so
- * the fallback's own behaviour is pinned by the cloud store's tests
- * (`externalHomeForProduct`) and by staging.
+ * The plugin is overlay-only: `frontend/src/plugins/` does not exist here, so
+ * every shape has to be stubbed. An earlier version of this file stubbed it as
+ * an EMPTY module, which looked like "no plugin" but was worse than that — the
+ * first statement of the function under test threw, control jumped to the
+ * `catch`, and the fallback these tests exist for was never reached. All three
+ * passed with the production change deleted (review on #2494, 2026-11).
  *
- * What IS testable here, and what these tests are for, is the other half of
- * that contract: with no plugin present the new code path must be inert. The
- * query is read inside the same `try` that the absent import already throws
- * from, so an OSS build must route exactly as it did before — and must not
- * start throwing because a URL happens to carry the parameter.
+ * So the stub is now functional, and the shapes are separated:
+ *
+ *   PRESENT   — a working plugin. Exercises the fallback for real.
+ *   PARTIAL   — `externalHomeForProduct` missing, which is what a deployment
+ *               looks like between this PR merging and unstract-cloud#1998.
+ *   ABSENT    — no plugin at all, i.e. an OSS-only build.
+ *
+ * `/flow` rather than an absolute URL on purpose: that is the shape
+ * `config.flowUrl` actually has in every deployment.
  */
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-/*
- * FORCE THE PLUGIN ABSENT, rather than relying on this checkout not having
- * one (Greptile P2 on #2494). `RequireGuest` imports the product store
- * optionally, so in a tree with the cloud overlay applied — which is how the
- * cloud suite runs, and how a local checkout looks after `copy_cloud_deps` —
- * the REAL store loads and these assertions would turn on whether that
- * deployment configures a Flow URL. They passed here for that reason and not
- * for the right one. An empty module makes the accessor undefined, the call
- * throws into the same `try` the missing import throws into, and the OSS
- * contract is asserted the same way in both checkouts.
- */
-vi.mock("../../../plugins/store/select-product-store.js", () => ({}));
+const PLUGIN = "../../../plugins/store/select-product-store.js";
+const SESSION = "../../../store/session-store";
 
-vi.mock("../../../store/session-store", () => ({
-  useSessionStore: () => ({
-    sessionDetails: {
-      isLoggedIn: true,
-      orgName: "my-org",
-      adapters: ["llm", "vector_db", "embedding", "x2text"],
+/** A plugin that can answer both questions. */
+const PRESENT = {
+  externalHomeForSelectedProduct: () => null,
+  externalHomeForProduct: (p) => (p === "flow" ? "/flow" : null),
+};
+/** The store already knows, so the query must not be consulted. */
+const PRESENT_WITH_STORED = {
+  externalHomeForSelectedProduct: () => "/flow",
+  externalHomeForProduct: () => "/should-not-be-used",
+};
+/** unstract-cloud#1998 not yet merged: the by-name accessor does not exist. */
+const PARTIAL = { externalHomeForSelectedProduct: () => null };
+
+let assigned;
+const stubLocation = () => {
+  assigned = [];
+  Object.defineProperty(window, "location", {
+    value: {
+      assign: (u) => assigned.push(u),
+      href: "https://host/landing",
+      pathname: "/landing",
+      search: "",
+      origin: "https://host",
     },
-  }),
-}));
+    writable: true,
+    configurable: true,
+  });
+};
 
-const { RequireGuest } = await import("./RequireGuest.jsx");
-
-const renderAt = (url) =>
-  render(
+const mount = async ({ plugin, loggedIn = true, url }) => {
+  vi.resetModules();
+  vi.doMock(SESSION, () => ({
+    useSessionStore: () => ({
+      sessionDetails: loggedIn
+        ? {
+            isLoggedIn: true,
+            orgName: "my-org",
+            adapters: ["llm", "vector_db", "embedding", "x2text"],
+          }
+        : { isLoggedIn: false },
+    }),
+  }));
+  if (plugin === null) {
+    // No plugins directory: the component's optional import rejects.
+    vi.doMock(PLUGIN, () => {
+      throw new Error("Cannot find module (OSS build has no plugins)");
+    });
+  } else {
+    vi.doMock(PLUGIN, () => plugin);
+  }
+  const { RequireGuest } = await import("./RequireGuest.jsx");
+  return render(
     <MemoryRouter initialEntries={[url]}>
       <Routes>
         <Route element={<RequireGuest />}>
@@ -56,45 +87,99 @@ const renderAt = (url) =>
       </Routes>
     </MemoryRouter>,
   );
+};
 
-describe("RequireGuest without the product plugin (OSS build)", () => {
-  it("routes a signed-in visitor in-app, parameter or not", async () => {
-    renderAt("/landing?selectedProduct=flow");
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.resetModules();
+});
 
-    // Unchanged from before UN-4626: with no plugin there is no external home
-    // to find, so the in-app destination still wins. An OSS deployment has
-    // nowhere else to send anybody.
-    expect(await screen.findByText("in-app")).toBeInTheDocument();
+describe("RequireGuest with a working product plugin", () => {
+  it("honours the product named ONLY in the query", async () => {
+    // The defect this PR fixes, and the assertion the old empty stub could
+    // never make: nothing writes the store on this path, so the query is the
+    // visitor's only statement of intent.
+    stubLocation();
+
+    await mount({ plugin: PRESENT, url: "/landing?selectedProduct=flow" });
+
+    await vi.waitFor(() => expect(assigned).toEqual(["/flow"]));
+    expect(screen.queryByText("in-app")).toBeNull();
   });
 
-  it("does not throw on a parameter it cannot resolve", async () => {
-    // The fallback runs inside the same `try` the absent plugin import throws
-    // from, so a malformed or hostile value must be swallowed exactly as the
-    // missing plugin is — not surface as a render error on a sign-in route.
-    renderAt("/landing?selectedProduct=https%3A%2F%2Fevil.example");
+  it("prefers the STORED product over the query", async () => {
+    // A fallback, not an override: a store that can answer keeps answering.
+    stubLocation();
 
-    expect(await screen.findByText("in-app")).toBeInTheDocument();
+    await mount({
+      plugin: PRESENT_WITH_STORED,
+      url: "/landing?selectedProduct=unstract",
+    });
+
+    await vi.waitFor(() => expect(assigned).toEqual(["/flow"]));
   });
 
-  it("still shows the guest route to a visitor with no session", async () => {
-    vi.resetModules();
-    vi.doMock("../../../store/session-store", () => ({
-      useSessionStore: () => ({ sessionDetails: { isLoggedIn: false } }),
-    }));
-    const { RequireGuest: Guest } = await import("./RequireGuest.jsx");
+  it("ignores a query product the plugin does not recognise", async () => {
+    // The closed-map property, seen from this side: an unrecognised name —
+    // including anything someone appends hoping to be redirected to it —
+    // leaves the in-app destination standing.
+    stubLocation();
 
-    render(
-      <MemoryRouter initialEntries={["/landing?selectedProduct=flow"]}>
-        <Routes>
-          <Route element={<Guest />}>
-            <Route path="/landing" element={<div>landing</div>} />
-          </Route>
-        </Routes>
-      </MemoryRouter>,
-    );
+    await mount({
+      plugin: PRESENT,
+      url: "/landing?selectedProduct=https%3A%2F%2Fevil.example",
+    });
 
-    // The branch this change must never disturb: `/landing` is a public route,
-    // so a guest sees it. This is the path bug 1's bounce depends on.
+    expect(await screen.findByText("in-app")).toBeInTheDocument();
+    expect(assigned).toEqual([]);
+  });
+
+  it("routes in-app when no product is named at all", async () => {
+    stubLocation();
+
+    await mount({ plugin: PRESENT, url: "/landing" });
+
+    expect(await screen.findByText("in-app")).toBeInTheDocument();
+    expect(assigned).toEqual([]);
+  });
+
+  it("leaves a signed-OUT visitor on the guest route", async () => {
+    // `/landing` is public, so the external redirect never runs. This is the
+    // path omnibench-platform#903's bounce depends on.
+    stubLocation();
+
+    await mount({
+      plugin: PRESENT,
+      loggedIn: false,
+      url: "/landing?selectedProduct=flow",
+    });
+
     expect(await screen.findByText("landing")).toBeInTheDocument();
+    expect(assigned).toEqual([]);
+  });
+});
+
+describe("RequireGuest before unstract-cloud#1998 lands", () => {
+  it("falls back to today's behaviour when the by-name accessor is missing", async () => {
+    // The merge-order safety property, now asserted instead of hand-checked:
+    // calling an accessor that does not exist throws into the `try` the
+    // lookup already sits in, so the visitor routes exactly as before.
+    stubLocation();
+
+    await mount({ plugin: PARTIAL, url: "/landing?selectedProduct=flow" });
+
+    expect(await screen.findByText("in-app")).toBeInTheDocument();
+    expect(assigned).toEqual([]);
+  });
+});
+
+describe("RequireGuest on an OSS-only build", () => {
+  it("routes in-app with no plugin present, parameter or not", async () => {
+    stubLocation();
+
+    await mount({ plugin: null, url: "/landing?selectedProduct=flow" });
+
+    expect(await screen.findByText("in-app")).toBeInTheDocument();
+    expect(assigned).toEqual([]);
   });
 });
