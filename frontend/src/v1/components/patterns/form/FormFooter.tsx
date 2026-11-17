@@ -8,7 +8,7 @@ import {
   type UseFormReturn,
   useFormState,
 } from "react-hook-form";
-import { isMounted, SERVER_ERROR } from "./use-app-form";
+import { errorLeaves, isMounted, SERVER_ERROR } from "./use-app-form";
 
 /** Leaves (true values) in react-hook-form's nested dirtyFields. */
 function countDirty(node: unknown): number {
@@ -19,20 +19,6 @@ function countDirty(node: unknown): number {
     return Object.values(node).reduce<number>((n, v) => n + countDirty(v), 0);
   }
   return 0;
-}
-
-/** Every field error as [path, message]; a schema refine with no path sits at "". */
-function errorLeaves(node: unknown, path = ""): [string, string][] {
-  if (!node || typeof node !== "object") {
-    return [];
-  }
-  const error = node as { type?: unknown; message?: unknown };
-  if (typeof error.type === "string") {
-    return [[path, typeof error.message === "string" ? error.message : ""]];
-  }
-  return Object.entries(node).flatMap(([key, child]) =>
-    errorLeaves(child, path ? `${path}.${key}` : key),
-  );
 }
 
 function status(
@@ -74,7 +60,9 @@ export function FormFooter<T extends FieldValues>({
   const leaves = errorLeaves(rest);
   const hasFieldErrors = leaves.some(([path]) => isMounted(control, path));
   const formLevel = [
-    ...leaves.filter(([path]) => !isMounted(control, path)).map(([, m]) => m),
+    ...leaves
+      .filter(([path]) => !isMounted(control, path))
+      .map(([, e]) => (typeof e.message === "string" ? e.message : "")),
     get(errors, SERVER_ERROR)?.message,
   ].filter((m): m is string => Boolean(m));
   const text = status(isSubmitting, dirty, hasFieldErrors);

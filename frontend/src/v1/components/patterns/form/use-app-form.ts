@@ -27,12 +27,45 @@ export function useAppForm<I extends FieldValues, O>({
   schema: z.ZodType<O, I>;
   defaultValues: DefaultValues<I>;
 }): UseFormReturn<I, unknown, O> {
-  return useForm<I, unknown, O>({
+  const form = useForm<I, unknown, O>({
     resolver: zodResolver(schema),
     defaultValues,
     mode: "onTouched",
     shouldFocusError: true,
   });
+  useEffect(() => {
+    // react-hook-form re-checks only the field that changed, but a schema rule
+    // can put its error on another field (a refine with a path). Re-check every
+    // field showing a schema error, so a fixed rule frees Save. Server
+    // errors stay until their own field changes or the next submit.
+    const { unsubscribe } = form.watch(() => {
+      const { root: _root, ...errors } = form.formState.errors;
+      const stale = errorLeaves(errors)
+        .filter(([path, e]) => path && e.type !== "server")
+        .map(([path]) => path as Path<I>);
+      if (stale.length > 0) {
+        void form.trigger(stale);
+      }
+    });
+    return unsubscribe;
+  }, [form]);
+  return form;
+}
+
+type ErrorLeaf = Readonly<{ type: string; message?: unknown }>;
+
+/** Every field error as [path, error]; a schema refine with no path sits at "". */
+export function errorLeaves(node: unknown, path = ""): [string, ErrorLeaf][] {
+  if (!node || typeof node !== "object") {
+    return [];
+  }
+  const error = node as { type?: unknown };
+  if (typeof error.type === "string") {
+    return [[path, node as ErrorLeaf]];
+  }
+  return Object.entries(node).flatMap(([key, child]) =>
+    errorLeaves(child, path ? `${path}.${key}` : key),
+  );
 }
 
 /** The backend's error body (drf_standardized_errors). */

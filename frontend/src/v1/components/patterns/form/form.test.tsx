@@ -326,6 +326,75 @@ describe("applyServerErrors", () => {
   });
 });
 
+describe("cross-field rules", () => {
+  const passwords = z
+    .object({ name: z.string(), password: z.string(), confirm: z.string() })
+    .refine((v) => v.password === v.confirm, {
+      message: "Passwords do not match",
+      path: ["confirm"],
+    });
+  type Passwords = z.infer<typeof passwords>;
+
+  function PasswordForm({
+    onSave,
+  }: {
+    onSave: () => Promise<ServerErrorBody>;
+  }) {
+    const form = useAppForm({
+      schema: passwords,
+      defaultValues: { name: "a", password: "", confirm: "" },
+    });
+    return (
+      <form
+        onSubmit={form.handleSubmit(async () =>
+          applyServerErrors(form, await onSave()),
+        )}
+      >
+        {(["name", "password", "confirm"] as const).map((key) => (
+          <FormField<Passwords> key={key} form={form} name={key} label={key}>
+            {(field) => <Input {...field} />}
+          </FormField>
+        ))}
+        <FormFooter form={form} />
+      </form>
+    );
+  }
+
+  it("re-checks a field whose error depends on the one that changed", async () => {
+    render(
+      <PasswordForm
+        onSave={async () => ({
+          type: "validation_error",
+          errors: [{ code: "taken", detail: "Name taken", attr: "name" }],
+        })}
+      />,
+    );
+    await userEvent.type(screen.getByLabelText("password"), "abc");
+    await userEvent.type(screen.getByLabelText("confirm"), "ab");
+    await userEvent.click(saveButton());
+    await screen.findByText("Passwords do not match");
+    expect(saveButton().disabled).toBe(true);
+    // Fix the password, not the field that holds the error.
+    await userEvent.clear(screen.getByLabelText("password"));
+    await userEvent.type(screen.getByLabelText("password"), "ab");
+    await vi.waitFor(() =>
+      expect(screen.queryByText("Passwords do not match")).toBeNull(),
+    );
+    expect(saveButton().disabled).toBe(false);
+    // The re-check leaves a server error alone: it clears on its own field's
+    // change or the next submit.
+    await userEvent.click(saveButton());
+    await screen.findByText("Name taken");
+    await userEvent.type(screen.getByLabelText("confirm"), "x");
+    await screen.findByText("Passwords do not match");
+    await userEvent.type(screen.getByLabelText("password"), "x");
+    await vi.waitFor(() =>
+      expect(screen.queryByText("Passwords do not match")).toBeNull(),
+    );
+    screen.getByText("Name taken");
+  });
+});
+
 describe("hidden and nested fields", () => {
   const nested = z.object({
     name: z.string().min(1),
