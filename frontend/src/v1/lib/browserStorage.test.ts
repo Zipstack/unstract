@@ -77,6 +77,11 @@ function otherTab(): BroadcastChannel {
   return new BroadcastChannel("unstract.session");
 }
 
+/** The message a tab posts when it signs out. */
+function signedOut(sentAt: number = Date.now()) {
+  return { type: "signed-out", sentAt };
+}
+
 /** Resolves once pending channel messages have been delivered. */
 function delivered(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 20));
@@ -97,7 +102,9 @@ describe("sign-out across tabs", () => {
     clearBrowserStorage();
     await delivered();
 
-    expect(received).toEqual(["signed-out"]);
+    expect(received).toEqual([
+      { type: "signed-out", sentAt: expect.any(Number) },
+    ]);
     tab.close();
   });
 
@@ -113,20 +120,58 @@ describe("sign-out across tabs", () => {
     const tab = otherTab();
 
     tab.postMessage("something-else");
+    tab.postMessage("signed-out");
+    tab.postMessage({ type: "something-else", sentAt: Date.now() });
     await delivered();
     expect(assign).not.toHaveBeenCalled();
     expect(window.sessionStorage.length).toBe(1);
 
-    tab.postMessage("signed-out");
+    tab.postMessage(signedOut());
     await delivered();
     expect(assign).toHaveBeenCalledTimes(1);
     expect(assign).toHaveBeenCalledWith("/api/v1/logout");
     expect(window.sessionStorage.length).toBe(0);
 
     stop();
-    tab.postMessage("signed-out");
+    tab.postMessage(signedOut());
     await delivered();
     expect(assign).toHaveBeenCalledTimes(1);
+    tab.close();
+  });
+
+  // Review finding: an anonymous share viewer or /landing has no session to
+  // end; sending it through the identity provider's logout loses the page.
+  it("only clears sessionStorage in a tab known to be signed out", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+    window.sessionStorage.setItem("dashboard_metrics_overview", "{}");
+    const stop = signOutWhenSignedOutElsewhere(() => true);
+    const tab = otherTab();
+
+    tab.postMessage(signedOut());
+    await delivered();
+
+    expect(assign).not.toHaveBeenCalled();
+    expect(window.sessionStorage.length).toBe(0);
+    stop();
+    tab.close();
+  });
+
+  // Review finding: a frozen tab runs a queued message when it thaws. If
+  // someone signed in again meanwhile, acting on it would end the new session.
+  it("ignores a stale sign-out", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+    window.sessionStorage.setItem("dashboard_metrics_overview", "{}");
+    const stop = signOutWhenSignedOutElsewhere();
+    const tab = otherTab();
+
+    tab.postMessage(signedOut(Date.now() - 60_000));
+    await delivered();
+
+    expect(assign).not.toHaveBeenCalled();
+    expect(window.sessionStorage.length).toBe(1);
+    stop();
     tab.close();
   });
 

@@ -13,6 +13,25 @@
 
 const SIGNED_OUT = "signed-out";
 
+// A sign-out message older than this is ignored. A tab the browser froze runs
+// queued messages when it thaws; by then someone may have signed in again,
+// and acting on the old message would end that new session in every tab.
+const SIGNED_OUT_MAX_AGE_MS = 10_000;
+
+type SignedOutMessage = { type: typeof SIGNED_OUT; sentAt: number };
+
+function isFreshSignedOut(data: unknown): data is SignedOutMessage {
+  if (typeof data !== "object" || data === null) {
+    return false;
+  }
+  const { type, sentAt } = data as Partial<SignedOutMessage>;
+  return (
+    type === SIGNED_OUT &&
+    typeof sentAt === "number" &&
+    Date.now() - sentAt <= SIGNED_OUT_MAX_AGE_MS
+  );
+}
+
 // One channel per document for both sending and listening: a BroadcastChannel
 // never receives its own messages, so the tab signing out does not react to
 // its own announcement.
@@ -80,7 +99,8 @@ export function clearBrowserStorage(): void {
   }
   clearUserLocalStorage();
   try {
-    sessionChannel()?.postMessage(SIGNED_OUT);
+    const message: SignedOutMessage = { type: SIGNED_OUT, sentAt: Date.now() };
+    sessionChannel()?.postMessage(message);
   } catch {
     // A closed or unsupported channel: other tabs find out on their next
     // request instead.
@@ -96,20 +116,32 @@ export function clearBrowserStorage(): void {
  * falls back to it when the POST fails), and a reload that wins that race
  * would load the user's data again. Logging out again is harmless, so
  * whichever request reaches the server first ends the session.
+ *
+ * `isSignedOut` reports that this tab is known to have no session (an
+ * anonymous share viewer, `/landing`); such a tab only clears its
+ * sessionStorage and stays on its page. An unknown state (a v1 page, which
+ * does not load the v0 session) signs out, so no user data is left on screen.
+ * A stale message (see SIGNED_OUT_MAX_AGE_MS) is ignored: that tab's next
+ * request finds the session gone.
  */
-export function signOutWhenSignedOutElsewhere(): () => void {
+export function signOutWhenSignedOutElsewhere(
+  isSignedOut: () => boolean = () => false,
+): () => void {
   const current = sessionChannel();
   if (!current) {
     return () => undefined;
   }
   const onMessage = (event: MessageEvent) => {
-    if (event.data !== SIGNED_OUT) {
+    if (!isFreshSignedOut(event.data)) {
       return;
     }
     try {
       window.sessionStorage.clear();
     } catch {
       // Storage unavailable: leaving the page still removes the data on screen.
+    }
+    if (isSignedOut()) {
+      return;
     }
     window.location.assign("/api/v1/logout");
   };
