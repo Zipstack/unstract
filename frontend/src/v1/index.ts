@@ -17,3 +17,8 @@ export type {
   RegistryEntry,
 } from "@v1/app/registry/types";
 export { VersionSwitch, type VersionSwitchProps } from "@v1/app/VersionSwitch";
+export {
+  clearBrowserStorage,
+  clearUserLocalStorage,
+  signOutWhenSignedOutElsewhere,
+} from "@v1/lib/browserStorage";
