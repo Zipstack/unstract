@@ -17,6 +17,8 @@ describe("useLogout", () => {
       configurable: true,
       value: original,
     });
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   // The backend's redirects end at the identity provider, which answers no
@@ -33,5 +35,34 @@ describe("useLogout", () => {
 
     expect(location.href).toMatch(/\/api\/v1\/logout$/);
     expect(useSessionStore.getState().isLogoutLoading).toBe(true);
+  });
+
+  // CASA 6.6.1: the user's data must not outlive the session in the browser.
+  it("clears browser storage before leaving the page", () => {
+    // Records what storage held when the page was left.
+    const atLeave = [];
+    const location = {};
+    Object.defineProperty(location, "href", {
+      get: () => "https://app.example/org/dashboard",
+      set: () => {
+        atLeave.push(window.localStorage.length, window.sessionStorage.length);
+      },
+    });
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: location,
+    });
+    window.localStorage.setItem("oauth-cachekey-google_drive", "cache-key");
+    window.localStorage.setItem("unstract.v1.theme", "dark");
+    window.sessionStorage.setItem("oauth-current-connector", "google_drive");
+
+    const { result } = renderHook(() => useLogout());
+    result.current();
+
+    expect(
+      window.localStorage.getItem("oauth-cachekey-google_drive"),
+    ).toBeNull();
+    expect(window.localStorage.getItem("unstract.v1.theme")).toBe("dark");
+    expect(atLeave).toEqual([1, 0]);
   });
 });
