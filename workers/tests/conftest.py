@@ -20,24 +20,35 @@ _env_test = Path(__file__).resolve().parent.parent / ".env.test"
 load_dotenv(_env_test)
 
 # Worker Celery apps build a Postgres result backend from DB_*/CELERY_BACKEND_DB_*.
-# Strip these before any app is imported so tests don't reach (or leak) a live DB
-# the unit tier has no server for; eager results then stay in-memory. This undoes
-# the DB_* defaults set in ../conftest.py, which stay in effect for shared/tests
-# (not covered by this file). Done before the _PRISTINE_ENVIRON capture below so
-# the restored baseline also excludes them (they don't creep back per-test).
+# Strip these before any app is imported so tests in THIS directory don't reach a
+# live DB the unit tier has no server for. Done before the _PRISTINE_ENVIRON
+# capture below so the restored baseline also excludes them (they don't creep
+# back per-test).
+#
+# Not the primary guard any more, and it never could be: this file loads only
+# when `workers/tests` is collected, so it protected nothing when another
+# directory was selected on its own, and a worker module's import-time
+# `load_dotenv(<workers>/.env)` put the popped names straight back on a
+# developer machine. ../conftest.py now sets CELERY_BACKEND_DB_* to the empty
+# string, which wins over DB_* by being present, for every directory. This pop
+# stays because the pristine baseline below should not carry DB_* either.
 for _var in (
     "DB_HOST",
     "DB_PORT",
     "DB_NAME",
     "DB_USER",
     "DB_PASSWORD",
-    "CELERY_BACKEND_DB_HOST",
     "CELERY_BACKEND_DB_PORT",
-    "CELERY_BACKEND_DB_NAME",
-    "CELERY_BACKEND_DB_USER",
-    "CELERY_BACKEND_DB_PASSWORD",
 ):
     os.environ.pop(_var, None)
+
+# CELERY_BACKEND_DB_HOST/NAME/USER/PASSWORD are deliberately NOT popped here.
+# ../conftest.py sets them to the empty string on purpose -- empty BEATS the
+# DB_* fallback, because `os.getenv` returns "" for a name that is present --
+# and popping them put the fallback back in play. That is not theoretical: it
+# is why the pristine baseline captured below used to let a worker module's
+# import-time `load_dotenv(<workers>/.env)` reach the real dev database. Leave
+# them present and empty.
 
 # Pristine baseline: the environment right after .env.test loads, captured before
 # pytest collection imports any worker module. Some worker modules call
