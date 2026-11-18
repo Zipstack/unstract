@@ -211,33 +211,6 @@ class CacheService:
         redis_cache.expire(key, expire_time)
 
     @staticmethod
-    def hset_if_absent(
-        key: str,
-        mapping: dict[str, Any],
-        expire_time: int = int(settings.CACHE_TTL_SEC),
-    ) -> bool:
-        """Set each hash field only where it is not already set.
-
-        One MULTI/EXEC of HSETNX per field, so a field another writer set first
-        is kept rather than overwritten.
-
-        Args:
-            key (str): The key of the Redis hash.
-            mapping (dict[str, Any]): The fields to set where absent.
-            expire_time (int, optional): The expiration time for hash in seconds.
-                Defaults to int(settings.CACHE_TTL_SEC).
-
-        Returns:
-            bool: True if at least one field was written.
-        """
-        pipe = redis_cache.pipeline(transaction=True)
-        for field, value in mapping.items():
-            pipe.hsetnx(key, field, value)
-        pipe.expire(key, expire_time)
-        results = pipe.execute()
-        return any(results[:-1])
-
-    @staticmethod
     def hget(key: str, field: str) -> Any:
         """Get a value from a Redis hash."""
         return redis_cache.hget(key, field)

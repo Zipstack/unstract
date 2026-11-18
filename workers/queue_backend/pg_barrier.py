@@ -391,7 +391,8 @@ def clear_execution_batches(execution_id: str) -> int:
     ``(execution_id, batch_index)`` constraint index (``execution_id`` leading)
     for the lookup.
 
-    Called from the barrier-finalise + abort paths. The over-decrement path
+    Called on barrier finalise, on a header-dispatch failure, and on abort
+    unless ``preserve_dedup_markers`` is set. The over-decrement path
     (``remaining`` < 0) keeps them on purpose; see :func:`_barrier_pg_decrement`.
     """
     with _cursor() as cur:

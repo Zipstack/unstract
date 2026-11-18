@@ -1,14 +1,15 @@
 """UN-3749 — ``_get_execution_status`` must survive an execution-cache miss.
 
-On a miss it rebuilds the cache entry from the ``WorkflowExecution`` row. It
-read ``execution_model.completed_files``, a field the model does not have (it
-has ``successful_files`` and ``failed_files``), so every miss raised
+On a miss it rebuilt the cache entry from the ``WorkflowExecution`` row, reading
+``execution_model.completed_files`` — a field the model does not have (it has
+``successful_files`` and ``failed_files``). Every miss raised
 ``AttributeError``. In the API sync wait that error lands in the post-dispatch
 handler, which returns ``EXECUTING`` at once: the caller saw a running
 execution even when the row was already ``COMPLETED``.
 
-The rebuild writes only fields that are still absent, so a status a worker
-wrote between the database read and the cache write is not overwritten.
+A miss now reads the status from the row and writes nothing back. A write-back
+could replace a status a worker wrote, or an acknowledgement deleted, after the
+read; the worker's next ``save()`` recreates the entry itself.
 
 DB-free: the model row is an unsaved instance and the cache, context and
 ``time`` are mocked.
@@ -32,7 +33,7 @@ def _row(status: ExecutionStatus) -> WorkflowExecution:
 
 
 class TestGetExecutionStatusCacheMiss:
-    def test_cache_miss_rebuilds_entry_from_row(self):
+    def test_cache_miss_returns_the_row_status(self):
         with (
             patch(f"{_MOD}.ExecutionCacheUtils") as cache_utils,
             patch(f"{_MOD}.WorkflowExecution") as wf_exec,
@@ -45,34 +46,24 @@ class TestGetExecutionStatusCacheMiss:
             )
 
         assert status == ExecutionStatus.COMPLETED
-        cache_utils.create_execution.assert_not_called()
-        cache_utils.create_execution_if_absent.assert_called_once()
-        rebuild = cache_utils.create_execution_if_absent
-        rebuilt: ExecutionCache = rebuild.call_args.kwargs["execution"]
-        assert rebuilt.total_files == 5
-        # Completed means processed, success or failure: 3 + 1.
-        assert rebuilt.completed_files == 4
-        assert rebuilt.failed_files == 1
+        wf_exec.objects.get.assert_called_once_with(id="exec-1")
 
-    def test_cache_miss_tolerates_null_counters(self):
-        row = WorkflowExecution(status=ExecutionStatus.PENDING.value)
-        row.successful_files = None
-        row.failed_files = None
+    def test_cache_miss_writes_nothing_back(self):
+        # A write-back here races the worker's own cache write: the row read
+        # can be older than the status the worker has just cached.
         with (
             patch(f"{_MOD}.ExecutionCacheUtils") as cache_utils,
             patch(f"{_MOD}.WorkflowExecution") as wf_exec,
         ):
             cache_utils.get_execution.return_value = None
-            wf_exec.objects.get.return_value = row
+            wf_exec.objects.get.return_value = _row(ExecutionStatus.EXECUTING)
 
-            status = WorkflowHelper._get_execution_status(
+            WorkflowHelper._get_execution_status(
                 workflow_id="wf-1", execution_id="exec-1"
             )
 
-        assert status == ExecutionStatus.PENDING
-        rebuilt = cache_utils.create_execution_if_absent.call_args.kwargs["execution"]
-        assert rebuilt.completed_files == 0
-        assert rebuilt.failed_files == 0
+        cache_utils.create_execution.assert_not_called()
+        cache_utils.update_status.assert_not_called()
 
     def test_cache_hit_does_not_touch_the_row(self):
         cached = ExecutionCache(
@@ -92,8 +83,6 @@ class TestGetExecutionStatusCacheMiss:
 
         assert status == ExecutionStatus.EXECUTING
         wf_exec.objects.get.assert_not_called()
-        cache_utils.create_execution.assert_not_called()
-        cache_utils.create_execution_if_absent.assert_not_called()
 
 
 class TestSyncWaitSeesCompletionAfterCacheMiss:
@@ -136,59 +125,3 @@ class TestSyncWaitSeesCompletionAfterCacheMiss:
 
         assert response.execution_status == ExecutionStatus.COMPLETED
         assert response.result == [{"ok": True}]
-
-
-class TestRebuildNeverOverwritesANewerStatus:
-    """The rebuild must not clobber a status written after its database read."""
-
-    def test_create_if_absent_uses_hsetnx_per_field(self):
-        from utils.cache_service import CacheService
-
-        with patch("utils.cache_service.redis_cache") as redis_cache:
-            pipe = redis_cache.pipeline.return_value
-            # status kept (0), the other two fields written (1), then EXPIRE.
-            pipe.execute.return_value = [0, 1, 1, True]
-
-            wrote = CacheService.hset_if_absent(
-                "execution:wf:ex",
-                mapping={"status": "EXECUTING", "total_files": 5, "failed_files": 0},
-                expire_time=60,
-            )
-
-        redis_cache.pipeline.assert_called_once_with(transaction=True)
-        pipe.hset.assert_not_called()
-        assert [c.args for c in pipe.hsetnx.call_args_list] == [
-            ("execution:wf:ex", "status", "EXECUTING"),
-            ("execution:wf:ex", "total_files", 5),
-            ("execution:wf:ex", "failed_files", 0),
-        ]
-        pipe.expire.assert_called_once_with("execution:wf:ex", 60)
-        assert wrote is True
-
-    def test_create_if_absent_reports_nothing_written(self):
-        from utils.cache_service import CacheService
-
-        with patch("utils.cache_service.redis_cache") as redis_cache:
-            redis_cache.pipeline.return_value.execute.return_value = [0, 0, True]
-            assert CacheService.hset_if_absent("k", mapping={"a": 1, "b": 2}) is False
-
-    def test_execution_cache_utils_routes_to_if_absent_write(self):
-        from workflow_manager.execution.execution_cache_utils import (
-            ExecutionCacheUtils,
-        )
-
-        entry = ExecutionCache(
-            workflow_id="wf-1",
-            execution_id="exec-1",
-            status=ExecutionStatus.EXECUTING,
-            total_files=5,
-        )
-        with patch(
-            "workflow_manager.execution.execution_cache_utils.CacheService"
-        ) as cache:
-            ExecutionCacheUtils.create_execution_if_absent(entry)
-
-        cache.hset.assert_not_called()
-        (key,) = cache.hset_if_absent.call_args.args
-        assert key == "execution:wf-1:exec-1"
-        assert cache.hset_if_absent.call_args.kwargs["mapping"] == entry.to_json()

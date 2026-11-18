@@ -38,7 +38,6 @@ from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.endpoint_v2.result_cache_utils import ResultCacheUtils
 from workflow_manager.endpoint_v2.source import SourceConnector
-from workflow_manager.execution.dto import ExecutionCache
 from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
 from workflow_manager.utils.pipeline_utils import PipelineUtils
 from workflow_manager.utils.workflow_log import WorkflowLog
@@ -473,29 +472,13 @@ class WorkflowHelper:
             workflow_id=workflow_id, execution_id=execution_id
         )
         if not execution_cache:
+            # Read-only on a miss. Writing a rebuilt entry back could replace a
+            # status a worker wrote (or an acknowledgement deleted) after this
+            # read; the worker's next save() recreates the entry itself.
             execution_model: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
             )
-            status = ExecutionStatus(execution_model.status)
-            # The model has no completed_files; completed means processed,
-            # whether the file succeeded or failed. The columns are filled in
-            # when the run ends, so a rebuild mid-run starts the counters at 0;
-            # only the status is read back from this entry.
-            successful_files = execution_model.successful_files or 0
-            failed_files = execution_model.failed_files or 0
-            # If-absent, not a plain create: a worker may write a newer status
-            # between the read above and this write, and that status must win.
-            ExecutionCacheUtils.create_execution_if_absent(
-                execution=ExecutionCache(
-                    workflow_id=workflow_id,
-                    execution_id=execution_id,
-                    status=status,
-                    total_files=execution_model.total_files,
-                    completed_files=successful_files + failed_files,
-                    failed_files=failed_files,
-                )
-            )
-            return status
+            return ExecutionStatus(execution_model.status)
         return execution_cache.status
 
     @staticmethod
