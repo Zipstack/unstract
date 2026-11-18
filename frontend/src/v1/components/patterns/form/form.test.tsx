@@ -504,8 +504,8 @@ describe("FormFooter", () => {
   it("shows No changes on a clean form even with a field error", async () => {
     render(<Sample defaults={{ name: "", url: "https://x.io" }} />);
     fireEvent.blur(screen.getByLabelText("Name"));
-    await screen.findByText("Enter a name");
-    screen.getByText("No changes");
+    expect(await screen.findByText("Enter a name")).toBeInTheDocument();
+    expect(screen.getByText("No changes")).toBeInTheDocument();
   });
 
   it("shows a schema error that no field owns, without blocking Save", async () => {
