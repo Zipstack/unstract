@@ -15,7 +15,7 @@ export async function listCapabilities({
     { signal },
   );
   if (!Array.isArray(data?.capabilities)) {
-    throw new Error("Capabilities reply carried no capabilities");
+    throw new TypeError("Capabilities reply carried no capabilities");
   }
   return data.capabilities;
 }

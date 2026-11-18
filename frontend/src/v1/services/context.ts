@@ -66,7 +66,7 @@ export function whenSessionExpired(listener: () => void): () => void {
 
 function notifyExpiry(): void {
   sessionExpired = true;
-  for (const listener of [...expiryListeners]) {
+  for (const listener of expiryListeners) {
     try {
       listener();
     } catch (error) {

@@ -64,7 +64,7 @@ async function getSessionReply(signal?: AbortSignal) {
     });
     // A proxy or SPA fallback can answer 200 with some other body.
     if (typeof data?.id !== "number") {
-      throw new Error("Session reply carried no user id");
+      throw new TypeError("Session reply carried no user id");
     }
     return data;
   } catch (error) {
@@ -81,7 +81,7 @@ async function getProfile(org: string, signal?: AbortSignal) {
     { signal },
   );
   if (!data?.user) {
-    throw new Error("Profile reply carried no user");
+    throw new TypeError("Profile reply carried no user");
   }
   return data.user;
 }
