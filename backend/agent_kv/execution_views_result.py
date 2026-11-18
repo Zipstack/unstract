@@ -24,11 +24,7 @@ def result_payload(job) -> dict:
 
     - COMPLETED: ``{success, status, extractors, usage_summary}`` -- the stored
       engine result namespaced per extractor (spec §7.3), not the bare blob.
-    - FAILED: ``{"success": False, "status": "failed", "error": <user-safe>}``,
-      plus ``extraction_salvaged: True`` and ``extractors`` when the run failed
-      only at a later stage and handed over the extraction it had already
-      completed and billed (today: a failed ``calculations`` run). ``success``
-      stays False -- part of what the caller asked for did not happen.
+    - FAILED: ``{"success": False, "status": "failed", "error": <user-safe>}``.
     - CANCELLED: ``{"success": False, "status": "cancelled"}`` -- unless the
       cancel lost a race to an extraction that had already finished and been
       billed, in which case the paid-for result is served with ``success: True``
@@ -52,26 +48,15 @@ def result_payload(job) -> dict:
             # carry it. This is the ONLY `success` describing the job.
             #
             # This used to add "each extractor keeps its own `success` inside
-            # its own block", and the correction that replaced it over-reached
-            # in the other direction: it said "No extractor does", which is
-            # true of `table` and false of `kv`.
-            #
-            # `table` writes `tables`, `page_count`, `table_pages`, `headers`,
-            # `row_count`, `detected` and `reason`, and its only nested
-            # `success` belongs to `code_execution`, describing that step
-            # rather than the extraction. That half stands, and it is the half
-            # that cost real time -- an e2e scenario asserted a per-extractor
-            # `success` and would have failed a successful Excel run.
-            #
-            # `kv` DOES carry one (`agentic_kv/src/engine/kv_extractor.py`
-            # sets it), so a strict response model built from the stronger
-            # claim would reject a valid `kv` result. It is only ever True in
-            # a COMPLETED body: the engine sets it False on a failed
-            # `calculations` run, and that fails the job, so the shape is the
-            # FAILED one below.
-            #
-            # Either way this is the only `success` describing the JOB, which
-            # is the part a client needs.
+            # its own block". No extractor does: `table` writes `tables`,
+            # `page_count`, `table_pages`, `headers`, `row_count`, `detected`
+            # and `reason`, and the sole nested `success` belongs to
+            # `code_execution`, describing that step rather than the
+            # extraction. The claim read as a contract and cost real time --
+            # an e2e scenario asserted it and would have failed a successful
+            # Excel run. A per-extractor `success` can be added if a
+            # multi-extractor job ever needs partial failure; until then do
+            # not document one.
             "success": True,
             "status": JobStatus.COMPLETED.lower(),
             "extractors": {job.extractor: read_result(job.result_ref)},
@@ -84,35 +69,11 @@ def result_payload(job) -> dict:
             },
         }
     if job.status == JobStatus.FAILED:
-        failed: dict = {
+        return {
             "success": False,
             "status": "failed",
             "error": job.error or "Job failed",
         }
-        # A FAILED job can carry an extraction, and `success` stays False when
-        # it does.
-        #
-        # The job really did fail -- a `calculations` run the caller asked for
-        # did not produce output -- so saying otherwise would be a lie, and it
-        # would be a BREAKING one: a client branching on `success` to decide
-        # whether to run its error path would stop running it. The cancelled
-        # race flips `success` to True for the opposite reason: nothing the
-        # caller asked for failed there, the cancel was honoured and the answer
-        # is whole. Here part of the request genuinely did not happen.
-        #
-        # So the extraction is additive instead, and `extraction_salvaged`
-        # states it rather than leaving a client to probe for `extractors` on a
-        # shape that has never carried it. Present only when it applies, the
-        # same convention as the engine's advisory markers.
-        #
-        # No `usage_summary`: neither executor path that salvages has computed
-        # one by the time it gives up. Its absence is not "free" -- the
-        # extraction was billed; the figures are in `usage_v2`, which the
-        # caller cannot read.
-        if job.result_ref:
-            failed["extraction_salvaged"] = True
-            failed["extractors"] = {job.extractor: read_result(job.result_ref)}
-        return failed
     # A cancel that lost the race to a finished extraction keeps its result
     # (`AgentKVJob.attach_result_to_cancelled`). The engine had already spent
     # and flushed the OCR and LLM usage by the time the cancel could collide
