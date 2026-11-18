@@ -354,7 +354,8 @@ def claim_batch(execution_id: str, batch_index: int) -> bool:
 
     Called on the in-body PG path from :func:`run_batch_with_barrier` (claim at
     batch start), alongside the in-body decrement. The companion
-    :func:`clear_execution_batches` reclaims the markers at barrier finalise.
+    :func:`clear_execution_batches` reclaims the markers (see its docstring for
+    which teardown paths call it and which keep them).
 
     Runs through the shared phase-split reconnect-retry
     (:func:`_run_returning_claim_with_reconnect`): the module's thread-local

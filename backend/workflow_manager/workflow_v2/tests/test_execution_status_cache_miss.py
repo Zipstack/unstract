@@ -15,7 +15,7 @@ DB-free: the model row is an unsaved instance and the cache, context and
 ``time`` are mocked.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from workflow_manager.execution.dto import ExecutionCache
 from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -27,9 +27,7 @@ _MOD = "workflow_manager.workflow_v2.workflow_helper"
 
 def _row(status: ExecutionStatus) -> WorkflowExecution:
     """A real (unsaved) model instance, so a missing field raises as in prod."""
-    return WorkflowExecution(
-        status=status.value, total_files=5, successful_files=3, failed_files=1
-    )
+    return WorkflowExecution(status=status.value)
 
 
 class TestGetExecutionStatusCacheMiss:
@@ -62,8 +60,10 @@ class TestGetExecutionStatusCacheMiss:
                 workflow_id="wf-1", execution_id="exec-1"
             )
 
-        cache_utils.create_execution.assert_not_called()
-        cache_utils.update_status.assert_not_called()
+        # The only cache call is the read; any write-back would show up here.
+        assert cache_utils.method_calls == [
+            call.get_execution(workflow_id="wf-1", execution_id="exec-1")
+        ]
 
     def test_cache_hit_does_not_touch_the_row(self):
         cached = ExecutionCache(

@@ -474,7 +474,9 @@ class WorkflowHelper:
         if not execution_cache:
             # Read-only on a miss. Writing a rebuilt entry back could replace a
             # status a worker wrote (or an acknowledgement deleted) after this
-            # read; the worker's next save() recreates the entry itself.
+            # read; the worker's next save() recreates the entry itself. The
+            # cost: until then each poll is one primary-key read, bounded by the
+            # sync-wait timeout (at most 300 s, so 150 reads per waiting request).
             execution_model: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
             )

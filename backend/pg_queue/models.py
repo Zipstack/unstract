@@ -211,8 +211,9 @@ class PgBatchDedup(models.Model):
     decrement"; a conflict means "already claimed — a redelivery → caller
     skips". Pairing the claim with the decrement is what keeps the barrier
     decremented exactly once per batch even though the queue may deliver the
-    task more than once. Rows for an execution are cleared when its barrier
-    finalises (``remaining`` → 0, via ``clear_execution_batches``).
+    task more than once. Rows for an execution are cleared by
+    ``clear_execution_batches`` when its barrier finalises (``remaining`` → 0),
+    when header dispatch fails, and on abort unless the markers are preserved.
 
     Orphan reclaim — there is no FK / cascade to this table. The reaper's
     ``recover_expired_barriers`` deletes a stranded execution's markers along
