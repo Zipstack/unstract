@@ -89,6 +89,52 @@ class TestAgentKvComplete:
 
     @patch(_PATCH_SEND_WEBHOOK)
     @patch(_PATCH_GET_CLIENT)
+    def test_a_failure_forwards_the_salvaged_extraction(
+        self, mock_get_client, mock_send_webhook, mock_api, cb_kwargs
+    ):
+        """A failed run can still carry an extraction, and it must reach the
+        backend.
+
+        The `kv` engine fails a job whose `calculations` run failed, while the
+        extraction itself succeeded and was already billed, so the executor
+        hands the record over rather than destroying it. This arm used to call
+        finalize with `error` alone, which undid that one hop later and left
+        the customer paying for an answer they could not read back.
+
+        Note the shape: on the FAILURE path `data` is the salvaged engine
+        fields FLAT, not `{"output": ...}` as on the success path, so it is
+        forwarded whole rather than unwrapped.
+
+        This is `agent_kv_complete` only. `agent_kv_error` -- the error link,
+        taken when the executor RAISED -- has no structured result to forward
+        and still sends `error` alone.
+        """
+        mock_get_client.return_value = mock_api
+        salvage = {
+            "success": False,
+            "error": "executor failed: calculation execution timed out",
+            "record": {"invoice_number": "INV-9"},
+            "normalized_record": {"invoice_number": "INV-9"},
+            "keys": [{"key_path": "invoice_number", "qa_status": "passed"}],
+        }
+        result_dict = {
+            "success": False,
+            "data": salvage,
+            "error": "executor failed: calculation execution timed out",
+        }
+
+        self._call(result_dict, cb_kwargs)
+
+        mock_api.agent_kv_finalize.assert_called_once_with(
+            "job-1",
+            "org-1",
+            success=False,
+            error="executor failed: calculation execution timed out",
+            result=salvage,
+        )
+
+    @patch(_PATCH_SEND_WEBHOOK)
+    @patch(_PATCH_GET_CLIENT)
     def test_executor_reported_failure_finalizes_false_with_error(
         self, mock_get_client, mock_send_webhook, mock_api, cb_kwargs
     ):
@@ -98,7 +144,7 @@ class TestAgentKvComplete:
         self._call(result_dict, cb_kwargs)
 
         mock_api.agent_kv_finalize.assert_called_once_with(
-            "job-1", "org-1", success=False, error="boom"
+            "job-1", "org-1", success=False, error="boom", result={}
         )
 
     @patch(_PATCH_SEND_WEBHOOK)
@@ -112,7 +158,7 @@ class TestAgentKvComplete:
         self._call(result_dict, cb_kwargs)
 
         mock_api.agent_kv_finalize.assert_called_once_with(
-            "job-1", "org-1", success=False, error=_UNKNOWN
+            "job-1", "org-1", success=False, error=_UNKNOWN, result={}
         )
 
     @patch(_PATCH_SEND_WEBHOOK)

@@ -2,8 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearBrowserStorage,
   clearUserLocalStorage,
-  signOutWhenSignedOutElsewhere,
+  onSignedOutElsewhere,
 } from "./browserStorage";
+
+// What services/logout.ts passes in: the GET logout.
+const signOut = () => window.location.assign("/api/v1/logout");
 
 describe("clearBrowserStorage", () => {
   afterEach(() => {
@@ -91,7 +94,7 @@ describe("sign-out across tabs", () => {
   /** Mounts the listener in this tab; `isSignedOut` counts what reached it. */
   function listen(signedOutHere = false) {
     const isSignedOut = vi.fn(() => signedOutHere);
-    cleanups.push(signOutWhenSignedOutElsewhere(isSignedOut));
+    cleanups.push(onSignedOutElsewhere(signOut, isSignedOut));
     return isSignedOut;
   }
 
@@ -160,7 +163,7 @@ describe("sign-out across tabs", () => {
 
   it("does nothing after unsubscribe", async () => {
     const stopped = vi.fn(() => true);
-    signOutWhenSignedOutElsewhere(stopped)();
+    onSignedOutElsewhere(signOut, stopped)();
     // A listener mounted now shares the channel: once it has the message,
     // the stopped one would have had it too.
     const live = listen(true);

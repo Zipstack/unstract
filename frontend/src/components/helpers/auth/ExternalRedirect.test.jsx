@@ -69,4 +69,54 @@ describe("ExternalRedirect", () => {
 
     expect(assign).toHaveBeenCalledTimes(1);
   });
+
+  it("still leaves for a root-relative path, which every deployment uses", () => {
+    // The guard must NOT require an absolute URL. `config.flowUrl` is `/flow`
+    // in the staging values and in the chart's own unit test, because Flow is
+    // served under a path on the shared host rather than at its own origin.
+    // An absolute-only check would reject the one destination this component
+    // exists for (review on #2494, 2026-11).
+    const assign = stubLocation();
+
+    render(<ExternalRedirect to="/flow" />);
+
+    expect(assign).toHaveBeenCalledWith("/flow");
+  });
+
+  it("leaves for an absolute http(s) URL", () => {
+    const assign = stubLocation();
+
+    render(<ExternalRedirect to="https://flow.example/app" />);
+
+    expect(assign).toHaveBeenCalledWith("https://flow.example/app");
+  });
+
+  it("refuses a protocol-relative address, which names another origin", () => {
+    // `//evil.example` begins with `/` and so passes a naive "is it a path"
+    // test, but the browser reads it as another origin entirely.
+    const assign = stubLocation();
+
+    render(<ExternalRedirect to="//evil.example/app" />);
+
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("refuses an address that is neither a path nor http(s)", () => {
+    // Defence in depth for `RequireGuest`, which now resolves part of its
+    // destination from `?selectedProduct=`. The plugin answers only from a
+    // closed map, but that map is in another repository and no CI here can
+    // enforce it, so this file does not rely on it.
+    const assign = stubLocation();
+
+    for (const bad of [
+      "javascript:alert(1)",
+      "[object Object]",
+      "evil.example",
+      "data:text/html,<script>",
+    ]) {
+      render(<ExternalRedirect to={bad} />);
+    }
+
+    expect(assign).not.toHaveBeenCalled();
+  });
 });
