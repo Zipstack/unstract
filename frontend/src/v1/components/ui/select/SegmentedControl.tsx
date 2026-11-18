@@ -15,7 +15,7 @@ export type SegmentedControlProps = Readonly<{
   /** 2 to 5 options; any other count throws during render. */
   options: readonly SegmentedOption[];
   value?: string;
-  /** Defaults to the first enabled option's value. */
+  /** Defaults to the first enabled option's value, also used when this names no enabled option. */
   defaultValue?: string;
   /** Called only with a new, non-empty value. */
   onValueChange?: (value: string) => void;
@@ -64,10 +64,13 @@ export function SegmentedControl({
   if (options.length < 2 || options.length > 5) {
     throw new Error("SegmentedControl needs 2 to 5 options");
   }
-  const [uncontrolled, setUncontrolled] = useState(
-    () =>
-      defaultValue ?? options.find((option) => !option.disabled)?.value ?? "",
-  );
+  // A default that names no enabled option would leave nothing selected, so
+  // it falls back to the first enabled option, as no default does.
+  const [uncontrolled, setUncontrolled] = useState(() => {
+    const enabled = options.filter((option) => !option.disabled);
+    const match = enabled.find((option) => option.value === defaultValue);
+    return (match ?? enabled[0])?.value ?? "";
+  });
   const current = value ?? uncontrolled;
   const select = (next: string) => {
     // Radix sends "" when the pressed item is pressed again; one stays selected.

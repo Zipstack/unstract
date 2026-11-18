@@ -257,8 +257,10 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
   selects. A native radio group selects as focus moves; this one does not.
 - `label` is always shown and is the item's name; `icon` is a decorative
   lucide icon before it, sized 16.
-- Caller contract: `value` must match an enabled option; `defaultValue`
-  falls back to the first enabled one.
+- Caller contract: `value` must match an enabled option (a controlled
+  `value` is shown as given, so one that matches none leaves every item
+  unchecked). A `defaultValue` that names no option, or a disabled one,
+  falls back to the first enabled option, as no `defaultValue` does.
 
 ## Chip
 

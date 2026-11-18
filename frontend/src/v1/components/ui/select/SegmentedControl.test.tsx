@@ -66,6 +66,18 @@ it("selects the first enabled option by default", () => {
   expect(selected()).toEqual(["Beta"]);
 });
 
+it("falls back to the first enabled option for a defaultValue no option has", async () => {
+  const { user } = setup({ defaultValue: "old" });
+  expect(selected()).toEqual(["List"]);
+  await user.click(item("Grid"));
+  expect(selected()).toEqual(["Grid"]);
+});
+
+it("falls back to the first enabled option for a defaultValue naming a disabled one", () => {
+  setup({ defaultValue: "board" });
+  expect(selected()).toEqual(["List"]);
+});
+
 it("selects on click", async () => {
   const { user, onValueChange } = setup();
   await user.click(item("Table"));
