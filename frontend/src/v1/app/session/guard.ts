@@ -18,7 +18,8 @@ export type GuardInput = Readonly<{
 /**
  * `allow`: render the page. `sign-in`: to login, remembering the URL.
  * `enter-app`: a signed-in user on a guest-only page goes into the app.
- * `choose-organization`: the URL names an organisation that is not current.
+ * `other-organization`: the URL names an organisation that is not the current
+ * one; the user goes to the current one instead.
  * `no-permission`: the no-permission state. `platform-admin`: the cloud
  * gate decides; without one, no permission.
  */
@@ -26,7 +27,7 @@ export type GuardDecision =
   | "allow"
   | "sign-in"
   | "enter-app"
-  | "choose-organization"
+  | "other-organization"
   | "no-permission"
   | "platform-admin";
 
@@ -45,7 +46,7 @@ export function guardRoute({
     urlOrganization !== undefined &&
     urlOrganization !== session.organization.name
   ) {
-    return "choose-organization";
+    return "other-organization";
   }
   if (access === "admin") {
     return session.user.isAdmin ? "allow" : "no-permission";

@@ -39,11 +39,11 @@ describe("guardRoute", () => {
     "authenticated",
     "admin",
     "platform-admin",
-  ] as const)("%s route in another organisation: choose one", (access) => {
+  ] as const)("%s route in another organisation: go to the current one", (access) => {
     for (const session of [member, admin]) {
       expect(
         guardRoute({ access, session, urlOrganization: "someone-else" }),
-      ).toBe("choose-organization");
+      ).toBe("other-organization");
     }
   });
 

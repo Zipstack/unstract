@@ -145,7 +145,7 @@ describe("RouteGate", () => {
   it("checks the URL against the organisation's URL name, not its id", async () => {
     mockApi(...sessionHandlers(member));
     renderGate("authenticated", { route: `/${ORG_ID}/page` });
-    expect((await landed()).at).toBe("/setOrg");
+    expect((await landed()).at).toBe("/landing");
   });
 
   it("shows the no-permission state to a member on an admin page", async () => {
@@ -172,12 +172,12 @@ describe("RouteGate", () => {
     ).toBeInTheDocument();
   });
 
-  it("sends a URL naming another organisation to organisation selection", async () => {
+  it("sends a URL naming another organisation to sign-in, which opens the current one", async () => {
     mockApi(...sessionHandlers(member));
     renderGate("authenticated", { route: "/someone-else/page" });
     const { at, state } = await landed();
-    expect(at).toBe("/setOrg");
-    expect(state).toEqual([organizationRow(member)]);
+    expect(at).toBe("/landing");
+    expect(state).toBeNull();
   });
 
   it("sends a user with several organisations and none current to selection", async () => {

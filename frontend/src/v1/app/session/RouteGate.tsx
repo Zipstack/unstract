@@ -26,7 +26,7 @@ import { type GuardDecision, guardRoute } from "./guard";
 
 /** v0's sign-in page; for a signed-in user it opens their home instead. */
 export const SIGN_IN_PATH = "/landing";
-/** v0's organisation picker; it reads the organisations from the navigation state. */
+/** v0's organisation picker, for a user with several and none current; it reads them from the navigation state. */
 export const CHOOSE_ORGANIZATION_PATH = "/setOrg";
 
 const LOADING = (
@@ -155,20 +155,13 @@ type Outcome = Readonly<{
 
 function Decided({ decision, load, children }: Outcome): ReactNode {
   const location = useLocation();
-  const signedIn = load.kind === "signed-in" ? load : null;
   switch (decision) {
     case "sign-in":
       return <Navigate to={SIGN_IN_PATH} state={{ from: location }} replace />;
+    // v0's sign-in page sends a signed-in user to their current organisation's home.
     case "enter-app":
+    case "other-organization":
       return <Navigate to={SIGN_IN_PATH} replace />;
-    case "choose-organization":
-      return (
-        <Navigate
-          to={CHOOSE_ORGANIZATION_PATH}
-          state={signedIn?.organizations}
-          replace
-        />
-      );
     case "no-permission":
       return <NoPermission />;
   }

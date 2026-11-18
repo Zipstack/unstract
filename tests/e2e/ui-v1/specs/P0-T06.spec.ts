@@ -47,12 +47,12 @@ test.describe("P0-T06 session: signed in on v0", { tag: DIST.all }, () => {
       .toBe(session.userId);
   });
 
-  test("a URL naming another organisation goes to selection, not an error page", async ({
+  test("a URL naming another organisation opens the current one, not an error page", async ({
     page,
     app,
   }) => {
     await page.goto("/not-a-member-org/v1-demo");
-    // v0's selection page sends a user who already has an organisation to it.
+    // v0's sign-in page sends a signed-in user to their current organisation.
     await expect(page).toHaveURL(new RegExp(`/${app.orgName}/`));
     await expect(page.getByTestId("v1-demo")).toHaveCount(0);
   });

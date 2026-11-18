@@ -229,8 +229,9 @@ organisation services call, the old-version user, and the analytics identity.
   | `platform-admin` | What the cloud `route.platform-admin` slot allows | `NoPermission`, in OSS always |
 
   A route whose pattern has `:orgName` also needs that organisation current;
-  otherwise it goes to organisation selection (v0's `/setOrg`), as does a
-  user with several organisations and none current. A 412 on the list (the
+  otherwise it goes to `/landing`, where v0 opens the current organisation's
+  home (a v1 organisation picker comes with P2-T08). A user with several
+  organisations and none current goes to v0's picker, `/setOrg`. A 412 on the list (the
   session was ended) goes to v0's `/error` page when the reply names its
   cause, else to `/landing`.
 - Cloud's entitlement gates (product onboarding, subscription, trial) fill
