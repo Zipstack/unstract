@@ -801,13 +801,8 @@ def test_finalize_failure_records_error(m_jobs, m_write, m_mark_terminal, m_rele
         "webhook_enqueued": False,
     }
     assert not m_write.called
-    # `result_ref=""` is passed unguarded now that a FAILED job may carry a
-    # salvaged extraction (`test_failed_result_salvage.py`). `mark_terminal`
-    # already ignores an empty ref, so this failure terminalizes exactly as it
-    # did before -- `assert not m_write.called` above is what pins that no
-    # result file is written for an ordinary failure.
     m_mark_terminal.assert_called_once_with(
-        job_id, "org1", JobStatus.FAILED, error="LLM provider timed out", result_ref=""
+        job_id, "org1", JobStatus.FAILED, error="LLM provider timed out"
     )
 
 

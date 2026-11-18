@@ -526,37 +526,7 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
   shape or re-validate that payload, it stores and replays exactly what the executor's
   finalize call sent).
 - **`FAILED`**: `200` with
-  `{"success": false, "status": "failed", "error": "<user-safe message>"}` —
-  **plus `extraction_salvaged: true` and an `extractors` block when the run
-  failed only after its extraction had finished.** Today that is one case: a
-  `calculations` run that failed. The extraction succeeded and its OCR and LLM
-  spend was already flushed, so destroying it billed the customer for an answer
-  and then threw it away; the executor hands the record over on that path and
-  the backend now stores it (`FinalizeView._fail`).
-
-  `success` stays `false`, deliberately, and this is where the two salvage
-  paths differ. The job *did* fail — the caller asked for calculations and did
-  not get them — and a client branching on `success` to decide whether to run
-  its error path must keep running it. So the extraction is **additive**:
-  `extraction_salvaged` is the discriminator, present only when it applies, and
-  an ordinary failure's body is byte-identical to what it has always been. The
-  raced cancel below reports `success: true` for the opposite reason: nothing
-  the caller asked for failed there.
-
-  **No `usage_summary` rides with it.** Neither salvaging executor branch has
-  computed one by the time it gives up, so the key is absent rather than zeroed
-  — absent so it cannot read as "this cost nothing". The work *was* billed; the
-  figures are in `usage_v2`, which the caller cannot read.
-
-  The salvaged file is ordinary customer data: the row becomes a TTL candidate
-  like any other, and `GET result` still 404s once `files_purged` is set or
-  `expires_at` has passed.
-
-  One residual, recorded in `_fail`: if a cancel wins the terminal guard
-  against a salvaging failure, the extraction is discarded, because `_salvage`
-  stays success-only and will not graft a partial record onto a cancelled row
-  through the attach path ([§6](#6-cancel--post-agent-kvjob_idcancel) records
-  why that path is not widened lightly).
+  `{"success": false, "status": "failed", "error": "<user-safe message>"}`.
 - **`CANCELLED`**: `200` with `{"success": false, "status": "cancelled"}` — unless
   the cancel lost a race to an extraction that had already finished, in which case
   the result is served: `200` with `{"success": true, "status": "cancelled",
