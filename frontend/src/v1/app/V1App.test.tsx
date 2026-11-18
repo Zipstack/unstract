@@ -1,7 +1,13 @@
-import { render, screen } from "@testing-library/react";
+import { configure, render, screen } from "@testing-library/react";
 import { DEMO_PAGES } from "@v1/app/registry/entries";
 import { expireSession } from "@v1/services/context";
-import { DEFAULT_SESSION, HttpResponse, http, mockApi } from "@v1/test";
+import {
+  DEFAULT_SESSION,
+  HttpResponse,
+  http,
+  makeSession,
+  mockApi,
+} from "@v1/test";
 import { sessionHandlers } from "@v1/test/fixtures/session";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,7 +21,10 @@ vi.mock("@v1/plugins", async () => {
   return { PluginSlot: makeSlot(buildRegistry([], "oss"), () => undefined) };
 });
 
-const ORG = DEFAULT_SESSION.organization.id;
+// The session loads before the page, and the first v1 render loads its chunks: past findBy's 1 s default under coverage.
+configure({ asyncUtilTimeout: 3000 });
+
+const ORG = DEFAULT_SESSION.organization.urlName;
 
 async function renderDemo() {
   mockApi(
@@ -51,5 +60,22 @@ describe("V1App session expiry", () => {
     expireSession();
     await vi.waitFor(() => expect(assign).toHaveBeenCalledWith(target));
     unmount();
+  });
+});
+
+describe("V1App guards", () => {
+  it("guards a page with its registry access", async () => {
+    mockApi(...sessionHandlers(makeSession({ role: "user" })));
+    render(
+      <MemoryRouter initialEntries={[`/${ORG}/v1-demo`]}>
+        <V1App entry={{ ...DEMO_PAGES[0], access: "admin" }} />
+      </MemoryRouter>,
+    );
+    expect(
+      await screen.findByRole("heading", {
+        name: "You don't have access to this page",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("v1-demo")).toBeNull();
   });
 });

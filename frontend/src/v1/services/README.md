@@ -8,8 +8,8 @@ or error handling.
 
 | File | Holds |
 | --- | --- |
-| `http.ts` | The one HTTP client, and `orgPath()`. Adds `X-CSRFToken` (from the `csrftoken` cookie) to same-origin POST, PUT, PATCH and DELETE, and a new `X-Request-ID` to every request; rejects with an `ApiError`; treats the auth middleware's 401 as session expiry, once per page load, so concurrent 401s redirect once. Who may import it: the Data layer section of `src/v1/README.md`. |
-| `context.ts` | What the client takes from the session: `setOrganizationId()` (the org `orgPath()` uses) and `onSessionExpired()` (default: v0's `/api/v1/logout` redirect; a handler must leave the page, and one that throws or rejects falls back to the default). `V1App` sets both. `isSessionExpired()` and `whenSessionExpired()` tell other code the page is leaving. |
+| `http.ts` | `http`, the HTTP client every service uses, and `orgPath()`; `createHttpClient({ expiresSession: false })` makes one whose 401 means signed out (`session.ts`'s session read). Adds `X-CSRFToken` (from the `csrftoken` cookie) to same-origin POST, PUT, PATCH and DELETE, and a new `X-Request-ID` to every request; rejects with an `ApiError`; treats the auth middleware's 401 as session expiry, once per page load, so concurrent 401s redirect once. Who may import it: the Data layer section of `src/v1/README.md`. |
+| `context.ts` | What the client takes from the session: `setOrganizationId()` (the org `orgPath()` uses) and `onSessionExpired()` (default: v0's `/api/v1/logout` redirect; a handler must leave the page, and one that throws or rejects falls back to the default). `V1App` sets both. `whenSessionExpired()` tells other code the page is leaving. |
 | `session.ts` | `loadSession()` (the page load's session; see Session and guards in `src/v1/README.md`), `signOut()` and `signOutAndLeave()`. |
 | `errors.ts` | `ApiError`, `toApiError()`, `isCancelled()`, `mapFieldErrors()`. |
 | `report.ts` | `reportApiError()`: a toast through `notify()`, or a log line with the request id. |

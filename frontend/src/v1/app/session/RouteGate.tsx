@@ -5,12 +5,13 @@
  */
 import { type UseQueryResult, useQuery } from "@tanstack/react-query";
 import type { RouteAccess } from "@v1/app/registry/types";
+import { V1ErrorBoundary } from "@v1/app/V1ErrorBoundary";
 import { NoPermission } from "@v1/components/patterns/NoPermission";
 import { QueryView } from "@v1/components/patterns/QueryView";
-import { SkeletonText } from "@v1/components/ui/feedback";
+import { InlineAlert, SkeletonText } from "@v1/components/ui/feedback";
 import { identifyUser } from "@v1/lib/analytics";
 import { sessionEndedPath } from "@v1/lib/organizations";
-import { Slot } from "@v1/lib/plugins";
+import { type GateSlotId, Slot } from "@v1/lib/plugins";
 import { type Session, SessionProvider } from "@v1/lib/session";
 import { setOrganizationId } from "@v1/services/context";
 import {
@@ -19,7 +20,7 @@ import {
   sessionKeys,
 } from "@v1/services/session";
 import { useOldVersionStore } from "@v1/stores/oldVersion";
-import type { JSX, ReactNode } from "react";
+import { type JSX, type ReactNode, Suspense } from "react";
 import { Navigate, useLocation, useParams } from "react-router-dom";
 import { type GuardDecision, guardRoute } from "./guard";
 
@@ -31,6 +32,17 @@ export const CHOOSE_ORGANIZATION_PATH = "/setOrg";
 const LOADING = (
   <div className="ui:p-6">
     <SkeletonText />
+  </div>
+);
+
+// A gate whose plugin fails to load stays closed rather than skip its check.
+const GATE_FAILED = (
+  <div className="ui:p-6">
+    <InlineAlert
+      title="This page could not be loaded."
+      onRetry={() => window.location.reload()}
+      retryLabel="Reload"
+    />
   </div>
 );
 
@@ -61,6 +73,33 @@ export function useSessionLoad(): UseQueryResult<SessionLoad> {
   });
 }
 
+/** The page's own error boundary and loading state, inside any gate, so a page error is never a plugin's. */
+function PageFrame({ children }: Readonly<{ children: ReactNode }>) {
+  const { pathname } = useLocation();
+  return (
+    <V1ErrorBoundary resetKey={pathname}>
+      <Suspense fallback={LOADING}>{children}</Suspense>
+    </V1ErrorBoundary>
+  );
+}
+
+/** A cloud gate: waits while its plugin loads, and stays closed if it fails. */
+function Gate({
+  id,
+  page,
+  fallback,
+}: Readonly<{ id: GateSlotId; page: ReactNode; fallback: ReactNode }>) {
+  return (
+    <Slot
+      id={id}
+      props={{ children: page }}
+      fallback={fallback}
+      loading={LOADING}
+      failed={GATE_FAILED}
+    />
+  );
+}
+
 /** A signed-in page: cloud's entitlement gate, and the platform-admin gate where asked. */
 function SignedIn({
   session,
@@ -71,25 +110,40 @@ function SignedIn({
   platformAdmin: boolean;
   children: ReactNode;
 }>) {
-  const page = platformAdmin ? (
-    <Slot
-      id="route.platform-admin"
-      props={{ children }}
-      fallback={<NoPermission />}
-      loading={LOADING}
-    />
+  const page = <PageFrame>{children}</PageFrame>;
+  const allowed = platformAdmin ? (
+    <Gate id="route.platform-admin" page={page} fallback={<NoPermission />} />
   ) : (
-    children
+    page
   );
   return (
     <SessionProvider session={session}>
-      <Slot
-        id="route.entitlement"
-        props={{ children: page }}
-        fallback={page}
-        loading={LOADING}
-      />
+      <Gate id="route.entitlement" page={allowed} fallback={allowed} />
     </SessionProvider>
+  );
+}
+
+/** A page the guard allows: as a guest, or signed in behind the cloud gates. */
+function Allowed({
+  load,
+  platformAdmin,
+  children,
+}: Readonly<{
+  load: SessionLoad;
+  platformAdmin: boolean;
+  children: ReactNode;
+}>) {
+  if (load.kind !== "signed-in") {
+    return (
+      <SessionProvider session={null}>
+        <PageFrame>{children}</PageFrame>
+      </SessionProvider>
+    );
+  }
+  return (
+    <SignedIn session={load.session} platformAdmin={platformAdmin}>
+      {children}
+    </SignedIn>
   );
 }
 
@@ -118,14 +172,10 @@ function Decided({ decision, load, children }: Outcome): ReactNode {
     case "no-permission":
       return <NoPermission />;
   }
-  if (!signedIn) {
-    return <SessionProvider session={null}>{children}</SessionProvider>;
-  }
-  const platformAdmin = decision === "platform-admin";
   return (
-    <SignedIn session={signedIn.session} platformAdmin={platformAdmin}>
+    <Allowed load={load} platformAdmin={decision === "platform-admin"}>
       {children}
-    </SignedIn>
+    </Allowed>
   );
 }
 

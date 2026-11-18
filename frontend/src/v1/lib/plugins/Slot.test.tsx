@@ -54,6 +54,8 @@ describe("Slot", () => {
       },
     ]);
     render(<Slot id="shell.product-switcher" props={{}} fallback={fallback} />);
+    // With no `loading`, the fallback shows while the filler loads.
+    expect(screen.getByText("fallback")).toBeInTheDocument();
     expect(await screen.findByText("switcher")).toBeInTheDocument();
     expect(report).not.toHaveBeenCalled();
   });

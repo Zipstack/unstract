@@ -15,7 +15,9 @@ import { describe, expect, it, vi } from "vitest";
 import { onSessionExpired } from "./context";
 import { loadSession } from "./session";
 
-const other = makeSession({ organization: { id: "org-2", name: "Other" } });
+const other = makeSession({
+  organization: { id: "org-2", name: "Other", urlName: "other" },
+});
 const ORG = DEFAULT_SESSION.organization.id;
 
 describe("loadSession", () => {
@@ -28,7 +30,7 @@ describe("loadSession", () => {
     expect(expired).not.toHaveBeenCalled();
   });
 
-  it("loads the user and their current organisation without setting it again", async () => {
+  it("loads the user and sets their current organisation again, by id, as v0 does on every load", async () => {
     const seen: string[] = [];
     mockApi(...sessionHandlers(DEFAULT_SESSION, { seen }));
     expect(await loadSession()).toEqual({
@@ -39,8 +41,22 @@ describe("loadSession", () => {
     expect(seen).toEqual([
       "GET /api/v1/session",
       "GET /api/v1/organization",
+      `POST /api/v1/organization/${ORG}/set`,
       `GET /api/v1/unstract/${ORG}/users/profile/`,
     ]);
+  });
+
+  it("keeps the organisation's id and URL name apart, and reads staff", async () => {
+    mockApi(...sessionHandlers(DEFAULT_SESSION, { isStaff: true }));
+    const load = await loadSession();
+    if (load.kind !== "signed-in") {
+      throw new Error(`expected signed-in, got ${load.kind}`);
+    }
+    expect(load.session.organization).toMatchObject({
+      id: ORG,
+      name: DEFAULT_SESSION.organization.urlName,
+    });
+    expect(load.session.user.isStaff).toBe(true);
   });
 
   it("sets the only organisation when the session has none", async () => {

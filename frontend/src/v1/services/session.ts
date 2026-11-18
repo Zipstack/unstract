@@ -131,8 +131,10 @@ async function listOrEnd(signal?: AbortSignal) {
 
 /**
  * Loads the session as v0's useSessionValid does: the user, their
- * organisations, then the profile in the current one. An organisation is set
- * only when the session has none and the user has exactly one.
+ * organisations, then the profile in the current one. Like v0 it sets the
+ * organisation on every load, which also syncs the member's role from the
+ * identity provider: the session's, if the user is still in it, else their
+ * only one.
  */
 export async function loadSession({
   signal,
@@ -154,9 +156,7 @@ export async function loadSession({
   if (!org) {
     return { kind: "choose-organization", organizations };
   }
-  if (org.id !== reply.organization_id) {
-    await switchOrganization(org.id, { signal });
-  }
+  await switchOrganization(org.id, { signal });
   const profile = await getProfile(org.id, signal);
   return {
     kind: "signed-in",
@@ -186,11 +186,24 @@ export async function signOut({ signal }: SignalOnly = {}): Promise<string> {
   return url.href;
 }
 
+// A sign-out POST that hangs falls back to the GET rather than keep a dead page on screen.
+export const SIGN_OUT_TIMEOUT_MS = 5000;
+
+async function signOutWithin(ms: number): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await signOut({ signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Signs out, forgets the analytics identity and stored data, and leaves the app. */
 export async function signOutAndLeave(): Promise<void> {
   let destination: string;
   try {
-    destination = await signOut();
+    destination = await signOutWithin(SIGN_OUT_TIMEOUT_MS);
   } catch (error) {
     // Logged so a failing POST shows up: the backend drops GET logout once v0
     // goes. Every use of LOGOUT_PATH as a GET (logout.ts, context.ts) must

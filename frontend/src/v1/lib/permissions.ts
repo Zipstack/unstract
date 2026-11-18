@@ -43,19 +43,39 @@ export function canEdit(session: Session, resource: OwnedResource): boolean {
   );
 }
 
-/** Deleting a shared resource takes the same as editing it. */
-export const canDelete = canEdit;
+/** Owners and admins may delete a shared resource; see canDeleteWorkflowOrDeployment for those. */
+export function canDelete(session: Session, resource: OwnedResource): boolean {
+  return canEdit(session, resource);
+}
 
 /** Changing who a resource is shared with takes the same as editing it. */
 export const canShare = canEdit;
 
-/**
- * Whether the organisation's capability settings let the user do `key`, e.g.
- * `create_connectors`. False until the capabilities have loaded.
- */
+type Capabilities = readonly Capability[] | undefined;
+
+// False until the capabilities have loaded.
+const allows = (capabilities: Capabilities, key: CapabilityKey): boolean =>
+  capabilities?.some((c) => c.key === key && c.allowed_for_me) ?? false;
+
+/** Whether the organisation's capability settings let the user create `key`, e.g. `create_connectors`. */
 export function canCreate(
-  capabilities: readonly Capability[] | undefined,
+  capabilities: Capabilities,
   key: CapabilityKey,
 ): boolean {
-  return capabilities?.some((c) => c.key === key && c.allowed_for_me) ?? false;
+  return allows(capabilities, key);
+}
+
+/**
+ * A workflow, pipeline or API deployment: an owner or admin, and the
+ * organisation's delete capability, as the backend's destroy checks.
+ */
+export function canDeleteWorkflowOrDeployment(
+  session: Session,
+  resource: OwnedResource,
+  capabilities: Capabilities,
+): boolean {
+  return (
+    canDelete(session, resource) &&
+    allows(capabilities, "delete_workflows_and_deployments")
+  );
 }

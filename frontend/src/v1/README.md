@@ -210,9 +210,10 @@ only when a v1 page first renders.
 `V1App` loads the session once per page load (`app/session/RouteGate.tsx`,
 `loadSession()` in `services/session.ts`), with the calls v0's
 `useSessionValid` makes: `GET /api/v1/session` (a 401 there means signed out),
-the organisation list, then the profile. It sets an organisation only when
-the session has none and the user has exactly one. v1 shares v0's cookies, so
-switching version never asks for a login. Once loaded it sets the
+the organisation list, then the profile. Like v0 it sets the organisation on
+every load (the session's if the user is still in it, else their only one),
+which also syncs the member's role from the identity provider. v1 shares v0's
+cookies, so switching version never asks for a login. Once loaded it sets the
 organisation services call, the old-version user, and the analytics identity.
 
 - Read it with `useSession()` from `@v1/lib/session`: `user` (`id`, `email`,
@@ -230,22 +231,28 @@ organisation services call, the old-version user, and the analytics identity.
   A route whose pattern has `:orgName` also needs that organisation current;
   otherwise it goes to organisation selection (v0's `/setOrg`), as does a
   user with several organisations and none current. A 412 on the list (the
-  session was ended) goes to v0's `/error` page with its cause.
+  session was ended) goes to v0's `/error` page when the reply names its
+  cause, else to `/landing`.
 - Cloud's entitlement gates (product onboarding, subscription, trial) fill
   the `route.entitlement` slot, which wraps every signed-in page; OSS and
-  on-prem leave it empty, so the page renders.
+  on-prem leave it empty, so the page renders. While a gate's plugin loads the
+  page waits, and a gate whose plugin fails stays closed. The page has its
+  own error boundary inside the gates, so its errors are never reported as
+  the plugin's.
 - A 401 on any later call signs out with the POST logout
-  (`signOutAndLeave()`) and lands where v0's logout does.
-  `isSessionExpired()` and `whenSessionExpired()` (`services/context.ts`)
-  let code about to act on the page stand down.
+  (`signOutAndLeave()`; after 5 seconds without an answer, the GET) and
+  lands where v0's logout does. `whenSessionExpired()`
+  (`services/context.ts`) lets code about to act on the page stand down.
 - Permissions (`lib/permissions.ts`): `isAdmin`, `isOwner`, `canEdit`,
-  `canDelete`, `canShare` (owners and admins), and `canCreate` from the
+  `canDelete`, `canShare` (owners and admins), `canCreate` from the
   organisation's capability settings (`capabilityQueries` in
-  `services/capabilities.ts`). A page removes what the user may not do; it
-  never shows it disabled.
+  `services/capabilities.ts`), and `canDeleteWorkflowOrDeployment`, which
+  also needs the delete capability. A page removes what the user may not do;
+  it never shows it disabled.
 - Analytics: v0's tracker records page views for v1 URLs too. The version
   switch tags every event with `ui_version` (`v0` or `v1`), and v1 events use
-  v0's names (`lib/analytics.ts`).
+  v0's names (`lib/analytics.ts`). v1 identifies the user as v0 does, but
+  leaves the person's name to v0.
 
 ## Folders and what each may import
 

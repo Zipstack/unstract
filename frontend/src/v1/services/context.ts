@@ -49,11 +49,6 @@ function fallBackToLogin(error: unknown): void {
   leaveForLogin();
 }
 
-/** True once a request found the session expired on this page load. */
-export function isSessionExpired(): boolean {
-  return sessionExpired;
-}
-
 /**
  * Calls `listener` when the session expires, at once if it already has, so
  * code about to act on the page can stand down. Returns the unsubscribe.

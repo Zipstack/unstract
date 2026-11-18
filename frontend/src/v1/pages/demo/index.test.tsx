@@ -5,7 +5,10 @@ import { expect, it } from "vitest";
 import { DemoPage } from "./index";
 
 const ORG = DEFAULT_SESSION.organization.id;
-const at = { route: `/${ORG}/v1-demo`, path: "/:orgName/v1-demo" };
+const at = {
+  route: `/${DEFAULT_SESSION.organization.urlName}/v1-demo`,
+  path: "/:orgName/v1-demo",
+};
 
 it("lists the organisation's LLM adapters through the sample service", async () => {
   const seen: URL[] = [];

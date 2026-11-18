@@ -7,7 +7,7 @@ import { HttpResponse, http, type TestSession } from "@v1/test";
 export function organizationRow({ organization, role }: TestSession) {
   return {
     id: organization.id,
-    name: organization.id,
+    name: organization.urlName,
     display_name: organization.name,
     role,
   } satisfies Organization;
@@ -23,44 +23,57 @@ export type SessionHandlerOptions = Readonly<{
   seen?: string[];
 }>;
 
+type Seen = (request: Request) => void;
+
+function sessionReply(
+  { user, role }: TestSession,
+  current: string | null,
+  isStaff: boolean,
+) {
+  return {
+    id: Number(user.id),
+    email: user.email,
+    organization_id: current,
+    role,
+    is_staff: isStaff,
+  };
+}
+
+function profileReply({ user, role }: TestSession) {
+  const name = user.displayName;
+  return {
+    user: { name, display_name: name, role, is_admin: role === "admin" },
+  };
+}
+
 /** Answers the session load as `session`: the session, the organisation list, set, and the profile. */
 export function sessionHandlers(
   session: TestSession,
   options: SessionHandlerOptions = {},
 ) {
-  const { user, organization, role } = session;
   const current =
-    options.current === undefined ? organization.id : options.current;
+    options.current === undefined ? session.organization.id : options.current;
   const organizations = options.organizations ?? [organizationRow(session)];
-  const seen = (request: Request) =>
+  const seen: Seen = (request) =>
     options.seen?.push(`${request.method} ${new URL(request.url).pathname}`);
+  const answer = (
+    path: string,
+    method: "get" | "post",
+    body: () => Record<string, unknown>,
+  ) =>
+    http[method](path, ({ request }) => {
+      seen(request);
+      return HttpResponse.json(body());
+    });
   return [
-    http.get("/api/v1/session", ({ request }) => {
-      seen(request);
-      return HttpResponse.json({
-        id: Number(user.id),
-        email: user.email,
-        organization_id: current,
-        role,
-        is_staff: options.isStaff ?? false,
-      });
-    }),
-    http.get("/api/v1/organization", ({ request }) => {
-      seen(request);
-      return HttpResponse.json({ organizations });
-    }),
-    http.post("/api/v1/organization/:id/set", ({ request }) => {
-      seen(request);
-      return HttpResponse.json({});
-    }),
-    http.get("/api/v1/unstract/:org/users/profile/", ({ request }) => {
-      seen(request);
-      const name = user.displayName;
-      const profile = { name, display_name: name, role };
-      return HttpResponse.json({
-        user: { ...profile, is_admin: role === "admin" },
-      });
-    }),
+    answer("/api/v1/session", "get", () =>
+      sessionReply(session, current, options.isStaff ?? false),
+    ),
+    answer("/api/v1/organization", "get", () => ({ organizations })),
+    answer("/api/v1/organization/:id/set", "post", () => ({})),
+    answer("/api/v1/unstract/:org/users/profile/", "get", () =>
+      profileReply(session),
+    ),
   ];
 }
 

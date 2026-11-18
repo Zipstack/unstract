@@ -10,10 +10,14 @@ const posthog = vi.hoisted(() => ({
 vi.mock("posthog-js", () => ({ default: posthog }));
 
 const cloud = toV1Session(
-  makeSession({ organization: { id: "org_abc", name: "Acme" } }),
+  makeSession({
+    organization: { id: "org_abc", name: "Acme", urlName: "acme" },
+  }),
 );
 const oss = toV1Session(
-  makeSession({ organization: { id: "mock_org", name: "Mock" } }),
+  makeSession({
+    organization: { id: "mock_org", name: "Mock", urlName: "mock_org" },
+  }),
 );
 
 function onHost(hostname: string) {
@@ -32,19 +36,21 @@ describe("analytics", () => {
     expect(posthog.register).toHaveBeenCalledWith({ ui_version: "v1" });
   });
 
-  it("identifies by email, with the name, only on Unstract's SaaS", () => {
-    onHost("us-central.unstract.com");
+  it.each([
+    "us-central.unstract.com",
+    "eu-west.unstract.com",
+  ])("on SaaS (%s) identifies by email, leaving the name to v0", (host) => {
+    onHost(host);
     identifyUser(cloud);
     expect(posthog.identify).toHaveBeenCalledWith("ada@example.com", {
-      org: "org_abc",
+      org: "acme",
       software: "SAAS",
       userId: "1",
-      name: "Ada",
       email: "ada@example.com",
     });
     expect(posthog.register).toHaveBeenCalledWith({
       org_id: "org_abc",
-      org_name: "org_abc",
+      org_name: "acme",
       software: "SAAS",
     });
   });
@@ -52,7 +58,7 @@ describe("analytics", () => {
   it.each([
     ["a self-hosted install", "unstract.example.com", cloud, "SAAS"],
     ["OSS, even on a SaaS host", "us-central.unstract.com", oss, "OSS"],
-  ])("identifies %s anonymously, by organisation and user id", (_, host, session, software) => {
+  ])("identifies %s anonymously, by organisation id and user id", (_, host, session, software) => {
     onHost(host);
     identifyUser(session);
     expect(posthog.identify).toHaveBeenCalledWith(
@@ -67,5 +73,16 @@ describe("analytics", () => {
     identifyUser(cloud);
     expect(posthog.register).not.toHaveBeenCalled();
     expect(posthog.identify).not.toHaveBeenCalled();
+  });
+
+  it("only logs a failing call, so analytics never breaks a page", () => {
+    const logged = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    posthog.register.mockImplementation(() => {
+      throw new Error("posthog broke");
+    });
+    expect(() => registerUiVersion("v1")).not.toThrow();
+    expect(logged).toHaveBeenCalledTimes(1);
   });
 });

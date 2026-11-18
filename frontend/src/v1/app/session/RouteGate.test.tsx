@@ -16,6 +16,7 @@ import {
   makeSession,
   mockApi,
   renderV1,
+  toV1Session,
 } from "@v1/test";
 import {
   guestHandlers,
@@ -27,8 +28,38 @@ import { Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RouteGate } from "./RouteGate";
 
-const ORG = DEFAULT_SESSION.organization.id;
+const identify = vi.hoisted(() => vi.fn());
+vi.mock("@v1/lib/analytics", () => ({ identifyUser: identify }));
+
+const ORG_ID = DEFAULT_SESSION.organization.id;
+const ORG = DEFAULT_SESSION.organization.urlName;
 const member = makeSession({ role: "user" });
+const DENIED = "You don't have access to this page";
+
+type Slots = PluginManifest["slots"];
+
+/** A provider whose cloud gates are `slots`; `report` records plugin failures. */
+function gates(slots: Slots, report = vi.fn()) {
+  const manifest: PluginManifest = {
+    id: "gates",
+    distributions: ["cloud"],
+    slots,
+  };
+  const slot = makeSlot(buildRegistry([manifest], "cloud"), report);
+  return (ui: ReactNode) => <PluginProvider slot={slot}>{ui}</PluginProvider>;
+}
+
+const passThrough = (label: string) => async () => ({
+  default: ({ children }: { children: ReactNode }) => (
+    <section>
+      {label}: {children}
+    </section>
+  ),
+});
+
+function Broken(): never {
+  throw new Error("page bug");
+}
 
 function Page() {
   const { user, organization } = useSession();
@@ -52,9 +83,16 @@ function Where() {
 
 function renderGate(
   access: RouteAccess,
-  { route = `/${ORG}/page`, wrap = (ui: ReactNode) => ui } = {},
+  {
+    route = `/${ORG}/page`,
+    wrap = (ui: ReactNode) => ui,
+    page = access === "guest" ? <p>guest page</p> : <Page />,
+  }: {
+    route?: string;
+    wrap?: (ui: ReactNode) => ReactNode;
+    page?: ReactNode;
+  } = {},
 ) {
-  const page = access === "guest" ? <p>guest page</p> : <Page />;
   const ui = (
     <Routes>
       <Route
@@ -99,17 +137,22 @@ describe("RouteGate", () => {
     expect(
       await screen.findByText("page for Ada in Example Org"),
     ).toBeInTheDocument();
-    expect(currentOrganizationId()).toBe(ORG);
+    expect(currentOrganizationId()).toBe(ORG_ID);
     expect(useOldVersionStore.getState().userId).toBe(member.user.id);
+    expect(identify).toHaveBeenCalledWith(toV1Session(member));
+  });
+
+  it("checks the URL against the organisation's URL name, not its id", async () => {
+    mockApi(...sessionHandlers(member));
+    renderGate("authenticated", { route: `/${ORG_ID}/page` });
+    expect((await landed()).at).toBe("/setOrg");
   });
 
   it("shows the no-permission state to a member on an admin page", async () => {
     mockApi(...sessionHandlers(member));
     const { container } = renderGate("admin");
     expect(
-      await screen.findByRole("heading", {
-        name: "You don't have access to this page",
-      }),
+      await screen.findByRole("heading", { name: DENIED }),
     ).toBeInTheDocument();
     expect(screen.queryByText(/page for/)).not.toBeInTheDocument();
     await expect(container).toHaveNoA11yViolations();
@@ -125,9 +168,7 @@ describe("RouteGate", () => {
     mockApi(...sessionHandlers(DEFAULT_SESSION));
     renderGate("platform-admin");
     expect(
-      await screen.findByRole("heading", {
-        name: "You don't have access to this page",
-      }),
+      await screen.findByRole("heading", { name: DENIED }),
     ).toBeInTheDocument();
   });
 
@@ -142,7 +183,9 @@ describe("RouteGate", () => {
   it("sends a user with several organisations and none current to selection", async () => {
     const organizations = [
       organizationRow(member),
-      organizationRow(makeSession({ organization: { id: "org-2" } })),
+      organizationRow(
+        makeSession({ organization: { id: "org-2", urlName: "other" } }),
+      ),
     ];
     mockApi(...sessionHandlers(member, { current: null, organizations }));
     renderGate("authenticated");
@@ -185,24 +228,10 @@ describe("RouteGate", () => {
 
   it("lets a cloud plugin gate every signed-in page, and decide platform-admin pages", async () => {
     mockApi(...sessionHandlers(member));
-    const manifest: PluginManifest = {
-      id: "gates",
-      distributions: ["cloud"],
-      slots: {
-        "route.entitlement": async () => ({
-          default: ({ children }) => <section>entitled: {children}</section>,
-        }),
-        "route.platform-admin": async () => ({
-          default: ({ children }) => (
-            <section>platform admin: {children}</section>
-          ),
-        }),
-      },
-    };
-    const slot = makeSlot(buildRegistry([manifest], "cloud"), vi.fn());
-    const wrap = (ui: ReactNode) => (
-      <PluginProvider slot={slot}>{ui}</PluginProvider>
-    );
+    const wrap = gates({
+      "route.entitlement": passThrough("entitled"),
+      "route.platform-admin": passThrough("platform admin"),
+    });
     const { unmount } = renderGate("authenticated", { wrap });
     expect(await screen.findByText(/entitled:/)).toHaveTextContent(
       "entitled: page for Ada in Example Org",
@@ -214,5 +243,66 @@ describe("RouteGate", () => {
     expect(decided.parentElement).toHaveTextContent(
       /^entitled: platform admin/,
     );
+  });
+
+  it("keeps the page hidden while a gate's plugin loads", async () => {
+    mockApi(...sessionHandlers(member));
+    let release: () => void = () => undefined;
+    const loaded = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const gate = passThrough("entitled");
+    const started = vi.fn();
+    const wrap = gates({
+      "route.entitlement": async () => {
+        started();
+        await loaded;
+        return gate();
+      },
+    });
+    renderGate("authenticated", { wrap });
+    await vi.waitFor(() => expect(started).toHaveBeenCalled());
+    expect(screen.queryByText(/page for/)).not.toBeInTheDocument();
+    release();
+    expect(await screen.findByText(/entitled:/)).toBeInTheDocument();
+  });
+
+  it("keeps the page closed when a gate's plugin fails to load", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mockApi(...sessionHandlers(member));
+    const report = vi.fn();
+    const wrap = gates(
+      { "route.entitlement": () => Promise.reject(new Error("chunk gone")) },
+      report,
+    );
+    renderGate("authenticated", { wrap });
+    expect(
+      await screen.findByText("This page could not be loaded."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/page for/)).not.toBeInTheDocument();
+    expect(report).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    "authenticated",
+    "platform-admin",
+  ] as const)("a %s page that throws is the page's error, not the gate plugin's", async (access) => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mockApi(...sessionHandlers(member));
+    const report = vi.fn();
+    const wrap = gates(
+      {
+        "route.entitlement": passThrough("entitled"),
+        "route.platform-admin": passThrough("platform admin"),
+      },
+      report,
+    );
+    renderGate(access, { wrap, page: <Broken /> });
+    expect(
+      await screen.findByText("This page could not be loaded."),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/entitled:/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: DENIED })).toBeNull();
+    expect(report).not.toHaveBeenCalled();
   });
 });

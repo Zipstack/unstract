@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, configure, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setOldVersion } from "@v1/app/api";
 import { DEMO_PAGES } from "@v1/app/registry/entries";
@@ -23,6 +23,9 @@ import { VersionSwitch } from "./VersionSwitch";
 
 // The version each page view is tagged with.
 const versions = vi.hoisted((): string[] => []);
+// v1 pages load the session first, and the first v1 render loads its chunks: past findBy's 1 s default under coverage.
+configure({ asyncUtilTimeout: 3000 });
+
 // Core tests render without plugins, whatever the build's distribution.
 vi.mock("@v1/plugins", async () => {
   const { buildRegistry, makeSlot } = await import("@v1/lib/plugins");
@@ -37,7 +40,10 @@ vi.mock("@v1/lib/analytics", () => ({
 /** The user v1's session load finds, in the organisation the URLs name. */
 const signedIn = (org = "acme") =>
   sessionHandlers(
-    makeSession({ user: { id: "7" }, organization: { id: org } }),
+    makeSession({
+      user: { id: "7" },
+      organization: { id: "org_7", urlName: org },
+    }),
   );
 
 // Two test-only pages beside the real demo ones: one that fails to render on

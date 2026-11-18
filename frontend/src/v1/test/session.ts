@@ -12,14 +12,16 @@ export type TestUser = Readonly<{
 
 export type TestOrganization = Readonly<{
   id: string;
+  /** The display name. */
   name: string;
+  /** The URL name (`/<urlName>/...`); differs from the id, as on cloud. */
+  urlName: string;
 }>;
 
 /**
  * A signed-in user and organization: what `renderV1`'s `session` option
  * provides, and fixture data for network mocks (`apiPath(session, …)` builds
- * the org-scoped URL; `sessionHandlers` answers the session load). The
- * organisation's URL name is its id, as in OSS; `name` is its display name.
+ * the org-scoped URL; `sessionHandlers` answers the session load).
  */
 export type TestSession = Readonly<{
   user: TestUser;
@@ -36,7 +38,7 @@ export type TestSessionOverrides = Readonly<{
 export const DEFAULT_SESSION: TestSession = {
   // Numeric, as the session endpoint gives it.
   user: { id: "1", email: "ada@example.com", displayName: "Ada" },
-  organization: { id: "org-1", name: "Example Org" },
+  organization: { id: "org-1", name: "Example Org", urlName: "example-org" },
   role: "admin",
 };
 
@@ -71,7 +73,7 @@ export function toV1Session({
     },
     organization: {
       id: organization.id,
-      name: organization.id,
+      name: organization.urlName,
       displayName: organization.name,
       switchViaLogin: false,
     },

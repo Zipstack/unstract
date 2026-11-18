@@ -69,19 +69,28 @@ test.describe("P0-T06 session: ended", { tag: DIST.oss }, () => {
 
     await context.clearCookies({ name: SESSION_COOKIE });
     // The page refreshes its data when it becomes visible; that call gets the 401.
+    // Bubbling, as the browser's own is: TanStack Query listens on window.
     await page.evaluate(() =>
-      document.dispatchEvent(new Event("visibilitychange")),
+      document.dispatchEvent(new Event("visibilitychange", { bubbles: true })),
     );
     await expectOnSignIn(page);
   });
 
-  test("a v1 page opened with no session goes to sign-in", async ({
+  test("a v1 page opened with no session goes to sign-in before any data call", async ({
     page,
     context,
     app,
   }) => {
     await context.clearCookies({ name: SESSION_COOKIE });
+    // The guard sends a guest away without the page asking for data, so no 401 does it.
+    const dataCalls: string[] = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname.startsWith("/api/v1/unstract/")) {
+        dataCalls.push(request.url());
+      }
+    });
     await app.goto("v1-demo");
     await expectOnSignIn(page);
+    expect(dataCalls).toEqual([]);
   });
 });

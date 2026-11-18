@@ -1,6 +1,7 @@
 import {
   AxiosError,
   type AxiosRequestConfig,
+  CanceledError,
   type InternalAxiosRequestConfig,
 } from "axios";
 import {
@@ -21,7 +22,7 @@ import {
   organizationLoginUrl,
   switchOrganization,
 } from "./organizations";
-import { signOut, signOutAndLeave } from "./session";
+import { SIGN_OUT_TIMEOUT_MS, signOut, signOutAndLeave } from "./session";
 
 const reset = vi.fn();
 vi.mock("posthog-js", () => ({ default: { reset: () => reset() } }));
@@ -282,6 +283,28 @@ describe("signOutAndLeave", () => {
     expect(assign).toHaveBeenCalledWith("/api/v1/logout");
     expect(atLeave).toEqual([0, 0]);
     logged.mockRestore();
+  });
+
+  test("a POST that never answers falls back to the GET logout after the timeout", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    // Answers only by rejecting when the request is aborted.
+    http.defaults.adapter = (config: InternalAxiosRequestConfig) =>
+      new Promise((_, reject) => {
+        (config.signal as AbortSignal).addEventListener("abort", () =>
+          reject(new CanceledError()),
+        );
+      });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const leaving = signOutAndLeave();
+      await vi.advanceTimersByTimeAsync(SIGN_OUT_TIMEOUT_MS - 1);
+      expect(assign).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await leaving;
+      expect(assign).toHaveBeenCalledWith("/api/v1/logout");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("a reply without a redirect URL falls back to the GET logout", async () => {

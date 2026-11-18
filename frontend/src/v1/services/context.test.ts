@@ -92,9 +92,8 @@ describe("whenSessionExpired", () => {
     const removed = vi.fn();
     context.whenSessionExpired(early);
     context.whenSessionExpired(removed)();
-    expect(context.isSessionExpired()).toBe(false);
+    expect(early).not.toHaveBeenCalled();
     context.expireSession();
-    expect(context.isSessionExpired()).toBe(true);
     expect(early).toHaveBeenCalledTimes(1);
     expect(removed).not.toHaveBeenCalled();
     const late = vi.fn();

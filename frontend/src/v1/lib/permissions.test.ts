@@ -4,6 +4,7 @@ import {
   type Capability,
   canCreate,
   canDelete,
+  canDeleteWorkflowOrDeployment,
   canEdit,
   canShare,
   isAdmin,
@@ -43,4 +44,20 @@ describe("permissions", () => {
     expect(canCreate(capabilities, "manage_members")).toBe(false);
     expect(canCreate(undefined, "create_connectors")).toBe(false);
   });
+});
+
+it("canDeleteWorkflowOrDeployment also needs the organisation's delete capability", () => {
+  const owned = { is_owner: true };
+  const open = [
+    { key: "delete_workflows_and_deployments", allowed_for_me: true },
+  ] as const;
+  const closed = [
+    { key: "delete_workflows_and_deployments", allowed_for_me: false },
+  ] as const;
+  expect(canDeleteWorkflowOrDeployment(member, owned, open)).toBe(true);
+  expect(canDeleteWorkflowOrDeployment(member, owned, closed)).toBe(false);
+  expect(canDeleteWorkflowOrDeployment(member, owned, undefined)).toBe(false);
+  expect(canDeleteWorkflowOrDeployment(member, { is_owner: false }, open)).toBe(
+    false,
+  );
 });
