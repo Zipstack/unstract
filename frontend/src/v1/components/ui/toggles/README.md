@@ -54,10 +54,13 @@ import {
   description by `aria-describedby`, and both use the v1 type roles. Every
   toggle needs a name, and the types require one: `label`, `aria-label` or
   `aria-labelledby` (`<Checkbox />` does not type-check; a `description` is
-  not a name). A control with no visible label takes `aria-label`. A `RadioGroup` needs a
-  name: `label` (used as `aria-labelledby`) or `aria-label`. Every slider
-  thumb needs a name: see `Slider` below. A `label` or `description` of
-  `false`, `""`, `null` or `undefined` counts as absent.
+  not a name). A control with no visible label takes `aria-label`. A
+  `RadioGroup` needs a name: `label` (used as `aria-labelledby`), `aria-label`
+  or the caller's own `aria-labelledby`. Every slider thumb needs a name: see
+  `Slider` below. A `label` or `description` of `false`, `""`, `null` or
+  `undefined` counts as absent, and the types cannot catch that: a
+  conditional `label={cond && "x"}` compiles and can render an unnamed
+  control, so pass `aria-label` when the label may be empty.
 - **The checkbox icon is the Indicator itself.** v0's global rule forces any
   `svg.lucide` whose parent is a `span`, `p`, `label`, `li`, `a`, `td` or
   `th` to `1em` (see the v1 README, Styling), and it beats `ui:size-*`. So
