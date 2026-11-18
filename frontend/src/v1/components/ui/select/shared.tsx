@@ -229,6 +229,8 @@ export type UseLoadedOptions = Readonly<{
   /** Passed to `useListbox`. */
   selected: readonly string[];
   onSelect: (option: SelectOption) => void;
+  /** Passed to `useListbox`: closes the list and blocks selection. */
+  disabled: boolean | undefined;
 }>;
 
 export type LoadedOptions = Readonly<{
@@ -256,6 +258,7 @@ export function useLoadedOptions({
   extraSelected,
   selected,
   onSelect,
+  disabled,
 }: UseLoadedOptions): LoadedOptions {
   // The last loaded options, fed back to the listbox (it filters nothing then).
   const [served, setServed] = useState(NO_OPTIONS);
@@ -265,6 +268,7 @@ export function useLoadedOptions({
     selected,
     onSelect,
     filter: !loadOptions,
+    disabled,
     id: useId(),
   });
   const loaded = useAsyncOptions(loadOptions, listbox.query, listbox.open);

@@ -69,6 +69,7 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
     extraSelected: selectedOptions,
     selected: value,
     onSelect: toggle,
+    disabled,
   });
 
   function change(next: readonly string[]) {

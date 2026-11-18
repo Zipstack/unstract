@@ -161,6 +161,26 @@ it("still closes on Tab during a composition, since focus is leaving", () => {
   expect(result.current.open).toBe(false);
 });
 
+it("closes, clears the query and selects nothing while the field is disabled", () => {
+  const { result, press, onSelect, rerender } = setup();
+  act(() => result.current.setQuery("ga"));
+  expect(result.current.open).toBe(true);
+  rerender({ disabled: true });
+  expect(result.current.open).toBe(false);
+  expect(result.current.query).toBe("");
+  act(() => result.current.onSelect(OPTIONS[0]));
+  act(() => result.current.setOpen(true));
+  press("ArrowDown");
+  press("Enter");
+  expect(result.current.open).toBe(false);
+  expect(onSelect).not.toHaveBeenCalled();
+  // Enabled again, the list stays closed until it is opened.
+  rerender({ disabled: false });
+  expect(result.current.open).toBe(false);
+  act(() => result.current.onSelect(OPTIONS[0]));
+  expect(onSelect).toHaveBeenCalledExactlyOnceWith(OPTIONS[0]);
+});
+
 it("never makes a disabled option active: it falls back to the first enabled one", () => {
   const { result, press } = setup();
   press("ArrowDown");

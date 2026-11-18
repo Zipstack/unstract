@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { renderV1 } from "@v1/test";
 import { Star } from "lucide-react";
 import { expect, it, vi } from "vitest";
@@ -49,6 +49,26 @@ it("opens on click and lists every option by name", async () => {
     .map((option) => option.textContent);
   expect(names).toEqual(["Claude", "GeminiGoogle", "Grok", "Gemma", "Llama"]);
   expect(screen.getByRole("option", { name: "Llama" })).toBeTruthy();
+});
+
+it("closes the list when disabled while open, and selects nothing", async () => {
+  const { user, onValueChange, rerender } = setup({ defaultValue: "llama" });
+  await user.click(trigger());
+  const listed = screen.getByRole("option", { name: "Gemma" });
+  rerender(
+    <Select
+      options={MODELS}
+      aria-label="Model"
+      defaultValue="llama"
+      disabled
+    />,
+  );
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(trigger().getAttribute("aria-expanded")).toBe("false");
+  fireEvent.click(listed);
+  fireEvent.keyDown(listed, { key: "Enter" });
+  expect(onValueChange).not.toHaveBeenCalled();
+  expect(trigger().textContent).toBe("Llama");
 });
 
 it("moves with ArrowDown, skips the disabled option and selects on Enter", async () => {

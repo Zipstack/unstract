@@ -316,6 +316,20 @@ it("toggles the list with the chevron, keeping focus on the input", async () => 
   expect(document.activeElement).toBe(input());
 });
 
+it("closes the list and restores the label when disabled while open", async () => {
+  const { user, onValueChange, rerender } = setup({ defaultValue: "llama" });
+  await user.type(input(), "ge");
+  expect(screen.getByRole("listbox")).toBeTruthy();
+  const listed = screen.getByRole("option", { name: /Gemini/ });
+  rerender(<Combobox options={MODELS} aria-label="Model" disabled />);
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(input().getAttribute("aria-expanded")).toBe("false");
+  expect(input().value).toBe("Llama");
+  fireEvent.click(listed);
+  expect(onValueChange).not.toHaveBeenCalled();
+  expect(input().value).toBe("Llama");
+});
+
 it("follows a controlled value", async () => {
   const { user, onValueChange, rerender } = setup({ value: "claude" });
   await user.tab();

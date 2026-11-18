@@ -161,6 +161,9 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
   empty `options` shows a "No options" row.
 - The trigger shows the selected option's `leading` and label, never its
   description.
+- Disabling it while the list is open closes the list (the wrapper holds
+  Radix's open state, since Radix's `disabled` reaches only the trigger),
+  and `onValueChange` is not called while disabled.
 
 ## Combobox
 
@@ -206,6 +209,10 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
 - The selected label comes from the current options, else from any option
   seen before (remembered by value, so it survives a filter or a server
   response that no longer holds it), else from `selectedOption`.
+- Disabling it while the list is open closes the list, drops the typed text
+  and shows the selected label again; it stays closed when enabled again.
+  `useListbox` (shared with `MultiSelect`) also refuses to open or select
+  while `disabled`, whatever calls it.
 
 ## MultiSelect
 
@@ -231,6 +238,8 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
   for the field, not one per chip): from the keyboard, Backspace in an empty
   input removes the last chip, and the open list toggles any chosen option
   off with Enter.
+- Disabling it while the list is open closes the list and clears the query,
+  as in `Combobox`.
 
 ## SegmentedControl
 

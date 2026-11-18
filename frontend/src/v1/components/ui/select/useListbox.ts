@@ -14,6 +14,8 @@ export type UseListboxOptions = Readonly<{
   onSelect: (option: SelectOption) => void;
   /** When false, the query does not filter (server-side filtering). Default true. */
   filter?: boolean;
+  /** The field is disabled: the list closes and nothing opens or is selected. */
+  disabled?: boolean;
   id: string;
 }>;
 
@@ -33,7 +35,7 @@ export type Listbox = Readonly<{
   optionId: (index: number) => string;
   /** The caller's `selected`, passed through for the rows' `aria-selected`. */
   selected: readonly string[];
-  /** The caller's `onSelect`, passed through for a row click. */
+  /** The caller's `onSelect`, for a row click; never called for a disabled option or field. */
   onSelect: (option: SelectOption) => void;
   /**
    * Attach to the input: ArrowDown/Up (opens when closed), Home, End, Enter
@@ -106,11 +108,26 @@ export function useListbox({
   selected,
   onSelect,
   filter = true,
+  disabled = false,
   id,
 }: UseListboxOptions): Listbox {
   const [open, setOpenState] = useState(false);
   const [query, setQueryState] = useState("");
   const [activeValue, setActiveValue] = useState<string | null>(null);
+
+  // A field disabled while its list is open closes it and drops the query
+  // (set while rendering, so the open list never commits); enabling it again
+  // leaves the list closed.
+  if (disabled && (open || query !== "")) {
+    setOpenState(false);
+    setQueryState("");
+  }
+
+  const choose = (option: SelectOption) => {
+    if (!disabled && !option.disabled) {
+      onSelect(option);
+    }
+  };
 
   const filterBy = useCallback(
     (text: string) =>
@@ -131,6 +148,9 @@ export function useListbox({
     setActiveValue(visible[index]?.value ?? null);
 
   const setQuery = (next: string) => {
+    if (disabled) {
+      return;
+    }
     setQueryState(next);
     if (next !== "") {
       setOpenState(true);
@@ -171,6 +191,9 @@ export function useListbox({
   const activeId = open && activeIndex >= 0 ? optionId(activeIndex) : undefined;
 
   const openList = () => {
+    if (disabled) {
+      return;
+    }
     const chosen = visible.findIndex(
       (option) => !option.disabled && selected.includes(option.value),
     );
@@ -226,8 +249,8 @@ export function useListbox({
         // While open, Enter never submits the form, even with nothing active.
         event.preventDefault();
         const option = visible[activeIndex];
-        if (option && !option.disabled) {
-          onSelect(option);
+        if (option) {
+          choose(option);
         }
         return;
       }
@@ -257,7 +280,7 @@ export function useListbox({
     optionIdFor,
     optionId,
     selected,
-    onSelect,
+    onSelect: choose,
     onKeyDown,
     comboboxProps: {
       role: "combobox",

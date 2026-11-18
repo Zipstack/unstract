@@ -195,6 +195,20 @@ it("leaves Backspace and Escape to an IME while it composes", async () => {
   expect(onValueChange).not.toHaveBeenCalled();
 });
 
+it("closes the list and clears the query when disabled while open", async () => {
+  const { user, onValueChange, rerender } = setup({
+    defaultValue: ["invoice"],
+  });
+  await user.type(input(), "con");
+  const listed = option("Contract");
+  rerender(<MultiSelect options={TAGS} aria-label="Tags" disabled />);
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(input().value).toBe("");
+  act(() => listed.click());
+  expect(onValueChange).not.toHaveBeenCalled();
+  expect(chipNames()).toEqual(["Invoice"]);
+});
+
 it("closes and clears the query on Escape", async () => {
   const { user, onValueChange } = setup();
   await user.type(input(), "con");

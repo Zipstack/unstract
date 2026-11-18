@@ -66,7 +66,12 @@ export function Combobox(props: ComboboxProps): JSX.Element {
     extraSelected: selectedOption ? [selectedOption] : undefined,
     selected: value === null ? [] : [value],
     onSelect: select,
+    disabled,
   });
+  // Disabled mid-edit, the list closes (in useListbox) and the label returns.
+  if (disabled && editing) {
+    setEditing(false);
+  }
   const selected = value === null ? undefined : lookup(value);
 
   /** Closes the list and drops the typed text, so the label shows again. */

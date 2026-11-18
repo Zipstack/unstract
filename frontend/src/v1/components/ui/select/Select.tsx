@@ -2,7 +2,7 @@ import { cn } from "@v1/lib/cn";
 import { ACTION_ICONS } from "@v1/lib/icons";
 import { getPortalContainer } from "@v1/lib/portal";
 import { Select as SelectPrimitive } from "radix-ui";
-import type { JSX } from "react";
+import { type JSX, useState } from "react";
 import {
   OPTION_CHECK_CLASS,
   OPTION_DESCRIPTION_CLASS,
@@ -44,6 +44,7 @@ export type SelectProps = Readonly<{
  * use `Combobox`), on Radix Select: every option is rendered, and Radix
  * handles the keyboard (arrows, Home, End, type-ahead on the label, Enter,
  * Escape). A `value` or `defaultValue` that matches no option shows the placeholder.
+ * Disabling it while the list is open closes the list.
  */
 export function Select({
   options,
@@ -65,15 +66,28 @@ export function Select({
   // empty value) shows the placeholder instead.
   const known = (candidate: string) =>
     options.some((option) => option.value === candidate);
+  // Radix's `disabled` reaches only the trigger: an open list stays open and
+  // its items stay choosable. So the open state is held here, closed while
+  // rendering when the field is disabled, and a change while disabled is dropped.
+  const [open, setOpen] = useState(false);
+  if (disabled && open) {
+    setOpen(false);
+  }
   return (
     <SelectPrimitive.Root
+      open={open}
+      onOpenChange={setOpen}
       value={value === undefined || known(value) ? value : ""}
       defaultValue={
         defaultValue === undefined || known(defaultValue)
           ? defaultValue
           : undefined
       }
-      onValueChange={onValueChange}
+      onValueChange={(next) => {
+        if (!disabled) {
+          onValueChange?.(next);
+        }
+      }}
       name={name}
       required={required}
       disabled={disabled}
