@@ -60,6 +60,19 @@ EXECUTOR_AGENTIC = "agentic"
 EXECUTOR_AGENTIC_KV = "agentic_kv"
 EXECUTOR_AGENTIC_TABLE = "agentic_table"
 
+
+def multi_stage_enabled() -> bool:
+    """Whether this deployment's Studio offers the Multi-Stage Extractor.
+
+    Read from ``settings.APS_MULTI_STAGE_ENABLED`` when the catalogue is built,
+    so it is fixed for the life of the process: a per-environment switch, not a
+    per-request one. A missing setting reads as off.
+    """
+    from django.conf import settings
+
+    return bool(getattr(settings, "APS_MULTI_STAGE_ENABLED", False))
+
+
 EXTRACTOR_AGENTS: dict[str, ExtractorAgentSpec] = {
     ExtractorAgentKey.SIMPLE: ExtractorAgentSpec(
         key=ExtractorAgentKey.SIMPLE,
@@ -89,11 +102,12 @@ EXTRACTOR_AGENTS: dict[str, ExtractorAgentSpec] = {
         api_extractor="kv",
         # Multi-modality is a checkbox on both Primary agents.
         supports_multimodal=True,
-        # NOT OFFERED IN THE STUDIO YET. The engine has merged and the blind
-        # API routes `kv` (gated by `AGENT_KV_KV_EXTRACTOR_ENABLED`, not by
-        # this flag), but the Studio waits on the staging proof (UN-4213) and
-        # a cloud-side parameter builder. See `available` in `spec.py`.
-        available=False,
+        # Offered in the Studio only where `APS_MULTI_STAGE_ENABLED` says so,
+        # per environment. The engine is proven on staging (UN-4213, 0.188),
+        # and the blind API routes `kv` behind its own setting,
+        # `AGENT_KV_KV_EXTRACTOR_ENABLED`, not this one. See `available` in
+        # `spec.py`.
+        available=multi_stage_enabled(),
     ),
     ExtractorAgentKey.TABLE: ExtractorAgentSpec(
         key=ExtractorAgentKey.TABLE,
