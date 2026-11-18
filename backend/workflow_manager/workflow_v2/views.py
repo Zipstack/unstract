@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from django.conf import settings
+from django.db import transaction
 from django.db.models.query import QuerySet
 from django.views.decorators.csrf import csrf_exempt
 from permissions.membership_views import OwnerManagementMixin
@@ -32,6 +33,7 @@ from workflow_manager.workflow_v2.dto import ExecutionResponse
 from workflow_manager.workflow_v2.enums import SchemaEntity, SchemaType
 from workflow_manager.workflow_v2.exceptions import (
     InternalException,
+    WorkflowDeletionError,
     WorkflowDoesNotExistError,
     WorkflowGenerationError,
     WorkflowRegenerationError,
@@ -169,8 +171,30 @@ class WorkflowViewSet(
         return workflow
 
     def perform_destroy(self, instance: Workflow) -> None:
+        """Block deletion when the workflow is in use by any pipeline/API.
+
+        The frontend gates the delete button via `can_update`, but direct API
+        callers can still hit DELETE. Without this guard, the CASCADE FK on
+        Pipeline/APIDeployment would silently drop their rows along with
+        the workflow.
+
+        Check and delete run in one transaction with the workflow row locked:
+        a concurrent Pipeline/APIDeployment INSERT referencing it takes a
+        KEY SHARE lock on the row, which conflicts with FOR UPDATE, so it waits
+        for this transaction and then fails its FK check instead of being
+        silently cascade-deleted.
+        """
         deleted = resource_ref(instance)
-        super().perform_destroy(instance)
+        with transaction.atomic():
+            instance = Workflow.objects.select_for_update().get(pk=instance.pk)
+            usage = WorkflowHelper.can_update_workflow(str(instance.id))
+            if not usage.get("can_update", False):
+                raise WorkflowDeletionError(
+                    detail=WorkflowHelper.build_workflow_in_use_message(
+                        instance.workflow_name, usage
+                    )
+                )
+            super().perform_destroy(instance)
         record_resource_event(self.request, Action.RESOURCE_DELETED, deleted)
 
     def get_execution(self, request: Request, pk: str) -> Response:
