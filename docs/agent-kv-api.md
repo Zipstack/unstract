@@ -152,11 +152,18 @@ A schema node is one of three shapes, decided structurally:
   nested array inside an array's row schema is rejected at compile time ("not supported
   in P8a") — arrays are single-level only in v1.
 
-  `_dedup` (optional, default `true`) controls whether rows identical in **every**
-  extracted column are collapsed to one. Leave it on for documents where
-  layout-preserving OCR repeats a row once per replicate column — that is what it
-  exists for. Set it to `false` when your documents can genuinely contain two
-  identical rows:
+  `_dedup` (optional, default `true`) controls whether rows that match in **every**
+  extracted column are collapsed to one. **The match is not exact string equality:**
+  each cell's signature is `" ".join((value or "").split()).casefold()`, so
+  whitespace is collapsed and letter case ignored — `ACME Ltd` and `acme  ltd` are
+  one row. A schema keyed on a case-sensitive identifier loses rows here.
+  Rows where **nothing** was found are exempt and never collapsed: their signatures
+  are equal by construction rather than because the document repeated anything, so
+  collapsing them turned a column-name mismatch into a single blank row.
+
+  Leave it on for documents where layout-preserving OCR repeats a row once per
+  replicate column — that is what it exists for. Set it to `false` when your
+  documents can genuinely contain two identical rows:
 
   ```json
   "line_items": {
@@ -197,8 +204,40 @@ Enforced by `compile_schema` regardless of the byte-size cap below (`SchemaCaps`
 | Max nesting depth | 6 |
 | Max regex pattern length | 200 |
 | Max aliases per field | 10 |
-| Max description length | 500 |
+| Max description length | 500 — counted on `effective_description` (see below) |
 | Max constraints | 30 |
+
+**The description cap is not counted on the `description` you send.** `compile.py`
+checks `len(kspec.effective_description)`, and `kv_schema.py` builds that as:
+
+```python
+breadcrumb = " > ".join(path_parts)            # NOT the dotted `path`
+effective_description = f"{breadcrumb}: {node['description']}"
+```
+
+Note the separator: the breadcrumb joins the field names with `" > "`, **not** with
+the `.` used by `kspec.path`. So the overhead on your text is
+
+```text
+len(" > ".join(path_parts)) + 2        # the 2 is the ": "
+```
+
+which for a leaf at depth *d* is `sum(len(name)) + 3*(d - 1) + 2`. Reading the
+separator as a dot understates the overhead by 2 characters per level, which is
+enough to turn a submit you calculated as exactly at the limit into a 400:
+`vendor.name` with a 487-character `description` gives `vendor > name: …` = **502**,
+rejected, where the dotted reading predicts exactly 500 and passes.
+
+The budget therefore shrinks with nesting depth. A `description` of 480 characters
+compiles at the top level and is a 400 on `vendor.address.billing.contact.name`.
+
+**Array columns are the exception, and they are cheap.** `_walk_array` compiles each
+column with `[col_name]` as its *whole* path — row-local, as the column paths are
+everywhere else — so a column's breadcrumb is just its own name and the enclosing
+array's path contributes nothing. `line_items.tax.breakdown`'s `amount` column pays
+`len("amount") + 2`, the same as a top-level `amount` would, however deep the array
+sits. The cap is still enforced on them: `_enforce_leaf_caps` walks
+`_every_leaf(key_specs, array_specs)`, so scalars and array columns are both checked.
 
 These caps are hardcoded in the compiler (not env-configurable); what **is**
 env-configurable is the raw byte size of the whole `keys` document
@@ -224,10 +263,11 @@ The request is **extractor-scoped**: a per-extractor schema and its knobs live i
 |---|---|---|
 | `file` | yes | One document per job (D12). |
 | `extractors` | yes | JSON array (file part or inline JSON string), one entry per extractor. Compiled synchronously; invalid ⇒ 400, nothing billed. |
-| `page_start`, `page_end` | no | 1-based inclusive range. **Job-level, not per-extractor**: the range drives the shared OCR pass and the page cap, so it cannot differ between extractors reading the same document. |
+| `page_start`, `page_end` | no | 1-based inclusive range. **Job-level, not per-extractor**: there is one shared OCR pass over the document, so the range selects which of its pages the extraction agents read and cannot differ between extractors reading the same document. It does **not** narrow the OCR pass and does **not** reduce the page cap or the bill — the whole file is OCR'd and billed whatever the range — see the page-cap note in [§3a](#3a-adapters--you-supply-the-models-and-the-ocr-credentials) and [§13](#12-environment-reference). |
 | `timeout` | no | Omitted or `0` = pure async (immediate 202). `1–300`: the view polls the job row up to the deadline and returns the result inline if the job completes, else 202 with the job id. |
-| `tags`, `custom_data` | no | Echoed through. |
-| `webhook_url` | no | Terminal-state POST `{job_id, status}` only — no result payload. **https, public host**; anything the delivery guard would refuse is a 400 at submit (§8). |
+| `tags` | no | `ListField(child=CharField(max_length=64), max_length=20)` — **a list of at most 20 strings of at most 64 characters**, not a string. Stored on the job row; **not** returned by status or result. |
+| `custom_data` | no | `JSONField` — arbitrary JSON, not a string. Stored on the job row; **not** returned by status or result. |
+| `webhook_url` | no | Terminal-state POST `{job_id, status}` — no result payload. One per job, plus exactly one additive follow-up in the raced-cancel case (§8). **https, public host**, checked at submit by `validate_webhook_url` — but **syntactically only** (`resolve=False`), so a hostname that resolves inward is accepted here and refused at the sink. Acceptance at submit is not a delivery guarantee (§8). |
 
 **Each `extractors` entry:**
 
@@ -567,8 +607,11 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
   `files_purged` marker, not off a blank ref — `DELETE` deliberately keeps a ref
   whose object delete failed so TTL cleanup can retry it, so a surviving ref is
   not evidence that the data is still yours to read ([§7](#7-delete--delete-agent-kvjob_id)).
-- **`COMPLETED`**: `200` with the engine's full result object, unchanged (record,
-  normalized_record, per-field audit trail, `qa_passed`, `challenge_passed`,
+- **`COMPLETED`**: `200` with the engine's full result object, unchanged. **The
+  fields differ per extractor** — the list that follows is `kv`'s; `table` returns
+  `tables`, `headers`, `row_count`, `page_count`, `table_pages`, `detected` and
+  `reason` instead, and both shapes are set out under the examples below. For `kv`:
+  (record, normalized_record, per-field audit trail, `qa_passed`, `challenge_passed`,
   `consistency_violations`, `cost_summary`, `timing`, plus the advisory markers that
   qualify `qa_passed`/`challenge_passed` — spec §4; this repo does not shape or
   re-validate that payload, it stores and replays exactly what the executor's finalize
