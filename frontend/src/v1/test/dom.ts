@@ -211,3 +211,24 @@ export function mockMatchMedia({
       [...listeners.values()].reduce((sum, set) => sum + set.size, 0),
   };
 }
+
+/**
+ * Gives every element a 320-tall box (a popover list's `ui:max-h-80` cap) and
+ * a 40,000-tall scroll height, as a laid-out page would, so a virtual list
+ * renders a window of rows. The spies are restored after each test
+ * (`restoreMocks: true`).
+ */
+export function stubLayout(): void {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+    new DOMRect(0, 0, 320, 320),
+  );
+  for (const [prop, size] of [
+    ["offsetHeight", 320],
+    ["offsetWidth", 320],
+    ["clientHeight", 320],
+    ["clientWidth", 320],
+    ["scrollHeight", 40_000],
+  ] as const) {
+    vi.spyOn(HTMLElement.prototype, prop, "get").mockReturnValue(size);
+  }
+}

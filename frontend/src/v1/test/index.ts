@@ -18,6 +18,7 @@ export {
   type MatchMediaControl,
   mockMatchMedia,
   type ResizeObserverControl,
+  stubLayout,
 } from "./dom";
 export {
   apiPath,
