@@ -1,7 +1,7 @@
 import { Check, Minus } from "lucide-react";
 import { Checkbox as CheckboxPrimitive } from "radix-ui";
 import type { ComponentProps, JSX, ReactNode } from "react";
-import { ControlRow } from "./ControlRow";
+import { ControlRow, type Named } from "./ControlRow";
 
 export type CheckboxProps = Omit<
   ComponentProps<typeof CheckboxPrimitive.Root>,
@@ -14,7 +14,8 @@ export type CheckboxProps = Omit<
     description?: ReactNode;
     /** Class for the row, not the box. */
     className?: string;
-  }>;
+  }> &
+  Named;
 
 /**
  * A 16px checkbox with an optional label and description. The mixed state is
@@ -50,7 +51,7 @@ export function Checkbox({
             [ariaDescribedBy, describedBy].filter(Boolean).join(" ") ||
             undefined
           }
-          className="ui:peer ui:size-4 ui:shrink-0 ui:cursor-pointer ui:rounded-sm ui:border ui:border-input ui:bg-background ui:text-primary-foreground ui:focus-visible:focus-ring ui:disabled:pointer-events-none ui:disabled:opacity-50 ui:data-[state=checked]:border-primary ui:data-[state=checked]:bg-primary ui:data-[state=indeterminate]:border-primary ui:data-[state=indeterminate]:bg-primary"
+          className="ui:size-4 ui:shrink-0 ui:cursor-pointer ui:rounded-sm ui:border ui:border-input ui:bg-background ui:text-primary-foreground ui:focus-visible:focus-ring ui:disabled:pointer-events-none ui:disabled:opacity-50 ui:data-[state=checked]:border-primary ui:data-[state=checked]:bg-primary ui:data-[state=indeterminate]:border-primary ui:data-[state=indeterminate]:bg-primary"
           {...props}
         >
           <CheckboxPrimitive.Indicator asChild>

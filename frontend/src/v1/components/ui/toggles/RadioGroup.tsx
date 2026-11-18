@@ -13,6 +13,7 @@ import {
   CONTROL_LABEL_CLASS,
   ControlRow,
   isPresent,
+  type Named,
 } from "./ControlRow";
 
 /** The group's `disabled`, so each Radio can dim its label with the group. */
@@ -28,7 +29,8 @@ export type RadioGroupProps = Omit<
     description?: ReactNode;
     /** Class for the field (heading, description and items), not the item list. */
     className?: string;
-  }>;
+  }> &
+  Named;
 
 /**
  * A set of radios with an optional heading and description. Arrow keys move
@@ -101,7 +103,8 @@ export type RadioProps = Omit<
     description?: ReactNode;
     /** Class for the row, not the radio. */
     className?: string;
-  }>;
+  }> &
+  Named;
 
 /** A 14px radio with an optional label and description; use inside `RadioGroup`. */
 export function Radio({
@@ -130,14 +133,15 @@ export function Radio({
             [ariaDescribedBy, describedBy].filter(Boolean).join(" ") ||
             undefined
           }
-          className="ui:peer ui:size-3.5 ui:shrink-0 ui:cursor-pointer ui:rounded-full ui:border ui:border-input ui:bg-background ui:focus-visible:focus-ring ui:disabled:pointer-events-none ui:disabled:opacity-50 ui:data-[state=checked]:border-primary"
+          className="ui:size-3.5 ui:shrink-0 ui:cursor-pointer ui:rounded-full ui:border ui:border-input ui:bg-background ui:focus-visible:focus-ring ui:disabled:pointer-events-none ui:disabled:opacity-50 ui:data-[state=checked]:border-primary"
           {...props}
         >
           <RadioGroupPrimitive.Indicator
             data-slot="radio-indicator"
             className="ui:flex ui:size-full ui:items-center ui:justify-center"
           >
-            <span className="ui:size-1.5 ui:rounded-full ui:bg-primary" />
+            {/* The transparent border fills the dot in forced-colors mode, which drops backgrounds. */}
+            <span className="ui:size-1.5 ui:rounded-full ui:border-3 ui:border-transparent ui:bg-primary" />
           </RadioGroupPrimitive.Indicator>
         </RadioGroupPrimitive.Item>
       )}

@@ -84,6 +84,27 @@ it("keeps the caller's aria-describedby alongside the description", () => {
   expect(ids).toContain(screen.getByText("Weekly digest").id);
 });
 
+it("puts a caller's id on the box and ties the label and description to it", () => {
+  renderV1(<Checkbox id="x" label="Email me" description="Weekly digest" />);
+  const box = screen.getByRole("checkbox", { name: "Email me" });
+  expect(box).toHaveAttribute("id", "x");
+  expect(screen.getByText("Email me")).toHaveAttribute("for", "x");
+  expect(screen.getByText("Weekly digest")).toHaveAttribute(
+    "id",
+    "x-description",
+  );
+  expect(box).toHaveAttribute("aria-describedby", "x-description");
+});
+
+it("renders a description without a label, and the box is described by it", () => {
+  const { container } = renderV1(
+    <Checkbox aria-label="Select row" description="Includes hidden rows" />,
+  );
+  const box = screen.getByRole("checkbox", { name: "Select row" });
+  expect(box).toHaveAccessibleDescription("Includes hidden rows");
+  expect(container.querySelector("[data-slot=control-label]")).toBeNull();
+});
+
 const expectOnlyTheBox = (container: HTMLElement, name: string) => {
   const row = container.querySelector("[data-slot=control-row]");
   expect(row).not.toBeNull();
@@ -118,6 +139,21 @@ it("centres the box on a 20px first line", () => {
   expect(wrapper).toHaveClass("ui:flex", "ui:h-5", "ui:items-center");
   expect(screen.getByText("Email me")).toHaveClass("ui:leading-5");
 });
+
+// Type-level guard, never rendered: every checkbox has a name.
+export function _checkboxNeedsAName() {
+  return (
+    <>
+      <Checkbox label="x" />
+      <Checkbox aria-label="x" />
+      <Checkbox aria-labelledby="x" />
+      {/* @ts-expect-error a checkbox needs label, aria-label or aria-labelledby */}
+      <Checkbox />
+      {/* @ts-expect-error a description is not a name */}
+      <Checkbox description="x" />
+    </>
+  );
+}
 
 // Type-level guard, never rendered: mixed is a controlled state only.
 export function _checkboxDefaultCheckedIsBoolean() {

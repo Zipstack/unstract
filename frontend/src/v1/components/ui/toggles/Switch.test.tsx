@@ -30,6 +30,20 @@ it("is described by its description", () => {
   expect(control.getAttribute("aria-describedby")).toBe(description.id);
 });
 
+it("puts a caller's id on the switch and ties the label and description to it", () => {
+  renderV1(
+    <Switch id="x" label="Dark mode" description="Follows the system" />,
+  );
+  const control = screen.getByRole("switch", { name: "Dark mode" });
+  expect(control).toHaveAttribute("id", "x");
+  expect(screen.getByText("Dark mode")).toHaveAttribute("for", "x");
+  expect(screen.getByText("Follows the system")).toHaveAttribute(
+    "id",
+    "x-description",
+  );
+  expect(control).toHaveAttribute("aria-describedby", "x-description");
+});
+
 it("keeps the caller's aria-describedby alongside the description", () => {
   renderV1(
     <Switch
@@ -69,6 +83,14 @@ it("is 20 by 36 by class", () => {
   expect(thumb).toHaveClass("ui:size-4");
 });
 
+it("keeps the thumb visible in forced-colors mode with a transparent border", () => {
+  const { container } = renderV1(<Switch aria-label="Dark mode" />);
+  expect(container.querySelector("[data-slot=switch-thumb]")).toHaveClass(
+    "ui:border-8",
+    "ui:border-transparent",
+  );
+});
+
 it("renders only the switch when there is no label or description", () => {
   const { container } = renderV1(<Switch aria-label="Dark mode" />);
   const row = container.querySelector("[data-slot=control-row]");
@@ -95,3 +117,16 @@ it("clicking the label toggles an enabled switch", async () => {
   expect(control).toHaveAttribute("aria-checked", "false");
   expect(onCheckedChange).toHaveBeenLastCalledWith(false);
 });
+
+// Type-level guard, never rendered: every switch has a name.
+export function _switchNeedsAName() {
+  return (
+    <>
+      <Switch label="x" />
+      <Switch aria-label="x" />
+      <Switch aria-labelledby="x" />
+      {/* @ts-expect-error a switch needs label, aria-label or aria-labelledby */}
+      <Switch />
+    </>
+  );
+}

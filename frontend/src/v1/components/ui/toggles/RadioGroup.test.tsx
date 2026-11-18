@@ -77,6 +77,22 @@ it("a radio is described by its description", () => {
   expect(radio.getAttribute("aria-describedby")).toBe(description.id);
 });
 
+it("puts a caller's id on the radio and ties the label and description to it", () => {
+  renderV1(
+    <RadioGroup label="Model">
+      <Radio id="x" value="gpt" label="GPT" description="Fast and cheap" />
+    </RadioGroup>,
+  );
+  const radio = screen.getByRole("radio", { name: "GPT" });
+  expect(radio).toHaveAttribute("id", "x");
+  expect(screen.getByText("GPT")).toHaveAttribute("for", "x");
+  expect(screen.getByText("Fast and cheap")).toHaveAttribute(
+    "id",
+    "x-description",
+  );
+  expect(radio).toHaveAttribute("aria-describedby", "x-description");
+});
+
 it("the group is described by its description, keeping the caller's", () => {
   renderV1(
     <RadioGroup
@@ -162,6 +178,18 @@ it("is 14px by class", () => {
   expect(radio.querySelector("[data-slot=radio-indicator]")).not.toBeNull();
 });
 
+it("keeps the checked dot visible in forced-colors mode with a transparent border", () => {
+  renderV1(
+    <RadioGroup aria-label="Model" defaultValue="gpt">
+      <Radio value="gpt" aria-label="GPT" />
+    </RadioGroup>,
+  );
+  const dot = screen
+    .getByRole("radio", { name: "GPT" })
+    .querySelector("[data-slot=radio-indicator] > span");
+  expect(dot).toHaveClass("ui:border-3", "ui:border-transparent");
+});
+
 it("renders only the radio when there is no label or description", () => {
   const { container } = renderV1(
     <RadioGroup aria-label="Model">
@@ -232,3 +260,25 @@ it("puts className on the field and keeps the layout classes on the list", () =>
   expect(group).not.toHaveClass("ui:max-w-xs");
   expect(group).toHaveClass("ui:grid", "ui:gap-2");
 });
+
+// Type-level guard, never rendered: every group and radio has a name.
+export function _radiosNeedNames() {
+  return (
+    <>
+      <RadioGroup label="x" />
+      <RadioGroup aria-label="x" />
+      <RadioGroup aria-labelledby="x" />
+      {/* @ts-expect-error a group needs label, aria-label or aria-labelledby */}
+      <RadioGroup />
+      {/* @ts-expect-error a description is not a name */}
+      <RadioGroup description="x" />
+      <RadioGroup aria-label="x">
+        <Radio value="a" label="x" />
+        <Radio value="b" aria-label="x" />
+        <Radio value="c" aria-labelledby="x" />
+        {/* @ts-expect-error a radio needs label, aria-label or aria-labelledby */}
+        <Radio value="d" />
+      </RadioGroup>
+    </>
+  );
+}

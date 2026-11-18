@@ -225,6 +225,32 @@ it("describes every thumb of a range", () => {
   }
 });
 
+it("shows the value without a label", () => {
+  renderV1(<Slider aria-label="Volume" defaultValue={[50]} showValue />);
+  expect(screen.getByText("50")).toBeVisible();
+});
+
+it("starts an uncontrolled slider at min, and shows it", () => {
+  renderV1(<Slider aria-label="X" min={10} max={20} showValue />);
+  const thumb = screen.getByRole("slider", { name: "X" });
+  expect(thumb).toHaveAttribute("aria-valuenow", "10");
+  expect(thumb).toHaveAttribute("aria-valuetext", "10");
+  expect(screen.getByText("10")).toBeVisible();
+});
+
+it("renders a description without a label, on the group and the thumb", () => {
+  const { container } = renderV1(
+    <Slider aria-label="Volume" description="Loudness" defaultValue={[50]} />,
+  );
+  expect(screen.getByText("Loudness")).toBeVisible();
+  expect(
+    screen.getByRole("slider", { name: "Volume" }),
+  ).toHaveAccessibleDescription("Loudness");
+  expect(
+    container.querySelector("[data-slot=slider]"),
+  ).toHaveAccessibleDescription("Loudness");
+});
+
 it("renders only the slider when there is no label, description or value", () => {
   const { container } = renderV1(
     <Slider aria-label="Volume" defaultValue={[50]} />,
@@ -275,6 +301,20 @@ it("has the board's track and thumb sizes by class", () => {
   );
 });
 
+it("keeps the track and range visible in forced-colors mode", () => {
+  const { container } = renderV1(
+    <Slider aria-label="Volume" defaultValue={[50]} />,
+  );
+  expect(container.querySelector("[data-slot=slider-track]")).toHaveClass(
+    "ui:outline",
+    "ui:outline-transparent",
+  );
+  expect(container.querySelector("[data-slot=slider-range]")).toHaveClass(
+    "ui:border-y-3",
+    "ui:border-transparent",
+  );
+});
+
 it("leaves an enabled thumb without aria-disabled", () => {
   renderV1(<Slider aria-label="Volume" defaultValue={[50]} />);
   expect(screen.getByRole("slider", { name: "Volume" })).not.toHaveAttribute(
@@ -312,6 +352,22 @@ it("puts className on the field, so the label line and track narrow together", (
     "ui:max-w-xs",
   );
 });
+
+// Type-level guard, never rendered: the slider's group has a name.
+export function _sliderNeedsAName() {
+  return (
+    <>
+      <Slider label="x" />
+      <Slider aria-label="x" />
+      <Slider aria-labelledby="x" />
+      <Slider label="x" thumbLabels={["a", "b"]} defaultValue={[1, 2]} />
+      {/* @ts-expect-error a slider needs label, aria-label or aria-labelledby */}
+      <Slider />
+      {/* @ts-expect-error thumbLabels name the thumbs, not the group */}
+      <Slider thumbLabels={["a", "b"]} defaultValue={[1, 2]} />
+    </>
+  );
+}
 
 // Type-level guard, never rendered: the track is horizontal only.
 export function _sliderHasNoOrientation() {

@@ -1,19 +1,31 @@
+import { HELPER_TEXT_CLASS, LABEL_CLASS } from "@v1/components/ui/form";
 import { cn } from "@v1/lib/cn";
 import { Label as LabelPrimitive } from "radix-ui";
 import { type JSX, type ReactNode, useId } from "react";
 
-/** Text style of a control's label; shared by every toggle and the slider. */
-export const CONTROL_LABEL_CLASS =
-  "ui:text-body-small ui:font-medium ui:text-foreground ui:select-none ui:leading-5 ui:data-disabled:opacity-50";
+/**
+ * Text style of a control's label, shared by every toggle and the slider: the
+ * form `Label`'s, on a 20px line so each control centres on its first line.
+ */
+export const CONTROL_LABEL_CLASS = cn(LABEL_CLASS, "ui:leading-5");
+
+/** Text style of a control's description: the form `HelperText`'s. */
+export const CONTROL_DESCRIPTION_CLASS = HELPER_TEXT_CLASS;
+
+/**
+ * Every toggle needs an accessible name: a visible `label`, an `aria-label`
+ * or an `aria-labelledby`. A `description` is not a name, and for a slider
+ * neither are `thumbLabels`, which name the thumbs and not the group.
+ */
+export type Named =
+  | Readonly<{ label: ReactNode }>
+  | Readonly<{ "aria-label": string }>
+  | Readonly<{ "aria-labelledby": string }>;
 
 /** Whether a label or description renders: `false` and `""` count as absent. */
 export function isPresent(node: ReactNode): boolean {
   return node !== null && node !== undefined && node !== false && node !== "";
 }
-
-/** Text style of a control's description. */
-export const CONTROL_DESCRIPTION_CLASS =
-  "ui:text-caption ui:text-muted-foreground";
 
 export type ControlRowProps = Readonly<{
   /** The control. Receives `id` and `aria-describedby` through the render callback. */

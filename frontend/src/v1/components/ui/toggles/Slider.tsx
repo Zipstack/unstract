@@ -11,6 +11,7 @@ import {
   CONTROL_DESCRIPTION_CLASS,
   CONTROL_LABEL_CLASS,
   isPresent,
+  type Named,
 } from "./ControlRow";
 
 export type SliderProps = Omit<
@@ -20,7 +21,7 @@ export type SliderProps = Omit<
   Readonly<{
     label?: ReactNode;
     description?: ReactNode;
-    /** Accessible name per thumb when there is more than one, in order (e.g. ["Minimum", "Maximum"]); a single thumb takes `label`. */
+    /** Accessible name per thumb, in order, for any number of thumbs; it wins over the slider's name. Without it a single thumb takes a string `label` (or `aria-label`), and a range keeps Radix's "Minimum"/"Maximum". */
     thumbLabels?: readonly string[];
     /** Spoken and, with `showValue`, shown value. Default `String(value)`. */
     formatValue?: (value: number) => string;
@@ -28,7 +29,8 @@ export type SliderProps = Omit<
     showValue?: boolean;
     /** Class for the field (label line, description and track), not the track alone. */
     className?: string;
-  }>;
+  }> &
+  Named;
 
 /**
  * A slider with one thumb per value, an optional label and description above
@@ -125,13 +127,15 @@ export function Slider({
         className="ui:relative ui:flex ui:w-full ui:touch-none ui:select-none ui:items-center ui:data-disabled:pointer-events-none ui:data-disabled:opacity-50"
         {...props}
       >
+        {/* Forced-colors mode drops backgrounds: the track's transparent
+            outline and the range's transparent border are painted instead. */}
         <SliderPrimitive.Track
           data-slot="slider-track"
-          className="ui:relative ui:h-1.5 ui:w-full ui:grow ui:overflow-hidden ui:rounded-full ui:bg-muted"
+          className="ui:relative ui:h-1.5 ui:w-full ui:grow ui:overflow-hidden ui:rounded-full ui:bg-muted ui:outline ui:outline-transparent"
         >
           <SliderPrimitive.Range
             data-slot="slider-range"
-            className="ui:absolute ui:h-full ui:bg-primary"
+            className="ui:absolute ui:h-full ui:border-y-3 ui:border-transparent ui:bg-primary"
           />
         </SliderPrimitive.Track>
         {values.map((thumbValue, i) => {
