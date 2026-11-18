@@ -12,7 +12,6 @@ Three layers:
 
 from __future__ import annotations
 
-import logging
 import os
 from unittest.mock import MagicMock, patch
 
@@ -1238,43 +1237,23 @@ class TestDecrAndCheck:
         sig.assert_not_called()
         assert _row(barrier_db, "exec-N") is None
 
-    def test_negative_remaining_clears_dedup_markers(self, barrier_db):
-        # UN-3749: the over-decrement branch tears the barrier down like finalize
-        # and abort do, so it must reclaim the per-batch markers too.
+    def test_negative_remaining_keeps_dedup_markers(self, barrier_db):
+        # UN-3749: the over-decrement branch keeps the per-batch markers. The
+        # execution is not terminal and deliveries are being replayed, so a
+        # surviving marker is what makes a sibling's redelivery skip its batch.
         _seed(barrier_db, "exec-NM", 0)  # decrement → -1
         for batch_index in (0, 1):
             claim_batch("exec-NM", batch_index)
-        assert _dedup_count(barrier_db, "exec-NM") == 2
-        with patch("queue_backend.dispatch.dispatch"):
+        with patch("queue_backend.dispatch.dispatch") as sig:
             out = _barrier_pg_decrement(
                 {"f": 1}, execution_id="exec-NM", callback_descriptor=_CALLBACK
             )
-        assert out["status"] == "abandoned"
-        assert _row(barrier_db, "exec-NM") is None
-        assert _dedup_count(barrier_db, "exec-NM") == 0
-
-    def test_negative_remaining_marker_cleanup_failure_is_swallowed(
-        self, barrier_db, caplog
-    ):
-        # Best-effort, as on the finalize path: the barrier is already gone, so a
-        # failed marker cleanup is logged and the abandon result still returned.
-        _seed(barrier_db, "exec-NF", 0)
-        with (
-            patch("queue_backend.dispatch.dispatch") as sig,
-            patch.object(
-                pg_barrier,
-                "clear_execution_batches",
-                side_effect=psycopg2.OperationalError("down"),
-            ),
-            caplog.at_level(logging.ERROR, logger=pg_barrier.logger.name),
-        ):
-            out = _barrier_pg_decrement(
-                {"f": 1}, execution_id="exec-NF", callback_descriptor=_CALLBACK
-            )
         assert out == {"status": "abandoned", "remaining": -1}
         sig.assert_not_called()
-        assert _row(barrier_db, "exec-NF") is None
-        assert "clearing pg_batch_dedup markers failed" in caplog.text
+        assert _row(barrier_db, "exec-NM") is None
+        assert _dedup_count(barrier_db, "exec-NM") == 2
+        # A redelivered batch is skipped, not re-run.
+        assert claim_batch("exec-NM", 1) is False
 
     def test_missing_row_does_not_fire(self, barrier_db):
         with patch("queue_backend.dispatch.dispatch") as sig:

@@ -476,21 +476,26 @@ class WorkflowHelper:
             execution_model: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
             )
+            status = ExecutionStatus(execution_model.status)
             # The model has no completed_files; completed means processed,
-            # whether the file succeeded or failed.
+            # whether the file succeeded or failed. The columns are filled in
+            # when the run ends, so a rebuild mid-run starts the counters at 0;
+            # only the status is read back from this entry.
             successful_files = execution_model.successful_files or 0
             failed_files = execution_model.failed_files or 0
-            execution_cache = ExecutionCache(
-                workflow_id=workflow_id,
-                execution_id=execution_id,
-                status=ExecutionStatus(execution_model.status),
-                total_files=execution_model.total_files,
-                completed_files=successful_files + failed_files,
-                failed_files=failed_files,
+            # If-absent, not a plain create: a worker may write a newer status
+            # between the read above and this write, and that status must win.
+            ExecutionCacheUtils.create_execution_if_absent(
+                execution=ExecutionCache(
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    status=status,
+                    total_files=execution_model.total_files,
+                    completed_files=successful_files + failed_files,
+                    failed_files=failed_files,
+                )
             )
-            ExecutionCacheUtils.create_execution(
-                execution=execution_cache,
-            )
+            return status
         return execution_cache.status
 
     @staticmethod

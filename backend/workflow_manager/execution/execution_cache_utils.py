@@ -50,6 +50,21 @@ class ExecutionCacheUtils:
         )
 
     @classmethod
+    def create_execution_if_absent(cls, execution: ExecutionCache) -> bool:
+        """Create the execution entry without overwriting one written meanwhile.
+
+        For rebuilding a missed entry from the database: a worker can write a
+        newer status between the database read and this write, and that status
+        must win. Returns True if any field was written.
+        """
+        cache_key = cls._get_execution_cache_key(
+            workflow_id=execution.workflow_id, execution_id=execution.execution_id
+        )
+        return CacheService.hset_if_absent(
+            cache_key, mapping=execution.to_json(), expire_time=cls.expire_time
+        )
+
+    @classmethod
     def update_status(
         cls, workflow_id: str, execution_id: str, status: ExecutionStatus
     ) -> None:

@@ -214,9 +214,10 @@ class PgBatchDedup(models.Model):
     task more than once. Rows for an execution are cleared when its barrier
     finalises (``remaining`` → 0, via ``clear_execution_batches``).
 
-    Orphan reclaim — markers left behind by an execution that never finalises
-    (the reaper's ``recover_expired_barriers`` deletes only the ``pg_barrier_state``
-    row, with no FK / cascade to this table) are swept by the reaper's
+    Orphan reclaim — there is no FK / cascade to this table. The reaper's
+    ``recover_expired_barriers`` deletes a stranded execution's markers along
+    with its ``pg_barrier_state`` row; any left over without a barrier (for
+    example after an over-decrement) are swept by the reaper's
     ``sweep_orphan_dedup``, which deletes markers older than the retention window
     by ``created_at`` age (wired into the reaper's periodic ``_maybe_sweep``).
 

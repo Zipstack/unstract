@@ -383,7 +383,7 @@ def claim_batch(execution_id: str, batch_index: int) -> bool:
 def clear_execution_batches(execution_id: str) -> int:
     """Delete all per-batch dedup markers for an execution; returns the count.
 
-    Called at barrier teardown (``remaining`` → 0, or past it) so the markers
+    Called at barrier teardown (``remaining`` → 0) so the markers
     live exactly as long as the execution needs them. Markers of executions
     that never finalise are reclaimed by the reaper's ``sweep_orphan_dedup``
     once older than the retention window (see the ``PgBatchDedup`` model
@@ -391,7 +391,8 @@ def clear_execution_batches(execution_id: str) -> int:
     ``(execution_id, batch_index)`` constraint index (``execution_id`` leading)
     for the lookup.
 
-    Called from the barrier-finalise, over-decrement and abort paths.
+    Called from the barrier-finalise + abort paths. The over-decrement path
+    (``remaining`` < 0) keeps them on purpose; see :func:`_barrier_pg_decrement`.
     """
     with _cursor() as cur:
         cur.execute(
@@ -1101,18 +1102,18 @@ def _barrier_pg_decrement(
         return {"status": "pending", "remaining": remaining}
 
     if remaining < 0:
-        # Decremented past 0 — expiry/replay. Clean up, no fire. The dedup
-        # markers go with the row, as on the finalize and abort paths; clearing
-        # them is best-effort because the barrier is already gone.
+        # Decremented past 0 — expiry/replay. Clean up, no fire.
+        #
+        # The pg_batch_dedup markers are deliberately KEPT, unlike finalize. A
+        # count below 0 means deliveries are already being replayed, and the
+        # execution is not marked terminal here, so a sibling batch can still
+        # redeliver. Its surviving marker makes claim_batch skip it; clearing the
+        # markers would let it re-run the whole batch (LLM spend, a second
+        # destination write) only for its decrement to find no row. The markers
+        # are reclaimed by the reaper's sweep_orphan_dedup after the retention
+        # window, the same reasoning as the in-body abort's
+        # preserve_dedup_markers=True.
         _delete_barrier(execution_id)
-        try:
-            clear_execution_batches(execution_id)
-        except Exception:
-            logger.exception(
-                f"[exec:{execution_id}] PgBarrier abandoned but clearing "
-                f"pg_batch_dedup markers failed — reclaimed by the reaper's "
-                f"dedup-orphan sweep."
-            )
         logger.error(
             f"[exec:{execution_id}] PgBarrier abandoned — remaining={remaining} "
             f"(expired or torn down). No callback dispatched; execution likely "
@@ -1343,8 +1344,8 @@ def run_batch_with_barrier(
     barrier down in-body via :func:`barrier_pg_abort` and re-raises, so it fails
     fast instead of hanging to expiry — mirroring the chord path's ``.link_error``.
 
-    **Strand windows the reaper must cover (NOT catchable here — hard merge
-    dependency for enabling the flag in PR 3, see the module / PgBatchDedup docs):**
+    **Strand windows the reaper covers (NOT catchable here — see the module /
+    PgBatchDedup docs):**
 
     - A hard crash / SIGKILL / visibility-timeout expiry *during* ``work_fn()``
       leaves the dedup marker committed (claim is step 1), so redelivery returns
@@ -1360,8 +1361,7 @@ def run_batch_with_barrier(
       torn down by step 3's wrap above.)
 
     For both, the **reaper** (sweep stranded ``pg_barrier_state``, mark the
-    execution ERROR / re-drive, reclaim ``pg_batch_dedup``) is the recovery net;
-    it must be live before PR 3 flips ``pg_queue_execution_enabled``.
+    execution ERROR / re-drive, reclaim ``pg_batch_dedup``) is the recovery net.
 
     ``work_fn`` must return the JSON-serialisable batch result (the same dict the
     Celery chord path returns), since the decrement appends it to the barrier's

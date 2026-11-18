@@ -52,7 +52,7 @@ import uuid
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
-from .connection import CONN_DEAD_ERRORS, create_pg_connection
+from .connection import create_pg_connection, is_connection_dead
 from .schema import qualified
 
 if TYPE_CHECKING:
@@ -169,7 +169,7 @@ class LeaderLease:
             # A failed rollback proves the connection is unusable regardless of
             # the psycopg2 error subclass (a server-side termination can surface
             # as a bare DatabaseError).
-            conn_dead = isinstance(exc, CONN_DEAD_ERRORS)
+            conn_dead = is_connection_dead(exc)
             try:
                 conn.rollback()
             except Exception:
