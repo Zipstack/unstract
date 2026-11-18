@@ -551,6 +551,84 @@ function* notifyEntryPoints(ast, specs) {
   }
 }
 
+// P0-T05: backend URLs and requests only in services/ (and plugins' services/); tests may name URLs for mocks.
+const BACKEND_URL_HOMES = new Set(["services", "test"]);
+// A cloud plugin keeps its own service modules in plugins/<plugin>/services/.
+const PLUGIN_SERVICES = /^plugins\/[^/]+\/services\//;
+// v1 calls the backend on its own origin, so its URLs are root-relative.
+const BACKEND_URL = /^\/(api|deployment)\//;
+const AXIOS = /^axios(\/|$)/;
+// The client and orgPath(), under any spelling of its path.
+const HTTP_CLIENT_MODULE = "services/http";
+const CODE_SUFFIX = /\.[cm]?[jt]sx?$/;
+// Browser APIs that skip the client's CSRF, request id and 401 handling.
+const RAW_REQUESTS = new Set(["fetch", "XMLHttpRequest", "EventSource"]);
+const GLOBAL_OBJECTS = new Set(["window", "globalThis", "self"]);
+const BACKEND_URL_MSG =
+  "Backend URLs appear only in services/ and plugins/<plugin>/services/; call a typed service function instead.";
+const HTTP_CLIENT_MSG =
+  "Only services/ and plugins/<plugin>/services/ import the HTTP client (axios, @v1/services/http); call a typed service function instead.";
+const RAW_REQUEST_MSG =
+  "Only services/ and plugins/<plugin>/services/ send requests (fetch, XMLHttpRequest, EventSource); call a typed service function instead.";
+
+const isBackendHome = (folder, rel) =>
+  BACKEND_URL_HOMES.has(folder) || PLUGIN_SERVICES.test(rel);
+
+function isHttpClient(spec, fileRel) {
+  if (AXIOS.test(spec)) {
+    return true;
+  }
+  if (!spec.startsWith("@v1/") && !RELATIVE.test(spec)) {
+    return false;
+  }
+  const target = resolveV1(spec, fileRel).replace(CODE_SUFFIX, "");
+  return target === HTTP_CLIENT_MODULE;
+}
+
+/* `fetch(...)`, `new XMLHttpRequest()`, `new window.EventSource(...)` and the like. */
+function isRawRequest(node) {
+  if (node.type !== "CallExpression" && node.type !== "NewExpression") {
+    return false;
+  }
+  const callee = unwrap(node.callee);
+  if (callee?.type === "Identifier") {
+    return RAW_REQUESTS.has(callee.name);
+  }
+  return (
+    callee?.type === "MemberExpression" &&
+    !callee.computed &&
+    GLOBAL_OBJECTS.has(unwrap(callee.object)?.name) &&
+    RAW_REQUESTS.has(callee.property.name)
+  );
+}
+
+/* The text a string or template starts with, or undefined for other nodes. */
+function literalStart(node) {
+  if (node.type === "StringLiteral") {
+    return node.value;
+  }
+  return node.type === "TemplateLiteral"
+    ? node.quasis[0].value.cooked
+    : undefined;
+}
+
+/* HTTP-client imports, raw requests and backend URL literals, as { index, msg }. */
+function* backendCalls(ast, specs, fileRel) {
+  for (const arg of specs) {
+    if (isHttpClient(arg.spec ?? "", fileRel)) {
+      yield { index: arg.index, msg: HTTP_CLIENT_MSG };
+    }
+  }
+  for (const node of nodes(ast.program)) {
+    if (isRawRequest(node)) {
+      yield { index: node.start, msg: RAW_REQUEST_MSG };
+    }
+    if (BACKEND_URL.test(literalStart(node) ?? "")) {
+      yield { index: node.start, msg: BACKEND_URL_MSG };
+    }
+  }
+}
+
 /* PropTypes and antd `ant-` class names, as { index, msg }. */
 function* bannedUses(ast, src) {
   for (const node of nodes(ast.program)) {
@@ -880,6 +958,11 @@ for (const rel of walk(ROOT)) {
   }
   if (!rel.startsWith(NOTIFY_HOME)) {
     for (const { index, msg } of notifyEntryPoints(parsed.ast, specs)) {
+      report(rel, lineAt(src, index), msg);
+    }
+  }
+  if (!isTestFile && !isBackendHome(folder, rel)) {
+    for (const { index, msg } of backendCalls(parsed.ast, specs, rel)) {
       report(rel, lineAt(src, index), msg);
     }
   }

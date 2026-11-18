@@ -201,7 +201,10 @@ class StageReportView(APIView):
 
 
 class FinalizeView(APIView):
-    """Terminalize a job: write its result (on success) then mark it done.
+    """Terminalize a job: write its result, if it has one, then mark it done.
+
+    "If it has one" rather than "on success": a FAILED job can carry an
+    extraction too -- see ``_fail``.
 
     Idempotent: a job already in a terminal state short-circuits before any
     write, with ONE exception -- a success callback for an already-``CANCELLED``
@@ -296,17 +299,80 @@ class FinalizeView(APIView):
 
     @staticmethod
     def _fail(job, job_id, org_id: str, body) -> tuple[bool, bool]:
-        """Terminalize as FAILED. ``(guard won, False)``.
+        """Terminalize as FAILED, keeping a salvaged extraction if one came.
 
-        The second element is always False: there is no result to attach to
-        anything on a failure. It exists so both handlers share one shape and
-        ``post`` can call whichever it picked without knowing which it got.
+        Returns ``(guard won, False)``. The second element is always False:
+        ``result_attached`` means "kept on a row this request did NOT
+        terminalize", which is the cancelled-race case alone. A result stored
+        here is stored by the request that won the guard, so it needs no
+        separate signal and owes no follow-up notification.
+
+        **A failure can carry a result, and this used to assume it could not.**
+        The docstring here read "there is no result to attach to anything on a
+        failure", which is true of every failure except the one that matters:
+        the `kv` engine fails a job whose `calculations` run failed, because
+        the caller asked for calculations and did not get them -- while the
+        extraction itself succeeded and its OCR and LLM spend was already
+        flushed. The executor hands that record over deliberately rather than
+        destroying it, and both this method and the callback worker dropped it,
+        so the customer paid for an extraction and got
+        ``{"success": false, "status": "failed", "error": ...}``.
+
+        ``mark_terminal`` already took ``result_ref``/``usage_summary`` for any
+        terminal status, so storing it needs no new write path and no new
+        column -- the result is written and the ref goes into the same guarded
+        UPDATE that sets FAILED, as one decision rather than two.
+
+        **The orphan case is ``_complete``'s, for the same reason.**
+        ``write_result`` has to run before the guard to have a ref to pass in,
+        so a cancel or a duplicate landing in between leaves a file with
+        nothing pointing at it; it is deleted here, best-effort, exactly as
+        ``_complete`` does.
+
+        **Unlike ``_salvage``, this needs no pre-flight read.** That one is
+        called precisely when the row was ALREADY terminal, so every
+        redelivered callback reached it and the write-then-refuse storm was the
+        ordinary case. ``post`` only calls this handler for a row that read as
+        non-terminal, so a redelivered failure callback short-circuits before
+        getting here and never touches storage.
+
+        **Known residual:** if a cancel wins the guard against a salvaging
+        failure, the extraction is discarded -- ``_salvage`` stays success-only,
+        so a CANCELLED row will not take a failed run's partial record. That
+        window is narrow (it needs the cancel to land between the write and the
+        UPDATE) and it is no worse than before this change. Widening
+        ``_salvage`` to failures would put a partial record on a cancelled row
+        through the attach path, which section 6 of ``docs/agent-kv-api.md``
+        records as reverted three times; it is not worth that for this window.
         """
+        # `salvaged` is empty on every ordinary failure, and THAT guard is
+        # load-bearing: without it every failure writes an empty result file to
+        # object storage and gives the row a ref to a document holding nothing.
+        #
+        # `result_ref=""` is then passed through unguarded, because
+        # `mark_terminal` already does `if result_ref:` and an empty one cannot
+        # change the UPDATE. A conditional here would be the dead branch the
+        # executor removed for exactly this reason after mutation testing found
+        # it ("an untested branch that cannot change the outcome is worse than
+        # no branch") -- so the same standard is applied here.
+        salvaged = body.get("result") or {}
+        result_ref = write_result(org_id, str(job_id), salvaged) if salvaged else ""
         finalized = AgentKVJob.mark_terminal(
-            job_id, org_id, JobStatus.FAILED, error=body.get("error") or ""
+            job_id,
+            org_id,
+            JobStatus.FAILED,
+            error=body.get("error") or "",
+            result_ref=result_ref,
         )
         if finalized:
             job.status = JobStatus.FAILED
+            job.result_ref = result_ref
+        elif result_ref:
+            # Guard lost after the write: another terminalization won, so
+            # nothing references this file. Same best-effort delete as
+            # `_complete`'s discard path, and `storage.delete_job_files` reaps
+            # the directory later if it fails.
+            delete_result_file(result_ref)
         return finalized, False
 
     @staticmethod

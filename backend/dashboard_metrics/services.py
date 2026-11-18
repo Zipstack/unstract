@@ -8,6 +8,8 @@ Note: Uses _base_manager for models with DefaultOrganizationManagerMixin
 to bypass the UserContext filter when running from Celery tasks.
 """
 
+from collections import defaultdict
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 
@@ -246,6 +248,56 @@ class MetricsQueryService:
             .annotate(value=Count("id"))
             .order_by("period")
         )
+
+    @staticmethod
+    def get_documents_processed_by_org(
+        organization_ids: Iterable[Any],
+        start_date: datetime,
+        end_date: datetime,
+        granularity: str = Granularity.DAY,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Query documents processed for many organizations in one query.
+
+        Same rows as calling get_documents_processed once per org, keyed by
+        ``str(organization_id)``; an org with no rows is absent from the dict.
+
+        The (status, created_at) index carries no org column, so every per-org
+        call reads all orgs' completed files in the window and discards the
+        rest. One grouped call reads them once (UN-4672).
+
+        Args:
+            organization_ids: Organization PKs to include
+            start_date: Start of date range
+            end_date: End of date range
+            granularity: Time granularity (hour, day, week)
+
+        Returns:
+            Dict of org id string to a list of dicts with 'period' and 'value'
+        """
+        org_ids = list(organization_ids)
+        if not org_ids:
+            return {}
+        trunc_func = MetricsQueryService._get_trunc_func(granularity)
+        org_field = "workflow_execution__workflow__organization_id"
+
+        rows = (
+            WorkflowFileExecution.objects.filter(
+                **{f"{org_field}__in": org_ids},
+                status=ExecutionStatus.COMPLETED,
+                created_at__gte=start_date,
+                created_at__lte=end_date,
+            )
+            .annotate(period=trunc_func("created_at"))
+            .values(org_field, "period")
+            .annotate(value=Count("id"))
+            .order_by(org_field, "period")
+        )
+        by_org: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in rows:
+            by_org[str(row[org_field])].append(
+                {"period": row["period"], "value": row["value"]}
+            )
+        return dict(by_org)
 
     @staticmethod
     def _resolve_org_identifier(

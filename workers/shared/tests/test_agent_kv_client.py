@@ -88,3 +88,67 @@ class TestAgentKvSchemaImport:
         editable) so the schema compiler is importable inside worker code.
         """
         import unstract.agent_kv_schema  # noqa: F401
+
+
+class TestAgentKvFinalizeCarriesASalvagedExtraction:
+    """A FAILED job may carry the extraction it already billed for.
+
+    The `kv` engine fails a job whose `calculations` run failed, while the
+    extraction itself succeeded and its OCR and LLM spend was already flushed.
+    The executor hands that record over rather than destroying it, and this
+    method used to drop it: the failure branch sent `error` and nothing else.
+
+    `agent_kv_complete` now forwards `data` unconditionally, so the guard
+    tested here is what keeps an ordinary failure's request body unchanged --
+    it is live, not decorative, because it decides whether `result` goes over
+    the wire at all.
+    """
+
+    def _finalize(self, **kwargs):
+        with patch.object(
+            InternalAPIClient, "post", return_value={"finalized": True}
+        ) as m_post:
+            client = InternalAPIClient.__new__(InternalAPIClient)
+            client.agent_kv_finalize("job-1", "org-1", **kwargs)
+        return m_post.call_args.kwargs["data"]
+
+    def test_a_salvaged_extraction_is_sent_on_the_failure_path(self):
+        salvage = {
+            "success": False,
+            "error": "executor failed: calculation execution timed out",
+            "record": {"invoice_number": "INV-9"},
+        }
+
+        data = self._finalize(success=False, error="boom", result=salvage)
+
+        assert data == {
+            "org_id": "org-1",
+            "success": False,
+            "error": "boom",
+            "result": salvage,
+        }
+
+    def test_an_ordinary_failure_sends_no_result_key(self):
+        """Byte-identical to the body this method sent before the change."""
+        data = self._finalize(success=False, error="boom")
+
+        assert data == {"org_id": "org-1", "success": False, "error": "boom"}
+
+    def test_an_empty_result_is_omitted_rather_than_sent(self):
+        """`agent_kv_complete` forwards `data={}` on every ordinary failure, so
+        this is the common case, not an edge one. Sending `"result": {}` would
+        make the backend write an empty result file and give the row a ref to
+        a document holding nothing.
+        """
+        data = self._finalize(success=False, error="boom", result={})
+
+        assert "result" not in data
+
+    def test_the_success_path_still_sends_an_empty_result(self):
+        """Unchanged, and deliberately different from the failure path: a
+        successful run with no output still has a result slot, and the backend
+        writes `{}` for it.
+        """
+        data = self._finalize(success=True, result=None)
+
+        assert data == {"org_id": "org-1", "success": True, "result": {}}
