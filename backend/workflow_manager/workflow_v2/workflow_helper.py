@@ -475,8 +475,10 @@ class WorkflowHelper:
             # Read-only on a miss. Writing a rebuilt entry back could replace a
             # status a worker wrote (or an acknowledgement deleted) after this
             # read; the worker's next save() recreates the entry itself. The
-            # cost: until then each poll is one primary-key read, bounded by the
-            # sync-wait timeout (at most 300 s, so 150 reads per waiting request).
+            # cost: until then every 2 s poll reconnects (the wait loop releases
+            # the connection before each sleep) and does one primary-key read,
+            # for as long as the caller's timeout allows (API deployments cap it
+            # at 300 s; the workflow page uses INSTANT_WF_POLLING_TIMEOUT).
             execution_model: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
             )

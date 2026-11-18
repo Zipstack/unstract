@@ -213,7 +213,9 @@ class PgBatchDedup(models.Model):
     decremented exactly once per batch even though the queue may deliver the
     task more than once. Rows for an execution are cleared by
     ``clear_execution_batches`` when its barrier finalises (``remaining`` → 0),
-    when header dispatch fails, and on abort unless the markers are preserved.
+    when header dispatch fails, and on abort unless the markers are preserved;
+    re-arming the barrier for the same ``execution_id`` also deletes them, in
+    the same transaction as the barrier reset.
 
     Orphan reclaim — there is no FK / cascade to this table. The reaper's
     ``recover_expired_barriers`` deletes a stranded execution's markers along

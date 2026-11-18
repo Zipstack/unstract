@@ -60,7 +60,7 @@ class TestGetExecutionStatusCacheMiss:
                 workflow_id="wf-1", execution_id="exec-1"
             )
 
-        # The only cache call is the read; any write-back would show up here.
+        # The only ExecutionCacheUtils call is the read: no write-back through it.
         assert cache_utils.method_calls == [
             call.get_execution(workflow_id="wf-1", execution_id="exec-1")
         ]

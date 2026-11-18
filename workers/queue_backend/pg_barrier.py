@@ -386,11 +386,12 @@ def clear_execution_batches(execution_id: str) -> int:
 
     Called at barrier teardown (``remaining`` → 0) so the markers
     live exactly as long as the execution needs them. Markers of executions
-    that never finalise are reclaimed by the reaper's ``sweep_orphan_dedup``
-    once older than the retention window (see the ``PgBatchDedup`` model
-    docstring). Safe to call when no rows exist (returns 0). Uses the
-    ``(execution_id, batch_index)`` constraint index (``execution_id`` leading)
-    for the lookup.
+    that never finalise are reclaimed by the reaper: ``recover_expired_barriers``
+    deletes them with a stranded barrier row, and ``sweep_orphan_dedup`` catches
+    any left without one once older than the retention window (see the
+    ``PgBatchDedup`` model docstring). Safe to call when no rows exist (returns
+    0). Uses the ``(execution_id, batch_index)`` constraint index
+    (``execution_id`` leading) for the lookup.
 
     Called on barrier finalise, on a header-dispatch failure, and on abort
     unless ``preserve_dedup_markers`` is set. The over-decrement path
