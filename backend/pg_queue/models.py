@@ -212,15 +212,16 @@ class PgBatchDedup(models.Model):
     skips". Pairing the claim with the decrement is what keeps the barrier
     decremented exactly once per batch even though the queue may deliver the
     task more than once. Rows for an execution are cleared by
-    ``clear_execution_batches`` when its barrier finalises (``remaining`` → 0),
-    when header dispatch fails, and on abort unless the markers are preserved;
-    re-arming the barrier for the same ``execution_id`` also deletes them, in
-    the same transaction as the barrier reset.
+    ``clear_execution_batches`` when header dispatch fails and on abort unless
+    the markers are preserved; re-arming the barrier for the same
+    ``execution_id`` also deletes them, in the same transaction as the barrier
+    reset. A finalised barrier keeps them, so a redelivery before the execution
+    is terminal is still skipped; they are then reclaimed by the sweep below.
 
     Orphan reclaim — there is no FK / cascade to this table. The reaper's
     ``recover_expired_barriers`` deletes a stranded execution's markers along
-    with its ``pg_barrier_state`` row; any left over without a barrier (for
-    example after an over-decrement) are swept by the reaper's
+    with its ``pg_barrier_state`` row; any left over without a barrier (after
+    finalise or an over-decrement) are swept by the reaper's
     ``sweep_orphan_dedup``, which deletes markers older than the retention window
     by ``created_at`` age (wired into the reaper's periodic ``_maybe_sweep``).
 
@@ -236,8 +237,9 @@ class PgBatchDedup(models.Model):
     batch_index = models.IntegerField()
     # When the marker was claimed. Read by the reaper's dedup-orphan sweep
     # (``sweep_orphan_dedup``), which deletes markers older than the retention
-    # window by this column's age. Deliberately UNINDEXED — the sweep seq-scans a
-    # normally-near-empty table at a ~5-min cadence; add an index if it grows.
+    # window by this column's age. Deliberately UNINDEXED — the sweep seq-scans
+    # at a ~5-min cadence a table holding about one retention window of batch
+    # markers (finalised barriers keep theirs); add an index if that grows large.
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:

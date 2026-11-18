@@ -384,18 +384,17 @@ def claim_batch(execution_id: str, batch_index: int) -> bool:
 def clear_execution_batches(execution_id: str) -> int:
     """Delete all per-batch dedup markers for an execution; returns the count.
 
-    Called at barrier teardown (``remaining`` → 0) so the markers
-    live exactly as long as the execution needs them. Markers of executions
-    that never finalise are reclaimed by the reaper: ``recover_expired_barriers``
-    deletes them with a stranded barrier row, and ``sweep_orphan_dedup`` catches
-    any left without one once older than the retention window (see the
+    Called on a header-dispatch failure and on abort unless
+    ``preserve_dedup_markers`` is set. Finalise (``remaining`` → 0) and the
+    over-decrement path (``remaining`` < 0) keep the markers on purpose, so a
+    redelivery before the execution is terminal is skipped; see
+    :func:`_barrier_pg_decrement`. Kept markers are reclaimed by a barrier
+    re-arm for the same ``execution_id``, by the reaper's
+    ``recover_expired_barriers`` with a stranded barrier row, or by its
+    ``sweep_orphan_dedup`` once older than the retention window (see the
     ``PgBatchDedup`` model docstring). Safe to call when no rows exist (returns
     0). Uses the ``(execution_id, batch_index)`` constraint index
     (``execution_id`` leading) for the lookup.
-
-    Called on barrier finalise, on a header-dispatch failure, and on abort
-    unless ``preserve_dedup_markers`` is set. The over-decrement path
-    (``remaining`` < 0) keeps them on purpose; see :func:`_barrier_pg_decrement`.
     """
     with _cursor() as cur:
         cur.execute(
@@ -1107,7 +1106,7 @@ def _barrier_pg_decrement(
     if remaining < 0:
         # Decremented past 0 — expiry/replay. Clean up, no fire.
         #
-        # The pg_batch_dedup markers are deliberately KEPT, unlike finalize. A
+        # The pg_batch_dedup markers are deliberately KEPT, as on finalize. A
         # count below 0 means deliveries are already being replayed, and the
         # execution is not marked terminal here, so a sibling batch can still
         # redeliver. Its surviving marker makes claim_batch skip it; clearing the
@@ -1134,26 +1133,24 @@ def _barrier_pg_decrement(
     # max_retries=0, so the task is never replayed.
     callback_id = _fire_barrier_callback(callback_descriptor, all_results)
     # Post-dispatch cleanup is best-effort: the callback already fired, so a
-    # failure here is logged (not raised) — the rows linger until reclaim rather
-    # than re-running the callback. The two cleanups are independent so one
-    # failing doesn't skip the other and each names what failed: the barrier row
-    # is reclaimed by expiry, the dedup markers by the reaper's dedup-orphan
-    # sweep — neither re-runs anything (this is the last decrement, max_retries=0).
+    # failure here is logged (not raised) — the row lingers until the reaper
+    # recovers it rather than re-running the callback.
+    #
+    # The pg_batch_dedup markers are deliberately KEPT. The callback has only
+    # been enqueued; until it marks the execution terminal, the terminal guard in
+    # the batch cannot stop a redelivery (e.g. this worker is killed before it
+    # acks, and its lease expires). The surviving marker makes claim_batch skip
+    # that redelivery instead of re-running the batch (LLM spend, a second
+    # destination write). They are reclaimed by a barrier re-arm for the same
+    # execution_id or by the reaper's sweep_orphan_dedup after the retention
+    # window.
     try:
         _delete_barrier(execution_id)
     except Exception:
         logger.exception(
             f"[exec:{execution_id}] Barrier callback dispatched "
             f"(callback_task_id={callback_id}) but deleting the pg_barrier_state "
-            f"row failed — reclaimed at expiry. Callback NOT re-run."
-        )
-    try:
-        clear_execution_batches(execution_id)
-    except Exception:
-        logger.exception(
-            f"[exec:{execution_id}] Barrier callback dispatched "
-            f"(callback_task_id={callback_id}) but clearing pg_batch_dedup markers "
-            f"failed — reclaimed by the dedup-orphan sweep. Callback NOT re-run."
+            f"row failed — the reaper recovers it. Callback NOT re-run."
         )
 
     logger.info(

@@ -221,9 +221,22 @@ class CacheService:
         return redis_cache.hgetall(key)
 
     @staticmethod
-    def hincrby(key: str, field: str, increment: int) -> None:
-        """Increment a value in a Redis hash."""
-        redis_cache.hincrby(key, field, increment)
+    def hincrby(
+        key: str, field: str, increment: int, expire_time: int | None = None
+    ) -> None:
+        """Increment a value in a Redis hash.
+
+        With ``expire_time``, the hash's TTL is (re)set in the same MULTI/EXEC,
+        so an increment that recreates an expired hash never leaves it without
+        one.
+        """
+        if expire_time is None:
+            redis_cache.hincrby(key, field, increment)
+            return
+        pipe = redis_cache.pipeline(transaction=True)
+        pipe.hincrby(key, field, increment)
+        pipe.expire(key, expire_time)
+        pipe.execute()
 
     @staticmethod
     def exists(key: str) -> bool:
