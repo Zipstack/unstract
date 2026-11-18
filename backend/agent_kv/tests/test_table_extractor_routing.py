@@ -19,6 +19,8 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
 if not apps.ready:
     django.setup()
 
+from django.test import override_settings  # noqa: E402
+
 from agent_kv.constants import (  # noqa: E402
     EXTRACTOR_ROUTES,
     STAGE_NAMES_BY_EXTRACTOR,
@@ -33,14 +35,36 @@ from agent_kv.execution_serializers import (  # noqa: E402
 from agent_kv.models import AgentKVJob, JobStatus  # noqa: E402
 
 
-def test_table_is_the_only_supported_extractor():
-    """`kv` is out of EXTRACTOR_ROUTES because this deployment ships no
-    `agentic_kv` plugin, so nothing drains `celery_executor_agentic_kv`.
-    SUPPORTED_EXTRACTORS is derived from that table, so the omission is what
-    turns a `kv` submit into a 400 rather than a 202 for a job that never runs.
+def test_both_extractors_are_supported_through_the_one_api():
+    """One endpoint, one selector, two engines.
+
+    A caller chooses with `extractors[].name`; there is no separate KV endpoint
+    and no second parameter. `SUPPORTED_EXTRACTORS` is derived from
+    `EXTRACTOR_ROUTES`, so this asserts the selector's accepted values exactly
+    -- both present, and nothing else accepted by accident.
+
+    This replaces `test_table_is_the_only_supported_extractor`, which asserted
+    `kv` was absent. That was correct only while the engine shipped on its own
+    branch and nothing drained `celery_executor_agentic_kv`; both fleets drain
+    it now (see `test_queue_wiring_is_derived.py`, which derives that check
+    from this very table rather than restating it).
     """
-    assert set(SUPPORTED_EXTRACTORS) == {TABLE_EXTRACTOR_NAME}
-    assert V1_EXTRACTOR_NAME not in EXTRACTOR_ROUTES
+    assert set(SUPPORTED_EXTRACTORS) == {V1_EXTRACTOR_NAME, TABLE_EXTRACTOR_NAME}
+
+
+def test_the_kv_route_targets_the_shipped_executor():
+    """The pair here must match what the plugin registers, or submits are
+    accepted with a 202 and dispatched to a queue nothing drains.
+
+    Verified against a running deployment when `kv` was enabled:
+    `agentic_kv.constants` gives `EXECUTOR_NAME == "agentic_kv"` and
+    `OPERATION_KV_EXTRACT == "kv_extract"`, and `AgenticKVExecutor` rejects any
+    other operation. The queue name is DERIVED from the executor name, so a
+    typo here is not a 500 -- it is silence.
+    """
+    executor, operation = EXTRACTOR_ROUTES[V1_EXTRACTOR_NAME]
+    assert executor == "agentic_kv"
+    assert operation == "kv_extract"
 
 
 def test_every_supported_extractor_has_a_route_stage_list_and_options_serializer():
@@ -51,10 +75,18 @@ def test_every_supported_extractor_has_a_route_stage_list_and_options_serializer
     validation error -- `validate_name` already passed it, since
     `SUPPORTED_EXTRACTORS` is derived from `EXTRACTOR_ROUTES`.
     """
+    from agent_kv.execution_serializers import _ADAPTERS_SERIALIZERS
+
     for name in SUPPORTED_EXTRACTORS:
         assert name in EXTRACTOR_ROUTES, name
         assert name in STAGE_NAMES_BY_EXTRACTOR, name
         assert name in _OPTIONS_SERIALIZERS, name
+        # Both shipped engines run on caller-supplied adapters, so an absent
+        # entry here is not "this extractor takes none" any more -- it is a
+        # submit refused with "takes no adapters" for an engine that requires
+        # them. If an extractor is ever added that genuinely needs none, this
+        # assertion is the one to relax, deliberately and with a reason.
+        assert name in _ADAPTERS_SERIALIZERS, name
 
 
 def test_the_table_route_targets_the_existing_executor():
@@ -95,22 +127,43 @@ def test_kv_options_are_rejected_on_a_table_entry():
     assert "qa" in json.dumps(s.errors)
 
 
-def test_a_kv_entry_is_refused_by_name():
-    """Options scoping is moot for `kv` here: `validate_name` refuses the entry
-    before any options validator runs. What matters is that the refusal names
-    the extractor, so a caller sending a KV payload to this deployment learns
-    why rather than seeing a schema complaint.
+@override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=True)
+def test_a_kv_entry_is_accepted_with_its_own_keys_and_options():
+    """The positive case the old `test_a_kv_entry_is_refused_by_name` denied.
+
+    `kv`'s `keys` is a compiled schema rather than a fixed field set (it is
+    absent from `_KEYS_SERIALIZERS` on purpose), and `qa` is one of its own
+    options -- an option the table extractor rejects. So this one payload
+    exercises the whole point of extractor-scoping: the same request shape
+    carries a different schema language and a different knob set depending on
+    one parameter.
     """
     s = ExtractorSerializer(
         data={
             "name": "kv",
             "keys": {"total": {"description": "d"}},
             "options": {"qa": False},
+            "adapters": {
+                "llm": "11111111-1111-1111-1111-111111111111",
+                "lite_llm": "22222222-2222-2222-2222-222222222222",
+                "x2text": "33333333-3333-3333-3333-333333333333",
+            },
         }
     )
+    assert s.is_valid(), json.dumps(s.errors)
+    assert s.validated_data["name"] == "kv"
+
+
+def test_an_unknown_extractor_is_still_refused_by_name():
+    """Enabling `kv` must not turn the selector into a free-text field.
+
+    The refusal has to name the offending value, so a typo reads as a typo
+    rather than as a schema complaint about `keys`.
+    """
+    s = ExtractorSerializer(data={"name": "kvv", "keys": {"total": {"description": "d"}}})
     assert not s.is_valid()
     assert "unknown extractor" in json.dumps(s.errors)
-    assert "kv" in json.dumps(s.errors)
+    assert "kvv" in json.dumps(s.errors)
 
 
 def _job(extractor=TABLE_EXTRACTOR_NAME, **overrides):
@@ -133,23 +186,41 @@ def _job(extractor=TABLE_EXTRACTOR_NAME, **overrides):
     return job
 
 
-def test_the_kv_route_constants_survive_for_re_enablement():
-    """`kv` is unroutable, not deleted. The executor/operation pair, the stage
-    list and the options serializer all stay so the branch carrying the engine
-    re-enables the extractor by restoring one dict entry -- not by merging
-    content back into the files it rewrites most.
+def test_kv_is_wired_in_every_table_a_routable_extractor_needs():
+    """Four tables, not one: route, stage list, options and adapters.
+
+    `test_every_supported_extractor_has_a_route_stage_list_and_options_serializer`
+    derives the first three from `SUPPORTED_EXTRACTORS`; this names `kv`'s
+    entries explicitly so a reader can see what enabling an extractor consists
+    of without running the derivation in their head. Miss the stage list and
+    the job's progress is recorded and then filtered out of every status
+    response; miss the options serializer and a submit raises KeyError rather
+    than a validation error; miss the adapters entry and a `kv` submit that
+    names adapters is refused with "takes no adapters" while the engine
+    demands them.
+
+    This was `test_the_kv_route_constants_survive_for_re_enablement`, which
+    asserted the same constants for the opposite reason -- that they outlived
+    `kv` being unroutable so the engine's branch could re-enable it by
+    restoring one dict entry. That is what happened; the assertions are worth
+    keeping, the premise is spent.
     """
     from agent_kv.constants import (
         EXECUTOR_NAME,
         OPERATION_KV_EXTRACT,
         STAGE_NAMES_BY_EXTRACTOR,
     )
-    from agent_kv.execution_serializers import _OPTIONS_SERIALIZERS
+    from agent_kv.execution_serializers import (
+        _ADAPTERS_SERIALIZERS,
+        _OPTIONS_SERIALIZERS,
+    )
 
     assert EXECUTOR_NAME == "agentic_kv"
     assert OPERATION_KV_EXTRACT == "kv_extract"
+    assert V1_EXTRACTOR_NAME in EXTRACTOR_ROUTES
     assert V1_EXTRACTOR_NAME in STAGE_NAMES_BY_EXTRACTOR
     assert V1_EXTRACTOR_NAME in _OPTIONS_SERIALIZERS
+    assert V1_EXTRACTOR_NAME in _ADAPTERS_SERIALIZERS
 
 
 def test_the_status_document_keys_stages_by_the_extractor_that_ran():
@@ -275,9 +346,11 @@ def test_validate_is_not_a_public_route_on_this_deployment():
         "agent_kv_result",
         "agent_kv_cancel",
     }, (
-        "the public route set changed; `/validate` compiles a `kv` schema and "
-        "`kv` is the one extractor this build refuses, so routing it would "
-        "advertise validation for an extractor every submit 400s"
+        "the public route set changed. If `/validate` was added: that is a real "
+        "decision, not a typo -- it is a new public, rate-limited, "
+        "key-authenticated surface, and it was left unrouted on purpose when "
+        "`kv` became routable (see ValidateView's docstring). Update this set "
+        "and this message together, or revert the route."
     )
 
 
@@ -289,3 +362,188 @@ def test_validate_view_documents_that_it_is_unrouted():
         "ValidateView is a complete, decorated, live-looking endpoint that "
         "nothing reaches. Say so on the class, not only in execution_urls.py"
     )
+
+
+# ---------------------------------------------------------------------------
+# Routed is not the same as enabled
+# ---------------------------------------------------------------------------
+@override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=False)
+def test_kv_is_refused_where_the_deployment_has_not_enabled_it():
+    """The guard that makes merge order safe.
+
+    `EXTRACTOR_ROUTES` says where `kv` work GOES. Nothing in this repo can say
+    whether a fleet drains `celery_executor_agentic_kv` -- that queue list
+    ships in the chart, and `SubmitView`'s `get_plugin("agent_kv")` probe is
+    per-deployment, so it is already truthy wherever `table` shipped.
+
+    Without this gate, merging this repo before the chart accepts a `kv` submit
+    with a 202, stages the file, takes a concurrency slot shared with `table`,
+    and leaves the row in DISPATCHED until the sweep force-fails it -- with no
+    error at the producer.
+    """
+    from agent_kv.execution_serializers import ExtractorSerializer
+
+    s = ExtractorSerializer(
+        data={"name": "kv", "keys": {"total": {"description": "Grand total"}}}
+    )
+    assert not s.is_valid()
+    msg = str(s.errors)
+    assert "not enabled on this deployment" in msg, msg
+    # Refused as DISABLED, not as unknown: the deployment has to change, not
+    # the request, and an integrator told "unknown" goes looking for a typo.
+    assert "unknown extractor" not in msg, msg
+
+
+@override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=False)
+def test_table_is_unaffected_when_kv_is_disabled():
+    """The gate is per-extractor. Disabling `kv` must not touch the extractor
+    that has shipped and does drain its queue.
+    """
+    from agent_kv.execution_serializers import ExtractorSerializer
+
+    s = ExtractorSerializer(
+        data={"name": "table", "keys": {"target_table": "Line items"}}
+    )
+    assert s.is_valid(), str(s.errors)
+
+
+def test_enabled_extractors_tracks_the_flag_in_both_directions():
+    """Pins the derivation itself, not just one branch of it."""
+    from django.test import override_settings as _os
+
+    from agent_kv.execution_serializers import (
+        SUPPORTED_EXTRACTORS,
+        enabled_extractors,
+    )
+
+    with _os(AGENT_KV_KV_EXTRACTOR_ENABLED=True):
+        assert set(enabled_extractors()) == set(SUPPORTED_EXTRACTORS)
+        assert V1_EXTRACTOR_NAME in enabled_extractors()
+    with _os(AGENT_KV_KV_EXTRACTOR_ENABLED=False):
+        assert V1_EXTRACTOR_NAME not in enabled_extractors()
+        # Routed set is unchanged -- only acceptance moves.
+        assert V1_EXTRACTOR_NAME in SUPPORTED_EXTRACTORS
+        assert TABLE_EXTRACTOR_NAME in enabled_extractors()
+
+
+def test_every_routed_extractor_has_a_gate_entry():
+    """Adding a route must force a decision about acceptance.
+
+    Derived from `EXTRACTOR_ROUTES`, the way `test_queue_wiring_is_derived.py`
+    derives the queue wiring and the billing backstop -- so the requirement is
+    not a list anyone has to remember. Before the gate was a table it was an
+    `if` subtracting one hard-coded name, which meant a third extractor was
+    ACCEPTED by default the moment it was routed: a 202, a staged file, a
+    concurrency slot, and a row in DISPATCHED until the sweep force-fails it.
+
+    `_UNGATED` is a valid answer and `table` gives it. Silence is not.
+    """
+    from agent_kv.constants import EXTRACTOR_ROUTES
+    from agent_kv.execution_serializers import _EXTRACTOR_ENABLE_FLAGS
+
+    missing = set(EXTRACTOR_ROUTES) - set(_EXTRACTOR_ENABLE_FLAGS)
+    assert not missing, (
+        f"routed with no acceptance-gate entry: {sorted(missing)}. Add each to "
+        "`_EXTRACTOR_ENABLE_FLAGS` -- a setting name to gate it, or `_UNGATED` "
+        "to accept it everywhere."
+    )
+
+
+def test_every_gate_setting_name_exists_in_the_real_settings_module():
+    """A gate pointing at a setting Django does not define must not read as off.
+
+    This is the one the sibling tests above structurally cannot catch:
+    `override_settings` FABRICATES the attribute on the settings object whether
+    or not the settings module declares it, so every
+    `@override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=...)` case passes against
+    a settings module that never defines the name. This test therefore reads
+    the live settings WITHOUT an override.
+
+    Why it matters: `getattr(settings, gate, False)` made an absent or mistyped
+    name indistinguishable from a flag deliberately set false. The operator sets
+    the variable, nothing changes, and the refusal says the extractor "is not
+    enabled on this deployment" -- the opposite of the truth.
+    """
+    from django.conf import settings
+
+    from agent_kv.execution_serializers import (
+        _EXTRACTOR_ENABLE_FLAGS,
+        _UNGATED,
+    )
+
+    undefined = [
+        (name, gate)
+        for name, gate in _EXTRACTOR_ENABLE_FLAGS.items()
+        if gate is not _UNGATED and not hasattr(settings, gate)
+    ]
+    assert not undefined, (
+        "these extractors are gated on settings this deployment does not "
+        f"define, so they refuse unconditionally: {undefined}. Declare each in "
+        "backend/backend/settings/base.py or use _UNGATED."
+    )
+
+
+def test_an_undefined_gate_setting_refuses_loudly_rather_than_silently(caplog):
+    """The runtime half of the guard above, since a test cannot cover every future entry.
+
+    A derived test only covers the entries that exist today. This pins the
+    behaviour for the next one: refuse, and say it is a wiring bug rather than
+    the operator's flag being off.
+    """
+    from unittest import mock
+
+    from agent_kv import execution_serializers as es
+    from agent_kv.execution_serializers import (
+        _EXTRACTOR_ENABLE_FLAGS,
+        enabled_extractors,
+    )
+
+    # The fault log is once-per-process (it is a static wiring property read on
+    # every submit, so unguarded it went to Sentry at request rate). Clear the
+    # ledger so this test sees the first occurrence regardless of run order.
+    es._WIRING_FAULTS_LOGGED.clear()
+
+    patched = dict(_EXTRACTOR_ENABLE_FLAGS)
+    patched[V1_EXTRACTOR_NAME] = "AGENT_KV_THIS_SETTING_DOES_NOT_EXIST"
+    with mock.patch.dict(
+        "agent_kv.execution_serializers._EXTRACTOR_ENABLE_FLAGS",
+        patched,
+        clear=True,
+    ):
+        with caplog.at_level("ERROR"):
+            result = enabled_extractors()
+    assert V1_EXTRACTOR_NAME not in result
+    assert "AGENT_KV_THIS_SETTING_DOES_NOT_EXIST" in caplog.text
+    assert "do not define" in caplog.text
+
+
+def test_a_wiring_fault_is_logged_once_per_process_not_once_per_submit(caplog):
+    """The fault is a static property of the table, read on every request.
+
+    `enabled_extractors()` runs per submit, so an unguarded `logger.error` here
+    emitted one ERROR per request, unbounded, into Sentry at request rate --
+    while `tasks._CAPS_LOGGED` in this same PR goes to real trouble to make an
+    equivalent operator message fire once per process.
+    """
+    from unittest import mock
+
+    from agent_kv import execution_serializers as es
+
+    es._WIRING_FAULTS_LOGGED.clear()
+    patched = dict(es._EXTRACTOR_ENABLE_FLAGS)
+    patched[V1_EXTRACTOR_NAME] = "AGENT_KV_STILL_DOES_NOT_EXIST"
+    with mock.patch.dict(
+        "agent_kv.execution_serializers._EXTRACTOR_ENABLE_FLAGS",
+        patched,
+        clear=True,
+    ):
+        with caplog.at_level("ERROR"):
+            for _ in range(5):
+                es.enabled_extractors()
+    # Count RECORDS, not substring hits: the message names the setting twice
+    # (once as the gate value, once as what the operator would set), so
+    # `caplog.text.count(name)` is 2 per occurrence and would never equal 1.
+    fired = [
+        r for r in caplog.records if "AGENT_KV_STILL_DOES_NOT_EXIST" in r.getMessage()
+    ]
+    assert len(fired) == 1, [r.getMessage() for r in fired]

@@ -128,18 +128,25 @@ def test_extractor_has_no_default():
     assert AgentKVJob(organization_id="o").extractor == ""
 
 
-def test_recordable_extractors_are_a_superset_of_routable_ones():
+def test_every_routable_extractor_is_recordable():
     """The two sets are deliberately different, so neither is derived.
 
-    `choices` says what a ROW may record -- rows written before the carve-out
-    legitimately say `kv`. `EXTRACTOR_ROUTES` says what a submit may DISPATCH,
-    and `kv` is absent from it on purpose. Deriving either from the other
-    would quietly re-enable the extractor or make old rows unreadable.
+    `choices` says what a ROW may record; `EXTRACTOR_ROUTES` says what a submit
+    may DISPATCH. Deriving either from the other would let a route appear with
+    no way to record which extractor ran, or make old rows unreadable.
+
+    **The relation is `<=`, not `<`.** It was a STRICT subset while `kv` was
+    recordable but not routable: rows written before the carve-out said `kv`
+    and no submit could produce one. Now that `kv` is routable the two sets are
+    equal, which is the normal state -- every extractor that can run can be
+    recorded. Strictness was a fact about one transitional period, never the
+    invariant, and asserting it again would fail the moment the sets agree.
     """
     from agent_kv.constants import EXTRACTOR_ROUTES
 
     recordable = {value for value, _ in AgentKVJob._meta.get_field("extractor").choices}
-    assert set(EXTRACTOR_ROUTES) < recordable, (
-        "every routable extractor must be recordable, and `kv` is recordable "
-        "without being routable"
+    assert set(EXTRACTOR_ROUTES) <= recordable, (
+        "every routable extractor must be recordable; "
+        f"{sorted(set(EXTRACTOR_ROUTES) - recordable)} can dispatch but not be "
+        "recorded, so the job row cannot say which extractor ran"
     )

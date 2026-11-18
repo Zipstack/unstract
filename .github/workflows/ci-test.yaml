@@ -119,6 +119,38 @@ jobs:
           python-version: 3.12.9
           enable-cache: true
 
+      # A `uv` command that needs the interpreter is what downloads it, so give
+      # that download its own step and its own retries. `setup-uv`'s
+      # `python-version` only sets `UV_PYTHON`; it installs nothing. On
+      # 2026-11-09 the download 504'd inside "Install tox with UV" and failed
+      # two jobs in run 42570971429 and one in 42566173036:
+      #
+      #   error: Failed to download https://github.com/astral-sh/python-build-standalone/releases/download/20250317/cpython-3.12.9%2B20250317-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz
+      #     Caused by: HTTP status server error (504 Gateway Timeout) for url (...)
+      #
+      # Two things that reads as and is not: a tox problem (the step name), and
+      # a pinning problem (the version in the URL). It is one GitHub release
+      # host having a bad minute, and `uv` 0.6.14 does not retry a 5xx there.
+      #
+      # Keep this BEFORE the first `uv` command in the job. After it, the
+      # interpreter is already present and this step is a no-op, which is also
+      # what makes it safe to repeat.
+      - name: Install the managed Python, with retries
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if uv python install 3.12.9; then
+              exit 0
+            fi
+            echo "::warning::uv python install 3.12.9 failed (attempt ${attempt}/5)"
+            # Not after the last one: there is nothing left to wait for, and a
+            # job that is going to fail should say so 50s sooner.
+            if [ "$attempt" -lt 5 ]; then
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "::error::could not download CPython 3.12.9 after 5 attempts"
+          exit 1
+
       - name: Cache tox environments
         uses: actions/cache@v5
         with:
@@ -218,6 +250,38 @@ jobs:
           version: "0.6.14"
           python-version: 3.12.9
           enable-cache: true
+
+      # A `uv` command that needs the interpreter is what downloads it, so give
+      # that download its own step and its own retries. `setup-uv`'s
+      # `python-version` only sets `UV_PYTHON`; it installs nothing. On
+      # 2026-11-09 the download 504'd inside "Install tox with UV" and failed
+      # two jobs in run 42570971429 and one in 42566173036:
+      #
+      #   error: Failed to download https://github.com/astral-sh/python-build-standalone/releases/download/20250317/cpython-3.12.9%2B20250317-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz
+      #     Caused by: HTTP status server error (504 Gateway Timeout) for url (...)
+      #
+      # Two things that reads as and is not: a tox problem (the step name), and
+      # a pinning problem (the version in the URL). It is one GitHub release
+      # host having a bad minute, and `uv` 0.6.14 does not retry a 5xx there.
+      #
+      # Keep this BEFORE the first `uv` command in the job. After it, the
+      # interpreter is already present and this step is a no-op, which is also
+      # what makes it safe to repeat.
+      - name: Install the managed Python, with retries
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if uv python install 3.12.9; then
+              exit 0
+            fi
+            echo "::warning::uv python install 3.12.9 failed (attempt ${attempt}/5)"
+            # Not after the last one: there is nothing left to wait for, and a
+            # job that is going to fail should say so 50s sooner.
+            if [ "$attempt" -lt 5 ]; then
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "::error::could not download CPython 3.12.9 after 5 attempts"
+          exit 1
 
       - name: Cache tox environments
         uses: actions/cache@v5
@@ -392,6 +456,38 @@ jobs:
           version: "0.6.14"
           python-version: 3.12.9
           enable-cache: true
+
+      # A `uv` command that needs the interpreter is what downloads it, so give
+      # that download its own step and its own retries. `setup-uv`'s
+      # `python-version` only sets `UV_PYTHON`; it installs nothing. On
+      # 2026-11-09 the download 504'd inside "Install tox with UV" and failed
+      # two jobs in run 42570971429 and one in 42566173036:
+      #
+      #   error: Failed to download https://github.com/astral-sh/python-build-standalone/releases/download/20250317/cpython-3.12.9%2B20250317-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz
+      #     Caused by: HTTP status server error (504 Gateway Timeout) for url (...)
+      #
+      # Two things that reads as and is not: a tox problem (the step name), and
+      # a pinning problem (the version in the URL). It is one GitHub release
+      # host having a bad minute, and `uv` 0.6.14 does not retry a 5xx there.
+      #
+      # Keep this BEFORE the first `uv` command in the job. After it, the
+      # interpreter is already present and this step is a no-op, which is also
+      # what makes it safe to repeat.
+      - name: Install the managed Python, with retries
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if uv python install 3.12.9; then
+              exit 0
+            fi
+            echo "::warning::uv python install 3.12.9 failed (attempt ${attempt}/5)"
+            # Not after the last one: there is nothing left to wait for, and a
+            # job that is going to fail should say so 50s sooner.
+            if [ "$attempt" -lt 5 ]; then
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "::error::could not download CPython 3.12.9 after 5 attempts"
+          exit 1
 
       - name: Cache tox environments
         uses: actions/cache@v5

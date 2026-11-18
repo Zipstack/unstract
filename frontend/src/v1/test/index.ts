@@ -3,6 +3,7 @@
  * (`*.test.ts(x)`, `*.spec.ts(x)`) and test/ itself may import it.
  */
 
+export { createQueryClient } from "@v1/app/query";
 export { PORTAL_CONTAINER_ID, V1_ROOT_CLASS } from "@v1/lib/portal";
 export {
   type A11yOptions,
