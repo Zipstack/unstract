@@ -37,7 +37,8 @@ export type Listbox = Readonly<{
   onSelect: (option: SelectOption) => void;
   /**
    * Attach to the input: ArrowDown/Up (opens when closed), Home, End, Enter
-   * (default-prevented whenever open), Escape, Tab.
+   * (default-prevented whenever open), Escape, Tab. While an IME composes,
+   * only Tab is handled; every other key is left to the IME.
    */
   onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
   /** Attach to the input's aria-* props. */
@@ -79,6 +80,14 @@ function nextEnabled(
   }
   return from;
 }
+
+/**
+ * Whether the key belongs to an IME composition in progress (its arrows move
+ * through candidates, Enter commits, Escape cancels), so a field must not
+ * act on it or prevent it.
+ */
+export const isComposing = (event: KeyboardEvent<HTMLElement>): boolean =>
+  event.nativeEvent.isComposing;
 
 /**
  * The state and keyboard of a combobox's listbox: the query, the filtered
@@ -181,6 +190,10 @@ export function useListbox({
   const setOpen = (next: boolean) => (next ? openList() : setOpenState(false));
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    // Tab still closes during a composition: focus is leaving the field.
+    if (isComposing(event) && event.key !== "Tab") {
+      return;
+    }
     switch (event.key) {
       case "ArrowDown":
       case "ArrowUp":
@@ -207,10 +220,6 @@ export function useListbox({
         }
         return;
       case "Enter": {
-        // Enter that commits an IME composition is not a selection.
-        if (event.nativeEvent.isComposing) {
-          return;
-        }
         if (!open) {
           return;
         }

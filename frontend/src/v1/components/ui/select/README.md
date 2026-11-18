@@ -108,6 +108,13 @@ focuses the input and opens it too). Home and End jump in the open list but
 edit the caret while it is closed: the spec's "Home and End jump while a
 list is open" over the APG's caret-only reading.
 
+While an IME is composing (`isComposing` on the key event), `Combobox` and
+`MultiSelect` leave its keys to it: the arrows, Home, End and Enter neither
+move, open nor select, Escape cancels the composition without closing the
+list, and Backspace edits the composition instead of removing a chip. Only
+Tab still closes the list, since focus is leaving. `Select` and
+`SegmentedControl` take no text, so no composition reaches them.
+
 ### Hand-off to P1-T06
 
 `Field` and `useFieldControl` come with P1-T06 (#2416, not merged). Until

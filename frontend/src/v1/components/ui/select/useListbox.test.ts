@@ -28,13 +28,13 @@ function setup(props: Props = {}) {
       }),
     { initialProps: props },
   );
-  const press = (key: string) => {
+  const press = (key: string, isComposing = false) => {
     const preventDefault = vi.fn();
     act(() =>
       hook.result.current.onKeyDown({
         key,
         preventDefault,
-        nativeEvent: { isComposing: false },
+        nativeEvent: { isComposing },
       } as unknown as KeyboardEvent<HTMLElement>),
     );
     return preventDefault;
@@ -127,6 +127,38 @@ it("selects the active option with Enter while open", () => {
   expect(press("Enter")).toHaveBeenCalled();
   expect(onSelect).toHaveBeenCalledWith(OPTIONS[2]);
   expect(result.current.open).toBe(true);
+});
+
+it("leaves the arrows, Home, End, Enter and Escape to an IME while it composes", () => {
+  const { result, press, onSelect } = setup();
+  // Closed: a composing arrow neither opens the list nor is prevented.
+  expect(press("ArrowDown", true)).not.toHaveBeenCalled();
+  expect(result.current.open).toBe(false);
+  press("ArrowDown");
+  expect(result.current.activeIndex).toBe(0);
+  for (const key of [
+    "ArrowDown",
+    "ArrowUp",
+    "Home",
+    "End",
+    "Enter",
+    "Escape",
+  ]) {
+    expect(press(key, true)).not.toHaveBeenCalled();
+    expect(result.current.activeIndex).toBe(0);
+    expect(result.current.open).toBe(true);
+  }
+  expect(onSelect).not.toHaveBeenCalled();
+  // The same key without a composition still moves.
+  expect(press("ArrowDown")).toHaveBeenCalled();
+  expect(result.current.activeIndex).toBe(2);
+});
+
+it("still closes on Tab during a composition, since focus is leaving", () => {
+  const { result, press } = setup();
+  press("ArrowDown");
+  press("Tab", true);
+  expect(result.current.open).toBe(false);
 });
 
 it("never makes a disabled option active: it falls back to the first enabled one", () => {

@@ -15,6 +15,7 @@ import {
   useLoadedOptions,
 } from "./shared";
 import { TRIGGER_FRAME } from "./trigger";
+import { isComposing } from "./useListbox";
 
 const ClearIcon = ACTION_ICONS.close;
 const NO_OPTIONS: readonly SelectOption[] = [];
@@ -90,8 +91,12 @@ export function Combobox(props: ComboboxProps): JSX.Element {
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     listbox.onKeyDown(event);
-    // Tab may move to the clear button, still inside the field.
-    if (event.key === "Escape" || event.key === "Tab") {
+    // Tab may move to the clear button, still inside the field. An Escape
+    // that cancels an IME composition is the IME's.
+    if (
+      event.key === "Tab" ||
+      (event.key === "Escape" && !isComposing(event))
+    ) {
       close();
     }
   }

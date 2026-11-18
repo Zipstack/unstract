@@ -20,6 +20,7 @@ import {
   useLoadedOptions,
 } from "./shared";
 import { TRIGGER_FRAME } from "./trigger";
+import { isComposing } from "./useListbox";
 
 const NO_OPTIONS: readonly SelectOption[] = [];
 const NO_VALUES: readonly string[] = [];
@@ -105,14 +106,21 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    // With no text to delete, Backspace takes the last chip instead.
-    if (event.key === "Backspace" && listbox.query === "" && value.length > 0) {
+    const composing = isComposing(event);
+    // With no text to delete, Backspace takes the last chip instead (unless
+    // it is editing an IME composition).
+    if (
+      event.key === "Backspace" &&
+      !composing &&
+      listbox.query === "" &&
+      value.length > 0
+    ) {
       event.preventDefault();
       remove(value[value.length - 1]);
       return;
     }
     listbox.onKeyDown(event);
-    if (event.key === "Escape" || event.key === "Tab") {
+    if (event.key === "Tab" || (event.key === "Escape" && !composing)) {
       close();
     }
   }

@@ -103,14 +103,19 @@ export function toggleList(
 /**
  * Props for the list's `Popover.Content`: no dialog role (the listbox inside
  * is the popup), focus never moves into or back from it, a press inside the
- * frame is not outside, and a press on the list's padding keeps focus in the
- * input.
+ * frame is not outside, a press on the list's padding keeps focus in the
+ * input, and an Escape that cancels an IME composition does not close it.
  */
 export function listContentProps(frameRef: RefObject<HTMLElement | null>) {
   return {
     role: "presentation",
     onOpenAutoFocus: (event: Event) => event.preventDefault(),
     onCloseAutoFocus: (event: Event) => event.preventDefault(),
+    onEscapeKeyDown: (event: KeyboardEvent) => {
+      if (event.isComposing) {
+        event.preventDefault();
+      }
+    },
     onInteractOutside: (event: Event) => {
       const target = event.target;
       if (target instanceof Node && frameRef.current?.contains(target)) {

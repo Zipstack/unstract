@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { expectNoA11yViolations, renderV1 } from "@v1/test";
 import { expect, it, vi } from "vitest";
 import { MultiSelect, type MultiSelectProps } from "./MultiSelect";
@@ -182,6 +182,16 @@ it("edits the text on Backspace when the input has some, keeping the chips", asy
   await user.type(input(), "re{Backspace}");
   expect(input().value).toBe("r");
   expect(chipNames()).toEqual(["Invoice"]);
+  expect(onValueChange).not.toHaveBeenCalled();
+});
+
+it("leaves Backspace and Escape to an IME while it composes", async () => {
+  const { user, onValueChange } = setup({ defaultValue: ["invoice"] });
+  await user.click(input());
+  fireEvent.keyDown(input(), { key: "Backspace", isComposing: true });
+  expect(chipNames()).toEqual(["Invoice"]);
+  fireEvent.keyDown(input(), { key: "Escape", isComposing: true });
+  expect(screen.getByRole("listbox")).toBeTruthy();
   expect(onValueChange).not.toHaveBeenCalled();
 });
 

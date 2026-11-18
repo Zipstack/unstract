@@ -159,6 +159,17 @@ it("restores the selected label on Escape without changing the value", async () 
   expect(onValueChange).not.toHaveBeenCalled();
 });
 
+it("keeps the list and the typed text when Escape cancels an IME composition", async () => {
+  const { user } = setup({ defaultValue: "llama" });
+  await user.type(input(), "ge");
+  fireEvent.keyDown(input(), { key: "Escape", isComposing: true });
+  expect(screen.getByRole("listbox")).toBeTruthy();
+  expect(input().value).toBe("ge");
+  fireEvent.keyDown(input(), { key: "Escape" });
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(input().value).toBe("Llama");
+});
+
 it("empties the input on Escape when nothing is selected", async () => {
   const { user } = setup();
   await user.type(input(), "gem");
