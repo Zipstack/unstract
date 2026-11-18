@@ -45,9 +45,9 @@ class ApiRoutesIgnoresAvailabilityTest(SimpleTestCase):
         kv = get_agent(ExtractorAgentKey.MULTI_STAGE)
         self.assertFalse(
             kv.available,
-            "multi_stage is now available to the Studio. That is a product "
-            "decision (it waits on UN-4213); if it was made deliberately, this "
-            "assertion is what to update.",
+            "multi_stage is available to the Studio under the test settings. "
+            "It is gated per environment by APS_MULTI_STAGE_ENABLED, which "
+            "defaults false; check nothing set it for the test run.",
         )
 
     def test_availability_does_not_gate_the_api_door(self) -> None:

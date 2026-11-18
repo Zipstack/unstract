@@ -403,6 +403,21 @@ AGENT_KV_KV_EXTRACTOR_ENABLED = (
     os.environ.get("AGENT_KV_KV_EXTRACTOR_ENABLED", "false").lower() == "true"
 )
 
+#: Whether the Agentic Prompt Studio OFFERS the Multi-Stage Extractor (the
+#: Agent-KV engine as a Primary agent). Separate from the gate above, which is
+#: the blind API's: one deployment may serve `kv` to API callers long before
+#: its Studio can run it. Read once, when `extractor_registry` builds its
+#: catalogue, so it is per-environment and needs a restart to change.
+#:
+#: Defaults false. Do not set it before the cloud tree registers the agent's
+#: parameter builder (UN-3917, slice 3). Setting it early fails safe but badly:
+#: the Studio's accept path refuses the profile save, yet the agent picker
+#: still lists Multi-Stage as enabled, so the user reaches a form that cannot
+#: be saved.
+APS_MULTI_STAGE_ENABLED = (
+    os.environ.get("APS_MULTI_STAGE_ENABLED", "false").lower() == "true"
+)
+
 
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")
 DB_USER = os.environ.get("DB_USER", "unstract_dev")
