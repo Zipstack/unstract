@@ -393,45 +393,59 @@ class PromptStudioRegistryHelper:
             if not prompt.profile_manager:
                 prompt.profile_manager = default_llm_profile
 
+            # Single-pass runs every prompt via the tool's default profile,
+            # except TABLE/RECORD/AGENTIC_TABLE prompts, which single-pass
+            # skips and which are always run individually with their own
+            # profile (outputs saved with is_single_pass_extract=False).
+            # Other prompts use their own profile_manager outside single-pass.
+            runs_single_pass = tool.single_pass_extraction_mode and (
+                prompt.enforce_type
+                not in (
+                    PromptStudioRegistryKeys.TABLE,
+                    PromptStudioRegistryKeys.RECORD,
+                    PromptStudioRegistryKeys.AGENTIC_TABLE,
+                )
+            )
+            output_profile = (
+                default_llm_profile if runs_single_pass else prompt.profile_manager
+            )
+
             if not force_export:
                 prompt_output = PromptStudioOutputManager.objects.filter(
                     tool_id=tool.tool_id,
                     prompt_id=prompt.prompt_id,
-                    profile_manager=prompt.profile_manager,
+                    profile_manager=output_profile,
+                    is_single_pass_extract=runs_single_pass,
                 ).all()
                 if not prompt_output:
                     invalidated_outputs.append(prompt.prompt_key)
                     continue
 
-            vector_db = str(prompt.profile_manager.vector_store.id)
-            embedding_model = str(prompt.profile_manager.embedding_model.id)
-            llm = str(prompt.profile_manager.llm.id)
-            x2text = str(prompt.profile_manager.x2text.id)
-            adapter_id = str(prompt.profile_manager.embedding_model.adapter_id)
+            vector_db = str(output_profile.vector_store.id)
+            embedding_model = str(output_profile.embedding_model.id)
+            llm = str(output_profile.llm.id)
+            x2text = str(output_profile.x2text.id)
+            adapter_id = str(output_profile.embedding_model.adapter_id)
             embedding_suffix = adapter_id.split("|")[0]
 
             output[JsonSchemaKey.PROMPT] = prompt.prompt
             output[JsonSchemaKey.ACTIVE] = prompt.active
             output[JsonSchemaKey.REQUIRED] = prompt.required
-            output[JsonSchemaKey.CHUNK_SIZE] = prompt.profile_manager.chunk_size
+            output[JsonSchemaKey.CHUNK_SIZE] = output_profile.chunk_size
             output[JsonSchemaKey.VECTOR_DB] = vector_db
             output[JsonSchemaKey.EMBEDDING] = embedding_model
             output[JsonSchemaKey.X2TEXT_ADAPTER] = x2text
-            output[JsonSchemaKey.CHUNK_OVERLAP] = prompt.profile_manager.chunk_overlap
+            output[JsonSchemaKey.CHUNK_OVERLAP] = output_profile.chunk_overlap
             output[JsonSchemaKey.LLM] = llm
             output[JsonSchemaKey.PREAMBLE] = tool.preamble
             output[JsonSchemaKey.POSTAMBLE] = tool.postamble
             output[JsonSchemaKey.GRAMMAR] = grammar_list
             output[JsonSchemaKey.TYPE] = prompt.enforce_type
             output[JsonSchemaKey.NAME] = prompt.prompt_key
-            output[JsonSchemaKey.RETRIEVAL_STRATEGY] = (
-                prompt.profile_manager.retrieval_strategy
-            )
-            output[JsonSchemaKey.SIMILARITY_TOP_K] = (
-                prompt.profile_manager.similarity_top_k
-            )
-            output[JsonSchemaKey.SECTION] = prompt.profile_manager.section
-            output[JsonSchemaKey.REINDEX] = prompt.profile_manager.reindex
+            output[JsonSchemaKey.RETRIEVAL_STRATEGY] = output_profile.retrieval_strategy
+            output[JsonSchemaKey.SIMILARITY_TOP_K] = output_profile.similarity_top_k
+            output[JsonSchemaKey.SECTION] = output_profile.section
+            output[JsonSchemaKey.REINDEX] = output_profile.reindex
             output[JsonSchemaKey.EMBEDDING_SUFFIX] = embedding_suffix
             # Webhook postprocessing settings
             output[JsonSchemaKey.ENABLE_POSTPROCESSING_WEBHOOK] = (
