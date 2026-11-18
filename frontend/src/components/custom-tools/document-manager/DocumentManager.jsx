@@ -43,6 +43,14 @@ const viewTypes = {
   extract: "EXTRACT",
 };
 
+// In image output mode LLMWhisperer has no text to extract, so the SDK writes a
+// placeholder starting with this prefix into the extract file. Keep in sync with
+// _IMAGE_SUMMARY_PREFIX in
+// unstract/sdk1/src/unstract/sdk1/adapters/x2text/llm_whisperer_v2/src/helper.py
+const IMAGE_MODE_EXTRACT_PREFIX = "[LLMWhisperer image output mode]";
+const IMAGE_MODE_RAW_VIEW_MSG =
+  "Raw view is not available because image mode is enabled for the text extractor.";
+
 // Import components for the summarize feature
 let SummarizeView = null;
 try {
@@ -87,6 +95,9 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const [fileErrMsg, setFileErrMsg] = useState("");
   const [extractTxt, setExtractTxt] = useState("");
   const [extractErrMsg, setExtractErrMsg] = useState("");
+  const isImageModeExtract =
+    typeof extractTxt === "string" &&
+    extractTxt.startsWith(IMAGE_MODE_EXTRACT_PREFIX);
   const [isDocLoading, setIsDocLoading] = useState(false);
   const [isExtractLoading, setIsExtractLoading] = useState(false);
   const [currDocIndexStatus, setCurrDocIndexStatus] = useState(
@@ -503,9 +514,9 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
         <DocumentViewer
           doc={selectedDoc?.document_name}
           isLoading={isExtractLoading}
-          isContentAvailable={extractTxt?.length > 0}
+          isContentAvailable={extractTxt?.length > 0 && !isImageModeExtract}
           setOpenManageDocsModal={setOpenManageDocsModal}
-          errMsg={extractErrMsg}
+          errMsg={isImageModeExtract ? IMAGE_MODE_RAW_VIEW_MSG : extractErrMsg}
         >
           <TextViewerPre text={extractTxt} />
         </DocumentViewer>
