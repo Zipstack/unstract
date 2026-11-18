@@ -121,9 +121,13 @@ is convention.
   `Slider`), imported from `@v1/components/ui/toggles`; its README lists
   every prop. Do not build another checkbox, radio, switch or slider.
 - The mixed checkbox is controlled only: pass `checked="indeterminate"`.
-- Every group and control has a name: a `RadioGroup` takes `label` or
-  `aria-label`, a control without a visible label takes `aria-label`, and a
-  range slider names its thumbs with `thumbLabels`.
+- Every group and control has a name, and the props types require one
+  (`label`, `aria-label` or `aria-labelledby`): a control without a visible
+  label takes `aria-label`. A range slider's thumbs are named "Minimum" and
+  "Maximum" unless `thumbLabels` is passed.
+- Never put a toggle inside `Field`: Field's label points at an id the
+  toggle does not read and names nothing. A `RadioGroup` never goes inside
+  `Field`.
 
 ## Text inputs
 

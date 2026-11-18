@@ -30,17 +30,31 @@ import {
   control. Each control sits in a 20px box, the label's line height, so it
   centres on the label's first line.
 - **One focus treatment.** Every focusable part uses
-  `ui:focus-visible:focus-ring`. Disabled follows board § 6: opacity .5 and
-  no pointer events, on the control and its label (a disabled `RadioGroup`
-  dims its heading and every item label too).
+  `ui:focus-visible:focus-ring`. Disabled follows board § 6: the control
+  gets opacity .5 and no pointer events; its label gets `data-disabled` and
+  opacity .5 but keeps pointer events (a click on it does nothing, since the
+  control is disabled), and the description is unchanged. A disabled
+  `RadioGroup` dims its heading and every item label the same way. A disabled
+  `Slider` dims its label and the whole track, and the track takes no pointer
+  events.
+- **Forced colors.** Forced-colors mode drops backgrounds, so each filled
+  part also carries a transparent border or outline, which that mode paints
+  in the system colour: the radio dot (`ui:border-3`), the switch thumb
+  (`ui:border-8`), the slider range (`ui:border-y-3`) and the slider track
+  (`ui:outline`). Each border fills its box exactly under `border-box`
+  sizing (from v0's preflight today), so nothing changes in normal mode.
+  Keep them when restyling. The checkbox needs none: its icon is drawn in
+  the text colour.
 - **Mixed is controlled only.** Pass `checked="indeterminate"`; the box then
   shows a minus. `defaultChecked` is `boolean` here on purpose: the icon is
   chosen from `checked`, so an uncontrolled mixed start would show a tick
   while reporting mixed. The icon is chosen in JS, never hidden with CSS.
 - **Labels and descriptions.** Pass `label` and `description` rather than
   placing text beside a control: the label is tied by `htmlFor`, the
-  description by `aria-describedby`, and both use the v1 type roles. A
-  control with no visible label needs `aria-label`. A `RadioGroup` needs a
+  description by `aria-describedby`, and both use the v1 type roles. Every
+  toggle needs a name, and the types require one: `label`, `aria-label` or
+  `aria-labelledby` (`<Checkbox />` does not type-check; a `description` is
+  not a name). A control with no visible label takes `aria-label`. A `RadioGroup` needs a
   name: `label` (used as `aria-labelledby`) or `aria-label`. Every slider
   thumb needs a name: see `Slider` below. A `label` or `description` of
   `false`, `""`, `null` or `undefined` counts as absent.
@@ -50,27 +64,26 @@ import {
   the Radix `Indicator` renders `asChild` onto the lucide svg, whose parent
   is then the `button`. Never wrap a lucide icon in a `span` in this folder.
 - **The row is private.** Label and description are drawn by `ControlRow`
-  with the same text classes as `Label` and `HelperText` in the P1-T03 form
-  components. Do not import `ControlRow`; it is not exported.
-- **Not inside `Field` yet (P1-T03 / P1-T06).** `Field` is a vertical grid
-  whose required `label` renders above the control as `<Label htmlFor>`
-  (an 18px line). A `<label for>` cannot name a `role="radiogroup"`, so a
-  `RadioGroup` never goes inside `Field`. The toggles' `id`,
-  `aria-describedby` and `disabled` already line up with `useFieldControl`'s
-  `FieldControlInput`; `invalid` would be additive. In P1-T06 the toggles
-  read `useFieldControl` for id, description, invalid and disabled;
-  `ControlRow` keeps its label-beside layout and may reuse `Label` and
-  `HelperText`; `Field` wraps only single-control cases (the slider, with
-  Field's id sent to the thumb). Until P1-T06, do not put a toggle inside
-  `Field`: Field's label would point at its own generated id and name
-  nothing.
+  with the classes of the form `Label` and `HelperText` (`LABEL_CLASS` and
+  `HELPER_TEXT_CLASS` from `@v1/components/ui/form`); the label adds
+  `ui:leading-5` for the 20px line. Do not import `ControlRow`; it is not
+  exported.
+- **Never inside `Field`.** `Field` renders its own `<Label htmlFor>` above
+  the control, pointing at an id the toggles do not read, so the label would
+  name nothing. Give a toggle its own `label` instead. A `<label for>` cannot
+  name a `role="radiogroup"`, so a `RadioGroup` never goes inside `Field`.
+- **Where `ref` and `id` land.** On a `Checkbox`, `Switch` or `Radio`, the
+  focusable control (the button), never the row. On a `RadioGroup`, the
+  `radiogroup` element, not the field around it. On a `Slider`, the group
+  root (`data-slot="slider"`), not the field and not a thumb: the thumbs are
+  the focusable elements and take no caller id. `refs.test.tsx` pins these.
 
 ## Checkbox
 
 ```tsx
 <Checkbox label="Include page numbers" checked={on} onCheckedChange={(v) => setOn(v === true)} />
-<Checkbox label="Select all" checked={some ? "indeterminate" : all} onCheckedChange={toggleAll} />
-<Checkbox aria-label="Select row" checked={selected} onCheckedChange={select} />
+<Checkbox label="Select all" checked={all ? true : some ? "indeterminate" : false} onCheckedChange={toggleAll} />
+<Checkbox aria-label={`Select ${row.name}`} checked={selected} onCheckedChange={select} />
 ```
 
 | Prop | Type | Default | |
@@ -80,7 +93,7 @@ import {
 | `onCheckedChange` | `(checked: boolean \| "indeterminate") => void` | — | |
 | `label` | `ReactNode` | — | beside the box, tied by `htmlFor` |
 | `description` | `ReactNode` | — | under the label, tied by `aria-describedby` |
-| `disabled` | `boolean` | — | dims the label too |
+| `disabled` | `boolean` | — | dims the label too (see Rules) |
 | `id` | `string` | generated | the button's id |
 | `className` | `string` | — | the row, not the box |
 
@@ -153,10 +166,10 @@ Other Radix `RadioGroup.Root` and `RadioGroup.Item` props (`name`,
 | `min`, `max`, `step` | `number` | `0`, `100`, `1` | |
 | `label` | `ReactNode` | — | above the track, used as `aria-labelledby` |
 | `description` | `ReactNode` | — | under the label, tied by `aria-describedby` |
-| `thumbLabels` | `readonly string[]` | — | a name per thumb, in order; its length must match the number of values |
+| `thumbLabels` | `readonly string[]` | — | a name per thumb, in order, for any number of thumbs; its length must match the number of values |
 | `formatValue` | `(value: number) => string` | `String` | each thumb's `aria-valuetext`, and the shown value |
 | `showValue` | `boolean` | `false` | the formatted value(s) at the end of the label line, a range as "3 – 12" |
-| `disabled` | `boolean` | — | dims the label and the track; each thumb gets `aria-disabled` |
+| `disabled` | `boolean` | — | dims the label and the track, and the track takes no pointer events; each thumb gets `aria-disabled` |
 | `className` | `string` | — | the whole field, so `ui:max-w-xs` narrows the label line and the track together |
 
 A single thumb is named by `thumbLabels[0]`, else a string `label`, else the
