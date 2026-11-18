@@ -261,8 +261,8 @@ def test_the_host_launcher_drains_the_terminal_callback_queue():
 # `workers/tests/test_llm_bearing_ops.py` guards it against a hand-maintained
 # `PAID_OPERATIONS` twin, which enforces symmetry between two literals -- so it
 # can only fail when the copies DISAGREE, never when both are wrong together. A
-# new paid extractor added to `EXTRACTOR_ROUTES` and declared in neither list
-# ships with no billing alarm and nothing goes red.
+# new paid extractor routed here and declared in neither list ships with no
+# billing alarm and nothing goes red.
 #
 # Every operation this API routes drives LLM calls by construction -- that is
 # what an Agent-KV extractor IS -- so the set can be derived rather than
@@ -300,8 +300,19 @@ def _llm_bearing_ops_literal() -> set[str]:
 def test_every_routed_operation_has_a_billing_backstop():
     """The derived assertion the two literal lists cannot make.
 
-    Add an extractor to `EXTRACTOR_ROUTES` and forget the backstop, and this
-    fails -- without anyone having had to remember a second list.
+    Give an extractor an API door on the shared catalogue -- which is what
+    routes it, since `EXTRACTOR_ROUTES` is `api_routes()` -- and forget the
+    backstop, and this fails, without anyone having had to remember a second
+    list.
+
+    SCOPE, because this reads wider than it is: `EXTRACTOR_ROUTES` is the blind
+    API's view, so this derives `api_operation` only. The catalogue's
+    `ide_operation` column is not covered, and two live LLM-bearing Studio
+    operations -- `agentic_extract` and `table_extract` -- are absent from
+    `_LLM_BEARING_OPS` and so have no zero-usage alarm at all. That gap is
+    UN-4528, and closing it means editing the worker tier's billing set, which
+    is not this module's to do. Do not read a green run here as "every paid
+    operation is covered".
     """
     declared = _llm_bearing_ops_literal()
     routed_ops = {operation for _executor, operation in EXTRACTOR_ROUTES.values()}

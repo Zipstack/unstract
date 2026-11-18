@@ -1,3 +1,5 @@
+from extractor_registry import api_routes
+
 #: The `kv` extractor's name -- the key-value/agentic-KV engine, routable
 #: alongside `table` (see `EXTRACTOR_ROUTES` below).
 #:
@@ -29,19 +31,38 @@ OPERATION_KV_EXTRACT = "kv_extract"
 EXECUTION_SOURCE = "agent_kv_api"
 
 #: The table extractor, served by the cloud `agentic_table` plugin's blind-API
-#: operation. Same executor as the IDE table path (and therefore the same,
-#: already-wired `celery_executor_agentic_table` queue) with a second operation
-#: -- a new executor name would derive a new queue needing wiring at five
-#: sites, and an unwired queue accepts work and drains nothing, silently.
+#: operation. It reuses the IDE table path's executor, and therefore its
+#: already-wired `celery_executor_agentic_table` queue, with a second
+#: operation; a new executor name would derive a queue nothing drains.
 TABLE_EXTRACTOR_NAME = "table"
 
+#: Read by `test_queue_wiring_is_derived.py`'s ALL_KNOWN_EXECUTORS. The
+#: blind-API operation is not duplicated in THIS module -- it is still stated
+#: independently in `workers/executor/tasks.py`, which cannot import the
+#: catalogue -- and the route test pins the wire value directly.
+#:
+#: `EXECUTOR_NAME` and `OPERATION_KV_EXTRACT` above are the same shape of
+#: restatement for the `kv` row and are kept, because `ALL_KNOWN_EXECUTORS`
+#: needs a literal the worker-side suite can read. They are cross-checked
+#: against the catalogue by `test_the_kv_route_constants_match_the_catalogue`;
+#: before that they were asserted against their own values.
 TABLE_EXECUTOR_NAME = "agentic_table"
-OPERATION_TABLE_EXTRACT_API = "table_extract_api"
 
-#: Which executor and operation each extractor dispatches to. `dispatch_job`
-#: reads this rather than hardcoding one pair, so adding an extractor is one
-#: entry here plus its options serializer, stage list and -- where the executor
-#: requires adapters -- its adapters serializer, AND its entry in the
+#: Which executor and operation each extractor dispatches to. DERIVED from the
+#: shared catalogue in `extractor_registry` -- this is the blind API's view of
+#: it, one entry per catalogue row with an API door. The Studio gets its own
+#: view of the same rows once cloud #1894 merges; see
+#: `extractor_registry/__init__.py` for the current cross-repo state.
+#:
+#: The catalogue's `available` flag is NOT consulted here. It says whether the
+#: Studio may offer an agent, and `multi_stage` is still `available=False`
+#: there while `kv` is routed here: the two doors gate on different things,
+#: and this door's gate is `enabled_extractors()` in `execution_serializers.py`.
+#:
+#: `dispatch_job` reads this rather than hardcoding one pair, so adding an
+#: extractor is one catalogue row with an API door plus its options
+#: serializer, stage list and -- where the executor requires adapters -- its
+#: adapters serializer, AND its entry in the
 #: acceptance gate (`_EXTRACTOR_ENABLE_FLAGS` in `execution_serializers.py` --
 #: a setting name to gate it, or `_UNGATED` to accept it everywhere, with
 #: `test_every_routed_extractor_has_a_gate_entry` deriving the requirement from
@@ -88,10 +109,7 @@ OPERATION_TABLE_EXTRACT_API = "table_extract_api"
 #:
 #: `EXECUTOR_NAME`/`OPERATION_KV_EXTRACT` matching what `AgenticKVExecutor`
 #: dispatches on is still pinned by `test_the_kv_route_targets_the_shipped_executor`.
-EXTRACTOR_ROUTES = {
-    V1_EXTRACTOR_NAME: (EXECUTOR_NAME, OPERATION_KV_EXTRACT),
-    TABLE_EXTRACTOR_NAME: (TABLE_EXECUTOR_NAME, OPERATION_TABLE_EXTRACT_API),
-}
+EXTRACTOR_ROUTES = api_routes()
 
 #: The table engine reports one coarse stage: it has no node-level progress
 #: hooks (the IDE path gets `stream_log` only), so inventing finer stages here
