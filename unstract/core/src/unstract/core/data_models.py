@@ -364,7 +364,7 @@ class TaskPayload(TypedDict):
 
 class PgTaskStatus(str, Enum):
     """Status vocabulary for a ``pg_task_result`` row — the executor-RPC
-    request-reply contract (Phase 9). Shared in ``unstract.core`` so the writer
+    request-reply contract. Shared in ``unstract.core`` so the writer
     (workers ``PgResultBackend``) and reader (backend executor-RPC dispatcher),
     which live in separate trees with no shared import, agree on one source of
     truth rather than matching bare literals by eye across the process boundary.

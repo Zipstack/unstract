@@ -383,16 +383,15 @@ def claim_batch(execution_id: str, batch_index: int) -> bool:
 def clear_execution_batches(execution_id: str) -> int:
     """Delete all per-batch dedup markers for an execution; returns the count.
 
-    Called at barrier teardown (``remaining`` → 0) so the markers live exactly
-    as long as the execution needs them. Executions that never finalise
-    currently leak their markers — the reaper sweeps the orphaned
-    ``pg_barrier_state`` row but does NOT yet reclaim ``pg_batch_dedup`` (no
-    cascade); a dedup-orphan sweep is intended future work (see the
-    ``PgBatchDedup`` model docstring). Safe to call when no rows exist (returns
-    0). Uses the ``(execution_id, batch_index)`` constraint index (``execution_id``
-    leading) for the lookup.
+    Called at barrier teardown (``remaining`` → 0, or past it) so the markers
+    live exactly as long as the execution needs them. Markers of executions
+    that never finalise are reclaimed by the reaper's ``sweep_orphan_dedup``
+    once older than the retention window (see the ``PgBatchDedup`` model
+    docstring). Safe to call when no rows exist (returns 0). Uses the
+    ``(execution_id, batch_index)`` constraint index (``execution_id`` leading)
+    for the lookup.
 
-    Called from the barrier-finalise + abort paths.
+    Called from the barrier-finalise, over-decrement and abort paths.
     """
     with _cursor() as cur:
         cur.execute(
@@ -1102,8 +1101,18 @@ def _barrier_pg_decrement(
         return {"status": "pending", "remaining": remaining}
 
     if remaining < 0:
-        # Decremented past 0 — expiry/replay. Clean up, no fire.
+        # Decremented past 0 — expiry/replay. Clean up, no fire. The dedup
+        # markers go with the row, as on the finalize and abort paths; clearing
+        # them is best-effort because the barrier is already gone.
         _delete_barrier(execution_id)
+        try:
+            clear_execution_batches(execution_id)
+        except Exception:
+            logger.exception(
+                f"[exec:{execution_id}] PgBarrier abandoned but clearing "
+                f"pg_batch_dedup markers failed — reclaimed by the reaper's "
+                f"dedup-orphan sweep."
+            )
         logger.error(
             f"[exec:{execution_id}] PgBarrier abandoned — remaining={remaining} "
             f"(expired or torn down). No callback dispatched; execution likely "
@@ -1124,7 +1133,7 @@ def _barrier_pg_decrement(
     # failure here is logged (not raised) — the rows linger until reclaim rather
     # than re-running the callback. The two cleanups are independent so one
     # failing doesn't skip the other and each names what failed: the barrier row
-    # is reclaimed by expiry, the dedup markers by the (PR-3-blocking) dedup-orphan
+    # is reclaimed by expiry, the dedup markers by the reaper's dedup-orphan
     # sweep — neither re-runs anything (this is the last decrement, max_retries=0).
     try:
         _delete_barrier(execution_id)
@@ -1210,7 +1219,7 @@ def barrier_pg_abort(
     if not preserve_dedup_markers:
         # We won the abort: reclaim the per-batch dedup markers too (best-effort —
         # the barrier is already torn down). A leftover marker would otherwise
-        # linger until the future dedup-orphan sweep; it can never re-run anything.
+        # linger until the reaper's dedup-orphan sweep; it can never re-run anything.
         with contextlib.suppress(Exception):
             clear_execution_batches(execution_id)
 

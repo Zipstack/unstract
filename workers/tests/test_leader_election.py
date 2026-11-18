@@ -319,5 +319,33 @@ class TestSingleRowConstraint:
                 )
 
 
+class TestSharedDeadConnectionClassification:
+    """UN-3749: the lease decides "is the connection dead?" from the one shared
+    ``CONN_DEAD_ERRORS`` tuple, not a private copy that can drift from it.
+    """
+
+    def test_uses_the_shared_tuple(self):
+        from queue_backend.pg_queue import connection, leader_election
+
+        assert leader_election.CONN_DEAD_ERRORS is connection.CONN_DEAD_ERRORS
+
+    def test_owned_conn_discarded_for_any_shared_dead_error(self, monkeypatch):
+        # Widen the shared tuple: the lease must follow it with no edit of its own.
+        class _NewDeadError(Exception):
+            pass
+
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.leader_election.CONN_DEAD_ERRORS",
+            (psycopg2.OperationalError, psycopg2.InterfaceError, _NewDeadError),
+        )
+        bad = _mock_conn(execute_exc=_NewDeadError("dead"))
+        monkeypatch.setattr(_FACTORY_PATH, MagicMock(side_effect=[bad]))
+        lease = LeaderLease("w")
+        with pytest.raises(_NewDeadError):
+            lease.try_acquire()
+        bad.close.assert_called_once()
+        assert lease._conn is None
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

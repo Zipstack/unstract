@@ -215,7 +215,7 @@ class PgBatchDedup(models.Model):
     finalises (``remaining`` → 0, via ``clear_execution_batches``).
 
     Orphan reclaim — markers left behind by an execution that never finalises
-    (the reaper's ``sweep_expired_barriers`` deletes only the ``pg_barrier_state``
+    (the reaper's ``recover_expired_barriers`` deletes only the ``pg_barrier_state``
     row, with no FK / cascade to this table) are swept by the reaper's
     ``sweep_orphan_dedup``, which deletes markers older than the retention window
     by ``created_at`` age (wired into the reaper's periodic ``_maybe_sweep``).

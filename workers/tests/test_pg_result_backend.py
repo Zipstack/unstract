@@ -793,3 +793,45 @@ class TestRedisDownFallbackBudget:
         assert out == {"ok": True}
         # Remaining budget, not the full 5.0 (buggy version passed exactly 5.0).
         assert 0 < captured["timeout"] < 5.0 - 0.05
+
+
+class TestCloseKeepsInjectedConnection:
+    """UN-3749: ``close()`` must not drop an injected (caller-owned) connection.
+
+    It used to set ``self._conn = None`` even when it did not own the
+    connection, so the next call reconnected through the ``DB_*`` factory. That
+    fresh connection was still treated as the caller's (``_owns_conn`` stays
+    ``False``), so no ``close()`` ever closed it and dead-connection recovery
+    never discarded it.
+    """
+
+    _FACTORY = "queue_backend.pg_queue.result_backend.create_pg_connection"
+
+    def test_close_then_use_stays_on_injected_conn(self, pg_conn, monkeypatch):
+        factory = MagicMock(side_effect=AssertionError("must not reconnect"))
+        monkeypatch.setattr(self._FACTORY, factory)
+        rb = PgResultBackend(conn=pg_conn)
+        k = _key()
+
+        rb.close()
+        rb.store_result(k, result={"after_close": True})
+
+        factory.assert_not_called()
+        assert rb.conn is pg_conn
+        assert not pg_conn.closed  # the caller's connection is never closed
+        row = PgResultBackend(conn=pg_conn).get_result(k)
+        assert row is not None and row["result"] == {"after_close": True}
+        with pg_conn.cursor() as cur:
+            cur.execute("DELETE FROM pg_task_result WHERE task_id = %s", (k,))
+        pg_conn.commit()
+
+    def test_close_still_releases_an_owned_conn(self, monkeypatch):
+        owned = MagicMock(closed=0)
+        monkeypatch.setattr(self._FACTORY, MagicMock(return_value=owned))
+        rb = PgResultBackend()
+        _ = rb.conn
+
+        rb.close()
+
+        owned.close.assert_called_once()
+        assert rb._conn is None

@@ -731,8 +731,15 @@ class PgResultBackend:
             # Woken but row not yet visible (rare) or a fallback tick → loop.
 
     def close(self) -> None:
-        """Close an owned connection (injected connections are the caller's)."""
-        if self._owns_conn and self._conn is not None and not self._conn.closed:
+        """Close an owned connection (injected connections are the caller's).
+
+        An injected connection is kept, not just left open: dropping the
+        reference would make the next call open a fresh ``DB_*`` connection
+        that this backend still treats as the caller's, so nothing closes it.
+        """
+        if not self._owns_conn:
+            return
+        if self._conn is not None and not self._conn.closed:
             with contextlib.suppress(Exception):
                 self._conn.close()
         self._conn = None

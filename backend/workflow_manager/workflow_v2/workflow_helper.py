@@ -476,13 +476,17 @@ class WorkflowHelper:
             execution_model: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
             )
+            # The model has no completed_files; completed means processed,
+            # whether the file succeeded or failed.
+            successful_files = execution_model.successful_files or 0
+            failed_files = execution_model.failed_files or 0
             execution_cache = ExecutionCache(
                 workflow_id=workflow_id,
                 execution_id=execution_id,
                 status=ExecutionStatus(execution_model.status),
                 total_files=execution_model.total_files,
-                completed_files=execution_model.completed_files,
-                failed_files=execution_model.failed_files,
+                completed_files=successful_files + failed_files,
+                failed_files=failed_files,
             )
             ExecutionCacheUtils.create_execution(
                 execution=execution_cache,
