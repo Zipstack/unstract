@@ -7,6 +7,8 @@ from llama_index.core.question_gen.llm_generators import LLMQuestionGenerator
 from llama_index.core.schema import QueryBundle
 from llama_index.core.tools import QueryEngineTool, ToolMetadata
 
+from unstract.sdk1.utils.aborting import AbortedError
+
 logger = logging.getLogger(__name__)
 
 
@@ -56,6 +58,9 @@ class SubquestionRetriever(BaseRetriever):
             logger.info(f"Successfully retrieved {len(chunks)} chunks.")
             return chunks
 
+        except AbortedError:
+            # A stop is not a retrieval failure; let the caller see it.
+            raise
         except (ValueError, AttributeError, KeyError, ImportError) as e:
             logger.error(
                 "Error during retrieving chunks %s: %s: %s",

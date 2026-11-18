@@ -18,6 +18,11 @@ from unstract.sdk1.constants import ToolEnv
 from unstract.sdk1.exceptions import LLMError, SdkError, format_provider_error
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
+from unstract.sdk1.utils.aborting import (
+    AbortedError,
+    current_abort_check,
+    run_abortable,
+)
 from unstract.sdk1.utils.common import (
     LLMResponseCompat,
     capture_metrics,
@@ -523,6 +528,78 @@ class LLM:
             {"role": "user", "content": user_content},
         ]
 
+    @staticmethod
+    def _abort_inflight_enabled() -> bool:
+        """Whether an in-flight completion may be abandoned mid-call.
+
+        Aborting routes the request through litellm's *async* entry point,
+        which is a separate implementation per provider — Bedrock, VertexAI
+        and Azure each carry their own credential handling there. The switch
+        exists so a provider-specific problem can be backed out with a config
+        change instead of a release.
+
+        Read per call rather than cached, so flipping it takes effect on the
+        next request.
+        """
+        return os.environ.get("UNSTRACT_LLM_ABORT_INFLIGHT", "true").strip().lower() in (
+            "true",
+            "1",
+            "yes",
+        )
+
+    def _invoke_completion(
+        self,
+        messages: list[dict[str, object]],
+        completion_kwargs: dict[str, object],
+        max_retries: int,
+    ) -> dict[str, object]:
+        """Run the completion, abandoning it if the caller stops waiting.
+
+        Callers that supply no abort predicate — the workflow and API
+        deployment paths, which have no stop button — take the synchronous
+        path unchanged. Only a caller inside an ``abort_scope`` pays for the
+        async route.
+        """
+        should_abort = current_abort_check()
+
+        if should_abort is None or not self._abort_inflight_enabled():
+            return call_with_retry(
+                lambda: litellm.completion(messages=messages, **completion_kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
+                should_abort=should_abort,
+            )
+
+        try:
+            return run_abortable(
+                lambda: acall_with_retry(
+                    lambda: litellm.acompletion(messages=messages, **completion_kwargs),
+                    max_retries=max_retries,
+                    retry_predicate=is_retryable_litellm_error,
+                    description=self._get_adapter_info(),
+                    should_abort=should_abort,
+                ),
+                should_abort,
+            )
+        except RuntimeError as e:
+            # Already inside an event loop, so the abortable path would
+            # deadlock it. Degrade to the synchronous call: slower to stop,
+            # but correct.
+            if "running event loop" not in str(e):
+                raise
+            logger.debug(
+                "[sdk1][LLM] Abortable path unavailable inside a running loop; "
+                "falling back to the synchronous call"
+            )
+            return call_with_retry(
+                lambda: litellm.completion(messages=messages, **completion_kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
+                should_abort=should_abort,
+            )
+
     # Streaming under the hood is on by default and a per-adapter choice
     # (``enable_streaming`` in the adapter metadata, surfaced as "Enable
     # Streaming" in every LLM adapter form). Adapters stored before the field
@@ -580,6 +657,13 @@ class LLM:
         replayed. ``litellm.stream_chunk_builder`` reassembles content,
         thinking blocks, ``finish_reason``, usage (including cache tokens)
         and the provider response headers.
+
+        A stop (the ambient ``abort_scope``) is honoured before each attempt,
+        between chunks and during the backoff; the stream is then closed
+        rather than drained (UN-1031). Unlike ``_invoke_completion`` this
+        stays on the synchronous call, so a provider that sends nothing at
+        all is only abandoned once its first chunk or the read timeout
+        arrives.
         """
         chunks = collect_with_retry(
             lambda: litellm.completion(
@@ -659,11 +743,10 @@ class LLM:
                     messages, completion_kwargs, max_retries
                 )
             else:
-                response = call_with_retry(
-                    lambda: litellm.completion(messages=messages, **completion_kwargs),
-                    max_retries=max_retries,
-                    retry_predicate=is_retryable_litellm_error,
-                    description=self._get_adapter_info(),
+                # Abortable mid-call when the caller is inside an
+                # ``abort_scope`` (UN-1031); synchronous otherwise.
+                response = self._invoke_completion(
+                    messages, completion_kwargs, max_retries
                 )
 
             response_text = response["choices"][0]["message"]["content"]
@@ -702,6 +785,11 @@ class LLM:
             )
             return {"response": response_object, **post_processed_output}
 
+        except AbortedError:
+            # The caller stopped waiting for this result. Not a provider
+            # failure, so it must not be wrapped as one — callers match on
+            # this type to tell a deliberate stop from a real error.
+            raise
         except LLMError:
             # Already wrapped LLMError, re-raise as is
             raise
@@ -776,9 +864,14 @@ class LLM:
             completion_kwargs.pop("enable_prompt_caching", None)
             completion_kwargs.pop("context_window", None)
 
-            response: dict[str, object] = litellm.completion(
-                messages=messages,
-                **completion_kwargs,
+            # Routed through the same invoker as complete(): it makes the
+            # call abortable, and it pops max_retries out of the kwargs so
+            # litellm stops applying its own retries on top of ours.
+            max_retries = pop_litellm_retry_kwargs(
+                completion_kwargs, self._get_adapter_info()
+            )
+            response: dict[str, object] = self._invoke_completion(
+                messages, completion_kwargs, max_retries
             )
 
             response_text = response["choices"][0]["message"]["content"]
@@ -799,6 +892,11 @@ class LLM:
             response_object.raw = response
             return {"response": response_object}
 
+        except AbortedError:
+            # The caller stopped waiting for this result. Not a provider
+            # failure, so it must not be wrapped as one — callers match on
+            # this type to tell a deliberate stop from a real error.
+            raise
         except LLMError:
             raise
         except SdkError:
@@ -884,6 +982,11 @@ class LLM:
                     has_yielded_content = True
                     yield response
 
+        except AbortedError:
+            # The caller stopped waiting for this result. Not a provider
+            # failure, so it must not be wrapped as one — callers match on
+            # this type to tell a deliberate stop from a real error.
+            raise
         except LLMError:
             # Already wrapped LLMError, re-raise as is
             raise
@@ -964,6 +1067,11 @@ class LLM:
             )
             return {"response": response_object}
 
+        except AbortedError:
+            # The caller stopped waiting for this result. Not a provider
+            # failure, so it must not be wrapped as one — callers match on
+            # this type to tell a deliberate stop from a real error.
+            raise
         except LLMError:
             # Already wrapped LLMError, re-raise as is
             raise

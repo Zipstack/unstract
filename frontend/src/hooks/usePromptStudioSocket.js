@@ -19,7 +19,7 @@ const PROMPT_STUDIO_RESULT_EVENT = "prompt_studio_result";
  */
 const usePromptStudioSocket = () => {
   const socket = useContext(SocketContext);
-  const { removePromptStatus, clearPromptStatusById } =
+  const { removePromptStatus, clearPromptStatusById, unregisterRun } =
     usePromptRunStatusStore();
   const { updateCustomTool, deleteIndexDoc, selectedDoc, details } =
     useCustomToolStore();
@@ -197,6 +197,95 @@ const usePromptStudioSocket = () => {
     ],
   );
 
+  // A run the user stopped (UN-1031). Not an error: it can still carry
+  // answers for the prompts that finished before the stop, so the results are
+  // applied exactly as a completed run's are — only the toast differs.
+  const handleCancelled = useCallback(
+    async (operation, result, extra) => {
+      if (
+        operation === "fetch_response" ||
+        operation === "single_pass_extraction"
+      ) {
+        let data = Array.isArray(result) ? result : [];
+        const cancelledIds = new Set(extra?.cancelled_prompt_ids || []);
+        const persistedSome = (extra?.prompt_ids || []).some(
+          (promptId) => !cancelledIds.has(String(promptId)),
+        );
+        // As for a completed run, the answers are not sent inline: refetch
+        // what was persisted before the stop. A failed refetch only loses
+        // the partial answers, so the stop is still reported as a stop.
+        if (
+          data.length === 0 &&
+          persistedSome &&
+          extra?.document_id &&
+          extra?.profile_manager_id
+        ) {
+          try {
+            const res = await promptOutputApi(
+              details?.tool_id,
+              extra.document_id,
+              null,
+              extra.profile_manager_id,
+              operation === "single_pass_extraction",
+            );
+            const currentToolId =
+              useCustomToolStore.getState().details?.tool_id;
+            const toolSwitched =
+              currentToolId &&
+              details?.tool_id &&
+              currentToolId !== details.tool_id;
+            if (res?.status >= 200 && res?.status < 300 && !toolSwitched) {
+              data = Array.isArray(res?.data) ? res.data : [];
+            }
+          } catch {
+            // Keep the existing outputs; only the partial answers are lost.
+          }
+        }
+        if (data.length) {
+          // Second arg is isReset, not a mode flag: partial results are merged
+          // in exactly as a completed run's are, never used to wipe state.
+          updatePromptOutputState(data, false, extra?.elapsed || 0);
+        }
+        if (operation === "single_pass_extraction") {
+          updateCustomTool({ isSinglePassExtractLoading: false });
+        }
+        const promptIds = extra?.prompt_ids || [];
+        if (extra?.document_id && extra?.profile_manager_id) {
+          clearPromptStatuses(
+            promptIds,
+            extra?.document_id,
+            extra?.profile_manager_id,
+          );
+        } else {
+          // Cancelled before the profile was resolved: clear every status for
+          // these prompts rather than leave a spinner running forever.
+          promptIds.forEach((promptId) => {
+            clearPromptStatusById(promptId);
+          });
+        }
+      } else if (operation === "index_document" && extra?.document_id) {
+        deleteIndexDoc(extra.document_id);
+      }
+
+      unregisterRun(extra?.run_id);
+      setAlertDetails({
+        type: "info",
+        content: "Prompt run stopped.",
+      });
+    },
+    [
+      updatePromptOutputState,
+      promptOutputApi,
+      updateCustomTool,
+      clearPromptStatuses,
+      clearPromptStatusById,
+      deleteIndexDoc,
+      unregisterRun,
+      setAlertDetails,
+      details,
+    ],
+  );
+
   const onResult = useCallback(
     (payload) => {
       try {
@@ -220,8 +309,12 @@ const usePromptStudioSocket = () => {
 
         if (status === "completed") {
           handleCompleted(operation, result, extra);
+          unregisterRun(extra?.run_id);
         } else if (status === "failed") {
           handleFailed(operation, error, extra);
+          unregisterRun(extra?.run_id);
+        } else if (status === "cancelled") {
+          handleCancelled(operation, result, extra);
         }
       } catch (err) {
         setAlertDetails(
@@ -232,6 +325,8 @@ const usePromptStudioSocket = () => {
     [
       handleCompleted,
       handleFailed,
+      handleCancelled,
+      unregisterRun,
       setAlertDetails,
       handleException,
       details,

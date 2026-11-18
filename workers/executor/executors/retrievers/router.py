@@ -8,6 +8,8 @@ from llama_index.core.selectors import LLMSingleSelector
 from llama_index.core.tools import QueryEngineTool, ToolMetadata
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 
+from unstract.sdk1.utils.aborting import AbortedError
+
 logger = logging.getLogger(__name__)
 
 
@@ -153,6 +155,9 @@ class RouterRetriever(BaseRetriever):
             logger.info(f"Successfully retrieved {len(chunks)} chunks using router.")
             return chunks
 
+        except AbortedError:
+            # A stop is not a retrieval failure; let the caller see it.
+            raise
         except (ValueError, AttributeError, KeyError, ImportError) as e:
             logger.error(
                 "Error during router retrieval for %s: %s: %s",

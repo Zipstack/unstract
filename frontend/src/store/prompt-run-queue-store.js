@@ -30,6 +30,23 @@ const usePromptRunQueueStore = create((setState, getState) => ({
 
     setState({ ...existingState, ...{ activeApis: newActiveApis } });
   },
+  // Drop queued-but-not-yet-sent runs. `activeApis` is deliberately untouched:
+  // it counts requests already in flight, which a queue purge cannot recall —
+  // decrementing it here would let the pump start more work than allowed
+  // (UN-1031).
+  removeQueuedApis: (shouldRemove) => {
+    const existingState = { ...getState() };
+    const queue = existingState?.queue || [];
+    const removed = queue.filter((api) => shouldRemove(api));
+    if (!removed.length) {
+      return [];
+    }
+    setState({
+      ...existingState,
+      queue: queue.filter((api) => !shouldRemove(api)),
+    });
+    return removed;
+  },
   removePromptRunApi: () => {
     const existingState = { ...getState() };
     const newActiveApis = existingState?.activeApis;
