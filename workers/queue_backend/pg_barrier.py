@@ -1133,8 +1133,8 @@ def _barrier_pg_decrement(
     # max_retries=0, so the task is never replayed.
     callback_id = _fire_barrier_callback(callback_descriptor, all_results)
     # Post-dispatch cleanup is best-effort: the callback already fired, so a
-    # failure here is logged (not raised) — the row lingers until the reaper
-    # recovers it rather than re-running the callback.
+    # failure here is logged (not raised) — the row lingers until reclaimed at
+    # expiry rather than re-running the callback.
     #
     # The pg_batch_dedup markers are deliberately KEPT. The callback has only
     # been enqueued; until it marks the execution terminal, the terminal guard in
@@ -1150,7 +1150,7 @@ def _barrier_pg_decrement(
         logger.exception(
             f"[exec:{execution_id}] Barrier callback dispatched "
             f"(callback_task_id={callback_id}) but deleting the pg_barrier_state "
-            f"row failed — the reaper recovers it. Callback NOT re-run."
+            f"row failed — reclaimed at expiry. Callback NOT re-run."
         )
 
     logger.info(

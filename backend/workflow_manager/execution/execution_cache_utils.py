@@ -29,11 +29,12 @@ class ExecutionCacheUtils:
         # Decode keys and values from bytes to strings
         decoded = {k.decode(): v.decode() for k, v in execution.items()}
         if ExecutionCacheFields.STATUS not in decoded:
-            # A counter HINCRBY on an expired entry recreates the key with that
-            # counter alone. Without a status it is no entry at all: a miss.
+            # A counter-only hash: before increments became HINCRBY-if-exists,
+            # one on an expired entry recreated the key with that counter alone
+            # and no TTL, and such keys are still in Redis. No status: a miss.
             return None
-        # The key names the ids; a hash rebuilt by HINCRBY + update_status lacks
-        # them, so take them from the key rather than failing on their absence.
+        # The key names the ids; a counter-only hash later given a status by
+        # update_status lacks them, so take them from the key.
         decoded.setdefault(ExecutionCacheFields.WORKFLOW_ID, workflow_id)
         decoded.setdefault(ExecutionCacheFields.EXECUTION_ID, execution_id)
         return ExecutionCache(**decoded)
@@ -83,12 +84,7 @@ class ExecutionCacheUtils:
         cache_key = cls._get_execution_cache_key(
             workflow_id=workflow_id, execution_id=execution_id
         )
-        CacheService.hincrby(
-            cache_key,
-            ExecutionCacheFields.COMPLETED_FILES,
-            1,
-            expire_time=cls.expire_time,
-        )
+        CacheService.hincrby_if_exists(cache_key, ExecutionCacheFields.COMPLETED_FILES, 1)
 
     @classmethod
     def increment_failed_files(cls, workflow_id: str, execution_id: str) -> None:
@@ -96,9 +92,7 @@ class ExecutionCacheUtils:
         cache_key = cls._get_execution_cache_key(
             workflow_id=workflow_id, execution_id=execution_id
         )
-        CacheService.hincrby(
-            cache_key, ExecutionCacheFields.FAILED_FILES, 1, expire_time=cls.expire_time
-        )
+        CacheService.hincrby_if_exists(cache_key, ExecutionCacheFields.FAILED_FILES, 1)
 
     @classmethod
     def delete_execution(cls, workflow_id: str, execution_id: str) -> None:

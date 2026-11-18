@@ -35,17 +35,19 @@ def _row(**counters):
     return row
 
 
-def test_completed_files_is_successful_plus_failed():
+def test_completed_files_is_successful_files():
+    # Same meaning as the execution cache: completed and failed are disjoint,
+    # so completed + failed is the processed count, not 5 of 4.
     response = _call(_row(successful_files=3, failed_files=1))
 
     assert response.status_code == 200, response.data
     execution = response.data["execution"]
-    assert execution["completed_files"] == 4
+    assert execution["completed_files"] == 3
     assert execution["failed_files"] == 1
 
 
-def test_null_counters_count_as_zero():
+def test_null_counters_pass_through():
     response = _call(_row(successful_files=None, failed_files=None))
 
     assert response.status_code == 200, response.data
-    assert response.data["execution"]["completed_files"] == 0
+    assert response.data["execution"]["completed_files"] is None

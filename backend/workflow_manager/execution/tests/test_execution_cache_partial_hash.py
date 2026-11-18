@@ -1,15 +1,18 @@
 """UN-3749: a partial execution-cache hash must read as a miss, not raise.
 
-``increment_completed_files`` / ``increment_failed_files`` are plain HINCRBYs.
-Once the entry has expired (the TTL is 3 h), the next increment recreates the key
+``increment_completed_files`` / ``increment_failed_files`` were plain HINCRBYs.
+Once the entry had expired (the TTL is 3 h), the next increment recreated the key
 with only that counter: no ``workflow_id``, ``execution_id`` or ``status``, and no
 TTL. ``get_execution`` passed that straight to ``ExecutionCache(**decoded)``,
 which raised ``TypeError``. Every status poll for the execution then failed.
 
+The increments now never create the hash, and ``get_execution`` reads the
+counter-only keys already in Redis as a miss.
+
 DB-free: ``CacheService`` is mocked with the bytes Redis returns.
 """
 
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
 from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -57,41 +60,27 @@ def test_empty_hash_is_a_miss():
     assert _get({}) is None
 
 
-class TestIncrementsKeepATtl:
-    """An increment on an expired entry recreated the key with no TTL, so the
-    counter-only hash stayed in Redis for good. Increments now set the TTL too.
-    """
-
-    def test_increments_pass_the_entry_ttl(self):
+class TestIncrementsNeverCreateTheHash:
+    def test_increments_use_hincrby_if_exists(self):
         with patch(_CACHE) as cache:
             ExecutionCacheUtils.increment_completed_files("wf-1", "exec-1")
             ExecutionCacheUtils.increment_failed_files("wf-1", "exec-1")
 
-        assert [c.args for c in cache.hincrby.call_args_list] == [
-            ("execution:wf-1:exec-1", "completed_files", 1),
-            ("execution:wf-1:exec-1", "failed_files", 1),
+        assert cache.method_calls == [
+            call.hincrby_if_exists("execution:wf-1:exec-1", "completed_files", 1),
+            call.hincrby_if_exists("execution:wf-1:exec-1", "failed_files", 1),
         ]
-        for c in cache.hincrby.call_args_list:
-            assert c.kwargs == {"expire_time": ExecutionCacheUtils.expire_time}
 
-    def test_hincrby_with_ttl_sets_it_in_the_same_transaction(self):
-        from utils.cache_service import CacheService
+    def test_hincrby_if_exists_runs_the_guarded_script(self):
+        from utils import cache_service
 
-        with patch("utils.cache_service.redis_cache") as redis_cache:
-            CacheService.hincrby("k", "f", 1, expire_time=60)
+        with patch.object(cache_service, "redis_cache") as redis_cache:
+            redis_cache.eval.return_value = 0
+            assert not cache_service.CacheService.hincrby_if_exists("k", "f", 1)
 
-        redis_cache.pipeline.assert_called_once_with(transaction=True)
-        pipe = redis_cache.pipeline.return_value
-        pipe.hincrby.assert_called_once_with("k", "f", 1)
-        pipe.expire.assert_called_once_with("k", 60)
-        pipe.execute.assert_called_once()
+        redis_cache.eval.assert_called_once_with(
+            cache_service._HINCRBY_IF_EXISTS, 1, "k", "f", 1
+        )
         redis_cache.hincrby.assert_not_called()
-
-    def test_hincrby_without_ttl_is_unchanged(self):
-        from utils.cache_service import CacheService
-
-        with patch("utils.cache_service.redis_cache") as redis_cache:
-            CacheService.hincrby("k", "f", 1)
-
-        redis_cache.hincrby.assert_called_once_with("k", "f", 1)
-        redis_cache.pipeline.assert_not_called()
+        script = cache_service._HINCRBY_IF_EXISTS
+        assert script.index("EXISTS") < script.index("HINCRBY")
