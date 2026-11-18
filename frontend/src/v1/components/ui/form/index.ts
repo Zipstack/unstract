@@ -14,10 +14,14 @@ export {
   useFieldContext,
   useFieldControl,
 } from "./field-context";
-export { HelperText, type HelperTextProps } from "./HelperText";
+export {
+  HELPER_TEXT_CLASS,
+  HelperText,
+  type HelperTextProps,
+} from "./HelperText";
 export { Input, type InputProps } from "./Input";
 export { isEscapeClearTarget } from "./keyboard";
-export { Label, type LabelProps } from "./Label";
+export { LABEL_CLASS, Label, type LabelProps } from "./Label";
 export { PromptTextarea, type PromptTextareaProps } from "./PromptTextarea";
 export { SearchField, type SearchFieldProps } from "./SearchField";
 export { SecretField, type SecretFieldProps } from "./SecretField";
