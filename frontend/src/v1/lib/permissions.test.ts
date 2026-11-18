@@ -1,0 +1,46 @@
+import { makeSession, toV1Session } from "@v1/test";
+import { describe, expect, it } from "vitest";
+import {
+  type Capability,
+  canCreate,
+  canDelete,
+  canEdit,
+  canShare,
+  isAdmin,
+  isOwner,
+} from "./permissions";
+
+const admin = toV1Session(makeSession({ role: "admin" }));
+const member = toV1Session(makeSession({ role: "user" }));
+
+describe("permissions", () => {
+  it("isAdmin and isOwner", () => {
+    expect(isAdmin(admin)).toBe(true);
+    expect(isAdmin(member)).toBe(false);
+    expect(isOwner({ is_owner: true })).toBe(true);
+    expect(isOwner({ is_owner: false })).toBe(false);
+    expect(isOwner({})).toBe(false);
+  });
+
+  it.each([
+    canEdit,
+    canDelete,
+    canShare,
+  ])("%o: owners and admins, and anyone while ownership is loading", (can) => {
+    expect(can(member, { is_owner: true })).toBe(true);
+    expect(can(member, { is_owner: false })).toBe(false);
+    expect(can(admin, { is_owner: false })).toBe(true);
+    expect(can(member, {})).toBe(true);
+  });
+
+  it("canCreate follows the capability settings, and is false until they load", () => {
+    const capabilities: Capability[] = [
+      { key: "create_connectors", allowed_for_me: true },
+      { key: "create_llm_adapters", allowed_for_me: false },
+    ];
+    expect(canCreate(capabilities, "create_connectors")).toBe(true);
+    expect(canCreate(capabilities, "create_llm_adapters")).toBe(false);
+    expect(canCreate(capabilities, "manage_members")).toBe(false);
+    expect(canCreate(undefined, "create_connectors")).toBe(false);
+  });
+});

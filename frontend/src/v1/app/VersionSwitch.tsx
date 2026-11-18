@@ -7,6 +7,7 @@
 import { LIVE_REGISTRY, type LiveRegistry } from "@v1/app/registry/live";
 import { resolveRoute } from "@v1/app/registry/resolve";
 import type { RegistryEntry } from "@v1/app/registry/types";
+import { registerUiVersion } from "@v1/lib/analytics";
 import { isChunkLoadError, reloadOnce } from "@v1/lib/chunkReload";
 import { useOldVersionStore } from "@v1/stores/oldVersion";
 import {
@@ -126,6 +127,12 @@ export function VersionSwitch({
     entries: registry.entries,
     oldVersion,
   });
+  const version = resolution.kind === "v1" ? "v1" : "v0";
+
+  // A layout effect runs before v0's tracker captures the page view (a passive effect).
+  useLayoutEffect(() => {
+    registerUiVersion(version);
+  }, [version]);
 
   switch (resolution.kind) {
     case "v0":

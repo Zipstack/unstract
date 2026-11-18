@@ -58,6 +58,40 @@ describe("Slot", () => {
     expect(report).not.toHaveBeenCalled();
   });
 
+  it("shows `loading` while a gate's filler loads, then hands the page to it", async () => {
+    let finish: () => void = () => undefined;
+    const loaded = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const { Slot } = slotFor([
+      {
+        id: "gate",
+        distributions: ["cloud"],
+        slots: {
+          "route.entitlement": async () => {
+            await loaded;
+            return {
+              default: ({ children }) => <section>gated {children}</section>,
+            };
+          },
+        },
+      },
+    ]);
+    const page = <span>page</span>;
+    render(
+      <Slot
+        id="route.entitlement"
+        props={{ children: page }}
+        fallback={page}
+        loading={<span>checking</span>}
+      />,
+    );
+    expect(screen.getByText("checking")).toBeInTheDocument();
+    expect(screen.queryByText("page")).not.toBeInTheDocument();
+    finish();
+    expect(await screen.findByText(/gated/)).toHaveTextContent("gated page");
+  });
+
   it("reports a filler that fails to load and shows the fallback", async () => {
     const { Slot, report } = slotFor([
       {

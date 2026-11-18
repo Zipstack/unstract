@@ -18,8 +18,10 @@ export type PluginErrorReporter = (
 export interface SlotComponentProps<K extends SlotId> {
   id: K;
   props: SlotProps[K];
-  /** Shown when no plugin fills the slot, while it loads, and if it fails. */
+  /** Shown when no plugin fills the slot, and if it fails; also while it loads unless `loading` is set. */
   fallback: ReactNode;
+  /** Shown while the filler loads, when the fallback must not flash first (a gate). */
+  loading?: ReactNode;
 }
 
 interface BoundaryProps {
@@ -131,6 +133,7 @@ export function makeSlot(
     id,
     props,
     fallback,
+    loading = fallback,
   }: SlotComponentProps<K>): ReactNode {
     const Filler = filler(id);
     if (!Filler) {
@@ -143,8 +146,9 @@ export function makeSlot(
         fallback={fallback}
         onError={(e) => onError(owner, id, e)}
       >
-        <Suspense fallback={fallback}>
-          <Filler {...props} />
+        <Suspense fallback={loading}>
+          {/* SlotProps[K] is a conditional type tsc cannot spread generically. */}
+          <Filler {...(props as SlotProps[K] & object)} />
         </Suspense>
       </SlotBoundary>
     );

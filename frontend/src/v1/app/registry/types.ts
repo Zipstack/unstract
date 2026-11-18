@@ -22,6 +22,19 @@ export const DISTRIBUTIONS = ["oss", "cloud", "onprem"] as const;
 export type Distribution = (typeof DISTRIBUTIONS)[number];
 
 /**
+ * Who may open a page: `guest` (signed out only, e.g. sign-in), `authenticated`
+ * (any member), `admin` (organisation admins) or `platform-admin` (cloud).
+ */
+export const ROUTE_ACCESS = [
+  "guest",
+  "authenticated",
+  "admin",
+  "platform-admin",
+] as const;
+
+export type RouteAccess = (typeof ROUTE_ACCESS)[number];
+
+/**
  * Target page key: UN01 to UN20 (Unstract), LW01 to LW07 (LLMWhisperer), or a
  * development-only demo page (`DEMO-…`) that is live only when
  * VITE_V1_DEV_ROUTES is on. The exact format is checked by registryProblems.
@@ -38,6 +51,8 @@ export type RegistryEntry = Readonly<{
   v1Routes: readonly string[];
   /** The v0 route patterns this page takes over. */
   replaces: readonly string[];
+  /** Who may open it; a pattern starting `/:orgName` also needs that organisation current. */
+  access: RouteAccess;
   /**
    * v1 pattern -> the v0 pattern it maps back to; covers every v1 route. Used
    * by Human Review's old-version mode, and by resolveUrl while the page is

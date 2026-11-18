@@ -31,6 +31,7 @@ const base: RegistryEntry = {
   toV0: { "/:orgName/workflows": "/:orgName/old-workflows" },
   toV1: { "/:orgName/old-workflows": "/:orgName/workflows" },
   toggle: false,
+  access: "authenticated",
   distributions: ["oss"],
   registeredBy: "P3-T01",
 };
@@ -177,7 +178,7 @@ describe("registryProblems", () => {
     }
   });
 
-  it("rejects duplicates, empty routes or distributions, and malformed patterns", () => {
+  it("rejects duplicates, empty routes or distributions, unknown access, and malformed patterns", () => {
     expect(problemsOf(base, base)).toContain("UN05: declared twice");
     expect(
       problemsOf({
@@ -189,6 +190,10 @@ describe("registryProblems", () => {
         distributions: [],
       }),
     ).toEqual(["UN05: has no v1 routes", "UN05: ships in no distribution"]);
+    const unguarded = { ...base, access: "anyone" } as unknown as RegistryEntry;
+    expect(problemsOf(unguarded)).toEqual([
+      "UN05: access must be one of guest, authenticated, admin, platform-admin",
+    ]);
     expect(
       problemsOf(v1Only("UN05", ["workflows", "/:orgName/:id?", "/a/*/b"])),
     ).toEqual(

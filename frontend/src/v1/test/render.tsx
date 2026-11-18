@@ -13,7 +13,12 @@ import {
   prepareProviders,
   V1TestProviders,
 } from "./providers";
-import { DEFAULT_THEME, type ThemeMode } from "./session";
+import {
+  DEFAULT_SESSION,
+  DEFAULT_THEME,
+  type TestSession,
+  type ThemeMode,
+} from "./session";
 
 export type RenderV1Options = Readonly<{
   /** The URL the router starts at. Default `/`. */
@@ -22,6 +27,8 @@ export type RenderV1Options = Readonly<{
   path?: string;
   /** Default `light`. */
   theme?: ThemeMode;
+  /** The signed-in session `useSession()` gives, and the org services call; null for a guest. Default DEFAULT_SESSION. */
+  session?: TestSession | null;
   /** Pass one to share a cache across renders; default is a fresh client. */
   queryClient?: QueryClient;
   /** Options for the returned `user` (e.g. `{ advanceTimers }` with fake timers). */
@@ -37,20 +44,18 @@ export type V1Harness = Readonly<{
 }>;
 
 /*
- * No v1 code reads a session or a distribution yet, so renderV1 takes
- * neither: an option no provider consumes would let a test of an admin-only
- * or cloud-only branch pass without reaching it. Each comes back, with the
- * slot that reads it, when the session store or plugin registry lands (see
- * README.md). Until then a caller that passes one anyway (a cast, plain JS)
- * fails loudly.
+ * No provider reads a distribution yet, so renderV1 takes none: an option no
+ * provider consumes would let a test of a cloud-only branch pass without
+ * reaching it. It comes back with the slot that reads it (see README.md).
+ * Until then a caller that passes one anyway (a cast, plain JS) fails loudly.
  */
-const NOT_YET_CONSUMED = ["session", "distribution"] as const;
+const NOT_YET_CONSUMED = ["distribution"] as const;
 
 function rejectUnconsumedOptions(options: object): void {
   const passed = NOT_YET_CONSUMED.filter((key) => key in options);
   if (passed.length > 0) {
     throw new Error(
-      `renderV1: ${passed.join(" and ")} ${passed.length === 1 ? "is" : "are"} not supported yet; no v1 provider reads ${passed.length === 1 ? "it" : "them"}, so the test would not exercise what it sets. See src/v1/test/README.md.`,
+      `renderV1: ${passed.join(" and ")} is not supported yet; no v1 provider reads it, so the test would not exercise what it sets. See src/v1/test/README.md.`,
     );
   }
 }
@@ -62,6 +67,7 @@ function resolveContext(options: RenderV1Options): ProviderContext {
     route: options.route ?? "/",
     path: options.path,
     theme: options.theme ?? DEFAULT_THEME,
+    session: options.session === undefined ? DEFAULT_SESSION : options.session,
   };
 }
 

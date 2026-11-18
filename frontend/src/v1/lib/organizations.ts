@@ -80,3 +80,21 @@ export function landingPath(
     ? `/${toOrg}/${section}`
     : `/${toOrg}/dashboard`;
 }
+
+/**
+ * Where an ended session sends the user. A known cause carries `code` and
+ * `domain`, which v0's /error page explains (useSessionValid.js); signing in
+ * again would only fail the same way. An empty body goes back to sign-in.
+ * These are app routes, not API URLs, so they live here and not in services/.
+ */
+export function sessionEndedPath(body: unknown): string {
+  const { code, domain } = (body ?? {}) as { code?: unknown; domain?: unknown };
+  if (typeof code !== "string" || code === "") {
+    return "/landing";
+  }
+  const query = new URLSearchParams({ code });
+  if (typeof domain === "string" && domain !== "") {
+    query.set("domain", domain);
+  }
+  return `/error?${query}`;
+}

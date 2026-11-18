@@ -2,9 +2,8 @@
  * Builds the plugin registry from the manifests the cloud overlay copies in
  * as `plugins/<id>/manifest.ts`. An absent plugin has no manifest, so its
  * slots show their fallbacks; a filler that fails to load or render is
- * reported. Nothing renders `PluginSlot` or `pluginRoutes()` yet: the v1
- * shell (P2-T01) wraps the app in `PluginProvider` with `PluginSlot` and adds
- * the plugin routes to the v1 router.
+ * reported. `V1App` provides `PluginSlot`; nothing adds `pluginRoutes()` to
+ * the v1 router yet (the v1 shell, P2-T01).
  */
 import { DEMO_PAGES, PAGES } from "@v1/app/registry/entries";
 import { patternProblem, patternsOverlap } from "@v1/app/registry/patterns";

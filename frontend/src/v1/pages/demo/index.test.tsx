@@ -1,14 +1,11 @@
 import { screen } from "@testing-library/react";
-import { setOrganizationId } from "@v1/services/context";
 import { DEFAULT_SESSION, mockApi, renderV1 } from "@v1/test";
 import { adapterFixtures, adapterHandlers } from "@v1/test/fixtures/adapters";
-import { afterEach, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { DemoPage } from "./index";
 
 const ORG = DEFAULT_SESSION.organization.id;
 const at = { route: `/${ORG}/v1-demo`, path: "/:orgName/v1-demo" };
-
-afterEach(() => setOrganizationId(null));
 
 it("lists the organisation's LLM adapters through the sample service", async () => {
   const seen: URL[] = [];

@@ -2,11 +2,13 @@ import { type QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createQueryClient } from "@v1/app/query";
 import { ThemeProvider } from "@v1/app/theme/ThemeProvider";
 import { getPortalContainer, PORTAL_CONTAINER_ID } from "@v1/lib/portal";
+import { SessionProvider } from "@v1/lib/session";
 import { THEME_STORAGE_KEY } from "@v1/lib/theme";
+import { setOrganizationId } from "@v1/services/context";
 import { useThemeStore } from "@v1/stores/theme";
 import type { JSX, ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import type { ThemeMode } from "./session";
+import { type TestSession, type ThemeMode, toV1Session } from "./session";
 
 /*
  * The v1 provider chain for tests: the ONLY file to edit when a real provider
@@ -16,13 +18,14 @@ import type { ThemeMode } from "./session";
  *   query   real      app/query (P0-T05, UN-4313), with test defaults
  *   router  stand-in  P0-T03 router + registry (UN-4271) → the app's router, in memory
  *   theme   real      app/theme/ThemeProvider (P0-T04, #2399)
+ *   session real      lib/session's SessionProvider (P0-T06, UN-4314) and the org services/ use
  *
  * Swap a slot by changing its entry in PROVIDER_SLOTS (and, if it holds
  * global state, prepareProviders / resetProviders); renderV1 and every test
  * stay as they are. See README.md in this folder.
  *
- * Every field here is read by a slot. A new one (a session, a distribution)
- * arrives together with the slot that reads it, never ahead of it.
+ * Every field here is read by a slot. A new one (a distribution) arrives
+ * together with the slot that reads it, never ahead of it.
  */
 
 /** Everything a slot may need, resolved from renderV1's options. */
@@ -33,6 +36,8 @@ export type ProviderContext = Readonly<{
   /** A route pattern to mount the UI under, so `useParams` resolves. */
   path: string | undefined;
   theme: ThemeMode;
+  /** The signed-in session; null renders as a guest. */
+  session: TestSession | null;
 }>;
 
 export type ProviderSlot = (
@@ -54,6 +59,7 @@ export function createTestQueryClient(): QueryClient {
  */
 export function prepareProviders(context: ProviderContext): HTMLElement {
   useThemeStore.getState().setPreference(context.theme);
+  setOrganizationId(context.session?.organization.id ?? null);
   const portal = getPortalContainer();
   portal.dataset.theme = context.theme;
   return portal;
@@ -62,6 +68,7 @@ export function prepareProviders(context: ProviderContext): HTMLElement {
 /** Undoes prepareProviders; setup.ts calls it after each test. */
 export function resetProviders(): void {
   document.getElementById(PORTAL_CONTAINER_ID)?.remove();
+  setOrganizationId(null);
   try {
     window.localStorage.removeItem(THEME_STORAGE_KEY);
   } catch {
@@ -93,11 +100,21 @@ const ThemeSlot: ProviderSlot = ({ children }) => (
   <ThemeProvider>{children}</ThemeProvider>
 );
 
+// What RouteGate provides once the session allows the page.
+const SessionSlot: ProviderSlot = ({ context, children }) => (
+  <SessionProvider
+    session={context.session ? toV1Session(context.session) : null}
+  >
+    {children}
+  </SessionProvider>
+);
+
 /** Outermost first. */
 export const PROVIDER_SLOTS: readonly ProviderSlot[] = [
   QuerySlot,
   RouterSlot,
   ThemeSlot,
+  SessionSlot,
 ];
 
 export function V1TestProviders({

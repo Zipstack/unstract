@@ -168,21 +168,18 @@ v0 for everything else. v1 renders as its own tree (`app/V1App.tsx`), loaded
 only when a v1 page first renders.
 
 - **Declare** a page in `app/registry/entries.ts` (`PAGES`) with its v1 routes,
-  the v0 routes it replaces and the mapping both ways, and add its component
-  to `app/pages.ts`. Declared pages stay v0 for users.
+  the v0 routes it replaces, the mapping both ways and its `access` (see
+  Session and guards), and add its component to `app/pages.ts`. Declared
+  pages stay v0 for users.
 - **Register** it, in its go-live task only (D9), by adding its key to
   `REGISTERED_PAGES`. Its v0 URLs then redirect to v1; reverting is that line.
-  v1 renders outside v0's `PersistentLogin` and `RequireAuth`, and its own
-  session and guards come with P0-T06: a page registered before that ships
-  with no session load or org check. Until something sets the org
-  (`setOrganizationId()`), its queries throw and it shows the error fallback;
-  it leaves for sign-in only when a service call gets a 401
-  (`services/http.ts`).
+  v1 renders outside v0's `PersistentLogin` and `RequireAuth`, behind its own
+  session and guards.
 - `app/registry/validate.test.ts` fails CI on an invalid entry: overlapping
   patterns across pages, a v1 route and a different v0 route of one page that
   match the same URL (a page may keep its v0 URL), a route without a mapping
-  to the other version, a page without a component, or `toggle` on any page
-  but Human Review (UN11, D14) and its demo stand-in.
+  to the other version, a page without a component, an unknown `access`, or
+  `toggle` on any page but Human Review (UN11, D14) and its demo stand-in.
 - Human Review's old-version preference is per user, per browser, in
   localStorage (`unstract.v1.oldVersion.<userId>`). `setOldVersion(on)` sets
   it, and the switch then moves the user to the mapped screen without a
@@ -192,14 +189,10 @@ only when a v1 page first renders.
   can still name the previous user when neither has run, e.g. the session
   expired and the next page load starts on a v1 URL; until the session
   loads, that user's choice applies.
-- Until the v1 session lands (P0-T06), the switch learns the user only from
-  v0's session, which v0 loads in `PersistentLogin`, a v0 route. A page load
-  that starts on a v1 URL never loads it, so the switch has only
-  `unstract.v1.lastUser`. With none (a fresh browser, or an E2E context
-  signed in by API), `setOldVersion` returns false and changes nothing; with
-  another person's, a choice made there is saved as theirs. Both last until a
-  v0 page loads in that tab. E2E round trips seed `unstract.v1.lastUser` or
-  open a v0 page first.
+- The switch learns the user from whichever session loads: v0's (in
+  `PersistentLogin`, on v0 routes) or v1's (on v1 routes). Until one has,
+  it has only `unstract.v1.lastUser`, and with none `setOldVersion` returns
+  false and changes nothing.
 - `VITE_V1_DEV_ROUTES=true` (the E2E image, or `.env` locally) registers the
   demo pages (`/:orgName/v1-demo`, `/:orgName/v1-demo-review`, and their v0
   stand-ins `/:orgName/v0-demo…`). It also renders declared pages as v1 before
@@ -211,6 +204,48 @@ only when a v1 page first renders.
   reads the same variable. The cloud and on-prem image builds do not set it
   yet, so every image builds as `oss`: until P0-T07 wires them, an entry that
   lists fewer than all three distributions is not filtered correctly there.
+
+## Session and guards
+
+`V1App` loads the session once per page load (`app/session/RouteGate.tsx`,
+`loadSession()` in `services/session.ts`), with the calls v0's
+`useSessionValid` makes: `GET /api/v1/session` (a 401 there means signed out),
+the organisation list, then the profile. It sets an organisation only when
+the session has none and the user has exactly one. v1 shares v0's cookies, so
+switching version never asks for a login. Once loaded it sets the
+organisation services call, the old-version user, and the analytics identity.
+
+- Read it with `useSession()` from `@v1/lib/session`: `user` (`id`, `email`,
+  `name`, `role`, `isAdmin`, `isStaff`) and `organization` (`id`, URL `name`,
+  `displayName`, `switchViaLogin`). A guest-only page has none.
+- Each registry entry's `access` picks its guard (`app/session/guard.ts`):
+
+  | `access` | Allows | Otherwise |
+  | --- | --- | --- |
+  | `guest` | No session | `/landing`, where v0 opens the user's home |
+  | `authenticated` | A session | `/landing`, with the URL in `state.from` |
+  | `admin` | Organisation admins | `NoPermission` (`components/patterns/`) |
+  | `platform-admin` | What the cloud `route.platform-admin` slot allows | `NoPermission`, in OSS always |
+
+  A route whose pattern has `:orgName` also needs that organisation current;
+  otherwise it goes to organisation selection (v0's `/setOrg`), as does a
+  user with several organisations and none current. A 412 on the list (the
+  session was ended) goes to v0's `/error` page with its cause.
+- Cloud's entitlement gates (product onboarding, subscription, trial) fill
+  the `route.entitlement` slot, which wraps every signed-in page; OSS and
+  on-prem leave it empty, so the page renders.
+- A 401 on any later call signs out with the POST logout
+  (`signOutAndLeave()`) and lands where v0's logout does.
+  `isSessionExpired()` and `whenSessionExpired()` (`services/context.ts`)
+  let code about to act on the page stand down.
+- Permissions (`lib/permissions.ts`): `isAdmin`, `isOwner`, `canEdit`,
+  `canDelete`, `canShare` (owners and admins), and `canCreate` from the
+  organisation's capability settings (`capabilityQueries` in
+  `services/capabilities.ts`). A page removes what the user may not do; it
+  never shows it disabled.
+- Analytics: v0's tracker records page views for v1 URLs too. The version
+  switch tags every event with `ui_version` (`v0` or `v1`), and v1 events use
+  v0's names (`lib/analytics.ts`).
 
 ## Folders and what each may import
 
@@ -236,11 +271,11 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 
 ## Plugins
 
-`lib/plugins/` is the extension-point contract. Pages and the shell import `Slot` from `@v1/lib/plugins`. `plugins/index.ts` builds the registry from the manifests and exports `PluginSlot` and `pluginRoutes()`. Nothing renders them yet: the v1 shell (P2-T01) is to wrap the app in `PluginProvider` with `PluginSlot` and add `pluginRoutes()` to the v1 router. Until then, and with no provider, every slot shows its fallback.
+`lib/plugins/` is the extension-point contract. Pages and the shell import `Slot` from `@v1/lib/plugins`. `plugins/index.ts` builds the registry from the manifests and exports `PluginSlot` and `pluginRoutes()`. `V1App` wraps the v1 tree in `PluginProvider` with `PluginSlot`; nothing adds `pluginRoutes()` to the v1 router yet (the v1 shell, P2-T01). With no provider, as in unit tests, every slot shows its fallback.
 
 - `types.ts` names every slot and its props. Adding a slot is one line there.
 - A plugin is `plugins/<id>/manifest.ts` exporting `manifest` (`satisfies PluginManifest`), with `distributions` (`cloud`, `onprem`) and lazy `slots` and `routes`. The folder name is the id. A manifest may only `import type`: the build check loads it without bundling.
-- `<Slot id props fallback />` shows the fallback when no plugin fills the slot, silently. A filler that fails to load or render shows the fallback, is logged and raises an error notification; each slot has its own error boundary. A failed load is reported once per slot until a load succeeds, and the slot waits 30 seconds (`SLOT_RETRY_MS`) before fetching the chunk again. A render error is reported each time a boundary catches one.
+- `<Slot id props fallback />` shows the fallback when no plugin fills the slot, silently. While a filler loads it shows `loading` if given, else the fallback; a route gate passes `loading` so the page does not show before the gate decides. A filler that fails to load or render shows the fallback, is logged and raises an error notification; each slot has its own error boundary. A failed load is reported once per slot until a load succeeds, and the slot waits 30 seconds (`SLOT_RETRY_MS`) before fetching the chunk again. A render error is reported each time a boundary catches one.
 - `VITE_DISTRIBUTION` (`oss`, the default, `cloud` or `onprem`) picks the plugins the build offers. The frontend Dockerfile takes it as a build arg in both the `development` and `builder` stages, and `vite build` fails on any other value.
 - Every build runs `scripts/v1-plugins.mjs`. It fails on a slot filled twice, two routes the router would match for the same URL (by two plugins, or by a plugin and a page in the v1 route registry, demo pages included; params, case and a final `*` count, via the registry's `patternsOverlap`) or a plugin with no distribution in any distribution, naming both owners. It writes `plugin-matrix.json` to the build output: the build's `distribution` and the plugins this build carries. The cloud overlay removes plugins outside the target distribution first, so the matrix of an OSS image is empty. `node scripts/v1-plugins.mjs` prints the matrix.
 - `plugin-matrix.json` also has `distributions` (for `oss`, `cloud` and `onprem`, the ids among this build's manifests) and `plugins` (each one's distributions, slots and routes). In a built image only `distributions[distribution]` is meaningful: the overlay has already removed the other distributions' plugins.

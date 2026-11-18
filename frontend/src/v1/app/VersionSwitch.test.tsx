@@ -6,7 +6,8 @@ import { buildLiveRegistry, type LiveRegistry } from "@v1/app/registry/live";
 import { toast } from "@v1/lib/notify";
 import { oldVersionStorageKey } from "@v1/lib/oldVersion";
 import { useOldVersionStore } from "@v1/stores/oldVersion";
-import { HttpResponse, http as mock, mockApi } from "@v1/test";
+import { HttpResponse, makeSession, http as mock, mockApi } from "@v1/test";
+import { sessionHandlers } from "@v1/test/fixtures/session";
 import { useEffect } from "react";
 import {
   MemoryRouter,
@@ -17,7 +18,27 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { v1QueryClient } from "./V1App";
 import { VersionSwitch } from "./VersionSwitch";
+
+// The version each page view is tagged with.
+const versions = vi.hoisted((): string[] => []);
+// Core tests render without plugins, whatever the build's distribution.
+vi.mock("@v1/plugins", async () => {
+  const { buildRegistry, makeSlot } = await import("@v1/lib/plugins");
+  return { PluginSlot: makeSlot(buildRegistry([], "oss"), () => undefined) };
+});
+
+vi.mock("@v1/lib/analytics", () => ({
+  registerUiVersion: (version: string) => versions.push(version),
+  identifyUser: () => undefined,
+}));
+
+/** The user v1's session load finds, in the organisation the URLs name. */
+const signedIn = (org = "acme") =>
+  sessionHandlers(
+    makeSession({ user: { id: "7" }, organization: { id: org } }),
+  );
 
 // Two test-only pages beside the real demo ones: one that fails to render on
 // its sub-route, and one whose chunk is gone after a deploy.
@@ -108,11 +129,15 @@ beforeAll(() => Promise.all([import("./V1App"), import("@v1/pages/demo")]));
 
 beforeEach(() => {
   visited = [];
+  versions.length = 0;
   window.localStorage.clear();
   window.sessionStorage.clear();
   useOldVersionStore.setState({ userId: null, oldVersion: null, chosen: {} });
+  // Each test is a fresh page load: v1 loads the session again.
+  v1QueryClient.clear();
   // The demo page lists adapters (UN-4313).
   mockApi(
+    ...signedIn(),
     mock.get("/api/v1/unstract/:org/adapter/", () => HttpResponse.json([])),
   );
 });
@@ -175,6 +200,7 @@ describe("VersionSwitch", () => {
 
   it("demo links keep an encoded org name in one segment", async () => {
     const user = userEvent.setup();
+    mockApi(...signedIn("a/b"));
     renderAt("/a%2Fb/v1-demo-review");
     await user.click(await screen.findByRole("link", { name: "Details" }));
     expect(where()).toBe("/a%2Fb/v1-demo-review/details");
@@ -211,18 +237,25 @@ describe("VersionSwitch", () => {
     expect(where()).toBe("/acme/v1-demo-review");
   });
 
-  it("on a load that starts on a v1 URL with no known user, the toggle changes nothing (until P0-T06)", async () => {
-    // v0 loads the session in PersistentLogin, a v0 route, so a v1 URL never
-    // gets a userId; with no unstract.v1.lastUser there is no user at all.
+  it("on a load that starts on a v1 URL, v1's own session supplies the user, so the toggle works", async () => {
+    // v0 loads its session only on v0 routes, so the switch gets no userId here.
     const user = userEvent.setup();
     renderAt("/acme/v1-demo-review", { userId: null });
     await user.click(
       await screen.findByRole("button", { name: "Switch to old version" }),
     );
-    expect(where()).toBe("/acme/v1-demo-review");
-    expect(screen.getByTestId("v1-demo-review")).toBeTruthy();
-    expect(setOldVersion(true)).toBe(false);
-    expect(window.localStorage).toHaveLength(0);
+    expect(where()).toBe("/acme/v0-demo-review");
+    expect(window.localStorage.getItem(oldVersionStorageKey("7"))).toBe("true");
+  });
+
+  it("tags page views with the version on screen", async () => {
+    renderAt("/acme/workflows");
+    expect(versions).toEqual(["v0"]);
+    act(() => {
+      navigate("/acme/v1-demo");
+    });
+    expect(await screen.findByTestId("v1-demo")).toBeTruthy();
+    expect(versions).toEqual(["v0", "v1"]);
   });
 
   it("treats an empty user id as signed out, keeping the last user's choice", () => {

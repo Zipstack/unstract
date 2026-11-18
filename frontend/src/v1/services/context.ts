@@ -11,6 +11,8 @@ const leaveForLogin: SessionExpiredHandler = () => {
 
 let sessionExpiredHandler: SessionExpiredHandler = leaveForLogin;
 let organizationId: string | null = null;
+let sessionExpired = false;
+const expiryListeners = new Set<() => void>();
 
 /** Sets the organisation org-scoped paths use. */
 export function setOrganizationId(id: string | null): void {
@@ -47,8 +49,41 @@ function fallBackToLogin(error: unknown): void {
   leaveForLogin();
 }
 
+/** True once a request found the session expired on this page load. */
+export function isSessionExpired(): boolean {
+  return sessionExpired;
+}
+
+/**
+ * Calls `listener` when the session expires, at once if it already has, so
+ * code about to act on the page can stand down. Returns the unsubscribe.
+ */
+export function whenSessionExpired(listener: () => void): () => void {
+  if (sessionExpired) {
+    listener();
+    return () => undefined;
+  }
+  expiryListeners.add(listener);
+  return () => {
+    expiryListeners.delete(listener);
+  };
+}
+
+function notifyExpiry(): void {
+  sessionExpired = true;
+  for (const listener of [...expiryListeners]) {
+    try {
+      listener();
+    } catch (error) {
+      console.error("[v1 api] session-expiry listener failed", error);
+    }
+  }
+  expiryListeners.clear();
+}
+
 /** Runs the current session-expiry handler; the client calls it once, so a failing one still leaves. */
 export function expireSession(): void {
+  notifyExpiry();
   try {
     const result: unknown = sessionExpiredHandler();
     if (result instanceof Promise) {
