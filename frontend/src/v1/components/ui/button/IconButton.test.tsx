@@ -51,6 +51,22 @@ it("keeps the aria-pressed a Radix Toggle gives it when selected is not set", as
   expect(button).toHaveAttribute("aria-pressed", "false");
 });
 
+it("looks the same pressed by selected or by a Radix Toggle", () => {
+  renderV1(
+    <>
+      <IconButton icon={ACTION_ICONS.filter} aria-label="By prop" selected />
+      <Toggle.Root asChild pressed>
+        <IconButton icon={ACTION_ICONS.filter} aria-label="By Toggle" />
+      </Toggle.Root>
+    </>,
+  );
+  const byProp = screen.getByRole("button", { name: "By prop" });
+  const byToggle = screen.getByRole("button", { name: "By Toggle" });
+  expect(byToggle).toHaveAttribute("aria-pressed", "true");
+  expect(byToggle.className).toBe(byProp.className);
+  expect(byToggle).toHaveClass("ui:aria-pressed:bg-primary");
+});
+
 it("fails the accessibility scan without a name", async () => {
   const unnamed = { icon: ACTION_ICONS.edit } as IconButtonProps;
   const { container } = renderV1(<IconButton {...unnamed} />);

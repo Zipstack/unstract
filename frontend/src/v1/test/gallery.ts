@@ -1,6 +1,7 @@
 import { render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { expect } from "vitest";
+import { axeViolations, formatViolations } from "./a11y";
 
 export type GalleryEntry = Readonly<{ name: string; element: ReactElement }>;
 
@@ -24,13 +25,14 @@ export function galleryMarkup(
   return `${[`# ${title}`, intro, ...sections].join("\n\n")}\n`;
 }
 
-/** Runs axe on each entry; a failure names the entry. */
+/** Runs axe on each entry; a failure starts with the entry's name. */
 export async function expectGalleryAccessible(
   entries: readonly GalleryEntry[],
 ): Promise<void> {
   for (const { name, element } of entries) {
     const { container, unmount } = render(element);
-    await expect(container, name).toHaveNoA11yViolations();
+    const violations = formatViolations(await axeViolations(container));
     unmount();
+    expect(violations, name).toBe("");
   }
 }

@@ -82,6 +82,24 @@ describe("Button", () => {
     expect(own.onKeyDown).not.toHaveBeenCalled();
   });
 
+  it("passes keys other than Enter, Space and ArrowDown to its handler while loading", async () => {
+    const onKeyDown = vi.fn();
+    const { user } = renderV1(
+      <Button loading onKeyDown={onKeyDown}>
+        Save
+      </Button>,
+    );
+    screen.getByRole("button", { name: "Save" }).focus();
+    await user.keyboard("{Enter} {ArrowDown}");
+    expect(onKeyDown).not.toHaveBeenCalled();
+    await user.keyboard("{ArrowRight}{Shift>}{Tab}{/Shift}");
+    expect(onKeyDown.mock.calls.map(([event]) => event.key)).toEqual([
+      "ArrowRight",
+      "Shift",
+      "Tab",
+    ]);
+  });
+
   it("shows a spinner while loading even without a leading icon", () => {
     const { container } = renderV1(<Button loading>Save</Button>);
     const svgs = container.querySelectorAll("svg");

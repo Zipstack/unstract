@@ -4,7 +4,11 @@ import type { LucideIcon } from "lucide-react";
 import type { ComponentProps, JSX } from "react";
 
 const iconButtonVariants = cva(
-  "ui:inline-flex ui:shrink-0 ui:cursor-pointer ui:items-center ui:justify-center ui:border ui:border-transparent ui:p-0 ui:outline-none ui:transition-colors ui:motion-reduce:transition-none ui:focus-visible:focus-ring ui:disabled:pointer-events-none ui:disabled:opacity-50 ui:[&>svg]:size-4",
+  [
+    "ui:inline-flex ui:shrink-0 ui:cursor-pointer ui:items-center ui:justify-center ui:border ui:border-transparent ui:p-0 ui:outline-none ui:transition-colors ui:motion-reduce:transition-none ui:focus-visible:focus-ring ui:disabled:pointer-events-none ui:disabled:opacity-50 ui:[&>svg]:size-4",
+    // The pressed fill follows aria-pressed, whether set by `selected` or a Radix Toggle.
+    "ui:aria-pressed:border-transparent ui:aria-pressed:bg-primary ui:aria-pressed:text-primary-foreground ui:aria-pressed:hover:bg-primary/90 ui:aria-pressed:hover:text-primary-foreground ui:aria-pressed:active:bg-primary/80",
+  ],
   {
     variants: {
       variant: {
@@ -21,9 +25,6 @@ const iconButtonVariants = cva(
     defaultVariants: { variant: "ghost", size: "md" },
   },
 );
-
-const SELECTED =
-  "ui:border-transparent ui:bg-primary ui:text-primary-foreground ui:hover:bg-primary/90 ui:hover:text-primary-foreground ui:active:bg-primary/80";
 
 /** The button shows no text, so the types require a name. */
 type IconButtonName =
@@ -60,11 +61,7 @@ export function IconButton({
       {...(selected === undefined ? {} : { "aria-pressed": selected })}
       type={type}
       data-slot={slot}
-      className={cn(
-        iconButtonVariants({ variant, size }),
-        selected && SELECTED,
-        className,
-      )}
+      className={cn(iconButtonVariants({ variant, size }), className)}
     >
       <Icon aria-hidden />
     </button>

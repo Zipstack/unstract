@@ -9,8 +9,8 @@ import type { JSX, ReactNode } from "react";
  * radius 8 (the menu-item radius token; the frames draw 6), a 16px icon 10 from the label, 13px medium text, and the
  * destructive row in the destructive colour.
  *
- * Icons and slots sit in `div`s, never `span`s: v0 forces an `svg.lucide`
- * under a `span` to 1em (see the v1 README).
+ * Icons and slots sit in `div`s, never `span`s, so v0's `svg.lucide` rule
+ * (see the v1 README) does not reach them.
  */
 
 /**

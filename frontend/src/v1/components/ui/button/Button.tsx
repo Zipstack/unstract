@@ -2,7 +2,7 @@ import { cn } from "@v1/lib/cn";
 import { STATUS_ICONS } from "@v1/lib/icons";
 import { cva, type VariantProps } from "class-variance-authority";
 import type { LucideIcon } from "lucide-react";
-import type { ComponentProps, JSX, MouseEvent } from "react";
+import type { ComponentProps, JSX, KeyboardEvent, MouseEvent } from "react";
 
 /** Variant and size classes; a router link that must look like a button takes them as `className`. */
 export const buttonVariants = cva(
@@ -53,17 +53,26 @@ const LoadingIcon = STATUS_ICONS.loading;
 
 const ignore = (): void => undefined;
 
-// While loading it keeps focus but drops activation: own and Radix handlers, form submit, parent clicks.
-const BUSY = {
-  "aria-busy": true,
-  "aria-disabled": true,
-  onPointerDown: ignore,
-  onKeyDown: ignore,
-  onClick: (event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-  },
-} as const;
+// Keys that activate a button or open a Radix menu trigger.
+const ACTIVATION_KEYS = new Set(["Enter", " ", "ArrowDown"]);
+
+// While loading it keeps focus but drops pointer-down, click and activation keys; other keys pass through.
+function busyProps(onKeyDown: ButtonProps["onKeyDown"]) {
+  return {
+    "aria-busy": true,
+    "aria-disabled": true,
+    onPointerDown: ignore,
+    onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => {
+      if (!ACTIVATION_KEYS.has(event.key)) {
+        onKeyDown?.(event);
+      }
+    },
+    onClick: (event: MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+    },
+  } as const;
+}
 
 function LeadingIcon({
   icon: Icon,
@@ -91,7 +100,7 @@ export function Button({
   return (
     <button
       {...props}
-      {...(loading ? BUSY : {})}
+      {...(loading ? busyProps(props.onKeyDown) : {})}
       type={type}
       data-slot={slot}
       className={cn(buttonVariants({ variant, size }), className)}
