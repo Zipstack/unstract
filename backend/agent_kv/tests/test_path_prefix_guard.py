@@ -83,3 +83,36 @@ def test_the_default_is_safe():
 
     assert settings.AGENT_KV_PATH_PREFIX == "api/v1/agentic-extract"
     assert f"/{settings.AGENT_KV_PATH_PREFIX}" in settings.WHITELISTED_PATHS
+
+
+def test_the_env_samples_ship_the_shipped_default():
+    """Both `sample.env` files set this key as an ACTIVE assignment, so what
+    they say is what a deployment set up the documented way actually serves --
+    the default above is not.
+
+    Without this, reverting one sample file and nothing else passes the whole
+    suite, and those deployments keep serving the old path while the docs
+    (guarded by `test_docs_examples.py`) show the new one. That is the
+    integrator-facing failure one hop out from the one that guard prevents.
+
+    `docker/sample.env` is also read at runtime by
+    `workers/tests/test_queue_consumer_wiring.py`, which derives the traefik
+    term it checks from it rather than restating the prefix.
+    """
+    import pathlib
+
+    from django.conf import settings
+
+    root = pathlib.Path(__file__).resolve().parents[3]
+    for sample in (root / "backend" / "sample.env", root / "docker" / "sample.env"):
+        assigned = [
+            line.split("=", 1)[1].split("#")[0].strip()
+            for line in sample.read_text().splitlines()
+            if line.startswith("AGENT_KV_PATH_PREFIX=")
+        ]
+        assert assigned == [settings.AGENT_KV_PATH_PREFIX], (
+            f"{sample.parent.name}/{sample.name} sets AGENT_KV_PATH_PREFIX to "
+            f"{assigned!r}, but the shipped default is "
+            f"{settings.AGENT_KV_PATH_PREFIX!r}. A deployment built from this "
+            "sample serves the sample's value, not the default."
+        )

@@ -17,7 +17,7 @@ uploaded document against a caller-supplied schema (`keys.json`), optionally run
 engine-generated **calculations** over the extracted rows. It productizes the KV extractor
 from the `unstract-agentic-table` research project as a first-class Unstract API.
 
-- **Public surface:** `POST /agentic-extract/` (submit) and sibling status/result/cancel
+- **Public surface:** `POST /api/v1/agentic-extract/` (submit) and sibling status/result/cancel
   endpoints, authenticated by a per-organization `AgentKVKey` (a UUID, `Authorization:
   Bearer <key>`). Full contract in [`docs/agent-kv-api.md`](agent-kv-api.md).
 - **Async:** submit returns a `job_id`; the caller polls status or receives a webhook.
@@ -44,7 +44,7 @@ no worker consumes.
 
 ```
   client
-    │  POST /agentic-extract/  (file + keys.json + options[+calculations])   Bearer <AgentKVKey>
+    │  POST /api/v1/agentic-extract/  (file + keys.json + options[+calc])   Bearer <AgentKVKey>
     ▼
 ┌─ OSS: agent_kv Django app ────────────────────────────────────────────────┐
 │  auth (view-owned) · validate + compile keys.json · file/page/size caps    │
@@ -75,8 +75,8 @@ no worker consumes.
 │  write usage_summary (tokens/pages/cost)                                    │
 └───────────────┬────────────────────────────────────────────────────────────┘
                 ▼
-  client  ── GET /agentic-extract/{job_id}          → status (PENDING→DISPATCHED→RUNNING→terminal)
-          ── GET /agentic-extract/{job_id}/result   → record + calculation_rows + usage
+  client  ── GET /api/v1/agentic-extract/{job_id}          → status (PENDING→DISPATCHED→RUNNING→terminal)
+          ── GET /api/v1/agentic-extract/{job_id}/result   → record + calculation_rows + usage
 ```
 
 Stage transitions are reported by the executor through the internal API

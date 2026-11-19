@@ -1,6 +1,6 @@
 """Fixtures and HTTP helpers shared by the Agent-KV e2e tests.
 
-This lane exercises the Agent-KV *product* API (``/agentic-extract/...``, top-level,
+This lane exercises the Agent-KV *product* API (``/api/v1/agentic-extract/...``,
 API-key authed -- not the tenant-scoped platform surface most other e2e
 lanes hit). It needs a deployment where the cloud ``agentic_kv`` executor
 plugin is installed (``plugins.get_plugin("agent_kv")`` truthy) -- an

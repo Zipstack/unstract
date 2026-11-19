@@ -1775,6 +1775,47 @@ beyond `docker compose up`:
     `runtimeClass: gvisor` sandbox, together with a distinct UID per child, which is
     what would actually close the two residuals above.
 
+12. **The public path moved — and an existing `.env` keeps the old one.
+    APPLICABLE FROM THIS RELEASE.** `AGENT_KV_PATH_PREFIX` now defaults to
+    `api/v1/agentic-extract`, so every endpoint moves from
+    `/api/v1/agent-kv/...` to `/api/v1/agentic-extract/...` — submit, status,
+    result, cancel and delete alike. It was `api/v1/agent-kv` through
+    `ee-v0.186.0` (GA) and the 0.187 RCs. There is **no alias**: the old path
+    stops being served, and every caller has to change its URL.
+
+    > **Deploy order:** nothing. The new prefix is still under `api/v1`, so the
+    > LB/ingress rule every deployment already has routes it, and the chart
+    > deliberately leaves `AGENT_KV_PATH_PREFIX` unset so it takes this default
+    > (`charts/unstract-platform/unittests/agent_kv_ingress_test.yaml`, `AKV-I5`).
+    > No ingress entry to add, no restart ordering.
+
+    **What a caller left on the old path sees, and why it misleads.** Not a 404.
+    `/api/v1/agent-kv/...` is still routed to Django, but the old prefix is no
+    longer in `WHITELISTED_PATHS`, so `CustomAuthMiddleware` runs before URL
+    resolution, takes its `Authorization: Bearer` branch, and tries the
+    `AgentKVKey` as a *Platform* API key. The caller gets
+    **`401 {"message": "Invalid or inactive API key"}`** — their credential
+    blamed for a stale URL. On this side it logs
+    `Platform key rejected (unknown or inactive key) … path /api/v1/agent-kv/…`,
+    which is the line reserved for credential traversal. **If you see that 401
+    or that log line after this release, grep the path before touching any
+    key.** It is also how you count who was still on the old URL.
+
+    **Self-hosted upgrades need one manual edit.** Both `sample.env` files set
+    this key as an active assignment, so a deployment set up the documented way
+    has the old value in its `.env` — and `run-platform.sh --update` preserves
+    it (`docker/scripts/merge_env.py` keeps the existing value for any key
+    outside `PREFERRED_BASE_ENV_KEYS`, and re-appends it under
+    `# Additional envs` even if the sample drops the line). So an upgraded
+    compose deployment keeps serving `/api/v1/agent-kv/` while the published
+    docs show the new path. **Remove or update the `AGENT_KV_PATH_PREFIX` line
+    in `backend/.env` as part of the upgrade.**
+
+    **Rollback is config-only.** Set `AGENT_KV_PATH_PREFIX=api/v1/agent-kv` and
+    restart the backend: the mount, the auth whitelist and the `status_url` in
+    every submit response all derive from this one setting, so they move
+    together. No code deploy, no migration.
+
 ## 12. Environment reference
 
 All `AGENT_KV_*` settings (`backend/backend/settings/base.py`), each `os.environ.get`
@@ -1782,7 +1823,7 @@ with the default shown:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AGENT_KV_PATH_PREFIX` | `api/v1/agentic-extract` | Top-level public URL prefix (whitelisted past tenant middleware). |
+| `AGENT_KV_PATH_PREFIX` | `api/v1/agentic-extract` | Public URL prefix, under the platform API prefix (whitelisted past tenant middleware). Pinned in an existing `.env`, it wins over this default — see §11. |
 | `AGENT_KV_MAX_FILE_SIZE_MB` | `50` | Submit-time file size cap. |
 | `AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS` | `3600` | How long after CANCELLATION a cancelled job's executor is presumed dead, so the sweep's phase 3 may release the concurrency slot it still holds. Must stay **below** `rate_limiter.SLOT_TTL_SECONDS` (6 h) or the window is empty and the phase silently releases nothing. |
 | `AGENT_KV_MAX_PAGES` | `100` | Pre-OCR cap on the pages of the DOCUMENT for PDFs — checked against `pages_total`, **not** against the `page_start`/`page_end` range (§6.1), because the whole file is OCR'd and billed whatever the range. The cloud worker refuses on the same quantity. Excel has no pre-OCR page concept, so it takes the engine's post-OCR virtual-page cap instead; images are not accepted. |

@@ -31,10 +31,20 @@ FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 #: `backend/agent_kv/tests/` -> repo root.
 _DOC = pathlib.Path(__file__).resolve().parents[3] / "docs" / "agent-kv-api.md"
 
-#: The placeholder host every `curl` in the doc is written against. Capturing
-#: the path after it is what lets the prefix check below compare a documented
-#: URL with the route the service actually mounts.
-_EXAMPLE_URL = re.compile(r"https://api\.unstract\.example(\S*)")
+#: The one block allowed to name the OLD path: §11's upgrade item, whose whole
+#: job is to say the path moved. Bounded by its own opening words and the next
+#: heading, and the test asserts the block is present -- deleting it does not
+#: silently widen what the check below tolerates, it fails.
+_UPGRADE_ITEM_OPENS = "**The public path moved"
+_UPGRADE_ITEM_ENDS = "\n## 12."
+
+#: Every `/api/v1/<segment>` the doc states, wherever it states it. Keying on
+#: the placeholder host instead caught only the six `curl` lines -- 6 of the 31
+#: occurrences -- so reverting the endpoint HEADINGS, the §1 table and the
+#: documented `status_url` while leaving the `curl`s current passed the check.
+#: `status_url` is the one documented value a client persists and replays, and
+#: the headings are what this file's intra-document anchors resolve against.
+_API_PATH = re.compile(r"/api/v1/[a-z0-9-]+")
 
 #: The `-F 'extractors=[...]'` argument of each fenced curl example. Matching on
 #: the curl flag rather than on a fence keeps prose that merely mentions
@@ -98,30 +108,65 @@ def test_the_examples_cover_both_extractors():
     assert {e["name"] for e in _documented_entries()} == {"kv", "table"}
 
 
-def test_the_documented_urls_sit_under_the_live_execution_prefix():
-    """The path the examples are written against, not just their payloads.
+def test_every_documented_path_is_the_mounted_one():
+    """The paths the doc states, not just the payloads its examples carry.
 
     Nothing else ties the two together. The route is mounted from
-    `settings.AGENT_KV_PATH_PREFIX` (`backend/base_urls.py`), so renaming the
-    public prefix moves every endpoint and leaves a doc full of `curl`s that
-    now 404 -- and a reader has no way to tell the doc is the stale half. That
-    is not hypothetical: the prefix was renamed once, and this assertion is
-    what makes the next rename fail here instead of in an integrator's
-    terminal.
+    `settings.AGENT_KV_PATH_PREFIX` (`backend/backend/base_urls.py`), so
+    renaming the public prefix moves every endpoint at once and leaves this
+    doc as the stale half, with no way for a reader to tell. That is not
+    hypothetical -- the prefix has moved twice, once in depth and once in
+    name -- and a stale path does NOT fail in a way a caller can read: it is
+    no longer whitelisted past `CustomAuthMiddleware`, so a request carrying a
+    Bearer key is tried as a Platform API key and refused with
+    `401 Invalid or inactive API key`. The caller is told their credential is
+    bad when their URL is stale, which is why this belongs in a test rather
+    than in a troubleshooting note.
+
+    Every `/api/v1/...` path in the doc must be the mounted prefix. The two
+    other Agent-KV surfaces are deliberately written in forms this does not
+    match: key management as `{PATH_PREFIX}/unstract/...` (templated) and the
+    internal API under `/internal/v1/`. If either is ever spelled out
+    literally, this test is what says so.
 
     It cannot speak for the customer-facing docs site, which lives in another
     repo and has to be updated by hand.
     """
-    paths = _EXAMPLE_URL.findall(_DOC.read_text())
-    # Non-empty, so a doc that stops using the placeholder host -- or a regex
-    # that stops matching it -- fails here rather than passing on nothing.
-    assert paths, (
-        "no example URLs found in the doc; this guard matches `curl`s written "
-        f"against the `{_EXAMPLE_URL.pattern}` placeholder host"
+    doc = _DOC.read_text()
+
+    # Carve out the upgrade item before scanning. It names both paths on
+    # purpose; everywhere else, naming the old one is the defect.
+    start = doc.find(_UPGRADE_ITEM_OPENS)
+    assert start != -1, (
+        f"{_DOC.name} no longer contains the upgrade item that opens "
+        f"{_UPGRADE_ITEM_OPENS!r}. That block is the only place allowed to name "
+        "the pre-rename path, so either restore it or drop this carve-out -- do "
+        "not leave the check tolerating an old path with nothing explaining it."
     )
-    prefix = f"/{settings.AGENT_KV_PATH_PREFIX}"
-    for path in paths:
-        assert path == prefix or path.startswith(f"{prefix}/"), (
-            f"the doc documents `{path}`, which is not under the mounted "
-            f"execution prefix `{prefix}`"
+    end = doc.find(_UPGRADE_ITEM_ENDS, start)
+    assert end != -1, f"{_DOC.name}: no heading closes the upgrade item"
+    upgrade_item, doc = doc[start:end], doc[:start] + doc[end:]
+
+    # The carve-out has to be about the CURRENT path too, or it is just a place
+    # for a stale one to hide.
+    assert f"/{settings.AGENT_KV_PATH_PREFIX}" in upgrade_item, (
+        "the upgrade item does not mention the mounted prefix "
+        f"`/{settings.AGENT_KV_PATH_PREFIX}`, so it is not documenting the move"
+    )
+
+    paths = _API_PATH.findall(doc)
+    # Non-empty, so a doc that stops stating the path -- or a regex that stops
+    # matching it -- fails here rather than passing on nothing.
+    assert paths, (
+        f"no `/api/v1/...` paths found in {_DOC.name}; this guard matches "
+        f"`{_API_PATH.pattern}`, and the doc is expected to state the "
+        "endpoint it documents"
+    )
+    want = f"/{settings.AGENT_KV_PATH_PREFIX}"
+    for path in sorted(set(paths)):
+        assert path == want, (
+            f"{_DOC.name} states `{path}`, but the mounted execution prefix is "
+            f"`{want}`. If the prefix really moved, the doc is the stale half; "
+            "if it did not, AGENT_KV_PATH_PREFIX is overridden in this "
+            "environment and the doc is fine."
         )

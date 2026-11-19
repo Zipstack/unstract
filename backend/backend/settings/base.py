@@ -257,9 +257,11 @@ def validate_agent_kv_path_prefix(raw, path_prefix, deployment_prefix):
 # API like every other one the platform serves, and sharing the prefix means
 # the LB rule that already routes `/api/v1` covers it -- no dedicated ingress
 # entry to add, and nothing to keep in step with this value. That coupling
-# was a real gap: on-prem values files replace `ingress.hosts` wholesale and
-# carried no entry for a top-level prefix, so the API answered the SPA's
-# HTML there.
+# was a real gap: back when this prefix was top-level, an on-prem values file
+# that replaced `ingress.hosts` wholesale carried no `/agent-kv` entry, so the
+# API answered the SPA's HTML there. One file at one point in time -- those
+# files carry whatever the operator wrote, which is exactly why a prefix that
+# needs its own entry is a prefix that can lose it.
 #
 # It is NOT under TENANT_SUBFOLDER_PREFIX (`api/v1/unstract`), because it
 # resolves its organisation from the Bearer key rather than a URL segment.

@@ -334,6 +334,17 @@ twelve dormant files and leaves the large PR a one-line route restoration.
 customers' integrations are the thing a later rename breaks. Name it the agentic
 extraction API in the docs and leave the path alone.
 
+> **SUPERSEDED 2026-11-19 (UN-4044).** The path *was* renamed, to
+> `/api/v1/agentic-extract/`, on Hari's ask once the endpoint served both `kv`
+> and `table` — naming it after one of its two extractors had become wrong in a
+> way the docs alone could not fix. The risk this decision names was weighed and
+> accepted by the owner, not overlooked: `/api/v1/agent-kv/` ships in
+> `ee-v0.186.0`, there is **no alias**, and a caller left on it gets
+> `401 Invalid or inactive API key` from the platform-key middleware rather than
+> a 404, because the old prefix is no longer whitelisted. Kept here rather than
+> rewritten: the reasoning is what the next rename needs, and the record that
+> the cost was known in advance.
+
 **5 · One extractor per job stays.** `execution_serializers.py:283` rejects more than
 one entry. That is exactly right for table and needs no work here.
 
