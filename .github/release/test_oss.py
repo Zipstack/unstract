@@ -1987,9 +1987,9 @@ esac
             self.assertNotIn("global.unstract.image.tag", params)
             with open(os.path.join(self.d, "out")) as fh:
                 self.assertEqual(fh.read(), f"previous={before}\n")
-        r, params = self.sync(
-            pinned, APP_NAME="prod"
-        )  # not an app this workflow may sync
+        # A near miss of a real app name, so a loosened allowlist fails here.
+        near_miss = cloud_apps()["staging"].replace("staging", "prod")
+        r, params = self.sync(pinned, APP_NAME=near_miss)
         self.assertEqual((r.returncode, params), (1, None))
 
     def test_sync_of_an_app_with_no_parameters(self):
@@ -3877,6 +3877,7 @@ class InputSteps(unittest.TestCase):
                 run_name(wf, **{**ctx, "inputs.force": True}), want + " (forced)"
             )
             form = dispatch_inputs(wf)
+            # Short on purpose: each refusal says when force applies.
             self.assertTrue(form["force"][0].startswith('description: "Force'), wf)
             self.assertEqual(
                 form["reason"][0], 'description: "Reason (required with Force)"', wf
@@ -4004,15 +4005,6 @@ class CutPickLine(unittest.TestCase):
         self.assertIn(
             "2 lines already in RC (release/0.188, release/0.187); the cap is 2", err
         )
-
-    def test_line_env(self):
-        self.assertEqual(rs.line_env("release/0.186"), "staging")
-        self.assertEqual(rs.line_env("0.187"), "integration")
-        self.assertEqual(rs.line_env("release/0.188"), "staging")
-        self.assertEqual(rs.line_env("0.189"), "integration")
-        self.assertEqual(rs.line_env("release/0.191"), "integration")
-        with self.assertRaises(ValueError):
-            rs.line_env("release/v0.181.1001")
 
 
 class TakeRcBump(Workflow):

@@ -648,7 +648,7 @@ def retire_line_held(state, branch):
 # Release-line environments, indexed by minor parity (even, odd), so nothing is stored. Each repo maps the
 # label to its own deployment; nothing here names one.
 LINE_ENVS = ("staging", "integration")
-RC_CAP = 2  # lines in RC (stabilizing) at once, one per environment
+RC_CAP = len(LINE_ENVS)  # lines in RC (stabilizing) at once, one per environment
 
 
 def line_env(line):

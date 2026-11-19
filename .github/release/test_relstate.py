@@ -2150,5 +2150,37 @@ class Guards(unittest.TestCase):
             rs.main(["--repo", self.OUTSIDE, "--rc=-x"], registry=lambda a: {})
 
 
+class LineEnvironment(unittest.TestCase):
+    """Runs in both repos: no workflow file needed."""
+
+    def test_line_env(self):
+        self.assertEqual(rs.line_env("release/0.186"), "staging")
+        self.assertEqual(rs.line_env("0.187"), "integration")
+        self.assertEqual(rs.line_env("release/0.188"), "staging")
+        self.assertEqual(rs.line_env("0.189"), "integration")
+        self.assertEqual(rs.line_env("release/0.191"), "integration")
+        with self.assertRaises(ValueError):
+            rs.line_env("release/v0.181.1001")
+
+    def test_cut_refusal(self):
+        def refusal(line, *rc):
+            return rs.cut_refusal({"backport_targets": {"rc": list(rc)}}, line)
+
+        self.assertIsNone(refusal("0.189"))
+        self.assertIsNone(refusal("0.189", "release/0.188"))
+        self.assertEqual(
+            refusal("0.190", "release/0.188"),
+            "its environment staging is held by release/0.188, still in RC",
+        )
+        self.assertEqual(
+            refusal("0.189", "release/0.187"),
+            "its environment integration is held by release/0.187, still in RC",
+        )
+        self.assertEqual(
+            refusal("0.190", "release/0.188", "release/0.189"),
+            "2 lines already in RC (release/0.188, release/0.189); the cap is 2",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
