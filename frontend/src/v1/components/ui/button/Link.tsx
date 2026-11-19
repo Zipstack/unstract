@@ -57,8 +57,8 @@ export function Link({
     <a
       data-slot="link"
       className={classes}
-      {...(external ? NEW_TAB : {})}
       {...props}
+      {...(external ? NEW_TAB : {})}
     >
       {children}
       {external && <ExternalMarker />}

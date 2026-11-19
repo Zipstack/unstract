@@ -7,12 +7,7 @@ import { IconButton } from "./IconButton";
 import { Kbd } from "./Kbd";
 import { Link } from "./Link";
 
-/*
- * Every variant, size and state of the buttons and links, for the component
- * gallery (P1-T01, not merged yet: register these there, where each entry is
- * shown in Light, Dark and Unstract). Hover, focus and active are live on that
- * page. Until then markup.test.tsx snapshots each entry and runs axe on it.
- */
+// Every variant, size and state of the buttons and links, for the component gallery.
 
 export type GalleryEntry = Readonly<{ name: string; element: ReactElement }>;
 

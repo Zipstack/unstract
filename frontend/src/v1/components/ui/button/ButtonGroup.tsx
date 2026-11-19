@@ -9,7 +9,7 @@ export function ButtonGroup({
   ...props
 }: ButtonGroupProps): JSX.Element {
   return (
-    // biome-ignore lint/a11y/useSemanticElements: a fieldset needs a legend and adds a border; a labelled group of buttons is the documented pattern.
+    // biome-ignore lint/a11y/useSemanticElements: a labelled group of buttons is the documented pattern.
     <div
       role="group"
       data-slot="button-group"

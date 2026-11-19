@@ -9,12 +9,14 @@ import { ACTION_ICONS } from "@v1/lib/icons";
 import type { LucideIcon } from "lucide-react";
 import type { JSX } from "react";
 
-/*
- * Menu triggers: thin wrappers over the v1 Button and IconButton. Both spread
- * props and take `ref` (React 19), so Radix's `asChild` triggers can use them.
- */
+// Thin wrappers over Button and IconButton; both take ref and props, so `asChild` triggers can use them.
 
 const ExpandIcon = ACTION_ICONS.expand;
+
+// Omit per union member, so a wrapper keeps "needs a name".
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
+  ? Omit<T, K>
+  : never;
 
 export type MenuButtonProps = Omit<ButtonProps, "variant" | "trailingIcon">;
 
@@ -42,13 +44,11 @@ export function MenuButton({
   );
 }
 
-export type MenuIconButtonProps = Omit<
+export type MenuIconButtonProps = DistributiveOmit<
   IconButtonProps,
-  "icon" | "variant" | "aria-label"
+  "icon" | "variant"
 > &
   Readonly<{
-    /** Required: the button has no text, so this is its only name. */
-    "aria-label": string;
     /** Defaults to the kebab (`ACTION_ICONS.more`). */
     icon?: LucideIcon;
   }>;

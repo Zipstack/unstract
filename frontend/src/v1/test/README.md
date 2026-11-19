@@ -153,6 +153,11 @@ is `region` (a component rendered alone is outside a page's landmarks). Pass
 `{ rules: { region: { enabled: true } } }` for a whole-page test. Always
 `await` the matcher.
 
+A component folder's gallery (`{ name, element }[]`) gets both checks from
+`galleryMarkup(title, entries)`, one Markdown document of every entry's markup
+for `toMatchFileSnapshot`, and `expectGalleryAccessible(entries)`, which runs
+axe on each entry and names the one that fails.
+
 ## Browser APIs happy-dom does not drive
 
 ```ts

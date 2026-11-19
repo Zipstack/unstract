@@ -1,6 +1,7 @@
 import { screen } from "@testing-library/react";
 import { ACTION_ICONS } from "@v1/lib/icons";
 import { axeViolations, renderV1 } from "@v1/test";
+import { Toggle } from "radix-ui";
 import { expect, it, vi } from "vitest";
 import { IconButton, type IconButtonProps } from "./IconButton";
 
@@ -35,6 +36,18 @@ it("exposes selected as aria-pressed only when given", () => {
       selected={false}
     />,
   );
+  expect(button).toHaveAttribute("aria-pressed", "false");
+});
+
+it("keeps the aria-pressed a Radix Toggle gives it when selected is not set", async () => {
+  const { user } = renderV1(
+    <Toggle.Root asChild defaultPressed>
+      <IconButton icon={ACTION_ICONS.filter} aria-label="Filter" />
+    </Toggle.Root>,
+  );
+  const button = screen.getByRole("button", { name: "Filter" });
+  expect(button).toHaveAttribute("aria-pressed", "true");
+  await user.click(button);
   expect(button).toHaveAttribute("aria-pressed", "false");
 });
 

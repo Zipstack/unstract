@@ -24,6 +24,24 @@ it("opens an external link in a new tab and says so", () => {
   expect(container.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
 });
 
+it("keeps the new tab when a caller passes its own target or rel", () => {
+  renderV1(
+    <Link
+      href="https://docs.unstract.com"
+      external
+      target="_self"
+      rel="nofollow"
+    >
+      documentation
+    </Link>,
+  );
+  const link = screen.getByRole("link", {
+    name: "documentation (opens in a new tab)",
+  });
+  expect(link).toHaveAttribute("target", "_blank");
+  expect(link).toHaveAttribute("rel", "noopener noreferrer");
+});
+
 it("puts its classes on the child with asChild", () => {
   renderV1(
     <Link asChild className="extra">

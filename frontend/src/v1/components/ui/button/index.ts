@@ -1,7 +1,4 @@
-/*
- * The public API of buttons and links: import from here. The gallery
- * (`./button.gallery`) is not exported: the component gallery imports it directly.
- */
+// Public API; the gallery (`./button.gallery`) is imported directly, not from here.
 export { Button, type ButtonProps, buttonVariants } from "./Button";
 export { ButtonGroup, type ButtonGroupProps } from "./ButtonGroup";
 export { IconButton, type IconButtonProps } from "./IconButton";

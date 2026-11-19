@@ -57,9 +57,9 @@ export function IconButton({
   return (
     <button
       {...props}
+      {...(selected === undefined ? {} : { "aria-pressed": selected })}
       type={type}
       data-slot={slot}
-      aria-pressed={selected}
       className={cn(
         iconButtonVariants({ variant, size }),
         selected && SELECTED,

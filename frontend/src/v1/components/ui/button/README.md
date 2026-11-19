@@ -21,7 +21,9 @@ The one button scale in v1 (P1-T02, UN-4272). Import everything from
   16px (14px at `xs`).
 - `loading` shows a spinner in place of the leading icon and keeps the label.
   The button gets `aria-busy` and `aria-disabled`, not `disabled`, so it keeps
-  focus; clicks, Enter and Space do nothing and it cannot submit its form.
+  focus. Pointer, click and key activation do nothing: its own handlers and a
+  Radix trigger's are skipped (a loading `MenuButton` does not open its menu),
+  a click does not reach a parent, and it cannot submit its form.
 - `disabled` is the native attribute: opacity .5, no pointer events.
 - `type` defaults to `"button"`; pass `type="submit"` in a form.
 - A router link that must look like a button takes
@@ -32,10 +34,12 @@ The one button scale in v1 (P1-T02, UN-4272). Import everything from
 
 ## IconButton
 
+- `icon` (required): the lucide icon it shows, 16px (`ACTION_ICONS.edit`).
 - `size`: `md` 32 (default, radius 8) or `sm` 28 (radius 6) in dense rows.
 - `variant`: `ghost` (default) or `outline`.
 - `selected` makes it a toggle: it sets `aria-pressed` and the primary fill.
-  Leave it out for a plain action, so no `aria-pressed` is rendered.
+  Leave it out for a plain action; an `aria-pressed` from a Radix `Toggle`
+  with `asChild` then passes through.
 - It needs a name, and the types require one: `aria-label` or
   `aria-labelledby`. `IconButton.test.tsx` fails `typecheck:v1` if a nameless
   one ever compiles, and the gallery's axe scan reports one at run time.

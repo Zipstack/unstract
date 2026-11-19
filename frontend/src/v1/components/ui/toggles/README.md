@@ -63,7 +63,7 @@ import {
   control, so pass `aria-label` when the label may be empty.
 - **The checkbox icon is the Indicator itself.** v0's global rule forces any
   `svg.lucide` whose parent is a `span`, `p`, `label`, `li`, `a`, `td` or
-  `th` to `1em` (see the v1 README, Styling), and it beats `ui:size-*`. So
+  `th` to `1em` (see the v1 README, Styling) unless a class sizes it. So
   the Radix `Indicator` renders `asChild` onto the lucide svg, whose parent
   is then the `button`. Never wrap a lucide icon in a `span` in this folder.
 - **The row is private.** Label and description are drawn by `ControlRow`

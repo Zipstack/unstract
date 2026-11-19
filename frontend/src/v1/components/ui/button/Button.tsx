@@ -48,14 +48,21 @@ export type ButtonProps = ComponentProps<"button"> &
     "data-slot"?: string;
   }>;
 
-// Rendered straight under the button: v0 forces a lucide svg under a span to 1em.
+// A direct child svg, so the size's icon rule sizes it like the icon it replaces.
 const LoadingIcon = STATUS_ICONS.loading;
 
-// While loading the button keeps focus but ignores activation, form submit included.
+const ignore = (): void => undefined;
+
+// While loading it keeps focus but drops activation: own and Radix handlers, form submit, parent clicks.
 const BUSY = {
   "aria-busy": true,
   "aria-disabled": true,
-  onClick: (event: MouseEvent<HTMLButtonElement>) => event.preventDefault(),
+  onPointerDown: ignore,
+  onKeyDown: ignore,
+  onClick: (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+  },
 } as const;
 
 function LeadingIcon({
