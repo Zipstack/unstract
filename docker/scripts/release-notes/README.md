@@ -44,8 +44,11 @@ workflow with `dry_run: true`, which computes and prints it. Or reproduce its
 last release, else patch:
 
 ```shell
-LATEST=$(gh api repos/Zipstack/unstract/releases \
-  --jq '[.[] | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))][0].tag_name')
+# `releases/latest`, the same lookup the workflow uses -- NOT the first match in
+# `releases`. Hotfix releases are created with `--latest=false`, so the list form
+# can return a hotfix on an older line, which would also move the date the FEAT
+# count below is measured from and so produce the wrong key.
+LATEST=$(gh api repos/Zipstack/unstract/releases/latest --jq '.tag_name // empty')
 SINCE=$(gh api "repos/Zipstack/unstract/releases/tags/$LATEST" --jq .published_at)
 gh pr list --repo Zipstack/unstract --base main --state merged --limit 200 \
   --search "merged:>$SINCE" --json title \
