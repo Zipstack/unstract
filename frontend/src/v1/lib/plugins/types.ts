@@ -34,7 +34,11 @@ export type SlotId = (typeof SLOT_IDS)[number];
  * page. `route.platform-admin` wraps platform-admin pages; its fallback is
  * the no-permission state.
  */
-export type GateSlotId = "route.entitlement" | "route.platform-admin";
+export const GATE_SLOT_IDS = [
+  "route.entitlement",
+  "route.platform-admin",
+] as const satisfies readonly SlotId[];
+export type GateSlotId = (typeof GATE_SLOT_IDS)[number];
 
 export type GateProps = Readonly<{ children: ReactNode }>;
 

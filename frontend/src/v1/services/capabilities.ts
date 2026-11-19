@@ -25,7 +25,7 @@ export const capabilityKeys = {
   all: () => [currentOrganizationId(), "capabilities"] as const,
 };
 
-/** Read with `canCreate()` from `@v1/lib/permissions`. */
+/** Read with `canCreate()`, or `canDeleteWorkflowOrDeployment()` for the delete capability, from `@v1/lib/permissions`. */
 export const capabilityQueries = {
   list: () =>
     queryOptions({

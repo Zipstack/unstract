@@ -13,6 +13,7 @@ import {
 } from "@v1/test/fixtures/session";
 import { describe, expect, it, vi } from "vitest";
 import { onSessionExpired } from "./context";
+import { ApiError } from "./errors";
 import { loadSession } from "./session";
 
 const other = makeSession({
@@ -85,6 +86,45 @@ describe("loadSession", () => {
     expect(await loadSession()).toEqual({
       kind: "choose-organization",
       organizations,
+    });
+  });
+
+  it("asks the user to choose when the session's organisation is gone and several remain", async () => {
+    const seen: string[] = [];
+    const organizations = [
+      organizationRow(DEFAULT_SESSION),
+      organizationRow(other),
+    ];
+    mockApi(
+      ...sessionHandlers(DEFAULT_SESSION, {
+        current: "gone",
+        organizations,
+        seen,
+      }),
+    );
+    expect(await loadSession()).toEqual({
+      kind: "choose-organization",
+      organizations,
+    });
+    expect(seen.some((call) => call.startsWith("POST"))).toBe(false);
+  });
+
+  it.each([
+    [403, "forbidden"],
+    [500, "server"],
+  ])("rejects with the set call's own ApiError, request id included, when set answers %i", async (status, kind) => {
+    mockApi(
+      http.post("/api/v1/organization/:id/set", () =>
+        HttpResponse.json({}, { status }),
+      ),
+      ...sessionHandlers(DEFAULT_SESSION),
+    );
+    const error = await loadSession().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      kind,
+      status,
+      requestId: expect.any(String),
     });
   });
 

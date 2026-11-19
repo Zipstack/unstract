@@ -70,8 +70,8 @@ await user.click(screen.getByRole("button", { name: "Add" }));
 **`session`** (default `DEFAULT_SESSION`; `makeSession()` builds others) is
 what `useSession()` gives, and its organisation is the one services call.
 `null` renders as a guest: `useSession()` throws and no organisation is set.
-The organisation's URL name is its id, as in OSS; `toV1Session()` gives the
-session a fixture renders as. `test/fixtures/session.ts` answers the session
+Route with the organisation's `urlName`, which differs from its id;
+`toV1Session()` gives the session a fixture renders as. `test/fixtures/session.ts` answers the session
 load itself (`sessionHandlers(session, options)`, `guestHandlers()`), for
 tests of `RouteGate` and the pages it guards.
 

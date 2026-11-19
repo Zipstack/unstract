@@ -18,7 +18,7 @@ export type PluginErrorReporter = (
 export interface SlotComponentProps<K extends SlotId> {
   id: K;
   props: SlotProps[K];
-  /** Shown when no plugin fills the slot, and if it fails; also while it loads unless `loading` is set. */
+  /** Shown when no plugin fills the slot; also while it loads or after it fails, unless `loading` or `failed` is set. */
   fallback: ReactNode;
   /** Shown while the filler loads, when the fallback must not flash first (a gate). */
   loading?: ReactNode;

@@ -118,6 +118,15 @@ function pickOrganization(
   return current ?? (organizations.length === 1 ? organizations[0] : undefined);
 }
 
+// A refused set shows the request's own error, with its request id, not a wrapped one.
+async function setOrganization(id: string, signal?: AbortSignal) {
+  try {
+    await switchOrganization(id, { signal });
+  } catch (error) {
+    throw error instanceof OrganizationError ? (error.cause ?? error) : error;
+  }
+}
+
 async function listOrEnd(signal?: AbortSignal) {
   try {
     return await listOrganizations({ signal });
@@ -156,7 +165,7 @@ export async function loadSession({
   if (!org) {
     return { kind: "choose-organization", organizations };
   }
-  await switchOrganization(org.id, { signal });
+  await setOrganization(org.id, signal);
   const profile = await getProfile(org.id, signal);
   return {
     kind: "signed-in",

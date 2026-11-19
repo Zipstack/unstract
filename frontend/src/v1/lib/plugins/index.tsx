@@ -23,6 +23,7 @@ export {
   type SlotComponentProps,
 } from "./Slot";
 export type * from "./types";
+export { GATE_SLOT_IDS } from "./types";
 
 type SlotRenderer = ReturnType<typeof makeSlot>;
 

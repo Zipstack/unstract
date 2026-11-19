@@ -231,9 +231,11 @@ organisation services call, the old-version user, and the analytics identity.
   A route whose pattern has `:orgName` also needs that organisation current;
   otherwise it goes to `/landing`, where v0 opens the current organisation's
   home (a v1 organisation picker comes with P2-T08). A user with several
-  organisations and none current goes to v0's picker, `/setOrg`. A 412 on the list (the
-  session was ended) goes to v0's `/error` page when the reply names its
-  cause, else to `/landing`.
+  organisations and none current goes to v0's picker, `/setOrg`. v0 shows it
+  only when the session names no organisation, so a user whose session still
+  names one they have left gets v0's reload loop, as on any v0 page, until
+  P2-T08's v1 picker. A 412 on the list (the session was ended) goes to v0's
+  `/error` page when the reply names its cause, else to `/landing`.
 - Cloud's entitlement gates (product onboarding, subscription, trial) fill
   the `route.entitlement` slot, which wraps every signed-in page; OSS and
   on-prem leave it empty, so the page renders. While a gate's plugin loads the
@@ -283,7 +285,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 
 - `types.ts` names every slot and its props. Adding a slot is one line there.
 - A plugin is `plugins/<id>/manifest.ts` exporting `manifest` (`satisfies PluginManifest`), with `distributions` (`cloud`, `onprem`) and lazy `slots` and `routes`. The folder name is the id. A manifest may only `import type`: the build check loads it without bundling.
-- `<Slot id props fallback />` shows the fallback when no plugin fills the slot, silently. While a filler loads it shows `loading` if given, else the fallback; a route gate passes `loading` so the page does not show before the gate decides. A filler that fails to load or render shows the fallback, is logged and raises an error notification; each slot has its own error boundary. A failed load is reported once per slot until a load succeeds, and the slot waits 30 seconds (`SLOT_RETRY_MS`) before fetching the chunk again. A render error is reported each time a boundary catches one.
+- `<Slot id props fallback />` shows the fallback when no plugin fills the slot, silently. While a filler loads it shows `loading` if given, else the fallback; a route gate passes `loading` so the page does not show before the gate decides. A filler that fails to load or render shows `failed` if given, else the fallback (a route gate passes `failed`, so it never fails open), and is logged; outside a route gate, which shows its own alert, it also raises an error notification; each slot has its own error boundary. A failed load is reported once per slot until a load succeeds, and the slot waits 30 seconds (`SLOT_RETRY_MS`) before fetching the chunk again. A render error is reported each time a boundary catches one.
 - `VITE_DISTRIBUTION` (`oss`, the default, `cloud` or `onprem`) picks the plugins the build offers. The frontend Dockerfile takes it as a build arg in both the `development` and `builder` stages, and `vite build` fails on any other value.
 - Every build runs `scripts/v1-plugins.mjs`. It fails on a slot filled twice, two routes the router would match for the same URL (by two plugins, or by a plugin and a page in the v1 route registry, demo pages included; params, case and a final `*` count, via the registry's `patternsOverlap`) or a plugin with no distribution in any distribution, naming both owners. It writes `plugin-matrix.json` to the build output: the build's `distribution` and the plugins this build carries. The cloud overlay removes plugins outside the target distribution first, so the matrix of an OSS image is empty. `node scripts/v1-plugins.mjs` prints the matrix.
 - `plugin-matrix.json` also has `distributions` (for `oss`, `cloud` and `onprem`, the ids among this build's manifests) and `plugins` (each one's distributions, slots and routes). In a built image only `distributions[distribution]` is meaningful: the overlay has already removed the other distributions' plugins.

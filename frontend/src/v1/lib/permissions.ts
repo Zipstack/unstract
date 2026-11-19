@@ -60,7 +60,8 @@ const allows = (capabilities: Capabilities, key: CapabilityKey): boolean =>
 /** Whether the organisation's capability settings let the user create `key`, e.g. `create_connectors`. */
 export function canCreate(
   capabilities: Capabilities,
-  key: CapabilityKey,
+  // Delete also needs ownership: use canDeleteWorkflowOrDeployment.
+  key: Exclude<CapabilityKey, "delete_workflows_and_deployments">,
 ): boolean {
   return allows(capabilities, key);
 }

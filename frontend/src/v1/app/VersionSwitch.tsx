@@ -51,7 +51,7 @@ function toUserId(userId: string | number | null | undefined): string | null {
     : String(userId);
 }
 
-/** The signed-in user's old-version choice; null while unknown. */
+/** The signed-in user's old-version choice. */
 function useOldVersionChoice(user: string | null): boolean | null {
   const storeUser = useOldVersionStore((s) => s.userId);
   const storedChoice = useOldVersionStore((s) => s.oldVersion);

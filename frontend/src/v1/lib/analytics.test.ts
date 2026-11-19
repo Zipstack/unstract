@@ -75,14 +75,22 @@ describe("analytics", () => {
     expect(posthog.identify).not.toHaveBeenCalled();
   });
 
-  it("only logs a failing call, so analytics never breaks a page", () => {
+  it.each([
+    ["register", () => registerUiVersion("v1")],
+    ["identify", () => identifyUser(cloud)],
+  ] as const)("only logs a failing %s, so analytics never breaks a page", (method, call) => {
     const logged = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
-    posthog.register.mockImplementation(() => {
-      throw new Error("posthog broke");
+    const broke = new Error("posthog broke");
+    posthog[method].mockImplementation(() => {
+      throw broke;
     });
-    expect(() => registerUiVersion("v1")).not.toThrow();
+    expect(call).not.toThrow();
     expect(logged).toHaveBeenCalledTimes(1);
+    expect(logged).toHaveBeenCalledWith(
+      `[v1 analytics] ${method} failed`,
+      broke,
+    );
   });
 });

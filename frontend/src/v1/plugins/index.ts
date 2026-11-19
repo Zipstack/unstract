@@ -12,11 +12,13 @@ import { notify } from "@v1/lib/notify";
 import {
   buildRegistry,
   type Distribution,
+  GATE_SLOT_IDS,
   makeSlot,
   type PluginErrorReporter,
   type PluginManifest,
   type PluginRegistry,
   type RouteEntry,
+  type SlotId,
 } from "@v1/lib/plugins";
 
 function currentDistribution(): Distribution {
@@ -59,9 +61,15 @@ export function pluginRegistry(
 
 export const registry = pluginRegistry(manifests, currentDistribution());
 
-/** Logs the failure and raises one error notification per plugin slot. */
+const isGate = (slot: SlotId): boolean =>
+  (GATE_SLOT_IDS as readonly SlotId[]).includes(slot);
+
+/** Logs the failure and raises one error notification per plugin slot; a route gate shows its own alert instead. */
 export const reportPluginError: PluginErrorReporter = (owner, slot, error) => {
   console.error(`v1 plugin ${owner} failed in slot ${slot}`, error);
+  if (isGate(slot)) {
+    return;
+  }
   notify({
     kind: "error",
     title: "Part of this page could not load.",
