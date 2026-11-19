@@ -87,7 +87,7 @@ def _post(body):
 
 
 def _authed():
-    req = APIRequestFactory().get("/agent-kv/x")
+    req = APIRequestFactory().get("/api/v1/agentic-extract/x")
     req.META["HTTP_AUTHORIZATION"] = "Bearer 123e4567-e89b-12d3-a456-426614174001"
     return req
 

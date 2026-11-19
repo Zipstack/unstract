@@ -17,7 +17,7 @@ from agent_kv.models import AgentKVKey  # noqa: E402
 from agent_kv.tests._factories import kv_key  # noqa: E402
 
 
-def _authed(method="post", path="/agent-kv/validate", data=None):
+def _authed(method="post", path="/api/v1/agentic-extract/validate", data=None):
     if data is None:
         data = {}
     req = getattr(APIRequestFactory(), method)(
@@ -94,7 +94,7 @@ def test_validate_invalid_schema_returns_error(m_keys, m_rate):
 # (3) No key (no Authorization header) -> 403 Forbidden
 # ---------------------------------------------------------------------------
 def test_validate_no_key_returns_403():
-    req = APIRequestFactory().post("/agent-kv/validate", data={})
+    req = APIRequestFactory().post("/api/v1/agentic-extract/validate", data={})
     resp = ev.ValidateView.as_view()(req)
     assert resp.status_code == 403
 
