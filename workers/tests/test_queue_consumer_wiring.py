@@ -52,6 +52,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEV_COMPOSE = REPO_ROOT / "docker" / "docker-compose.yaml"
 TEST_COMPOSE = REPO_ROOT / "tests" / "compose" / "docker-compose.test.yaml"
 RUN_WORKER = REPO_ROOT / "workers" / "run-worker.sh"
+DEV_ENV_SAMPLE = REPO_ROOT / "docker" / "sample.env"
 
 # The queue the `kv` extractor WOULD dispatch onto, and which this deployment
 # deliberately does not serve: the `agentic_kv` plugin ships on a separate PR.
@@ -264,10 +265,12 @@ def test_run_worker_pg_ide_callback_role_drains_the_callback_queue():
 # cannot serve it.
 #
 # The Agent-KV API is mounted under `AGENT_KV_PATH_PREFIX`, which defaults to
-# `api/v1/agent-kv` -- inside the `/api/v1` prefix traefik already routes to
-# the backend. It used to sit at `/agent-kv`, needing its own term in BOTH the
-# backend rule and the frontend's negation of it; miss either and every
-# request was served by the SPA's nginx and never reached Django. The e2e lane
+# `api/v1/agentic-extract` -- inside the `/api/v1` prefix traefik already routes
+# to the backend. It used to sit at TOP-LEVEL `/agent-kv`, outside `/api/v1`,
+# needing its own term in BOTH the backend rule and the frontend's negation of
+# it; miss either and every request was served by the SPA's nginx and never
+# reached Django. (That was a change of DEPTH, not the later rename of the last
+# segment -- the depth is what this suite is about.) The e2e lane
 # could not catch that, because it talks to `UNSTRACT_BACKEND_URL` directly
 # and bypasses traefik.
 #
@@ -291,19 +294,50 @@ def _router_rule(compose_path: Path, router: str) -> str:
     pytest.fail(f"no traefik rule for router {router!r} in {compose_path.name}")
 
 
-def test_agent_kv_rides_a_prefix_traefik_already_routes_to_the_backend():
-    """No dedicated `/agent-kv` term, because the prefix lives under one that
-    is already routed. If the prefix is ever moved back outside `/api/v1`,
-    both the backend rule and the frontend's negation need a term again --
-    and missing the second one is silent.
+def _agent_kv_prefix() -> str:
+    """`AGENT_KV_PATH_PREFIX` as the env sample ships it.
+
+    Read rather than restated. This is a workers-tier test with no Django
+    settings to import, and the obvious alternative -- hardcoding the current
+    prefix -- is what rotted the assertion below once already: the prefix was
+    renamed, the comment above was updated, and the literal was left behind
+    testing a string that could no longer appear. Reading the value means the
+    next rename needs no edit here. `backend/agent_kv/tests/test_path_prefix_guard.py`
+    is what ties this file's value to the shipped default.
     """
+    for line in DEV_ENV_SAMPLE.read_text().splitlines():
+        if line.startswith("AGENT_KV_PATH_PREFIX="):
+            # Strip the trailing alignment comment the way a dotenv parser
+            # does -- on WHITESPACE then `#`, not on a bare `#`. `VALUE#x`
+            # is not a comment at all; the remainder is the value.
+            return re.split(r"\s#", line.split("=", 1)[1], maxsplit=1)[0].strip()
+    pytest.fail(f"no AGENT_KV_PATH_PREFIX in {DEV_ENV_SAMPLE.name}")
+
+
+def test_agent_kv_rides_a_prefix_traefik_already_routes_to_the_backend():
+    """No dedicated term for the Agent-KV prefix, because it lives under one
+    that is already routed. If the prefix is ever moved back outside
+    `/api/v1`, both the backend rule and the frontend's negation need a term
+    again -- and missing the second one is silent.
+    """
+    prefix = _agent_kv_prefix()
     rule = _router_rule(DEV_COMPOSE, "backend")
 
-    assert "PathPrefix(`/api/v1`)" in rule, rule
-    assert "/agent-kv" not in rule, (
-        "a dedicated /agent-kv term is back in the traefik rule; either the "
-        "prefix moved out of /api/v1, or this term is now dead weight"
+    assert prefix.startswith("api/v1/"), (
+        f"AGENT_KV_PATH_PREFIX is {prefix!r}, outside `/api/v1`. The rule below "
+        "no longer covers it: both the backend rule and the frontend's negation "
+        "need a dedicated term, in BOTH values files, and this test needs "
+        "rewriting rather than patching."
     )
+    assert "PathPrefix(`/api/v1`)" in rule, rule
+    # The term that would reappear is the prefix's own last segment, so derive
+    # it. The old top-level name is checked too: a term for it would now be
+    # dead weight left behind by the rename.
+    for dedicated in (f"/{prefix.rsplit('/', 1)[-1]}", "/agent-kv"):
+        assert dedicated not in rule, (
+            f"a dedicated {dedicated} term is in the traefik rule; either the "
+            "prefix moved out of /api/v1, or this term is now dead weight"
+        )
 
 
 def test_every_backend_prefix_is_excluded_from_the_frontend():
