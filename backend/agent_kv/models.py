@@ -140,7 +140,7 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
     # other. See run_ttl_cleanup.
     cleanup_failed_at = models.DateTimeField(null=True, blank=True)
     # Set once this job's stored files have been destroyed on purpose: by an
-    # explicit `DELETE /agent-kv/{job_id}` or by the TTL sweep. One-way, and
+    # explicit `DELETE /api/v1/agentic-extract/{job_id}` or by the TTL sweep. One-way, and
     # written UNCONDITIONALLY by both of those paths -- before the deletes are
     # attempted, and regardless of whether any individual delete succeeded.
     #

@@ -2,5 +2,9 @@
   "v0.93.0": {
     "message": "A data migration is required to continue using the platform with your existing data.\nFor detailed instructions on how to perform this migration, please check:\n    `backend/migrating/v2/README.md`",
     "warning": true
+  },
+  "v0.205.0": {
+    "message": "The Agent-KV extraction API moved from `/api/v1/agent-kv/` to\n`/api/v1/agentic-extract/` (UN-4044). The old path is no longer served.\n\nThis only matters if your deployment carries the Agent-KV engine plugin\n(`backend/plugins/agent_kv/`, e.g. copied in by `copy_cloud_deps.py`).\nAn OSS-only stack refuses this API with a 501 either way and needs nothing.\n\nACTION, if it applies: your `backend/.env` keeps whatever\n`AGENT_KV_PATH_PREFIX` it already had -- this update preserves it -- so the\nbackend may still be serving the old path. Delete that line from\n`backend/.env` to take the new default. Edit `backend/.env`, not\n`docker/.env`, which the backend does not read.\n\nTo see which path your build serves, send one request with NO\nAuthorization header. Use the host your stack is actually fronted on --\nthe shipped Compose router only sends /api/v1 to the backend for\n`frontend.unstract.localhost`, so plain `localhost` returns a router 404\nwhichever prefix is live:\n    curl -s -o /dev/null -w '%{http_code}\\n' \\\n      http://frontend.unstract.localhost/api/v1/agentic-extract/00000000-0000-0000-0000-000000000000\n403 means that prefix is live. 401 means it is not, and you are on the old\none. 404 means you did not reach the backend at all -- check the host.\n\nCallers left on the old path get `401 Invalid or inactive API key`, which\nlooks like a bad credential and is a stale URL -- check the path before\nrotating any key. Full detail: docs/agent-kv-api.md section 11, item 12.",
+    "warning": true
   }
 }
