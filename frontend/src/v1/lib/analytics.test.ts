@@ -45,7 +45,7 @@ describe("analytics", () => {
     expect(posthog.identify).toHaveBeenCalledWith("ada@example.com", {
       org: "acme",
       software: "SAAS",
-      userId: 1,
+      userId: "1",
       email: "ada@example.com",
     });
     expect(posthog.register).toHaveBeenCalledWith({
@@ -63,7 +63,7 @@ describe("analytics", () => {
     identifyUser(session);
     expect(posthog.identify).toHaveBeenCalledWith(
       `${session.organization.id}:1`,
-      { org: session.organization.name, software, userId: 1 },
+      { org: session.organization.name, software, userId: "1" },
     );
   });
 
@@ -73,7 +73,7 @@ describe("analytics", () => {
     expect(posthog.identify).toHaveBeenCalledWith("org_abc:1", {
       org: "acme",
       software: "SAAS",
-      userId: 1,
+      userId: "1",
     });
   });
 

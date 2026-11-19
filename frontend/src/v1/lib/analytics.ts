@@ -51,8 +51,8 @@ export function identifyUser({ user, organization }: Session): void {
     posthog.identify(email || `${organization.id}:${user.id}`, {
       org: organization.name,
       software,
-      // A number, as v0 sends it, so a person's property keeps one type.
-      userId: Number(user.id),
+      // A string, as v0's set-organization reply gives it, so the property keeps one type.
+      userId: user.id,
       ...pii,
     });
     posthog.register({
