@@ -1,5 +1,5 @@
 import { paramNames, patternProblem, patternsOverlap } from "./patterns";
-import type { PageKey, RegistryEntry } from "./types";
+import { type PageKey, type RegistryEntry, ROUTE_ACCESS } from "./types";
 
 /** Pages allowed to honour the old-version preference: Human Review (D14) and its demo stand-in. */
 export const TOGGLE_PAGES: readonly PageKey[] = ["UN11", "DEMO-REVIEW"];
@@ -58,6 +58,16 @@ function checkShape(entry: RegistryEntry, problems: string[]): void {
   if (!entry.distributions.length) {
     problems.push(`${page}: ships in no distribution`);
   }
+  if (!ROUTE_ACCESS.includes(entry.access)) {
+    problems.push(`${page}: access must be one of ${ROUTE_ACCESS.join(", ")}`);
+  }
+}
+
+// As v0's RequireAdmin: on OSS every user is the default organisation's admin.
+function checkAdmin(entry: RegistryEntry, problems: string[]): void {
+  if (entry.access === "admin" && entry.distributions.includes("oss")) {
+    problems.push(`${entry.page}: an admin page cannot ship to oss`);
+  }
 }
 
 function checkToggle(entry: RegistryEntry, problems: string[]): void {
@@ -102,6 +112,7 @@ function checkCoverage(
 function checkEntry(entry: RegistryEntry, problems: string[]): void {
   const { v1Routes, replaces } = entry;
   checkShape(entry, problems);
+  checkAdmin(entry, problems);
   checkToggle(entry, problems);
   checkSamePageOverlap(entry, problems);
   checkMapping(entry, "toV1", replaces, v1Routes, problems);

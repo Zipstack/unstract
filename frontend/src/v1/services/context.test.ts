@@ -77,3 +77,42 @@ describe("session expiry", () => {
     cleanup();
   });
 });
+
+describe("whenSessionExpired", () => {
+  // The expired state lasts for the page load, so each test takes a fresh module.
+  async function freshContext() {
+    vi.resetModules();
+    return import("./context");
+  }
+
+  it("tells listeners when the session expires, and a later one at once", async () => {
+    const context = await freshContext();
+    vi.spyOn(window.location, "assign").mockImplementation(() => undefined);
+    const early = vi.fn();
+    const removed = vi.fn();
+    context.whenSessionExpired(early);
+    context.whenSessionExpired(removed)();
+    expect(early).not.toHaveBeenCalled();
+    context.expireSession();
+    expect(early).toHaveBeenCalledTimes(1);
+    expect(removed).not.toHaveBeenCalled();
+    const late = vi.fn();
+    context.whenSessionExpired(late);
+    expect(late).toHaveBeenCalledTimes(1);
+  });
+
+  it("still runs the handler when a listener throws", async () => {
+    const context = await freshContext();
+    const handler = vi.fn();
+    const logged = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    context.onSessionExpired(handler);
+    context.whenSessionExpired(() => {
+      throw new Error("listener broke");
+    });
+    context.expireSession();
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(logged).toHaveBeenCalledTimes(1);
+  });
+});

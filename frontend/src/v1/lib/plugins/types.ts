@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 
 /*
  * Plugin manifests import from here with `import type`, so the build check in
@@ -22,15 +22,34 @@ export const SLOT_IDS = [
   "platform.hitl-settings",
   "dashboard.subscription-usage",
   "dashboard.attention-items",
+  "route.entitlement",
+  "route.platform-admin",
 ] as const;
 export type SlotId = (typeof SLOT_IDS)[number];
+
+/**
+ * Route gates: the filler renders `children` (the page) when the
+ * user may see it, else its own screen. `route.entitlement` wraps every
+ * signed-in page (cloud: onboarding, subscription, trial); its fallback is the
+ * page. `route.platform-admin` wraps platform-admin pages; its fallback is
+ * the no-permission state.
+ */
+export const GATE_SLOT_IDS = [
+  "route.entitlement",
+  "route.platform-admin",
+] as const satisfies readonly SlotId[];
+export type GateSlotId = (typeof GATE_SLOT_IDS)[number];
+
+export type GateProps = Readonly<{ children: ReactNode }>;
 
 /*
  * The props a filler receives; the host passes them.
  * ponytail: props are empty until the host page that renders each slot is
  * built; that task adds the fields it passes.
  */
-export type SlotProps = { [K in SlotId]: Record<string, never> };
+export type SlotProps = {
+  [K in SlotId]: K extends GateSlotId ? GateProps : Record<string, never>;
+};
 
 export type ComponentLoader<P> = () => Promise<{ default: ComponentType<P> }>;
 

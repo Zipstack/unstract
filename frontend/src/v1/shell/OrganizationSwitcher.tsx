@@ -11,6 +11,7 @@ import {
   initial,
   landingPath,
   organizationInitials,
+  sessionEndedPath,
 } from "@v1/lib/organizations";
 import { getPortalContainer } from "@v1/lib/portal";
 import { ApiError } from "@v1/services/errors";
@@ -29,7 +30,6 @@ import { type ReactNode, useCallback, useRef, useState } from "react";
 // ponytail: one colour for every organisation avatar; the frames rotate five,
 // which have no tokens yet. Rotate again once the tokens include an avatar palette.
 const AVATAR_COLOUR = "ui:bg-primary-muted ui:text-primary";
-const SIGN_IN_PATH = "/landing";
 const PillIcon = SHELL_ICONS.orgSwitcher;
 const SearchIcon = SHELL_ICONS.search;
 const NextIcon = ACTION_ICONS.next;
@@ -43,24 +43,6 @@ export interface CurrentOrganization {
   displayName: string;
   /** The session's `org_switch_via_login`: switch by signing in again. */
   switchViaLogin?: boolean;
-}
-
-/**
- * Where an ended session sends the user. A known cause carries `code` and
- * `domain`, which v0's /error page explains (useSessionValid.js); signing in
- * again would only fail the same way. An empty body goes back to sign-in.
- * These are app routes, not API URLs, so they live here and not in services/.
- */
-export function sessionEndedPath(body: unknown): string {
-  const { code, domain } = (body ?? {}) as { code?: unknown; domain?: unknown };
-  if (typeof code !== "string" || code === "") {
-    return SIGN_IN_PATH;
-  }
-  const query = new URLSearchParams({ code });
-  if (typeof domain === "string" && domain !== "") {
-    query.set("domain", domain);
-  }
-  return `/error?${query}`;
 }
 
 // A 401 has already sent the page to sign in, so no error is shown.

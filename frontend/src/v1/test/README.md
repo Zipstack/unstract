@@ -67,12 +67,18 @@ await user.click(screen.getByRole("button", { name: "Add" }));
 
 `renderHookV1(hook, { initialProps, ...sameOptions })` does the same for hooks.
 
-**No `session` or `distribution` option yet.** No v1 code reads either, so an
-option that set one would reach nothing, and a test of an admin-only or
-cloud-only branch would pass without exercising it. `renderV1` throws if
-either is passed. Each comes back with the slot that reads it, when the
-session store or plugin registry lands (see the table below). `TestSession` /
-`makeSession` exist only as fixture data for network mocks (`apiPath`).
+**`session`** (default `DEFAULT_SESSION`; `makeSession()` builds others) is
+what `useSession()` gives, and its organisation is the one services call.
+`null` renders as a guest: `useSession()` throws and no organisation is set.
+Route with the organisation's `urlName`, which differs from its id;
+`toV1Session()` gives the session a fixture renders as. `test/fixtures/session.ts` answers the session
+load itself (`sessionHandlers(session, options)`, `guestHandlers()`), for
+tests of `RouteGate` and the pages it guards.
+
+**No `distribution` option yet.** No provider reads one, so an option that
+set it would reach nothing, and a test of a cloud-only branch would pass
+without exercising it. `renderV1` throws if it is passed. It comes back with
+the slot that reads it (see the table below).
 
 ### Providers, and swapping in the real ones
 
@@ -84,7 +90,7 @@ the app's own provider once its task has landed, and a stand-in until then:
 | query | **real**: the app's `createQueryClient()` (P0-T05, UN-4313) with test defaults, so failures are reported as in the app | — |
 | router | stand-in: `MemoryRouter` (+ `Routes` when `path` is set) | the app router in memory mode, with the route registry (P0-T03, UN-4271) |
 | theme | **real**: `app/theme/ThemeProvider` (P0-T04, #2399) | — |
-| session | none: no v1 code reads a session | the session store or provider, when it lands. Add `session` to `ProviderContext` and `RenderV1Options` with it |
+| session | **real**: `lib/session`'s `SessionProvider`, and `setOrganizationId()` | — |
 | distribution | none: no v1 code reads a distribution | the v1 plugin registry's distribution (UN-4285 / UN-4286). Add `distribution` the same way |
 
 To swap one, change its component in `PROVIDER_SLOTS`. It receives the
