@@ -34,7 +34,9 @@ type ProfileReply = Readonly<{
 /**
  * What a page load finds. `choose-organization`: signed in to several
  * organisations and none is current. `ended`: listing them answered 412,
- * which logs the session out; `body` may name the cause.
+ * which logs the session out; `body` may name the cause. `access-removed`:
+ * the session's organisation is no longer the user's. `no-organization`: the
+ * user belongs to none.
  */
 export type SessionLoad =
   | Readonly<{
@@ -47,9 +49,12 @@ export type SessionLoad =
       kind: "choose-organization";
       organizations: readonly Organization[];
     }>
-  | Readonly<{ kind: "ended"; body: unknown }>;
+  | Readonly<{ kind: "ended"; body: unknown }>
+  | Readonly<{ kind: "access-removed" }>
+  | Readonly<{ kind: "no-organization" }>;
 
 const GUEST: SessionLoad = { kind: "guest" };
+const ACCESS_REMOVED: SessionLoad = { kind: "access-removed" };
 
 /** Query keys: the session is one per browser, not per organisation. */
 export const sessionKeys = { current: () => ["session"] as const };
@@ -59,8 +64,10 @@ const sessionProbe = createHttpClient({ expiresSession: false });
 
 async function getSessionReply(signal?: AbortSignal) {
   try {
+    // A cache-buster, as v0 sends: a cached reply could show a signed-out user as signed in.
     const { data } = await sessionProbe.get<SessionReply>("/api/v1/session", {
       signal,
+      params: { q: Date.now() },
     });
     // A proxy or SPA fallback can answer 200 with some other body.
     if (typeof data?.id !== "number") {
@@ -118,13 +125,40 @@ function pickOrganization(
   return current ?? (organizations.length === 1 ? organizations[0] : undefined);
 }
 
-// A refused set shows the request's own error, with its request id, not a wrapped one.
-async function setOrganization(id: string, signal?: AbortSignal) {
-  try {
-    await switchOrganization(id, { signal });
-  } catch (error) {
-    throw error instanceof OrganizationError ? (error.cause ?? error) : error;
+// v0 shows its picker only when the session names no organisation.
+function withoutOrganization(
+  reply: SessionReply,
+  organizations: readonly Organization[],
+): SessionLoad {
+  if (organizations.length === 0) {
+    return { kind: "no-organization" };
   }
+  return reply.organization_id
+    ? ACCESS_REMOVED
+    : { kind: "choose-organization", organizations };
+}
+
+async function enterOrganization(
+  reply: SessionReply,
+  org: Organization,
+  organizations: readonly Organization[],
+  signal?: AbortSignal,
+): Promise<SessionLoad> {
+  try {
+    await switchOrganization(org.id, { signal });
+  } catch (error) {
+    // Its 403: the user lost the organisation after the list loaded.
+    if (error instanceof OrganizationError) {
+      return ACCESS_REMOVED;
+    }
+    throw error;
+  }
+  const profile = await getProfile(org.id, signal);
+  return {
+    kind: "signed-in",
+    session: toSession(reply, profile, org),
+    organizations,
+  };
 }
 
 async function listOrEnd(signal?: AbortSignal) {
@@ -156,22 +190,10 @@ export async function loadSession({
   if (!Array.isArray(organizations)) {
     return organizations;
   }
-  // v0 treats a user with no organisation as signed out.
-  if (organizations.length === 0) {
-    console.warn("[v1 session] the user belongs to no organisation");
-    return GUEST;
-  }
   const org = pickOrganization(reply, organizations);
-  if (!org) {
-    return { kind: "choose-organization", organizations };
-  }
-  await setOrganization(org.id, signal);
-  const profile = await getProfile(org.id, signal);
-  return {
-    kind: "signed-in",
-    session: toSession(reply, profile, org),
-    organizations,
-  };
+  return org
+    ? enterOrganization(reply, org, organizations, signal)
+    : withoutOrganization(reply, organizations);
 }
 
 /**

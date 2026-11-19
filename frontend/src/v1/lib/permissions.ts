@@ -8,7 +8,7 @@ import type { Session } from "./session";
 /** A shared resource; every shareable resource's serializer sends `is_owner`. */
 export type OwnedResource = Readonly<{ is_owner?: boolean }>;
 
-/** The capabilities an organisation admin can open to members (UN-4399). */
+/** The capabilities an organisation admin can open to members. */
 export type CapabilityKey =
   | "create_llm_adapters"
   | "create_connectors"

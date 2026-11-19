@@ -18,7 +18,7 @@ import { type TestSession, type ThemeMode, toV1Session } from "./session";
  *   query   real      app/query (P0-T05, UN-4313), with test defaults
  *   router  stand-in  P0-T03 router + registry (UN-4271) → the app's router, in memory
  *   theme   real      app/theme/ThemeProvider (P0-T04, #2399)
- *   session real      lib/session's SessionProvider (P0-T06, UN-4314) and the org services/ use
+ *   session real      lib/session's SessionProvider and the org services/ use
  *
  * Swap a slot by changing its entry in PROVIDER_SLOTS (and, if it holds
  * global state, prepareProviders / resetProviders); renderV1 and every test

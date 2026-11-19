@@ -89,7 +89,7 @@ describe("loadSession", () => {
     });
   });
 
-  it("asks the user to choose when the session's organisation is gone and several remain", async () => {
+  it("reports access removed, setting none, when the session's organisation is gone and several remain", async () => {
     const seen: string[] = [];
     const organizations = [
       organizationRow(DEFAULT_SESSION),
@@ -102,36 +102,55 @@ describe("loadSession", () => {
         seen,
       }),
     );
-    expect(await loadSession()).toEqual({
-      kind: "choose-organization",
-      organizations,
-    });
+    expect(await loadSession()).toEqual({ kind: "access-removed" });
     expect(seen.some((call) => call.startsWith("POST"))).toBe(false);
   });
 
-  it.each([
-    [403, "forbidden"],
-    [500, "server"],
-  ])("rejects with the set call's own ApiError, request id included, when set answers %i", async (status, kind) => {
+  it("reports access removed when the set call answers 403", async () => {
     mockApi(
       http.post("/api/v1/organization/:id/set", () =>
-        HttpResponse.json({}, { status }),
+        HttpResponse.json({}, { status: 403 }),
+      ),
+      ...sessionHandlers(DEFAULT_SESSION),
+    );
+    expect(await loadSession()).toEqual({ kind: "access-removed" });
+  });
+
+  it("rejects with the set call's own ApiError, request id included, when set fails", async () => {
+    mockApi(
+      http.post("/api/v1/organization/:id/set", () =>
+        HttpResponse.json({}, { status: 500 }),
       ),
       ...sessionHandlers(DEFAULT_SESSION),
     );
     const error = await loadSession().catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({
-      kind,
-      status,
+      kind: "server",
+      status: 500,
       requestId: expect.any(String),
     });
   });
 
-  it("treats a user with no organisation as signed out, as v0 does", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  it("reports a user with no organisation, rather than signing them out", async () => {
     mockApi(...sessionHandlers(DEFAULT_SESSION, { organizations: [] }));
-    expect(await loadSession()).toEqual({ kind: "guest" });
+    expect(await loadSession()).toEqual({ kind: "no-organization" });
+  });
+
+  it("sends the session probe a cache-buster each time, as v0 does", async () => {
+    const busters: (string | null)[] = [];
+    mockApi(
+      http.get("/api/v1/session", ({ request }) => {
+        busters.push(new URL(request.url).searchParams.get("q"));
+        return HttpResponse.json({}, { status: 401 });
+      }),
+    );
+    await loadSession();
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    await loadSession();
+    expect(busters).toHaveLength(2);
+    expect(busters[0]).toMatch(/^\d+$/);
+    expect(busters[1]).not.toBe(busters[0]);
   });
 
   it("reports an ended session (412) with its cause", async () => {

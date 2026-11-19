@@ -194,7 +194,10 @@ describe("RouteGate", () => {
     expect(state).toEqual(organizations);
   });
 
-  it("sends an ended session (412) to v0's error page with its cause", async () => {
+  it("sends an ended session (412) to v0's error page with its cause, by a full load", async () => {
+    const assign = vi
+      .spyOn(window.location, "assign")
+      .mockImplementation(() => undefined);
     mockApi(
       http.get("/api/v1/organization", () =>
         HttpResponse.json({ code: "USR", domain: "acme.com" }, { status: 412 }),
@@ -202,7 +205,36 @@ describe("RouteGate", () => {
       ...sessionHandlers(member),
     );
     renderGate("authenticated");
-    expect((await landed()).at).toBe("/error?code=USR&domain=acme.com");
+    await vi.waitFor(() =>
+      expect(assign).toHaveBeenCalledWith("/error?code=USR&domain=acme.com"),
+    );
+  });
+
+  it.each([
+    [
+      "the session's organisation is gone and several remain",
+      { current: "gone" },
+      "You no longer have access to this organisation.",
+    ],
+    [
+      "the user belongs to no organisation",
+      { organizations: [] },
+      "Your account does not belong to any organisation.",
+    ],
+  ])("offers sign-out when %s", async (_, options, message) => {
+    const organizations = [
+      organizationRow(member),
+      organizationRow(
+        makeSession({ organization: { id: "org-2", urlName: "other" } }),
+      ),
+    ];
+    mockApi(...sessionHandlers(member, { organizations, ...options }));
+    renderGate("authenticated");
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Sign out" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("where")).not.toBeInTheDocument();
   });
 
   it("renders a guest page for a guest, and sends a signed-in user into the app", async () => {

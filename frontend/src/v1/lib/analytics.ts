@@ -44,13 +44,15 @@ export function identifyUser({ user, organization }: Session): void {
   const isOpenSource = organization.name === OSS_ORGANIZATION;
   const software = isOpenSource ? "OSS" : "SAAS";
   const canSendPii = SAAS_HOSTS.has(window.location.hostname) && !isOpenSource;
-  const distinctId = canSendPii ? user.email : `${organization.id}:${user.id}`;
-  const pii = canSendPii ? { email: user.email } : {};
+  const email = canSendPii ? user.email : "";
+  const pii = email ? { email } : {};
   capture("identify", () => {
-    posthog.identify(distinctId, {
+    // Without an email, the org-scoped id, so people never share an empty one.
+    posthog.identify(email || `${organization.id}:${user.id}`, {
       org: organization.name,
       software,
-      userId: user.id,
+      // A number, as v0 sends it, so a person's property keeps one type.
+      userId: Number(user.id),
       ...pii,
     });
     posthog.register({

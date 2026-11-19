@@ -1,7 +1,7 @@
 /*
- * Loads the session once per page load and guards every v1 page with it
- * (UN-4314). v1 shares v0's cookies, so a user signed in on v0 is signed in
- * here too. Sign-in, organisation selection and the error page are still v0's.
+ * Loads the session once per page load and guards every v1 page with it.
+ * v1 shares v0's cookies, so a user signed in on v0 is signed in here too.
+ * Sign-in, organisation selection and the error page are still v0's.
  */
 import { type UseQueryResult, useQuery } from "@tanstack/react-query";
 import type { RouteAccess } from "@v1/app/registry/types";
@@ -18,9 +18,10 @@ import {
   loadSession,
   type SessionLoad,
   sessionKeys,
+  signOutAndLeave,
 } from "@v1/services/session";
 import { useOldVersionStore } from "@v1/stores/oldVersion";
-import { type JSX, type ReactNode, Suspense } from "react";
+import { type JSX, type ReactNode, Suspense, useEffect } from "react";
 import { Navigate, useLocation, useParams } from "react-router-dom";
 import { type GuardDecision, guardRoute } from "./guard";
 
@@ -172,23 +173,60 @@ function Decided({ decision, load, children }: Outcome): ReactNode {
   );
 }
 
+// A full load, so no cached session outlives the page it leaves for.
+function Leave({ to }: Readonly<{ to: string }>): JSX.Element {
+  useEffect(() => {
+    window.location.assign(to);
+  }, [to]);
+  return LOADING;
+}
+
+const NO_ACCESS = {
+  "access-removed": "You no longer have access to this organisation.",
+  "no-organization": "Your account does not belong to any organisation.",
+} as const;
+
+/** Signed in with no organisation to enter: signing in again starts afresh. */
+function NoAccess({ kind }: Readonly<{ kind: keyof typeof NO_ACCESS }>) {
+  return (
+    <div className="ui:p-6">
+      <InlineAlert
+        title={NO_ACCESS[kind]}
+        onRetry={() => void signOutAndLeave()}
+        retryLabel="Sign out"
+      />
+    </div>
+  );
+}
+
+type Stop = Exclude<SessionLoad, Readonly<{ kind: "signed-in" | "guest" }>>;
+
+/** A load that stops before any page. */
+function Stopped({ load }: Readonly<{ load: Stop }>): JSX.Element {
+  switch (load.kind) {
+    case "ended":
+      return <Leave to={sessionEndedPath(load.body)} />;
+    case "choose-organization":
+      return (
+        <Navigate
+          to={CHOOSE_ORGANIZATION_PATH}
+          state={load.organizations}
+          replace
+        />
+      );
+    default:
+      return <NoAccess kind={load.kind} />;
+  }
+}
+
 function Guarded({
   access,
   load,
   children,
 }: Readonly<{ access: RouteAccess; load: SessionLoad; children: ReactNode }>) {
   const urlOrganization = useParams().orgName;
-  if (load.kind === "ended") {
-    return <Navigate to={sessionEndedPath(load.body)} replace />;
-  }
-  if (load.kind === "choose-organization") {
-    return (
-      <Navigate
-        to={CHOOSE_ORGANIZATION_PATH}
-        state={load.organizations}
-        replace
-      />
-    );
+  if (load.kind !== "signed-in" && load.kind !== "guest") {
+    return <Stopped load={load} />;
   }
   const session = load.kind === "signed-in" ? load.session : null;
   const decision = guardRoute({ access, session, urlOrganization });

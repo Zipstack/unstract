@@ -1,5 +1,5 @@
 /**
- * P0-T06: v1's own session and guards (UN-4314), on P0-T03's demo page.
+ * v1's own session and guards, on the demo page.
  *
  * v1 loads the session from v0's cookies, so a user signed in on v0 opens a
  * v1 page without signing in again. A session that ends while a v1 page is
@@ -23,7 +23,7 @@ async function expectOnSignIn(page: Page): Promise<void> {
   await expect(page.getByTestId("v1-demo")).toHaveCount(0);
 }
 
-test.describe("P0-T06 session: signed in on v0", { tag: DIST.all }, () => {
+test.describe("session: signed in on v0", { tag: DIST.all }, () => {
   test("opens the v1 demo page without signing in again", async ({
     page,
     app,
@@ -58,7 +58,7 @@ test.describe("P0-T06 session: signed in on v0", { tag: DIST.all }, () => {
   });
 });
 
-test.describe("P0-T06 session: ended", { tag: DIST.oss }, () => {
+test.describe("session: ended", { tag: DIST.oss }, () => {
   test("a session that expires on a v1 page lands on sign-in", async ({
     page,
     context,

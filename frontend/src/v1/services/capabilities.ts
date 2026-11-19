@@ -3,7 +3,7 @@ import type { Capability } from "@v1/lib/permissions";
 import { currentOrganizationId } from "./context";
 import { http, orgPath, type RequestOptions } from "./http";
 
-/* What the organisation's capability settings let the signed-in user do (UN-4399). */
+/* What the organisation's capability settings let the signed-in user do. */
 
 /** `GET /api/v1/unstract/<org>/organization/capabilities/`. */
 export async function listCapabilities({

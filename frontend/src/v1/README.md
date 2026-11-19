@@ -207,55 +207,20 @@ only when a v1 page first renders.
 
 ## Session and guards
 
-`V1App` loads the session once per page load (`app/session/RouteGate.tsx`,
-`loadSession()` in `services/session.ts`), with the calls v0's
-`useSessionValid` makes: `GET /api/v1/session` (a 401 there means signed out),
-the organisation list, then the profile. Like v0 it sets the organisation on
-every load (the session's if the user is still in it, else their only one),
-which also syncs the member's role from the identity provider. v1 shares v0's
-cookies, so switching version never asks for a login. Once loaded it sets the
-organisation services call, the old-version user, and the analytics identity.
+`V1App` loads the session once per page load and guards each page with it
+(`app/session/`). v1 shares v0's cookies, so switching version never asks for
+a login.
 
-- Read it with `useSession()` from `@v1/lib/session`: `user` (`id`, `email`,
-  `name`, `role`, `isAdmin`, `isStaff`) and `organization` (`id`, URL `name`,
-  `displayName`, `switchViaLogin`). A guest-only page has none.
+- Read it with `useSession()` from `@v1/lib/session`; a guest-only page has
+  none.
 - Each registry entry's `access` picks its guard (`app/session/guard.ts`):
-
-  | `access` | Allows | Otherwise |
-  | --- | --- | --- |
-  | `guest` | No session | `/landing`, where v0 opens the user's home |
-  | `authenticated` | A session | `/landing`, with the URL in `state.from` |
-  | `admin` | Organisation admins | `NoPermission` (`components/patterns/`) |
-  | `platform-admin` | What the cloud `route.platform-admin` slot allows | `NoPermission`, in OSS always |
-
-  A route whose pattern has `:orgName` also needs that organisation current;
-  otherwise it goes to `/landing`, where v0 opens the current organisation's
-  home (a v1 organisation picker comes with P2-T08). A user with several
-  organisations and none current goes to v0's picker, `/setOrg`. v0 shows it
-  only when the session names no organisation, so a user whose session still
-  names one they have left gets v0's reload loop, as on any v0 page, until
-  P2-T08's v1 picker. A 412 on the list (the session was ended) goes to v0's
-  `/error` page when the reply names its cause, else to `/landing`.
-- Cloud's entitlement gates (product onboarding, subscription, trial) fill
-  the `route.entitlement` slot, which wraps every signed-in page; OSS and
-  on-prem leave it empty, so the page renders. While a gate's plugin loads the
-  page waits, and a gate whose plugin fails stays closed. The page has its
-  own error boundary inside the gates, so its errors are never reported as
-  the plugin's.
-- A 401 on any later call signs out with the POST logout
-  (`signOutAndLeave()`; after 5 seconds without an answer, the GET) and
-  lands where v0's logout does. `whenSessionExpired()`
-  (`services/context.ts`) lets code about to act on the page stand down.
-- Permissions (`lib/permissions.ts`): `isAdmin`, `isOwner`, `canEdit`,
-  `canDelete`, `canShare` (owners and admins), `canCreate` from the
-  organisation's capability settings (`capabilityQueries` in
-  `services/capabilities.ts`), and `canDeleteWorkflowOrDeployment`, which
-  also needs the delete capability. A page removes what the user may not do;
-  it never shows it disabled.
-- Analytics: v0's tracker records page views for v1 URLs too. The version
-  switch tags every event with `ui_version` (`v0` or `v1`), and v1 events use
-  v0's names (`lib/analytics.ts`). v1 identifies the user as v0 does, but
-  leaves the person's name to v0.
+  `guest`, `authenticated`, `admin` or `platform-admin` (cloud's
+  `route.platform-admin` slot decides; OSS denies it). A route with
+  `:orgName` also needs that organisation to be current.
+- Cloud's entitlement gates fill the `route.entitlement` slot around every
+  signed-in page.
+- Permissions come from `lib/permissions.ts`. A page removes what the user
+  may not do; it never shows it disabled.
 
 ## Folders and what each may import
 
@@ -281,7 +246,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 
 ## Plugins
 
-`lib/plugins/` is the extension-point contract. Pages and the shell import `Slot` from `@v1/lib/plugins`. `plugins/index.ts` builds the registry from the manifests and exports `PluginSlot` and `pluginRoutes()`. `V1App` wraps the v1 tree in `PluginProvider` with `PluginSlot`; nothing adds `pluginRoutes()` to the v1 router yet (the v1 shell, P2-T01). With no provider, as in unit tests, every slot shows its fallback.
+`lib/plugins/` is the extension-point contract. Pages and the shell import `Slot` from `@v1/lib/plugins`. `plugins/index.ts` builds the registry from the manifests and exports `PluginSlot` and `pluginRoutes()`. `V1App` wraps the v1 tree in `PluginProvider` with `PluginSlot`; nothing adds `pluginRoutes()` to the v1 router yet (the v1 shell). With no provider, as in unit tests, every slot shows its fallback.
 
 - `types.ts` names every slot and its props. Adding a slot is one line there.
 - A plugin is `plugins/<id>/manifest.ts` exporting `manifest` (`satisfies PluginManifest`), with `distributions` (`cloud`, `onprem`) and lazy `slots` and `routes`. The folder name is the id. A manifest may only `import type`: the build check loads it without bundling.

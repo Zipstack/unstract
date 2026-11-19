@@ -28,7 +28,7 @@ export const SLOT_IDS = [
 export type SlotId = (typeof SLOT_IDS)[number];
 
 /**
- * Route gates (UN-4314): the filler renders `children` (the page) when the
+ * Route gates: the filler renders `children` (the page) when the
  * user may see it, else its own screen. `route.entitlement` wraps every
  * signed-in page (cloud: onboarding, subscription, trial); its fallback is the
  * page. `route.platform-admin` wraps platform-admin pages; its fallback is

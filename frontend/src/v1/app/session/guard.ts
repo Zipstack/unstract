@@ -3,8 +3,7 @@ import type { Session } from "@v1/lib/session";
 
 /*
  * The route guards: v1's counterpart of v0's RequireAuth, RequireGuest and
- * RequireAdmin, with the rules in src/v1/README.md (Session and guards).
- * Pure, so the matrix is unit tested.
+ * RequireAdmin. Pure, so the matrix is unit tested.
  */
 
 export type GuardInput = Readonly<{

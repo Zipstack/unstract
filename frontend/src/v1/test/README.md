@@ -90,7 +90,7 @@ the app's own provider once its task has landed, and a stand-in until then:
 | query | **real**: the app's `createQueryClient()` (P0-T05, UN-4313) with test defaults, so failures are reported as in the app | — |
 | router | stand-in: `MemoryRouter` (+ `Routes` when `path` is set) | the app router in memory mode, with the route registry (P0-T03, UN-4271) |
 | theme | **real**: `app/theme/ThemeProvider` (P0-T04, #2399) | — |
-| session | **real**: `lib/session`'s `SessionProvider` (P0-T06, UN-4314), and `setOrganizationId()` | — |
+| session | **real**: `lib/session`'s `SessionProvider`, and `setOrganizationId()` | — |
 | distribution | none: no v1 code reads a distribution | the v1 plugin registry's distribution (UN-4285 / UN-4286). Add `distribution` the same way |
 
 To swap one, change its component in `PROVIDER_SLOTS`. It receives the

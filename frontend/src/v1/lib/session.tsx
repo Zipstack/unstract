@@ -1,5 +1,5 @@
 /*
- * The signed-in session v1 renders with (UN-4314). `V1App` loads it once per
+ * The signed-in session. `V1App` loads it once per
  * page load and provides it to every page that is not guest-only; read it
  * with `useSession()`.
  */

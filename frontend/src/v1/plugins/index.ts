@@ -3,7 +3,7 @@
  * as `plugins/<id>/manifest.ts`. An absent plugin has no manifest, so its
  * slots show their fallbacks; a filler that fails to load or render is
  * reported. `V1App` provides `PluginSlot`; nothing adds `pluginRoutes()` to
- * the v1 router yet (the v1 shell, P2-T01).
+ * the v1 router yet (the v1 shell).
  */
 import { DEMO_PAGES, PAGES } from "@v1/app/registry/entries";
 import { patternProblem, patternsOverlap } from "@v1/app/registry/patterns";
