@@ -63,6 +63,13 @@ function checkShape(entry: RegistryEntry, problems: string[]): void {
   }
 }
 
+// As v0's RequireAdmin: on OSS every user is the default organisation's admin.
+function checkAdmin(entry: RegistryEntry, problems: string[]): void {
+  if (entry.access === "admin" && entry.distributions.includes("oss")) {
+    problems.push(`${entry.page}: an admin page cannot ship to oss`);
+  }
+}
+
 function checkToggle(entry: RegistryEntry, problems: string[]): void {
   if (entry.toggle && !TOGGLE_PAGES.includes(entry.page)) {
     problems.push(
@@ -105,6 +112,7 @@ function checkCoverage(
 function checkEntry(entry: RegistryEntry, problems: string[]): void {
   const { v1Routes, replaces } = entry;
   checkShape(entry, problems);
+  checkAdmin(entry, problems);
   checkToggle(entry, problems);
   checkSamePageOverlap(entry, problems);
   checkMapping(entry, "toV1", replaces, v1Routes, problems);

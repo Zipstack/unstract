@@ -178,6 +178,16 @@ describe("registryProblems", () => {
     }
   });
 
+  it("rejects an admin page that ships to OSS, as v0 hides admin pages there", () => {
+    const admin: RegistryEntry = { ...base, access: "admin" };
+    expect(
+      problemsOf({ ...admin, distributions: ["oss", "cloud", "onprem"] }),
+    ).toEqual(["UN05: an admin page cannot ship to oss"]);
+    expect(
+      problemsOf({ ...admin, distributions: ["cloud", "onprem"] }),
+    ).toEqual([]);
+  });
+
   it("rejects duplicates, empty routes or distributions, unknown access, and malformed patterns", () => {
     expect(problemsOf(base, base)).toContain("UN05: declared twice");
     expect(

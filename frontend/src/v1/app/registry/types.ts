@@ -51,7 +51,7 @@ export type RegistryEntry = Readonly<{
   v1Routes: readonly string[];
   /** The v0 route patterns this page takes over. */
   replaces: readonly string[];
-  /** Who may open it; a pattern with `:orgName` also needs that organisation current. */
+  /** Who may open it; a pattern with `:orgName` also needs that organisation current. An `admin` page cannot ship to `oss`. */
   access: RouteAccess;
   /**
    * v1 pattern -> the v0 pattern it maps back to; covers every v1 route. Used

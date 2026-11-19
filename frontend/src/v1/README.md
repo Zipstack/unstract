@@ -214,9 +214,9 @@ a login.
 - Read it with `useSession()` from `@v1/lib/session`; a guest-only page has
   none.
 - Each registry entry's `access` picks its guard (`app/session/guard.ts`):
-  `guest`, `authenticated`, `admin` or `platform-admin` (cloud's
-  `route.platform-admin` slot decides; OSS denies it). A route with
-  `:orgName` also needs that organisation to be current.
+  `guest`, `authenticated`, `admin` (not shipped to OSS, as in v0) or
+  `platform-admin` (cloud's `route.platform-admin` slot decides; OSS denies
+  it). A route with `:orgName` also needs that organisation to be current.
 - Cloud's entitlement gates fill the `route.entitlement` slot around every
   signed-in page.
 - Permissions come from `lib/permissions.ts`. A page removes what the user
