@@ -226,7 +226,9 @@ The request is **extractor-scoped**: a per-extractor schema and its knobs live i
 | `extractors` | yes | JSON array (file part or inline JSON string), one entry per extractor. Compiled synchronously; invalid ⇒ 400, nothing billed. |
 | `page_start`, `page_end` | no | 1-based inclusive range. **Job-level, not per-extractor**: the range drives the shared OCR pass and the page cap, so it cannot differ between extractors reading the same document. |
 | `timeout` | no | Omitted or `0` = pure async (immediate 202). `1–300`: the view polls the job row up to the deadline and returns the result inline if the job completes, else 202 with the job id. |
-| `tags`, `custom_data` | no | Echoed through. |
+| `tags` | no | Echoed through. |
+| `custom_data` | no | A JSON **object**, capped at `AGENT_KV_MAX_CUSTOM_DATA_BYTES` (20 KB). Echoed in the status document and in the terminal result (`{}` when absent), **and** substituted into instruction text as `{{custom_data.<path>}}` — see §3b. Arrays and scalars are a 400: a dotted path has no key to address on them. |
+| `hitl_queue_name` | no | Names a human-review queue; the completed extraction is pushed to it as well as being returned normally. `[A-Za-z0-9_-]`, 1–50 chars. 400 when `AGENT_KV_HITL_ENABLED` is off — refused rather than accepted and dropped. See §3c. |
 | `webhook_url` | no | Terminal-state POST `{job_id, status}` only — no result payload. **https, public host**; anything the delivery guard would refuse is a 400 at submit (§8). |
 
 **Each `extractors` entry:**
@@ -332,6 +334,8 @@ choice and LLM spend sit on your account**, per job.
 | `calculations` | Post-processing instructions; opt-in codegen. Disabled by default; enabled per deployment via `AGENT_KV_CALCULATIONS_ENABLED`. |
 | `document_class` | Free-text hint (as CLI). |
 | `key_notes` | Free-text notes appended to the prompt (as CLI). |
+| `enable_highlight` | Default **off**. Adds per-key highlight and confidence data to the result (§5). Requires an **LLMWhisperer** `x2text` adapter — any other is a 400 at submit naming the adapter. Gated by `AGENT_KV_HIGHLIGHT_ENABLED`. **Free on `kv`**: this extractor's OCR already requests the line metadata. |
+| `enable_word_confidence` | Default **off**. Per-word confidence. **Requires `enable_highlight`** — on its own it is a 400, not a silent force-off. |
 
 **`table` options:**
 
@@ -340,6 +344,8 @@ choice and LLM spend sit on your account**, per job.
 | `instructions` | Free-text extraction guidance handed to the engine. |
 | `json_structure` | Free-text description of the row structure to return. |
 | `enable_header_mapping` | Default **off**. **Changes the result shape** — see [§5](#5-result--get-apiv1agentic-extractjob_idresult). |
+| `enable_highlight` | Default **off**. Per-cell highlight and confidence data (§5). Same LLMWhisperer requirement and the same `AGENT_KV_HIGHLIGHT_ENABLED` gate as `kv`. **Not free on `table`**, unlike `kv`: this extractor's highlight path runs an LLM-based row-to-line validator on your `lite_llm` adapter, so it adds a call per page. |
+| `enable_word_confidence` | Default **off**. Requires `enable_highlight`. |
 | `correct_number_separators` | Default **off**. Re-reads thousands/decimal separators in numeric cells. |
 | `number_format` | `US` (default) \| `EU`. Which convention `correct_number_separators` assumes. |
 
@@ -389,6 +395,63 @@ Not exposed (D6): model choice, challenger model, `parallel_pages`, thinking bud
 - `timeout`'s upper bound is not the literal `300` in the spec prose — it's
   `AGENT_KV_MAX_TIMEOUT_SECONDS` (default `300`, but deployment-configurable).
 
+### 3b. `{{custom_data.<path>}}` — substituted at submit
+
+`custom_data` is not only echoed: any `{{custom_data.<path>}}` in your
+instruction text is replaced with the value at that dotted path before the job
+is dispatched.
+
+Where substitution applies:
+
+| Field | Extractor |
+|---|---|
+| a key's `description` (anywhere in `keys`, at any depth) | `kv` |
+| `options.key_notes`, `options.document_class` | `kv` |
+| `options.instructions` | `table` |
+
+Where it deliberately does **not**: key **names**, and
+`options.json_structure`. Both define the shape of your result, so a
+placeholder there would let `custom_data` rename your own output fields — and
+a typo in one would silently reshape the response instead of failing.
+
+```json
+{"name": "kv",
+ "keys": {"total": {"description": "the {{custom_data.doc_kind}} total"}},
+ "options": {"key_notes": "issued by {{custom_data.vendor.name}}"}}
+```
+
+with `custom_data` `{"doc_kind": "invoice", "vendor": {"name": "Acme"}}` runs
+as `"the invoice total"` and `"issued by Acme"`.
+
+**A path you did not send is a 400 at submit**, naming the placeholder — not a
+mid-run failure on a job you have already paid for. Both halves are in the one
+request, so this is knowable before anything is staged. Values are stringified
+for prompt text: `null` becomes an empty string rather than the word "None",
+and booleans keep the lowercase JSON spelling you sent.
+
+The dialect is identical to `{{custom_data.*}}` in workflows, deliberately —
+one placeholder syntax across the platform.
+
+### 3c. `hitl_queue_name` — push the result to a review queue
+
+Name a queue and the completed extraction is pushed to it for a human, **in
+addition to** being returned to you as usual. This mirrors the `hitl_queue_name`
+field on API deployments: same field name, same shape, same behaviour.
+
+What does *not* change: the job still completes normally, `status` still goes
+`completed`, and `GET /{job_id}/result` still serves the extraction
+immediately. Nothing waits for a reviewer — so none of the job's timeouts,
+sweeps or concurrency limits are affected.
+
+How to read the reviewed data back: the existing approved-results endpoint,
+keyed on the queue name rather than on this job's id —
+`GET /mr/api/{org}/approved/result/{class}/?hitl_queue_name=<name>`. The
+`hitl_queue_name` echoed in your result payload is what you pass there.
+
+Two retention clocks apply to the same extraction, and they differ. This API
+purges a result after `AGENT_KV_RESULT_TTL_DAYS` (7 days by default); the review
+copy lives for the HITL rules' *Unfinalized Records Lifetime*, which defaults
+to 90 days. So `GET /{job_id}/result` can 404 long before the review expires.
 ### Response
 
 `202` (async, the default):
@@ -544,6 +607,13 @@ adapter metadata** — that is where provider credentials live. `{}` for any
 job predating the field. (It was also `{}` for `kv` while that extractor
 was env-credentialed; it no longer is -- all three roles are required for both
 extractors, so a new job of either kind always carries them.)
+
+`custom_data` is echoed on every status and every terminal result, as `{}` when
+none was sent, so a reader never tests for null as well as empty.
+`hitl_queue_name` appears **only** when a queue was named -- its absence is the
+statement that this job has nothing to do with review, and when present it is
+what the approved-results endpoint is keyed on. Both live on the job row rather
+than in the stored result blob, so both survive a `DELETE` or a TTL purge.
 
 `status` is lowercased (`pending`, `dispatched`, `running`, `completed`, `failed`,
 `cancelled`); `error` is included (only) when `status == "failed"`. `adapters`,
@@ -1859,6 +1929,9 @@ with the default shown:
 | `AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS` | `3600` | How long after CANCELLATION a cancelled job's executor is presumed dead, so the sweep's phase 3 may release the concurrency slot it still holds. Must stay **below** `rate_limiter.SLOT_TTL_SECONDS` (6 h) or the window is empty and the phase silently releases nothing. |
 | `AGENT_KV_MAX_PAGES` | `100` | Pre-OCR cap on the pages of the DOCUMENT for PDFs — checked against `pages_total`, **not** against the `page_start`/`page_end` range (§6.1), because the whole file is OCR'd and billed whatever the range. The cloud worker refuses on the same quantity. Excel has no pre-OCR page concept, so it takes the engine's post-OCR virtual-page cap instead; images are not accepted. |
 | `AGENT_KV_MAX_CALCULATIONS_BYTES` | `20000` | Byte cap on the optional `calculations` field. |
+| `AGENT_KV_MAX_CUSTOM_DATA_BYTES` | `20000` | Byte cap on the submit `custom_data` object. It is stored on the job row, echoed in every status and result response, and substituted into billed prompt text, so it is capped for three separate reasons. |
+| `AGENT_KV_HIGHLIGHT_ENABLED` | `false` | Gates `enable_highlight` / `enable_word_confidence` on both extractors; a submit asking for them while off is a 400. Off ships the previous behaviour exactly: no highlight block, and no extra per-page LLM call on `table`. |
+| `AGENT_KV_HITL_ENABLED` | `false` | Gates `hitl_queue_name`. Off refuses the field at submit rather than accepting it and never pushing. |
 | `AGENT_KV_MAX_SCHEMA_BYTES` | `262144` | Byte cap on the raw `keys` JSON document (256 KiB). |
 | `AGENT_KV_RESULT_TTL_DAYS` | `7` | Result retention window (and a cancelled job's input, which rides the same TTL — a completed/failed job's input is deleted immediately at finalize instead), stamped at submit time (see [§6](#9-retention-and-ttl)). |
 | `AGENT_KV_MAX_TIMEOUT_SECONDS` | `300` | Upper bound on the submit `timeout` (synchronous-wait) field. |
