@@ -60,6 +60,24 @@ describe("loadSession", () => {
     expect(load.session.user.isStaff).toBe(true);
   });
 
+  it("enters the session's organisation, not the first, when the user has several", async () => {
+    const seen: string[] = [];
+    const organizations = [
+      organizationRow(DEFAULT_SESSION),
+      organizationRow(other),
+    ];
+    mockApi(...sessionHandlers(other, { organizations, seen }));
+    const load = await loadSession();
+    if (load.kind !== "signed-in") {
+      throw new Error(`expected signed-in, got ${load.kind}`);
+    }
+    expect(load.session.organization.id).toBe(other.organization.id);
+    expect(seen).toContain(
+      `POST /api/v1/organization/${other.organization.id}/set`,
+    );
+    expect(seen).not.toContain(`POST /api/v1/organization/${ORG}/set`);
+  });
+
   it("sets the only organisation when the session has none", async () => {
     const seen: string[] = [];
     mockApi(...sessionHandlers(DEFAULT_SESSION, { current: null, seen }));
