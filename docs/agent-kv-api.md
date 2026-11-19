@@ -1816,6 +1816,18 @@ beyond `docker compose up`:
     every submit response all derive from this one setting, so they move
     together. No code deploy, no migration.
 
+    > **Who this reaches, and who it does not.** An **OSS-only** compose
+    > deployment — the `./run-platform.sh` path — is not affected and needs no
+    > action: it has no `backend/plugins/agent_kv/__init__.py` marker, so item 1
+    > above applies and every submit 501s whichever prefix is configured. That
+    > is also why there is deliberately **no entry in
+    > `docker/scripts/release-notes/release_notes.json`** for this change:
+    > `run-platform.sh --update` prints that file, and it would be warning the
+    > one audience that cannot reach this endpoint. The deployments that *can*
+    > are cloud and enterprise on-prem, and neither reads that file. If you are
+    > adding an upgrade notice for this, the enterprise release changelog (built
+    > from PR titles) and this item are the channels — not that file.
+
 ## 12. Environment reference
 
 All `AGENT_KV_*` settings (`backend/backend/settings/base.py`), each `os.environ.get`
