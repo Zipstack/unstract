@@ -10,7 +10,7 @@ this job's data to be destroyed, and that question cannot be answered from
 retry" at different times. Three attempts to infer it from them were reverted.
 
 ``files_purged`` records the fact directly. Written unconditionally by
-``DELETE /agent-kv/{job_id}`` and by ``run_ttl_cleanup`` before either tries a
+``DELETE /api/v1/agentic-extract/{job_id}`` and by ``run_ttl_cleanup`` before either tries a
 delete, so a failed delete cannot leave it False; read by
 ``AgentKVJob.attach_result_to_cancelled`` (refuses to attach a late result to a
 purged job) and by ``JobResultView`` (refuses to serve one, including the case
