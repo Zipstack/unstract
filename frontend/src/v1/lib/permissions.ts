@@ -48,8 +48,12 @@ export function canDelete(session: Session, resource: OwnedResource): boolean {
   return canEdit(session, resource);
 }
 
-/** Changing who a resource is shared with takes the same as editing it. */
-export const canShare = canEdit;
+/**
+ * Removing people or groups from a share, or turning organisation-wide sharing
+ * on or off: owners and admins. Anyone with access may add people, as v0 offers
+ * Share to all; the backend limits whom (ShareAuthorizationService).
+ */
+export const canManageSharing = canEdit;
 
 type Capabilities = readonly Capability[] | undefined;
 

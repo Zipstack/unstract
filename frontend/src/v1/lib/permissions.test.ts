@@ -6,7 +6,7 @@ import {
   canDelete,
   canDeleteWorkflowOrDeployment,
   canEdit,
-  canShare,
+  canManageSharing,
   isAdmin,
   isOwner,
 } from "./permissions";
@@ -26,7 +26,7 @@ describe("permissions", () => {
   it.each([
     canEdit,
     canDelete,
-    canShare,
+    canManageSharing,
   ])("%o: owners and admins, and anyone while ownership is loading", (can) => {
     expect(can(member, { is_owner: true })).toBe(true);
     expect(can(member, { is_owner: false })).toBe(false);
