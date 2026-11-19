@@ -44,8 +44,9 @@ const button =
 /**
  * The save bar: what changed, Save changes (submits the form) and Discard
  * (back to the form's default values). Errors with no field on screen, and the
- * server's form-level error, show here while the form has changes; they do not
- * disable Save, since only a submit or Discard clears them.
+ * server's form-level error, show here while the form has changes. Only schema
+ * errors on shown fields disable Save; server errors clear on a submit, so
+ * they never do.
  */
 // ponytail: plain buttons; swap to the v1 Button when it exists.
 export function FormFooter<T extends FieldValues>({
@@ -58,7 +59,11 @@ export function FormFooter<T extends FieldValues>({
   const control = form.control as Control<FieldValues>;
   const { root: _root, ...rest } = errors as FieldErrors<FieldValues>;
   const leaves = errorLeaves(rest);
-  const hasFieldErrors = leaves.some(([path]) => isMounted(control, path));
+  // A server error clears only on that field's change or the next submit; a
+  // disabled or read-only field allows neither, so it must not lock Save.
+  const hasFieldErrors = leaves.some(
+    ([path, e]) => e.type !== "server" && isMounted(control, path),
+  );
   const formLevel = [
     ...leaves
       .filter(([path]) => !isMounted(control, path))
@@ -82,6 +87,7 @@ export function FormFooter<T extends FieldValues>({
       <button
         type="button"
         className={`${button} ui:border ui:bg-transparent`}
+        data-testid="form-footer-discard"
         disabled={dirty === 0 || isSubmitting}
         onClick={() => form.reset()}
       >
@@ -90,6 +96,7 @@ export function FormFooter<T extends FieldValues>({
       <button
         type="submit"
         className={`${button} ui:border-0 ui:bg-primary ui:text-primary-foreground`}
+        data-testid="form-footer-save"
         disabled={dirty === 0 || isSubmitting || hasFieldErrors}
       >
         Save changes

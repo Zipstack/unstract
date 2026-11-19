@@ -1,17 +1,41 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Input } from "@v1/components/ui/form";
+import { type ApiError, toApiError } from "@v1/services/errors";
+import { AxiosError, AxiosHeaders, CanceledError } from "axios";
 import { useState } from "react";
+import { useFieldArray } from "react-hook-form";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
   applyServerErrors,
   FormField,
   FormFooter,
-  type ServerErrorBody,
   useAppForm,
   useLeaveGuard,
 } from ".";
+
+/** A failed request as the v1 client rejects it: axios's error through toApiError. */
+function rejected(status: number, data: unknown): ApiError {
+  const config = { headers: new AxiosHeaders() };
+  const response = {
+    status,
+    statusText: "",
+    data,
+    headers: new AxiosHeaders(),
+    config,
+  };
+  return toApiError(
+    new AxiosError(`HTTP ${status}`, undefined, config, undefined, response),
+  );
+}
+
+type FieldItem = Readonly<{ detail: string; attr?: string }>;
+const invalid = (...errors: FieldItem[]): ApiError =>
+  rejected(400, {
+    type: "validation_error",
+    errors: errors.map((e) => ({ code: "invalid", ...e })),
+  });
 
 const schema = z.object({
   name: z.string().min(1, "Enter a name"),
@@ -25,7 +49,8 @@ function Sample({
   onSave = async () => undefined,
   defaults = { name: "a", url: "https://x.io" },
 }: {
-  onSave?: (v: Values) => Promise<ServerErrorBody | undefined>;
+  /** Resolves with what a failed save throws, or undefined once saved. */
+  onSave?: (v: Values) => Promise<unknown>;
   defaults?: Values;
 }) {
   const form = useAppForm({ schema, defaultValues: defaults });
@@ -65,7 +90,7 @@ const extraSchema = z.object({
 type Extra = z.infer<typeof extraSchema>;
 
 /** Holds ownerId without rendering it, and renders note with no default. */
-function Extra({ onSave }: { onSave: (v: Extra) => Promise<ServerErrorBody> }) {
+function Extra({ onSave }: { onSave: (v: Extra) => Promise<unknown> }) {
   const form = useAppForm({
     schema: extraSchema,
     defaultValues: { name: "a", ownerId: "u1" },
@@ -135,19 +160,16 @@ describe("useAppForm and FormField", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
-  it("moves focus to the first field a server error names, off the disabled Save", async () => {
-    const onSave = vi.fn(async () => ({
-      type: "validation_error",
-      errors: [
-        { code: "taken", detail: "That URL is taken", attr: "url" },
-        { code: "taken", detail: "That name is taken", attr: "name" },
-      ],
-    }));
-    render(<Sample onSave={onSave as never} />);
+  it("moves focus to the first field a server error names", async () => {
+    const onSave = async () =>
+      invalid(
+        { detail: "That URL is taken", attr: "url" },
+        { detail: "That name is taken", attr: "name" },
+      );
+    render(<Sample onSave={onSave} />);
     await userEvent.type(screen.getByLabelText("Name"), "b");
     await userEvent.click(saveButton());
     await screen.findByText("That URL is taken");
-    expect(saveButton().disabled).toBe(true);
     expect(document.activeElement).toBe(screen.getByLabelText("URL"));
   });
 
@@ -166,22 +188,44 @@ describe("useAppForm and FormField", () => {
 
 describe("applyServerErrors", () => {
   it("puts a known attr on its field and the rest at form level", async () => {
-    const onSave = async () => ({
-      type: "validation_error" as const,
-      errors: [
-        { code: "unique", detail: "Name is taken", attr: "name" },
-        { code: "invalid", detail: "Quota reached", attr: "non_field_errors" },
-        { code: "invalid", detail: "Bad owner", attr: "owner" },
-      ],
-    });
+    const onSave = async () =>
+      invalid(
+        { detail: "Name is taken", attr: "name" },
+        { detail: "Quota reached", attr: "non_field_errors" },
+        { detail: "Bad owner", attr: "owner" },
+      );
     render(<Sample onSave={onSave} />);
     await userEvent.type(screen.getByLabelText("Name"), "b");
-    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await userEvent.click(saveButton());
     await screen.findByText("Name is taken");
-    expect(screen.queryByText("Could not save. Try again.")).toBeNull();
+    expect(screen.getByLabelText("Name").getAttribute("aria-invalid")).toBe(
+      "true",
+    );
+    // An attr with no field keeps its name, so its detail is not read alone.
     expect(
-      screen.getByText("Quota reached Bad owner").getAttribute("role"),
+      screen.getByText("Quota reached owner: Bad owner").getAttribute("role"),
     ).toBe("alert");
+  });
+
+  it("reads axios's error as thrown, before anything normalises it", async () => {
+    const config = { headers: new AxiosHeaders() };
+    const raw = new AxiosError("HTTP 400", undefined, config, undefined, {
+      status: 400,
+      statusText: "",
+      data: {
+        type: "validation_error",
+        errors: [{ code: "x", detail: "Name is taken", attr: "name" }],
+      },
+      headers: new AxiosHeaders(),
+      config,
+    });
+    render(<Sample onSave={async () => raw} />);
+    await userEvent.type(screen.getByLabelText("Name"), "b");
+    await userEvent.click(saveButton());
+    await screen.findByText("Name is taken");
+    expect(screen.getByLabelText("Name").getAttribute("aria-invalid")).toBe(
+      "true",
+    );
   });
 
   it("maps a dotted attr onto a nested path", () => {
@@ -190,10 +234,7 @@ describe("applyServerErrors", () => {
       control: { _fields: { rows: [{ key: { _f: { mount: true } } }] } },
       setError,
     } as unknown as Parameters<typeof applyServerErrors>[0];
-    applyServerErrors(form, {
-      type: "validation_error",
-      errors: [{ code: "x", detail: "Bad key", attr: "rows.0.key" }],
-    });
+    applyServerErrors(form, invalid({ detail: "Bad key", attr: "rows.0.key" }));
     expect(setError).toHaveBeenCalledWith(
       "rows.0.key",
       { type: "server", message: "Bad key" },
@@ -201,47 +242,56 @@ describe("applyServerErrors", () => {
     );
   });
 
-  it("puts every error of a non-validation response at form level", () => {
+  it("puts a non-validation failure at form level", () => {
     const setError = vi.fn();
     const form = {
       control: { _fields: { name: { _f: { mount: true } } } },
       setError,
     } as unknown as Parameters<typeof applyServerErrors>[0];
-    applyServerErrors(form, {
-      type: "server_error",
-      errors: [{ code: "error", detail: "Something broke", attr: "name" }],
-    });
+    applyServerErrors(
+      form,
+      rejected(500, {
+        type: "server_error",
+        errors: [{ code: "error", detail: "Something broke", attr: "name" }],
+      }),
+    );
+    expect(setError).toHaveBeenCalledTimes(1);
     expect(setError).toHaveBeenCalledWith("root.server", {
       type: "server",
       message: "Something broke",
     });
   });
 
+  it("sets nothing for a cancelled request", () => {
+    const setError = vi.fn();
+    const form = {
+      control: { _fields: {} },
+      setError,
+    } as unknown as Parameters<typeof applyServerErrors>[0];
+    applyServerErrors(form, new CanceledError());
+    expect(setError).not.toHaveBeenCalled();
+  });
+
   it("shows every error the server sent for one field", async () => {
     render(
       <Sample
-        onSave={async () => ({
-          type: "validation_error",
-          errors: [
-            { code: "a", detail: "Too short.", attr: "name" },
-            { code: "b", detail: "Taken.", attr: "name" },
-          ],
-        })}
+        onSave={async () =>
+          invalid(
+            { detail: "Too short.", attr: "name" },
+            { detail: "Taken.", attr: "name" },
+          )
+        }
       />,
     );
     await userEvent.type(screen.getByLabelText("Name"), "b");
     await userEvent.click(saveButton());
-    await screen.findByText("Too short. Taken.");
-    expect(screen.queryByText("Could not save. Try again.")).toBeNull();
+    expect(await screen.findByText("Too short. Taken.")).toBeInTheDocument();
   });
 
   it("puts a field's error under it even when its value is undefined", async () => {
     render(
       <Extra
-        onSave={async () => ({
-          type: "validation_error",
-          errors: [{ code: "x", detail: "Bad note", attr: "note" }],
-        })}
+        onSave={async () => invalid({ detail: "Bad note", attr: "note" })}
       />,
     );
     await userEvent.type(screen.getByLabelText("Name"), "b");
@@ -255,15 +305,12 @@ describe("applyServerErrors", () => {
   it("shows an error for a value no field renders at form level and keeps Save enabled", async () => {
     render(
       <Extra
-        onSave={async () => ({
-          type: "validation_error",
-          errors: [{ code: "x", detail: "Owner gone", attr: "ownerId" }],
-        })}
+        onSave={async () => invalid({ detail: "Owner gone", attr: "ownerId" })}
       />,
     );
     await userEvent.type(screen.getByLabelText("Name"), "b");
     await userEvent.click(saveButton());
-    await screen.findByText("Owner gone");
+    await screen.findByText("ownerId: Owner gone");
     screen.getByText("1 unsaved change");
     expect(saveButton().disabled).toBe(false);
   });
@@ -271,12 +318,9 @@ describe("applyServerErrors", () => {
   it("shows a form-level-only error without blocking Save", async () => {
     render(
       <Sample
-        onSave={async () => ({
-          type: "validation_error",
-          errors: [
-            { code: "x", detail: "Quota reached", attr: "non_field_errors" },
-          ],
-        })}
+        onSave={async () =>
+          invalid({ detail: "Quota reached", attr: "non_field_errors" })
+        }
       />,
     );
     await userEvent.type(screen.getByLabelText("Name"), "b");
@@ -287,42 +331,32 @@ describe("applyServerErrors", () => {
   });
 
   it.each([
-    [{ detail: "Request failed" }, "Request failed"],
-    [{ type: "sdk_error", error: "Adapter down" }, "Adapter down"],
-    [{ type: "validation_error", errors: [] }, "Could not save. Try again."],
     [
-      {
-        type: "validation_error",
-        errors: [{ code: "x", detail: "", attr: null }],
-      },
-      "Could not save. Try again.",
-    ],
-    [{ detail: "  ", error: "SDK failed" }, "SDK failed"],
-    [{ message: "Gateway timeout" }, "Gateway timeout"],
-    [
-      {
-        type: "validation_error",
-        errors: [{ code: "x", detail: "  ", attr: null }],
-      },
-      "Could not save. Try again.",
+      "a 400 with a detail",
+      rejected(400, { detail: "Request failed" }),
+      "Request failed",
     ],
     [
-      {
-        type: "validation_error",
-        errors: [null, { code: "x", detail: 42, attr: null }],
-      },
-      "Could not save. Try again.",
+      "a typed provider error",
+      rejected(502, { type: "sdk_error", error: "Adapter down" }),
+      "Adapter down",
     ],
     [
-      { type: "validation_error", errors: { name: "bad" } },
-      "Could not save. Try again.",
+      "a validation error with no items",
+      rejected(400, { type: "validation_error", errors: [] }),
+      "Some fields need attention.",
     ],
-    [null, "Could not save. Try again."],
-  ])("always shows something for the body %j", async (body, message) => {
-    render(<Sample onSave={async () => body as never} />);
+    [
+      "no response",
+      toApiError(new AxiosError("Network Error")),
+      "Can't reach the server. Check your connection and try again.",
+    ],
+    ["a plain Error", new Error("boom"), "Something went wrong."],
+  ])("always shows something for %s", async (_, error, message) => {
+    render(<Sample onSave={async () => error} />);
     await userEvent.type(screen.getByLabelText("Name"), "b");
     await userEvent.click(saveButton());
-    await screen.findByText(message);
+    expect(await screen.findByText(message)).toBeInTheDocument();
   });
 });
 
@@ -334,11 +368,7 @@ describe("cross-field rules", () => {
       path: ["confirm"],
     });
 
-  function PasswordForm({
-    onSave,
-  }: {
-    onSave: () => Promise<ServerErrorBody>;
-  }) {
+  function PasswordForm({ onSave }: { onSave: () => Promise<unknown> }) {
     const form = useAppForm({
       schema: passwords,
       defaultValues: { name: "a", password: "", confirm: "" },
@@ -362,10 +392,7 @@ describe("cross-field rules", () => {
   it("re-checks a field whose error depends on the one that changed", async () => {
     render(
       <PasswordForm
-        onSave={async () => ({
-          type: "validation_error",
-          errors: [{ code: "taken", detail: "Name taken", attr: "name" }],
-        })}
+        onSave={async () => invalid({ detail: "Name taken", attr: "name" })}
       />,
     );
     await userEvent.type(screen.getByLabelText("password"), "abc");
@@ -402,11 +429,7 @@ describe("hidden and nested fields", () => {
   type Nested = z.infer<typeof nested>;
 
   /** URL can be hidden; rows.0.key is a nested field. */
-  function Toggle({
-    onSave,
-  }: {
-    onSave?: (v: Nested) => Promise<ServerErrorBody>;
-  }) {
+  function Toggle({ onSave }: { onSave?: (v: Nested) => Promise<unknown> }) {
     const [shown, setShown] = useState(true);
     const form = useAppForm({
       schema: nested,
@@ -460,16 +483,117 @@ describe("hidden and nested fields", () => {
   it("sends a server error for a hidden field to the footer", async () => {
     render(
       <Toggle
-        onSave={async () => ({
-          type: "validation_error",
-          errors: [{ code: "x", detail: "Key taken", attr: "rows.0.key" }],
-        })}
+        onSave={async () =>
+          invalid({ detail: "Key taken", attr: "rows.0.key" })
+        }
       />,
     );
     await userEvent.type(screen.getByLabelText("Name"), "b");
     await userEvent.click(screen.getByRole("button", { name: "Hide" }));
     await userEvent.click(saveButton());
-    await screen.findByText("Key taken");
+    await screen.findByText("rows.0.key: Key taken");
+    expect(saveButton().disabled).toBe(false);
+  });
+});
+
+describe("field arrays and locked fields", () => {
+  const listSchema = z.object({
+    rows: z.array(z.object({ key: z.string().min(1, "Enter a key") })),
+  });
+  type List = z.infer<typeof listSchema>;
+
+  /** Rows keyed by field id, each with a Remove button. */
+  function Rows() {
+    const form = useAppForm({
+      schema: listSchema,
+      defaultValues: { rows: [{ key: "a" }, { key: "" }, { key: "" }] },
+    });
+    const { fields, remove } = useFieldArray<List>({
+      control: form.control,
+      name: "rows",
+    });
+    return (
+      <form onSubmit={form.handleSubmit(() => undefined)}>
+        {fields.map((row, index) => (
+          <div key={row.id}>
+            <FormField
+              form={form}
+              name={`rows.${index}.key`}
+              label={`Key ${index}`}
+            >
+              {(field) => <Input {...field} />}
+            </FormField>
+            <button type="button" onClick={() => remove(index)}>
+              Remove {index}
+            </button>
+          </div>
+        ))}
+        <FormFooter form={form} />
+      </form>
+    );
+  }
+
+  it("keeps the other rows' errors when a row is removed", async () => {
+    render(<Rows />);
+    await userEvent.type(screen.getByLabelText("Key 0"), "b");
+    await userEvent.click(saveButton());
+    await vi.waitFor(() =>
+      expect(screen.getAllByText("Enter a key")).toHaveLength(2),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Remove 0" }));
+    await act(async () => undefined);
+    expect(screen.getAllByText("Enter a key")).toHaveLength(2);
+    expect(saveButton().disabled).toBe(true);
+  });
+
+  it("keeps the other rows' blur errors when a row is removed before any submit", async () => {
+    render(<Rows />);
+    fireEvent.blur(screen.getByLabelText("Key 1"));
+    fireEvent.blur(screen.getByLabelText("Key 2"));
+    await vi.waitFor(() =>
+      expect(screen.getAllByText("Enter a key")).toHaveLength(2),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Remove 0" }));
+    await act(async () => undefined);
+    expect(screen.getAllByText("Enter a key")).toHaveLength(2);
+  });
+
+  const lockedSchema = z.object({ name: z.string(), slug: z.string() });
+
+  /** Slug is shown but cannot be edited. */
+  function Locked({ onSave }: { onSave: () => Promise<unknown> }) {
+    const form = useAppForm({
+      schema: lockedSchema,
+      defaultValues: { name: "a", slug: "s" },
+    });
+    return (
+      <form
+        onSubmit={form.handleSubmit(async () =>
+          applyServerErrors(form, await onSave()),
+        )}
+      >
+        <FormField form={form} name="name" label="Name">
+          {(field) => <Input {...field} />}
+        </FormField>
+        <FormField form={form} name="slug" label="Slug">
+          {(field) => <Input {...field} disabled />}
+        </FormField>
+        <FormFooter form={form} />
+      </form>
+    );
+  }
+
+  it("does not lock Save on a server error the user cannot clear", async () => {
+    render(
+      <Locked
+        onSave={async () => invalid({ detail: "Slug taken", attr: "slug" })}
+      />,
+    );
+    await userEvent.type(screen.getByLabelText("Name"), "b");
+    await userEvent.click(saveButton());
+    await screen.findByText("Slug taken");
+    await userEvent.type(screen.getByLabelText("Name"), "c");
+    expect(await screen.findByText("1 unsaved change")).toBeInTheDocument();
     expect(saveButton().disabled).toBe(false);
   });
 });
@@ -491,6 +615,28 @@ describe("FormFooter", () => {
     await userEvent.click(screen.getByRole("button", { name: "Discard" }));
     await screen.findByText("No changes");
     expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("a");
+  });
+
+  it("drops schema errors on Discard after a failed submit", async () => {
+    render(<Sample defaults={{ name: "", url: "https://x.io" }} />);
+    await userEvent.type(screen.getByLabelText("URL"), "/p");
+    fireEvent.submit(
+      screen.getByLabelText("URL").closest("form") as HTMLFormElement,
+    );
+    await screen.findByText("Enter a name");
+    await userEvent.click(discardButton());
+    await screen.findByText("No changes");
+    await act(async () => undefined);
+    expect(screen.queryByText("Enter a name")).toBeNull();
+    expect(screen.getByLabelText("Name").getAttribute("aria-invalid")).not.toBe(
+      "true",
+    );
+  });
+
+  it("gives Save and Discard stable test ids", () => {
+    render(<Sample />);
+    expect(screen.getByTestId("form-footer-save")).toBe(saveButton());
+    expect(screen.getByTestId("form-footer-discard")).toBe(discardButton());
   });
 
   it("shows Cannot save while a field error stands", async () => {
@@ -519,10 +665,12 @@ describe("FormFooter", () => {
   it("hides a form-level error once the change is reverted", async () => {
     render(
       <Sample
-        onSave={async () => ({
-          type: "client_error",
-          errors: [{ code: "x", detail: "Locked", attr: null }],
-        })}
+        onSave={async () =>
+          rejected(409, {
+            type: "client_error",
+            errors: [{ code: "x", detail: "Locked", attr: null }],
+          })
+        }
       />,
     );
     const name = screen.getByLabelText("Name");

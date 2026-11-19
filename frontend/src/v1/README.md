@@ -153,8 +153,10 @@ is convention.
   `services/`; `services/README.md` has the contract. `V1App` mounts the one
   QueryClient (`app/query.ts`), which reports every failure.
 - Render a read with `QueryView` (`components/patterns/`): skeleton, inline
-  error with Retry, then the data. Forms map field errors with
-  `mapFieldErrors()` from `@v1/services/errors`.
+  error with Retry, then the data. A `useAppForm` form passes a failed save
+  to `applyServerErrors()` (`components/patterns/form`), which maps it with
+  `mapFieldErrors()` onto the fields on screen; other forms call
+  `mapFieldErrors()` from `@v1/services/errors` directly.
 - `lint:v1` rejects a string or template starting `/api/` or `/deployment/`,
   any import of axios or `@v1/services/http`, and any call to `fetch`,
   `XMLHttpRequest` or `EventSource`, outside `services/`,

@@ -1,4 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { mapFieldErrors, toApiError } from "@v1/services/errors";
 import { useCallback, useEffect } from "react";
 import {
   type Control,
@@ -38,7 +39,12 @@ export function useAppForm<I extends FieldValues, O>({
     // can put its error on another field (a refine with a path). Re-check every
     // field showing a schema error, so a fixed rule frees Save. Server
     // errors stay until their own field changes or the next submit.
-    const { unsubscribe } = form.watch(() => {
+    // A reset's event has no name: it runs before the errors clear, so a
+    // re-check then would bring back errors that Discard just dropped.
+    const { unsubscribe } = form.watch((_, { name }) => {
+      if (name === undefined) {
+        return;
+      }
       const { root: _root, ...errors } = form.formState.errors;
       const stale = errorLeaves(errors)
         .filter(([path, e]) => path && e.type !== "server")
@@ -68,20 +74,8 @@ export function errorLeaves(node: unknown, path = ""): [string, ErrorLeaf][] {
   );
 }
 
-/** The backend's error body (drf_standardized_errors). */
-export type ServerErrorBody = Readonly<{
-  type: "validation_error" | "client_error" | "server_error";
-  errors: readonly Readonly<{
-    code: string;
-    detail: string;
-    attr: string | null;
-  }>[];
-}>;
-
 /** The form-level error key that applyServerErrors sets; FormFooter shows it. */
 export const SERVER_ERROR = "root.server";
-
-const FALLBACK = "Could not save. Try again.";
 
 /** True when a FormField (or any registered control) for `path` is on screen. */
 export function isMounted(
@@ -92,67 +86,32 @@ export function isMounted(
   return get(control._fields, path)?._f?.mount === true;
 }
 
-function isStandardBody(body: unknown): body is ServerErrorBody {
-  const b = body as ServerErrorBody | null;
-  return typeof b?.type === "string" && Array.isArray(b.errors);
-}
-
-/** Any other error body: `{detail}` from the middleware, `{error}` from the SDK handler. */
-function otherMessage(body: unknown): string | undefined {
-  const b = body as Record<string, unknown> | null;
-  return [b?.detail, b?.error, b?.message].find(
-    (text): text is string => typeof text === "string" && text.trim() !== "",
-  );
-}
-
 /**
- * Puts each server error under the field its `attr` names (a dotted attr such
- * as `rows.0.key` is a react-hook-form path), when that field is on screen,
- * and focuses the first such field.
- * Every other error (no attr, non_field_errors, an attr with no field shown, or
- * a non-validation response) joins one form-level message. A body of any other
- * shape, or one with nothing to show, still sets a form-level message.
+ * Puts each field error of a failed save (anything the v1 client throws) under
+ * the field its `attr` names, when that field is on screen, and focuses the
+ * first. A dotted attr such as `rows.0.key` is a react-hook-form path.
+ * Everything else (non-field errors, attrs with no field shown, a
+ * non-validation failure) becomes one form-level message. A cancel sets nothing.
  */
-// ponytail: reads the raw backend body; switch to the shared HTTP client's normalised error when it exists.
 export function applyServerErrors<T extends FieldValues>(
   form: Pick<UseFormReturn<T, unknown, FieldValues>, "control" | "setError">,
-  body: unknown,
+  error: unknown,
 ): void {
-  const byField = new Map<string, string[]>();
-  const formLevel: string[] = [];
-  const standard = isStandardBody(body) ? body : undefined;
-  for (const entry of standard?.errors ?? []) {
-    const { attr, detail } = entry ?? {};
-    if (typeof detail !== "string" || !detail.trim()) {
-      continue;
-    }
-    const onField =
-      standard?.type === "validation_error" &&
-      typeof attr === "string" &&
-      isMounted(form.control as Control<FieldValues>, attr);
-    if (onField) {
-      byField.set(attr, [...(byField.get(attr) ?? []), detail]);
-    } else {
-      formLevel.push(detail);
-    }
-  }
-  // Focus the first field the server names (in its order): Save disables on
-  // a field error, so focus left on it would fall to the page body.
-  [...byField].forEach(([attr, details], index) => {
+  const control = form.control as Control<FieldValues>;
+  const shown = Object.keys(toApiError(error).fieldErrors).filter((attr) =>
+    isMounted(control, attr),
+  );
+  const { fields, form: message } = mapFieldErrors(error, shown);
+  // Focus the first field the server names, in its order.
+  Object.entries(fields).forEach(([attr, text], index) => {
     form.setError(
       attr as Path<T>,
-      { type: "server", message: details.join(" ") },
+      { type: "server", message: text },
       { shouldFocus: index === 0 },
     );
   });
-  if (byField.size === 0 && formLevel.length === 0) {
-    formLevel.push(otherMessage(body) ?? FALLBACK);
-  }
-  if (formLevel.length > 0) {
-    form.setError(SERVER_ERROR as Path<T>, {
-      type: "server",
-      message: formLevel.join(" "),
-    });
+  if (message !== undefined) {
+    form.setError(SERVER_ERROR as Path<T>, { type: "server", message });
   }
 }
 
