@@ -25,9 +25,10 @@ The one button scale in v1 (P1-T02, UN-4272). Import everything from
   and ArrowDown: its own handlers and a DropdownMenu, Popover or Dialog
   trigger's do not run (a loading `MenuButton` keeps its menu closed), a click
   does not reach a parent, and it cannot submit its form. Other keys, such as
-  Tab and the arrows in a toolbar, still reach its handlers. A trigger that
-  opens on another event (a Tabs trigger on mouse-down) is not covered.
-- `disabled` is the native attribute: opacity .5, no pointer events.
+  Tab, still reach its handlers. A trigger that opens on another event (a Tabs
+  trigger on mouse-down) is not covered.
+- `disabled` is the native attribute: opacity .5 and the not-allowed cursor.
+  A click on it does nothing and does not reach its container.
 - `type` defaults to `"button"`; pass `type="submit"` in a form.
 - A router link that must look like a button takes
   `className={buttonVariants({ variant, size })}`.

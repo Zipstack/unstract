@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { ACTION_ICONS } from "@v1/lib/icons";
 import { renderV1 } from "@v1/test";
 import { createElement, createRef } from "react";
@@ -26,7 +26,7 @@ describe("Button", () => {
     expect(ref.current).toBe(button);
   });
 
-  it("ignores clicks and keys while loading but keeps focus", async () => {
+  it("ignores clicks and activation keys while loading but keeps focus", async () => {
     const onClick = vi.fn();
     const { user } = renderV1(
       <Button loading onClick={onClick}>
@@ -98,6 +98,15 @@ describe("Button", () => {
       "Shift",
       "Tab",
     ]);
+  });
+
+  it("cancels the default of activation keys while loading", () => {
+    renderV1(<Button loading>Save</Button>);
+    const button = screen.getByRole("button", { name: "Save" });
+    // fireEvent returns false when the default was prevented.
+    expect(fireEvent.keyDown(button, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(button, { key: "Enter" })).toBe(false);
+    expect(fireEvent.keyDown(button, { key: "Tab" })).toBe(true);
   });
 
   it("shows a spinner while loading even without a leading icon", () => {

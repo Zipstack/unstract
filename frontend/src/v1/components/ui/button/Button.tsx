@@ -8,22 +8,22 @@ import type { ComponentProps, JSX, KeyboardEvent, MouseEvent } from "react";
 export const buttonVariants = cva(
   [
     "ui:inline-flex ui:shrink-0 ui:cursor-pointer ui:items-center ui:justify-center ui:rounded-md ui:border ui:border-transparent ui:font-sans ui:font-medium ui:whitespace-nowrap ui:no-underline ui:outline-none ui:transition-colors ui:motion-reduce:transition-none",
-    "ui:focus-visible:focus-ring ui:disabled:pointer-events-none ui:disabled:opacity-50 ui:aria-busy:cursor-progress ui:[&>svg]:shrink-0",
+    "ui:focus-visible:focus-ring ui:disabled:cursor-not-allowed ui:disabled:opacity-50 ui:aria-busy:cursor-progress ui:[&>svg]:shrink-0",
   ],
   {
     variants: {
       variant: {
         primary:
-          "ui:bg-primary ui:text-primary-foreground ui:hover:bg-primary/90 ui:active:bg-primary/80",
+          "ui:bg-primary ui:text-primary-foreground ui:not-disabled:hover:bg-primary/90 ui:not-disabled:active:bg-primary/80",
         secondary:
-          "ui:bg-secondary ui:text-secondary-foreground ui:hover:bg-secondary/80 ui:active:bg-secondary/70",
+          "ui:bg-secondary ui:text-secondary-foreground ui:not-disabled:hover:bg-secondary/80 ui:not-disabled:active:bg-secondary/70",
         outline:
-          "ui:border-border ui:bg-card ui:text-foreground ui:hover:bg-accent ui:active:bg-border",
+          "ui:border-border ui:bg-card ui:text-foreground ui:not-disabled:hover:bg-accent ui:not-disabled:active:bg-border",
         ghost:
-          "ui:bg-transparent ui:text-foreground ui:hover:bg-accent ui:active:bg-border",
+          "ui:bg-transparent ui:text-foreground ui:not-disabled:hover:bg-accent ui:not-disabled:active:bg-border",
         destructive:
-          "ui:bg-destructive ui:text-destructive-foreground ui:hover:bg-destructive/90 ui:active:bg-destructive/80",
-        link: "ui:bg-transparent ui:text-primary ui:underline-offset-2 ui:hover:underline ui:active:text-primary/80",
+          "ui:bg-destructive ui:text-destructive-foreground ui:not-disabled:hover:bg-destructive/90 ui:not-disabled:active:bg-destructive/80",
+        link: "ui:bg-transparent ui:text-primary ui:underline-offset-2 ui:not-disabled:hover:underline ui:not-disabled:active:text-primary/80",
       },
       size: {
         lg: "ui:h-9 ui:gap-2 ui:px-3.5 ui:text-body ui:[&>svg]:size-4",
@@ -63,7 +63,10 @@ function busyProps(onKeyDown: ButtonProps["onKeyDown"]) {
     "aria-disabled": true,
     onPointerDown: ignore,
     onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => {
-      if (!ACTIVATION_KEYS.has(event.key)) {
+      if (ACTIVATION_KEYS.has(event.key)) {
+        // Also stops a Space held across the end of loading from clicking.
+        event.preventDefault();
+      } else {
         onKeyDown?.(event);
       }
     },

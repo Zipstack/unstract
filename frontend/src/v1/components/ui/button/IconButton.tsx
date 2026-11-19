@@ -5,17 +5,17 @@ import type { ComponentProps, JSX } from "react";
 
 const iconButtonVariants = cva(
   [
-    "ui:inline-flex ui:shrink-0 ui:cursor-pointer ui:items-center ui:justify-center ui:border ui:border-transparent ui:p-0 ui:outline-none ui:transition-colors ui:motion-reduce:transition-none ui:focus-visible:focus-ring ui:disabled:pointer-events-none ui:disabled:opacity-50 ui:[&>svg]:size-4",
+    "ui:inline-flex ui:shrink-0 ui:cursor-pointer ui:items-center ui:justify-center ui:border ui:border-transparent ui:p-0 ui:outline-none ui:transition-colors ui:motion-reduce:transition-none ui:focus-visible:focus-ring ui:disabled:cursor-not-allowed ui:disabled:opacity-50 ui:[&>svg]:size-4",
     // The pressed fill follows aria-pressed, whether set by `selected` or a Radix Toggle.
-    "ui:aria-pressed:border-transparent ui:aria-pressed:bg-primary ui:aria-pressed:text-primary-foreground ui:aria-pressed:hover:bg-primary/90 ui:aria-pressed:hover:text-primary-foreground ui:aria-pressed:active:bg-primary/80",
+    "ui:aria-pressed:border-transparent ui:aria-pressed:bg-primary ui:aria-pressed:text-primary-foreground ui:aria-pressed:not-disabled:hover:bg-primary/90 ui:aria-pressed:not-disabled:hover:text-primary-foreground ui:aria-pressed:not-disabled:active:bg-primary/80",
   ],
   {
     variants: {
       variant: {
         ghost:
-          "ui:bg-transparent ui:text-muted-foreground ui:hover:bg-accent ui:hover:text-foreground ui:active:bg-border",
+          "ui:bg-transparent ui:text-muted-foreground ui:not-disabled:hover:bg-accent ui:not-disabled:hover:text-foreground ui:not-disabled:active:bg-border",
         outline:
-          "ui:border-border ui:bg-card ui:text-foreground ui:hover:bg-accent ui:active:bg-border",
+          "ui:border-border ui:bg-card ui:text-foreground ui:not-disabled:hover:bg-accent ui:not-disabled:active:bg-border",
       },
       size: {
         md: "ui:size-8 ui:rounded-md",
