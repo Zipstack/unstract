@@ -1830,14 +1830,22 @@ beyond `docker compose up`:
     then gets the identical `401 Invalid or inactive API key`, in the other
     direction, until they move back.
 
-    > **On the release note.** There is deliberately no entry in
-    > `docker/scripts/release-notes/release_notes.json` **in this change**, and
-    > not because the channel reaches nobody: `./run-platform.sh --update`
-    > prints that file, and a marker-bearing compose checkout both reads it and
-    > serves this API. The entry is omitted because its key is a release
-    > version this PR cannot know, and `print_release_notes.py` fires on
-    > `current < key <= target`, so there is no inert placeholder. **It is owed
-    > at release cut** — see `docker/scripts/release-notes/README.md`.
+    > **On the release note.** There IS one:
+    > `docker/scripts/release-notes/release_notes.json`, keyed `v0.205.0`, which
+    > `./run-platform.sh --update` prints. That channel matters here because its
+    > audience is not only OSS-only stacks — a checkout with
+    > `copy_cloud_deps.py` applied carries the capability marker, so it both
+    > reads that file and serves this API.
+    >
+    > The key is the next **community** release (`vX.Y.Z` — a different series
+    > from the enterprise `ee-v*` line), computed from *Create Release*'s own
+    > `auto` rule rather than guessed. Its ACTION is "delete the
+    > `AGENT_KV_PATH_PREFIX` line", which is correct whether or not the reader's
+    > build has the rename yet, and it carries a no-auth `curl` that tells them
+    > which prefix their build actually serves. **Whoever cuts the release should
+    > confirm the rename is in `v0.205.0`** and move the key if it landed later;
+    > `docker/scripts/release-notes/README.md` explains why a mis-keyed note
+    > fails asymmetrically.
 
 ## 12. Environment reference
 
