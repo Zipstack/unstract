@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import tempfile
 
 import magic
@@ -9,7 +10,13 @@ import pdfplumber
 from django.conf import settings
 from rest_framework import serializers
 
-from agent_kv.constants import EXTRACTOR_ROUTES, TABLE_EXTRACTOR_NAME, V1_EXTRACTOR_NAME
+from agent_kv import custom_data
+from agent_kv.constants import (
+    EXTRACTOR_ROUTES,
+    HITL_QUEUE_NAME_RE,
+    TABLE_EXTRACTOR_NAME,
+    V1_EXTRACTOR_NAME,
+)
 from unstract.agent_kv_schema import SchemaError, compile_schema
 from unstract.core.mime_gate import (
     INCONCLUSIVE_MIME_TYPES,
@@ -241,6 +248,15 @@ class KVOptionsSerializer(serializers.Serializer):
     key_notes = serializers.CharField(
         required=False, allow_blank=True, default="", max_length=10_000
     )
+    enable_highlight = serializers.BooleanField(required=False, default=False)
+    enable_word_confidence = serializers.BooleanField(required=False, default=False)
+
+    def validate_enable_highlight(self, v):
+        if v and not settings.AGENT_KV_HIGHLIGHT_ENABLED:
+            raise serializers.ValidationError(
+                "highlight data is not available on this deployment yet"
+            )
+        return v
 
     def validate_calculations(self, v):
         if v and not settings.AGENT_KV_CALCULATIONS_ENABLED:
@@ -270,6 +286,21 @@ class KVOptionsSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 f"unknown options for extractor 'kv': {sorted(unknown)}"
             )
+        # Word confidence is meaningless without the line metadata highlight
+        # fetches, and Prompt Studio forces it off for the same reason rather
+        # than erroring (`answer_prompt.py`). Here it is a 400: that path is a
+        # UI toggle a user can see, this is an API field a caller set on
+        # purpose, and silently ignoring it would return a result missing data
+        # they asked for with nothing saying why.
+        if data.get("enable_word_confidence") and not data.get("enable_highlight"):
+            raise serializers.ValidationError(
+                {
+                    "enable_word_confidence": (
+                        "requires enable_highlight: word confidence is derived "
+                        "from the highlight line metadata"
+                    )
+                }
+            )
         return data
 
 
@@ -278,7 +309,16 @@ class TableOptionsSerializer(serializers.Serializer):
 
     Deliberately a subset of what the IDE path accepts: `output_path` and the
     IDE callback hints (`prompt_key`, `doc_name`) are meaningless on the blind
-    API, and `enable_highlight` has no consumer there.
+    API.
+
+    **`enable_highlight` costs real money on this extractor, unlike on `kv`.**
+    The table engine's highlight path builds `HighlightValidator` ("Agent 3.5",
+    LLM-based row-to-line matching) on the `lite_llm` adapter, so turning it on
+    adds a per-page LLM call -- the cost-critical slot. `kv`'s highlight is
+    free by comparison: its OCR already requests LLMWhisperer's line metadata
+    and discards it. That asymmetry is why these flags are per-extractor rather
+    than job-level: one switch would make a `table` job quietly more expensive
+    while a `kv` job stayed free.
 
     **`enable_header_mapping` changes the result shape.** With it off, the
     engine returns `output.tables` as a flat list of row dicts. With it on, the
@@ -299,6 +339,15 @@ class TableOptionsSerializer(serializers.Serializer):
     number_format = serializers.ChoiceField(
         required=False, choices=("US", "EU"), default="US"
     )
+    enable_highlight = serializers.BooleanField(required=False, default=False)
+    enable_word_confidence = serializers.BooleanField(required=False, default=False)
+
+    def validate_enable_highlight(self, v):
+        if v and not settings.AGENT_KV_HIGHLIGHT_ENABLED:
+            raise serializers.ValidationError(
+                "highlight data is not available on this deployment yet"
+            )
+        return v
 
     def validate(self, data):
         # Same reason KVOptionsSerializer rejects unknowns: DRF drops them
@@ -310,6 +359,21 @@ class TableOptionsSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 f"unknown options for extractor '{TABLE_EXTRACTOR_NAME}': "
                 f"{sorted(unknown)}"
+            )
+        # Word confidence is meaningless without the line metadata highlight
+        # fetches, and Prompt Studio forces it off for the same reason rather
+        # than erroring (`answer_prompt.py`). Here it is a 400: that path is a
+        # UI toggle a user can see, this is an API field a caller set on
+        # purpose, and silently ignoring it would return a result missing data
+        # they asked for with nothing saying why.
+        if data.get("enable_word_confidence") and not data.get("enable_highlight"):
+            raise serializers.ValidationError(
+                {
+                    "enable_word_confidence": (
+                        "requires enable_highlight: word confidence is derived "
+                        "from the highlight line metadata"
+                    )
+                }
             )
         return data
 
@@ -612,9 +676,66 @@ class SubmitSerializer(serializers.Serializer):
         max_length=20,
     )
     custom_data = serializers.JSONField(required=False, default=None, allow_null=True)
+    # Mirrors the documented `hitl_queue_name` on API deployments, same name and
+    # same type, so a caller who knows that feature knows this one. Naming a
+    # queue is the whole opt-in: absent means no review push.
+    hitl_queue_name = serializers.CharField(
+        required=False, allow_blank=False, default="", max_length=50
+    )
     webhook_url = serializers.URLField(
         required=False, allow_blank=True, default="", max_length=1024
     )
+
+    def validate_custom_data(self, value):
+        """A JSON object, capped.
+
+        `api_v2.serializers.validate_custom_data` checks only that it is a
+        dict, which is where the object rule comes from -- but it caps nothing,
+        so the cap here is modelled on `calculations` instead. Three reasons it
+        needs one: the value is stored on the job row, echoed in every status
+        and result response for the life of the job, and substituted into
+        prompt text that is then sent to a model and billed by token.
+
+        Arrays and scalars are refused rather than coerced. `{{custom_data.x}}`
+        is a dotted-path lookup, so a non-object has no addressable key and
+        every placeholder referencing it would fail at submit anyway -- a
+        clear 400 on the container beats a confusing one on each key.
+        """
+        if value is None:
+            return value
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                "custom_data must be a JSON object (not an array or a scalar): "
+                "`{{custom_data.<key>}}` addresses it by key"
+            )
+        size = len(json.dumps(value).encode("utf-8"))
+        if size > settings.AGENT_KV_MAX_CUSTOM_DATA_BYTES:
+            raise serializers.ValidationError(
+                f"custom_data is {size} bytes, over the "
+                f"{settings.AGENT_KV_MAX_CUSTOM_DATA_BYTES}-byte limit"
+            )
+        return value
+
+    def validate_hitl_queue_name(self, value):
+        """Refused when the feature is off, rather than accepted and dropped.
+
+        That is the exact failure `custom_data` itself shipped with: accepted
+        by the serializer, stored, and never reaching anything. A caller who
+        names a queue on a deployment without HITL would otherwise get a 202
+        and no review, with nothing in the response saying so.
+        """
+        if not value:
+            return value
+        if not settings.AGENT_KV_HITL_ENABLED:
+            raise serializers.ValidationError(
+                "human review is not available on this deployment"
+            )
+        if not re.fullmatch(HITL_QUEUE_NAME_RE, value):
+            raise serializers.ValidationError(
+                "hitl_queue_name may contain only letters, digits, hyphens and "
+                "underscores, and must be 1-50 characters"
+            )
+        return value
 
     def validate_webhook_url(self, value):
         """Refuse at submit what the sink will refuse at delivery.
@@ -646,7 +767,7 @@ class SubmitSerializer(serializers.Serializer):
         reason = webhook_url_refusal(value, allowed_schemes=("https",), resolve=False)
         if reason is not None:
             raise serializers.ValidationError(
-                "webhook_url must be an https URL on a public host " f"({reason})"
+                f"webhook_url must be an https URL on a public host ({reason})"
             )
         return value
 
@@ -797,4 +918,22 @@ class SubmitSerializer(serializers.Serializer):
                 )
         # Excel: no page concept pre-OCR (spec §6.1); pages_total stays None,
         # size cap already enforced; the engine enforces the post-OCR cap.
+        # Substitute `{{custom_data.*}}` in the instruction text, HERE rather
+        # than in the engines. Both halves are in this one request, so a
+        # missing key is a 400 before anything is staged, slotted or billed --
+        # the workflow executor resolves engine-side and has to, because there
+        # the data is on a deployment and the prompt on a tool.
+        #
+        # Entries are replaced wholesale with their resolved copies, so what
+        # reaches `dispatch_job` is final text and the engines need no
+        # knowledge of `custom_data` at all.
+        entries = data.get("extractors") or []
+        if any(custom_data.entry_references(e) for e in entries):
+            try:
+                data["extractors"] = [
+                    custom_data.resolve_entry(e, data.get("custom_data")) for e in entries
+                ]
+            except custom_data.MissingCustomDataKey as e:
+                raise serializers.ValidationError({"custom_data": str(e)}) from e
+
         return data

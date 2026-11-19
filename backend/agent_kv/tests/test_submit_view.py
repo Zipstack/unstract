@@ -22,7 +22,9 @@ from agent_kv.tests._factories import kv_key  # noqa: E402
 
 
 def _post(data=None):
-    return APIRequestFactory().post("/api/v1/agentic-extract/", data or {}, format="multipart")
+    return APIRequestFactory().post(
+        "/api/v1/agentic-extract/", data or {}, format="multipart"
+    )
 
 
 def _plugin_with_gate(denial=None):
@@ -297,7 +299,7 @@ def test_happy_path_returns_202_with_job_id_status_and_status_url(
     m_limiter.check_and_acquire.return_value = True
     m_save.side_effect = _stamp_created_at
 
-    def _side_effect(job, *, extractor, schema, options, adapters=None):
+    def _side_effect(job, *, extractor, schema, options, adapters=None, custom_data=None):
         job.status = JobStatus.DISPATCHED
         job.dispatched_at = timezone.now()
 
@@ -765,7 +767,9 @@ def _real_multipart_post(extractors, **job_level):
     with open(fixture, "rb") as fh:
         upload = SimpleUploadedFile("doc.pdf", fh.read(), content_type="application/pdf")
     payload = {"file": upload, "extractors": _json.dumps(extractors), **job_level}
-    req = APIRequestFactory().post("/api/v1/agentic-extract/", payload, format="multipart")
+    req = APIRequestFactory().post(
+        "/api/v1/agentic-extract/", payload, format="multipart"
+    )
     req.META["HTTP_AUTHORIZATION"] = "Bearer 123e4567-e89b-12d3-a456-426614174001"
     return req
 
@@ -1002,9 +1006,7 @@ def test_an_adapter_from_another_org_is_refused(
     m_limiter.check_and_acquire.return_value = True
     m_save.side_effect = _stamp_created_at
 
-    with _adapters_owned_by(
-        key.organization_id, missing=[_TABLE_ADAPTERS[stolen_role]]
-    ):
+    with _adapters_owned_by(key.organization_id, missing=[_TABLE_ADAPTERS[stolen_role]]):
         resp = ev.SubmitView.as_view()(
             _real_multipart_post(
                 [
@@ -1128,9 +1130,7 @@ def test_a_deprecated_adapter_is_refused_at_submit(
     m_limiter.check_and_acquire.return_value = True
     m_save.side_effect = _stamp_created_at
 
-    with _adapters_owned_by(
-        key.organization_id, unavailable=[_TABLE_ADAPTERS["x2text"]]
-    ):
+    with _adapters_owned_by(key.organization_id, unavailable=[_TABLE_ADAPTERS["x2text"]]):
         resp = ev.SubmitView.as_view()(
             _real_multipart_post(
                 [

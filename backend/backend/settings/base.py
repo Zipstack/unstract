@@ -385,6 +385,25 @@ AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS = int(
 AGENT_KV_CALCULATIONS_ENABLED = (
     os.environ.get("AGENT_KV_CALCULATIONS_ENABLED", "false").lower() == "true"
 )
+# Byte cap on the submit `custom_data` object. Mirrors
+# AGENT_KV_MAX_CALCULATIONS_BYTES rather than api_v2's `validate_custom_data`,
+# which checks only that the value is a JSON object and caps nothing -- this
+# value is stored on the job row, echoed in every status and result response,
+# and substituted into prompt text, so an uncapped one is three problems.
+AGENT_KV_MAX_CUSTOM_DATA_BYTES = int(
+    os.environ.get("AGENT_KV_MAX_CUSTOM_DATA_BYTES", 20_000)
+)
+# Gates `enable_highlight` / `enable_word_confidence`. Off ships the behaviour
+# unchanged: no highlight block in the result, and -- for `table` -- no extra
+# per-page LLM call, since that extractor's highlight validator runs on the
+# `lite_llm` adapter.
+AGENT_KV_HIGHLIGHT_ENABLED = (
+    os.environ.get("AGENT_KV_HIGHLIGHT_ENABLED", "false").lower() == "true"
+)
+# Gates `hitl_queue_name`. Off refuses the field at submit rather than
+# accepting it and dropping the push, which is the failure mode `custom_data`
+# itself shipped with.
+AGENT_KV_HITL_ENABLED = os.environ.get("AGENT_KV_HITL_ENABLED", "false").lower() == "true"
 AGENT_KV_STRUCTURED_OUTPUT_ENABLED = (
     os.environ.get("AGENT_KV_STRUCTURED_OUTPUT_ENABLED", "false").lower() == "true"
 )

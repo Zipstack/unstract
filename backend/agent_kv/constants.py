@@ -108,3 +108,42 @@ STAGE_NAMES_BY_EXTRACTOR = {
     V1_EXTRACTOR_NAME: STAGE_NAMES,
     TABLE_EXTRACTOR_NAME: TABLE_STAGE_NAMES,
 }
+
+
+#: The x2text adapter that can produce highlight and confidence data, by the
+#: provider descriptor `AdapterInstance.adapter_id` carries.
+#:
+#: A literal rather than an import: pulling the SDK adapter class into a
+#: request path to read one `get_id()` drags its whole registry in. The literal
+#: is pinned to the SDK's own value by
+#: `tests/test_highlight_gate.py::test_the_whisperer_id_matches_the_sdk`, so it
+#: cannot drift silently.
+#:
+#: **V2 only, and that is the point.** Only `llm_whisperer_v2`'s helper fetches
+#: `line_metadata` -- `enable_highlight` there sets both `ADD_LINE_NOS` and
+#: `INCLUDE_LINE_CONFIDENCE` and then calls `get_highlight_data`
+#: (`sdk1/.../x2text/llm_whisperer_v2/src/helper.py`). No other x2text adapter
+#: has that path, so highlight on any of them would return an empty block the
+#: caller paid for.
+LLM_WHISPERER_ADAPTER_ID = "llmwhisperer|a5e6b8af-3e1f-4a80-b006-d017e8e67f93"
+
+#: `hitl_queue_name`'s accepted shape, matching the documented API-deployment
+#: field it mirrors (docs: "Push to HITL from API Deployments"): alphanumerics,
+#: hyphens and underscores, and short enough to stay readable in a queue name.
+#:
+#: The queue this ends up addressing is
+#: `review_queue_{organization_id}_{class}:{hitl_queue_name}`, so a name
+#: carrying `:` or whitespace would alter the queue's own structure rather than
+#: name a queue within it. That is why this is a refusal and not a sanitiser.
+HITL_QUEUE_NAME_RE = r"^[A-Za-z0-9_-]{1,50}$"
+
+#: The `class` slot of that queue name. The API-deployment path puts a workflow
+#: id there; this API has no workflow, so the whole API is one namespace and
+#: the caller's `hitl_queue_name` subdivides it -- exactly how a workflow's
+#: queue is subdivided today.
+HITL_QUEUE_CLASS = "agentic-extract"
+
+#: `queue_type` for records pushed over an API rather than drained from an ETL
+#: pipeline. `HITLQueue.queue_type` already carries this value for the
+#: API-deployment path; its `workflow` FK is nullable for the same reason.
+HITL_QUEUE_TYPE_API = "api"
