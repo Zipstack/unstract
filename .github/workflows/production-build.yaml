@@ -114,14 +114,14 @@ jobs:
     steps:
       - name: Checkout code for release
         if: github.event_name == 'release'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.release.tag_name }}
           persist-credentials: false
 
       - name: Checkout code for branch
         if: github.event_name != 'release'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -139,7 +139,7 @@ jobs:
 
       # Log in to Docker Hub
       - name: Login to Docker Hub
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -207,7 +207,7 @@ jobs:
       # Upload status for summary job
       - name: Upload build status
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: build-status-${{ matrix.service_name }}
           path: build-status/${{ matrix.service_name }}.json
@@ -360,7 +360,7 @@ jobs:
       # Send summary notification to Slack
       - name: Send Slack summary notification
         if: always()
-        uses: slackapi/slack-github-action@af78098f536edbc4de71162a307590698245be95 # v3.0.1
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           webhook-type: incoming-webhook
           payload: |
