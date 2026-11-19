@@ -616,6 +616,9 @@ def test_sync_wait_returns_200_with_failure_body_when_job_fails_mid_wait(
         "success": False,
         "status": "failed",
         "error": "LLM provider timed out",
+        # The sync-wait path returns the same terminal payload the result
+        # endpoint does, so it carries the same echo.
+        "custom_data": {},
     }
     assert not m_sleep.called
 
