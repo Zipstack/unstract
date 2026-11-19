@@ -200,6 +200,22 @@ describe("401", () => {
     assign.mockRestore();
   });
 
+  it("is only rejected by a client that does not expire the session", async () => {
+    mockApi(
+      mock.get(URL, () =>
+        HttpResponse.json({ message: "Unauthorized" }, { status: 401 }),
+      ),
+    );
+    const expired = vi.fn();
+    const cleanup = onSessionExpired(expired);
+    const error = await createHttpClient({ expiresSession: false })
+      .get(URL)
+      .catch((e: unknown) => e);
+    cleanup();
+    expect(error).toMatchObject({ kind: "unauthenticated" });
+    expect(expired).not.toHaveBeenCalled();
+  });
+
   it("is not treated as expiry for other statuses", async () => {
     mockApi(mock.get(URL, () => HttpResponse.json({}, { status: 403 })));
     const expired = vi.fn();

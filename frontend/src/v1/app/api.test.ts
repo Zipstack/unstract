@@ -19,6 +19,7 @@ vi.mock("@v1/app/registry/entries", async (importOriginal) => {
         toV0: { "/:orgName/flows/:id": "/:orgName/workflows/:id" },
         toV1: { "/:orgName/workflows/:id": "/:orgName/flows/:id" },
         toggle: false,
+        access: "authenticated",
         distributions: ["oss", "cloud", "onprem"],
         registeredBy: "P3-T01",
       },

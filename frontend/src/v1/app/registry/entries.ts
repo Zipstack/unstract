@@ -24,6 +24,7 @@ export const DEMO_PAGES: readonly RegistryEntry[] = [
     page: "DEMO-PAGE",
     v1Routes: ["/:orgName/v1-demo"],
     replaces: ["/:orgName/v0-demo"],
+    access: "authenticated",
     toV0: { "/:orgName/v1-demo": "/:orgName/v0-demo" },
     toV1: { "/:orgName/v0-demo": "/:orgName/v1-demo" },
     toggle: false,
@@ -36,6 +37,7 @@ export const DEMO_PAGES: readonly RegistryEntry[] = [
     page: "DEMO-REVIEW",
     v1Routes: ["/:orgName/v1-demo-review", "/:orgName/v1-demo-review/details"],
     replaces: ["/:orgName/v0-demo-review"],
+    access: "authenticated",
     toV0: {
       "/:orgName/v1-demo-review": "/:orgName/v0-demo-review",
       "/:orgName/v1-demo-review/details": "/:orgName/v0-demo-review",

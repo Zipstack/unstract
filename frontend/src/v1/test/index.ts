@@ -53,4 +53,5 @@ export {
   type TestSessionOverrides,
   type TestUser,
   type ThemeMode,
+  toV1Session,
 } from "./session";

@@ -68,17 +68,23 @@ export async function listOrganizations({
   return data.organizations as Organization[];
 }
 
-/** Makes the organisation the session's current one. */
+/**
+ * Makes the organisation the session's current one. Returns the URL name the
+ * backend keeps for it, which v0's URLs use and which can differ from the list's.
+ */
 export async function switchOrganization(
   id: string,
   { signal }: Pick<RequestOptions, "signal"> = {},
-): Promise<void> {
+): Promise<string | undefined> {
   const url = `/api/v1/organization/${encodeURIComponent(id)}/set`;
+  let data: { organization?: { name?: unknown } } | undefined;
   try {
-    await http.post(url, undefined, { signal });
+    ({ data } = await http.post<typeof data>(url, undefined, { signal }));
   } catch (error) {
     throw refusal(error, 403, "access-removed");
   }
+  const name = data?.organization?.name;
+  return typeof name === "string" && name !== "" ? name : undefined;
 }
 
 /**
