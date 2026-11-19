@@ -1,4 +1,5 @@
 import { PAGE_COMPONENTS } from "@v1/app/pages";
+import { CHOOSE_ORGANIZATION_PATH, SIGN_IN_PATH } from "@v1/lib/organizations";
 import { describe, expect, it } from "vitest";
 import { DEMO_PAGES, PAGES, REGISTERED_PAGES } from "./entries";
 import { patternProblem, patternsOverlap } from "./patterns";
@@ -21,6 +22,17 @@ describe("the app's registry", () => {
     expect(
       declared.filter((p) => !PAGE_COMPONENTS[p.page]).map((p) => p.page),
     ).toEqual([]);
+  });
+
+  // The guard sends users to these v0 pages; a v1 page there would redirect to itself.
+  it("leaves the sign-in and organisation picker pages to v0", () => {
+    const targets = [SIGN_IN_PATH, CHOOSE_ORGANIZATION_PATH];
+    const taken = declared.flatMap(({ page, v1Routes, replaces }) =>
+      [...v1Routes, ...replaces]
+        .filter((route) => targets.some((t) => patternsOverlap(route, t)))
+        .map((route) => `${page} ${route}`),
+    );
+    expect(taken).toEqual([]);
   });
 });
 

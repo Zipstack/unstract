@@ -124,7 +124,8 @@ describe("loadSession", () => {
     expect(seen.some((call) => call.startsWith("POST"))).toBe(false);
   });
 
-  it("reports access removed when the set call answers 403", async () => {
+  it("reports access removed when the set call answers 403, logging its request id", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     mockApi(
       http.post("/api/v1/organization/:id/set", () =>
         HttpResponse.json({}, { status: 403 }),
@@ -132,6 +133,25 @@ describe("loadSession", () => {
       ...sessionHandlers(DEFAULT_SESSION),
     );
     expect(await loadSession()).toEqual({ kind: "access-removed" });
+    expect(warn).toHaveBeenCalledWith(
+      "[v1 api] %s (request %s)",
+      expect.any(String),
+      expect.stringMatching(/^(?!none$)./),
+    );
+  });
+
+  it("takes the URL name from the set reply, as v0's URLs do", async () => {
+    mockApi(
+      http.post("/api/v1/organization/:id/set", () =>
+        HttpResponse.json({ organization: { name: "renamed" } }),
+      ),
+      ...sessionHandlers(DEFAULT_SESSION),
+    );
+    const load = await loadSession();
+    if (load.kind !== "signed-in") {
+      throw new Error(`expected signed-in, got ${load.kind}`);
+    }
+    expect(load.session.organization.name).toBe("renamed");
   });
 
   it("rejects with the set call's own ApiError, request id included, when set fails", async () => {
@@ -191,6 +211,37 @@ describe("loadSession", () => {
       ...sessionHandlers(DEFAULT_SESSION),
     );
     await expect(loadSession()).rejects.toThrow(/carried no user/);
+  });
+
+  it("rejects with the ApiError when the organisation list fails other than 412", async () => {
+    mockApi(
+      http.get("/api/v1/organization", () =>
+        HttpResponse.json({}, { status: 500 }),
+      ),
+      ...sessionHandlers(DEFAULT_SESSION),
+    );
+    await expect(loadSession()).rejects.toMatchObject({ kind: "server" });
+  });
+
+  it.each([
+    [
+      { name: "Plain", role: "unstract_reviewer" },
+      "Plain",
+      "unstract_reviewer",
+    ],
+    [{}, DEFAULT_SESSION.user.email, DEFAULT_SESSION.role],
+  ])("falls back for the name and role in profile %j", async (user, name, role) => {
+    mockApi(
+      http.get("/api/v1/unstract/:org/users/profile/", () =>
+        HttpResponse.json({ user }),
+      ),
+      ...sessionHandlers(DEFAULT_SESSION),
+    );
+    const load = await loadSession();
+    if (load.kind !== "signed-in") {
+      throw new Error(`expected signed-in, got ${load.kind}`);
+    }
+    expect(load.session.user).toMatchObject({ name, role });
   });
 
   it("rejects with the ApiError when the session call fails", async () => {

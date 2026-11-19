@@ -10,6 +10,7 @@ import {
   OrganizationError,
   switchOrganization,
 } from "./organizations";
+import { reportApiError } from "./report";
 
 type SignalOnly = Pick<RequestOptions, "signal">;
 
@@ -144,19 +145,22 @@ async function enterOrganization(
   organizations: readonly Organization[],
   signal?: AbortSignal,
 ): Promise<SessionLoad> {
+  let urlName: string | undefined;
   try {
-    await switchOrganization(org.id, { signal });
+    urlName = await switchOrganization(org.id, { signal });
   } catch (error) {
-    // Its 403: the user lost the organisation after the list loaded.
-    if (error instanceof OrganizationError) {
-      return ACCESS_REMOVED;
+    if (!(error instanceof OrganizationError)) {
+      throw error;
     }
-    throw error;
+    // Its 403: access lost after the list loaded, or a refused CSRF token; logged with its request id.
+    reportApiError(error.cause, { notify: false });
+    return ACCESS_REMOVED;
   }
   const profile = await getProfile(org.id, signal);
+  const current = { ...org, name: urlName ?? org.name };
   return {
     kind: "signed-in",
-    session: toSession(reply, profile, org),
+    session: toSession(reply, profile, current),
     organizations,
   };
 }

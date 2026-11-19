@@ -1,7 +1,6 @@
 /*
- * The signed-in session. `V1App` loads it once per
- * page load and provides it to every page that is not guest-only; read it
- * with `useSession()`.
+ * The signed-in session. `RouteGate` loads it once per page load and provides
+ * it to every page that is not guest-only; read it with `useSession()`.
  */
 import { createContext, type ReactNode, useContext } from "react";
 

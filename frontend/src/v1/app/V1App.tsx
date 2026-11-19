@@ -5,7 +5,7 @@
  * stylesheet (vite.config.js sets cssCodeSplit: false). The Toaster mounts
  * here, once, so `notify()` reaches the user on every v1 page, and so do the
  * one QueryClient and the plugin slots. Each page renders behind its
- * session guard (`app/session/`); the shell mounts here.
+ * session guard (`app/session/`); the shell will mount here.
  */
 
 import { QueryClientProvider } from "@tanstack/react-query";

@@ -178,8 +178,10 @@ only when a v1 page first renders.
 - `app/registry/validate.test.ts` fails CI on an invalid entry: overlapping
   patterns across pages, a v1 route and a different v0 route of one page that
   match the same URL (a page may keep its v0 URL), a route without a mapping
-  to the other version, a page without a component, an unknown `access`, or
-  `toggle` on any page but Human Review (UN11, D14) and its demo stand-in.
+  to the other version, a page without a component, an unknown `access`, an
+  `admin` page shipped to `oss`, a page on `/landing` or `/setOrg` (the guard
+  sends users there), or `toggle` on any page but Human Review (UN11, D14) and
+  its demo stand-in.
 - Human Review's old-version preference is per user, per browser, in
   localStorage (`unstract.v1.oldVersion.<userId>`). `setOldVersion(on)` sets
   it, and the switch then moves the user to the mapped screen without a

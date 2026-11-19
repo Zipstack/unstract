@@ -43,7 +43,7 @@ describe("permissions", () => {
     expect(canCreate(capabilities, "create_llm_adapters")).toBe(false);
     expect(canCreate(capabilities, "manage_members")).toBe(false);
     expect(canCreate(undefined, "create_connectors")).toBe(false);
-    // @ts-expect-error delete also needs ownership: canDeleteWorkflowOrDeployment
+    // @ts-expect-error use canDeleteWorkflowOrDeployment
     canCreate(capabilities, "delete_workflows_and_deployments");
   });
 });

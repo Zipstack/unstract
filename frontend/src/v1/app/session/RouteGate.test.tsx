@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { RouteAccess } from "@v1/app/registry/types";
 import {
   buildRegistry,
@@ -30,6 +31,11 @@ import { RouteGate } from "./RouteGate";
 
 const identify = vi.hoisted(() => vi.fn());
 vi.mock("@v1/lib/analytics", () => ({ identifyUser: identify }));
+const signOutAndLeave = vi.hoisted(() => vi.fn<() => Promise<void>>());
+vi.mock("@v1/services/session", async (actual) => ({
+  ...(await actual<typeof import("@v1/services/session")>()),
+  signOutAndLeave,
+}));
 
 const ORG_ID = DEFAULT_SESSION.organization.id;
 const ORG = DEFAULT_SESSION.organization.urlName;
@@ -120,6 +126,7 @@ const landed = async () => {
 
 beforeEach(() => {
   useOldVersionStore.setState({ userId: null, oldVersion: null, chosen: {} });
+  signOutAndLeave.mockReset().mockResolvedValue();
 });
 
 describe("RouteGate", () => {
@@ -195,8 +202,8 @@ describe("RouteGate", () => {
   });
 
   it("sends an ended session (412) to v0's error page with its cause, by a full load", async () => {
-    const assign = vi
-      .spyOn(window.location, "assign")
+    const replace = vi
+      .spyOn(window.location, "replace")
       .mockImplementation(() => undefined);
     mockApi(
       http.get("/api/v1/organization", () =>
@@ -206,7 +213,7 @@ describe("RouteGate", () => {
     );
     renderGate("authenticated");
     await vi.waitFor(() =>
-      expect(assign).toHaveBeenCalledWith("/error?code=USR&domain=acme.com"),
+      expect(replace).toHaveBeenCalledWith("/error?code=USR&domain=acme.com"),
     );
   });
 
@@ -231,10 +238,13 @@ describe("RouteGate", () => {
     mockApi(...sessionHandlers(member, { organizations, ...options }));
     renderGate("authenticated");
     expect(await screen.findByText(message)).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Sign out" }),
-    ).toBeInTheDocument();
     expect(screen.queryByTestId("where")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(signOutAndLeave).toHaveBeenCalledTimes(1);
+    // Gone after one click, so a second sign-out cannot race the first.
+    expect(
+      screen.queryByRole("button", { name: "Sign out" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders a guest page for a guest, and sends a signed-in user into the app", async () => {

@@ -10,7 +10,11 @@ import { NoPermission } from "@v1/components/patterns/NoPermission";
 import { QueryView } from "@v1/components/patterns/QueryView";
 import { InlineAlert, SkeletonText } from "@v1/components/ui/feedback";
 import { identifyUser } from "@v1/lib/analytics";
-import { sessionEndedPath } from "@v1/lib/organizations";
+import {
+  CHOOSE_ORGANIZATION_PATH,
+  SIGN_IN_PATH,
+  sessionEndedPath,
+} from "@v1/lib/organizations";
 import { type GateSlotId, Slot } from "@v1/lib/plugins";
 import { type Session, SessionProvider } from "@v1/lib/session";
 import { setOrganizationId } from "@v1/services/context";
@@ -21,14 +25,9 @@ import {
   signOutAndLeave,
 } from "@v1/services/session";
 import { useOldVersionStore } from "@v1/stores/oldVersion";
-import { type JSX, type ReactNode, Suspense, useEffect } from "react";
+import { type JSX, type ReactNode, Suspense, useEffect, useState } from "react";
 import { Navigate, useLocation, useParams } from "react-router-dom";
 import { type GuardDecision, guardRoute } from "./guard";
-
-/** v0's sign-in page; for a signed-in user it opens their home instead. */
-export const SIGN_IN_PATH = "/landing";
-/** v0's organisation picker, for a user with several and none current; it reads them from the navigation state. */
-export const CHOOSE_ORGANIZATION_PATH = "/setOrg";
 
 const LOADING = (
   <div className="ui:p-6">
@@ -165,18 +164,23 @@ function Decided({ decision, load, children }: Outcome): ReactNode {
       return <Navigate to={SIGN_IN_PATH} replace />;
     case "no-permission":
       return <NoPermission />;
+    case "allow":
+    case "platform-admin":
+      return (
+        <Allowed load={load} platformAdmin={decision === "platform-admin"}>
+          {children}
+        </Allowed>
+      );
+    default:
+      // A new decision fails to compile here rather than open the page.
+      return decision satisfies never;
   }
-  return (
-    <Allowed load={load} platformAdmin={decision === "platform-admin"}>
-      {children}
-    </Allowed>
-  );
 }
 
-// A full load, so no cached session outlives the page it leaves for.
+// A full load, so no cached session outlives the page it leaves for; replace, as it never showed.
 function Leave({ to }: Readonly<{ to: string }>): JSX.Element {
   useEffect(() => {
-    window.location.assign(to);
+    window.location.replace(to);
   }, [to]);
   return LOADING;
 }
@@ -188,11 +192,20 @@ const NO_ACCESS = {
 
 /** Signed in with no organisation to enter: signing in again starts afresh. */
 function NoAccess({ kind }: Readonly<{ kind: keyof typeof NO_ACCESS }>) {
+  const [leaving, setLeaving] = useState(false);
+  // One sign-out per page: a second click could skip the provider's sign-out.
+  const signOut = () => {
+    setLeaving(true);
+    void signOutAndLeave();
+  };
+  if (leaving) {
+    return LOADING;
+  }
   return (
     <div className="ui:p-6">
       <InlineAlert
         title={NO_ACCESS[kind]}
-        onRetry={() => void signOutAndLeave()}
+        onRetry={signOut}
         retryLabel="Sign out"
       />
     </div>
