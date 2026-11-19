@@ -196,6 +196,7 @@ export async function signOut({ signal }: SignalOnly = {}): Promise<string> {
 }
 
 // A sign-out POST that hangs falls back to the GET rather than keep a dead page on screen.
+// Accepted race: a POST that lands just after the abort leaves the GET to skip Unstract ID's sign-out.
 export const SIGN_OUT_TIMEOUT_MS = 5000;
 
 async function signOutWithin(ms: number): Promise<string> {
