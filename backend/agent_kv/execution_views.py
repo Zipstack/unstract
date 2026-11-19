@@ -262,7 +262,7 @@ def _sync_wait_response(job, wait: float) -> Response | None:
     while time.monotonic() < deadline:
         job.refresh_from_db()
         if job.status in AgentKVJob.TERMINAL:
-            # A concurrent `DELETE /agent-kv/{job_id}` while this request is
+            # A concurrent `DELETE /api/v1/agentic-extract/{job_id}` while this request is
             # still waiting purges the job, and this is the second reader of a
             # stored result -- so it owes the same answer `JobResultView` gives
             # a purged job, for the same reason. Without it, the one caller who

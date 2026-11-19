@@ -312,7 +312,7 @@ groups:
     depends_on: [e2e-smoke]
     optional: true
 
-  # Agent-KV product API (/agent-kv/...). Needs the cloud `agentic_kv`
+  # Agent-KV product API (/api/v1/agentic-extract/...). Needs the cloud `agentic_kv`
   # executor plugin installed (docs/agent-kv-api.md §11) -- an OSS-only image
   # 501s every submit, so this is optional: an OSS-only CI run must not go
   # red just because the plugin isn't there. The module itself additionally
