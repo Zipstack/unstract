@@ -21,7 +21,7 @@ from agent_kv.models import AgentKVJob, AgentKVKey, JobStatus  # noqa: E402
 from agent_kv.tests._factories import kv_key  # noqa: E402
 
 
-def _authed(method="get", path="/agent-kv/x"):
+def _authed(method="get", path="/agentic-extract/x"):
     req = getattr(APIRequestFactory(), method)(path)
     req.META["HTTP_AUTHORIZATION"] = "Bearer 123e4567-e89b-12d3-a456-426614174001"
     return req
@@ -642,7 +642,7 @@ def test_all_job_views_401_without_key():
         (ev.JobCancelView, "post"),
         (ev.JobDeleteView, "delete"),
     ]:
-        req = getattr(APIRequestFactory(), method)("/agent-kv/x")
+        req = getattr(APIRequestFactory(), method)("/agentic-extract/x")
         resp = view.as_view()(req, job_id=uuid.uuid4())
         assert resp.status_code == 403
 

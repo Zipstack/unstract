@@ -15,9 +15,9 @@ import { ApiKeyManager } from "../api-key-manager/ApiKeyManager.jsx";
  * `resourcePath` resolves to `/api/v1/unstract/{orgId}/agent-kv/keys/`
  * (`backend/agent_kv/urls.py`, mounted in `urls_v2.py`). That is the
  * tenant-scoped, session-authenticated management surface — NOT the public
- * `/agent-kv/` execution prefix the resulting key is then used against, which
- * is whitelisted out of the session middleware and authenticates with the key
- * itself.
+ * `/agentic-extract/` execution prefix the resulting key is then used
+ * against, which is whitelisted out of the session middleware and
+ * authenticates with the key itself.
  */
 function AgentKvKeys() {
   return (

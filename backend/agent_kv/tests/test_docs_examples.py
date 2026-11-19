@@ -20,6 +20,7 @@ import os
 import pathlib
 import re
 
+from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 
@@ -29,6 +30,11 @@ FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 
 #: `backend/agent_kv/tests/` -> repo root.
 _DOC = pathlib.Path(__file__).resolve().parents[3] / "docs" / "agent-kv-api.md"
+
+#: The placeholder host every `curl` in the doc is written against. Capturing
+#: the path after it is what lets the prefix check below compare a documented
+#: URL with the route the service actually mounts.
+_EXAMPLE_URL = re.compile(r"https://api\.unstract\.example(\S*)")
 
 #: The `-F 'extractors=[...]'` argument of each fenced curl example. Matching on
 #: the curl flag rather than on a fence keeps prose that merely mentions
@@ -90,3 +96,32 @@ def test_every_documented_example_validates():
 def test_the_examples_cover_both_extractors():
     """Guards the loop above from passing on two copies of one extractor."""
     assert {e["name"] for e in _documented_entries()} == {"kv", "table"}
+
+
+def test_the_documented_urls_sit_under_the_live_execution_prefix():
+    """The path the examples are written against, not just their payloads.
+
+    Nothing else ties the two together. The route is mounted from
+    `settings.AGENT_KV_PATH_PREFIX` (`backend/base_urls.py`), so renaming the
+    public prefix moves every endpoint and leaves a doc full of `curl`s that
+    now 404 -- and a reader has no way to tell the doc is the stale half. That
+    is not hypothetical: the prefix was renamed once, and this assertion is
+    what makes the next rename fail here instead of in an integrator's
+    terminal.
+
+    It cannot speak for the customer-facing docs site, which lives in another
+    repo and has to be updated by hand.
+    """
+    paths = _EXAMPLE_URL.findall(_DOC.read_text())
+    # Non-empty, so a doc that stops using the placeholder host -- or a regex
+    # that stops matching it -- fails here rather than passing on nothing.
+    assert paths, (
+        "no example URLs found in the doc; this guard matches `curl`s written "
+        f"against the `{_EXAMPLE_URL.pattern}` placeholder host"
+    )
+    prefix = f"/{settings.AGENT_KV_PATH_PREFIX}"
+    for path in paths:
+        assert path == prefix or path.startswith(f"{prefix}/"), (
+            f"the doc documents `{path}`, which is not under the mounted "
+            f"execution prefix `{prefix}`"
+        )

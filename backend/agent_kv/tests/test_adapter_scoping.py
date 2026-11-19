@@ -11,7 +11,7 @@ filter in `_get_job` -- but the two models have different default managers:
   `UserContext.get_organization()` -- a request-local thread-local set by the
   tenant middleware.
 
-`/agent-kv/` is deliberately whitelisted past that middleware (the org comes
+`/agentic-extract/` is deliberately whitelisted past that middleware (the org comes
 from the Bearer key, not the URL), so the thread-local is unset and the ambient
 filter became `organization=None`. Every valid submit was refused with "no such
 adapter in this organization".
@@ -214,7 +214,7 @@ class TestResolvedAdaptersAgainstRealRows(TestCase):
     def test_another_org_s_adapter_and_a_nonexistent_one_refuse_identically(self):
         """The oracle property, from two genuinely different DB states.
 
-        If these two messages ever diverge, `POST /agent-kv/` becomes an oracle
+        If these two messages ever diverge, `POST /agentic-extract/` becomes an oracle
         for which adapter UUIDs are real in OTHER organizations: a caller
         brute-forcing ids learns "exists but not yours" from "does not exist".
 

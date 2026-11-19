@@ -477,7 +477,7 @@ def _notify_result_available(url: str, job_id: str) -> None:
     Sent only when ``FinalizeView`` reports ``result_attached``: the job was
     cancelled while its extraction was finishing, the usage was already flushed
     and billed, and the result is therefore kept and served by
-    ``GET /agent-kv/{job_id}/result`` alongside ``status: "cancelled"``.
+    ``GET /agentic-extract/{job_id}/result`` alongside ``status: "cancelled"``.
 
     Logged at ERROR rather than raised on failure, matching the fresh-finalize
     branch above and for the same reason: the job is already terminal and its

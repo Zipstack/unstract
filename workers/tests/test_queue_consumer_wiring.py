@@ -359,7 +359,7 @@ def test_the_compose_sandbox_redirects_its_caches_into_the_writable_mount():
 # cannot serve it.
 #
 # The Agent-KV API is mounted under `AGENT_KV_PATH_PREFIX`, which defaults to
-# `api/v1/agent-kv` -- inside the `/api/v1` prefix traefik already routes to
+# `api/v1/agentic-extract` -- inside the `/api/v1` prefix traefik already routes to
 # the backend. It used to sit at `/agent-kv`, needing its own term in BOTH the
 # backend rule and the frontend's negation of it; miss either and every
 # request was served by the SPA's nginx and never reached Django. The e2e lane

@@ -23,10 +23,10 @@ There are two independent auth schemes on two different URL prefixes:
 
 | Surface | Prefix | Auth |
 |---|---|---|
-| Public execution API (submit/status/result/cancel) | `/api/v1/agent-kv/…` (under the platform API prefix, beside the tenant subfolder rather than inside it) | `Authorization: Bearer <AgentKVKey>` — a dedicated per-organization key, validated by the view itself |
+| Public execution API (submit/status/result/cancel) | `/api/v1/agentic-extract/…` (under the platform API prefix, beside the tenant subfolder rather than inside it) | `Authorization: Bearer <AgentKVKey>` — a dedicated per-organization key, validated by the view itself |
 | Key management (create/list/rotate/revoke) | `{PATH_PREFIX}/unstract/…/agent-kv/keys/…` (tenant-scoped, alongside Platform API key management) | Session auth, `IsOrganizationAdmin` only |
 
-The execution prefix (`AGENT_KV_PATH_PREFIX`, default `api/v1/agent-kv`) sits **outside** the
+The execution prefix (`AGENT_KV_PATH_PREFIX`, default `api/v1/agentic-extract`) sits **outside** the
 tenant-subfolder/organization-middleware chain — it is added to `WHITELISTED_PATHS` in
 `backend/backend/settings/base.py` — because a caller authenticates with an API key, not
 a session/org header. Every view under it therefore owns its own auth via the
@@ -38,7 +38,7 @@ which:
 3. Injects the resolved key object as `agent_kv_key` into the view kwargs, which every
    subsequent lookup filters by (`organization_id=agent_kv_key.organization_id`) — this
    is what makes a job in another org indistinguishable from an unknown job id (both
-   404, see [Status](#4-status--get-agent-kvjob_id)).
+   404, see [Status](#4-status--get-apiv1agentic-extractjob_id)).
 
 **Drift from the spec:** spec §6.1 describes this as "every endpoint 401s without a
 valid key." The implementation returns **403** (`api_v2.exceptions.Forbidden`, reused
@@ -99,7 +99,7 @@ not a v1 gap unique to this feature.
 
 > **This section describes the `kv` extractor's schema language.** It is what
 > you send as `keys` when `extractors[].name` is `"kv"` (see
-> [§3](#3-submit--post-agent-kv-multipart)). The `table` extractor's `keys` is
+> [§3](#3-submit--post-apiv1agentic-extract-multipart)). The `table` extractor's `keys` is
 > just `{"target_table": "<name>"}` and needs none of this.
 >
 > This note used to open "which is not routable on this deployment", with the
@@ -208,7 +208,7 @@ env-configurable is the raw byte size of the whole `keys` document
 A schema that fails to compile is rejected with a `400` at submit time — **nothing is
 billed**.
 
-## 3. Submit — `POST /api/v1/agent-kv/` (multipart)
+## 3. Submit — `POST /api/v1/agentic-extract/` (multipart)
 
 Copied verbatim from spec §7.1 and cross-checked field-by-field against
 `backend/agent_kv/execution_serializers.py::SubmitSerializer` — every row below matches
@@ -339,7 +339,7 @@ choice and LLM spend sit on your account**, per job.
 |---|---|
 | `instructions` | Free-text extraction guidance handed to the engine. |
 | `json_structure` | Free-text description of the row structure to return. |
-| `enable_header_mapping` | Default **off**. **Changes the result shape** — see [§5](#5-result--get-agent-kvjob_idresult). |
+| `enable_header_mapping` | Default **off**. **Changes the result shape** — see [§5](#5-result--get-apiv1agentic-extractjob_idresult). |
 | `correct_number_separators` | Default **off**. Re-reads thousands/decimal separators in numeric cells. |
 | `number_format` | `US` (default) \| `EU`. Which convention `correct_number_separators` assumes. |
 
@@ -397,13 +397,13 @@ Not exposed (D6): model choice, challenger model, `parallel_pages`, thinking bud
 {
   "job_id": "5b6e9b0a-...",
   "status": "dispatched",
-  "status_url": "/api/v1/agent-kv/5b6e9b0a-...",
+  "status_url": "/api/v1/agentic-extract/5b6e9b0a-...",
   "created_at": "2026-08-28T10:15:00.123456+00:00"
 }
 ```
 
 `200` (when `timeout` was set and the job finished before the deadline): the full
-[result payload](#5-result--get-agent-kvjob_idresult), same shape as the result
+[result payload](#5-result--get-apiv1agentic-extractjob_idresult), same shape as the result
 endpoint.
 
 `501`: [engine unavailable](#10-when-the-engine-is-unavailable-501-behavior).
@@ -421,7 +421,7 @@ deployment returns `501` before ever reaching it.
 ### Example — `table` (agentic table extraction)
 
 ```bash
-curl -X POST https://api.unstract.example/api/v1/agent-kv/ \
+curl -X POST https://api.unstract.example/api/v1/agentic-extract/ \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345" \
   -F "file=@invoice.pdf" \
   -F 'extractors=[{
@@ -454,7 +454,7 @@ the `kv` extractor was env-configured on the operator side, which was true
 before the adapter migration and is not now.
 
 ```bash
-curl -X POST https://api.unstract.example/api/v1/agent-kv/ \
+curl -X POST https://api.unstract.example/api/v1/agentic-extract/ \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345" \
   -F "file=@invoice.pdf" \
   -F 'extractors=[{
@@ -486,7 +486,7 @@ To run the same document through the other engine, change `name` to `table` and
 replace `keys` with `{"target_table": "<name>"}`. Everything else — the file
 part, `adapters`, `page_start`/`page_end`, `webhook_url` — is unchanged.
 
-## 4. Status — `GET /api/v1/agent-kv/{job_id}`
+## 4. Status — `GET /api/v1/agentic-extract/{job_id}`
 
 Verbose, agent-centric, stage-level (`backend/agent_kv/execution_views.py::_status_document`).
 **Stage names are per-extractor.** They are wire format, and `qa`/`challenge`/`codegen`
@@ -552,11 +552,11 @@ spec's illustrative example, not a drift, since spec §7.2 was explicitly a part
 sample ("Verbose, agent-centric, stage-level").
 
 ```bash
-curl https://api.unstract.example/api/v1/agent-kv/5b6e9b0a-... \
+curl https://api.unstract.example/api/v1/agentic-extract/5b6e9b0a-... \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345"
 ```
 
-## 5. Result — `GET /api/v1/agent-kv/{job_id}/result`
+## 5. Result — `GET /api/v1/agentic-extract/{job_id}/result`
 
 Re-readable until `expires_at` (D11), plus explicit `DELETE`.
 
@@ -566,7 +566,7 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
   `DELETE`/TTL cleanup**: `404`. The purge case is keyed off the job's
   `files_purged` marker, not off a blank ref — `DELETE` deliberately keeps a ref
   whose object delete failed so TTL cleanup can retry it, so a surviving ref is
-  not evidence that the data is still yours to read ([§7](#7-delete--delete-agent-kvjob_id)).
+  not evidence that the data is still yours to read ([§7](#7-delete--delete-apiv1agentic-extractjob_id)).
 - **`COMPLETED`**: `200` with the engine's full result object, unchanged (record,
   normalized_record, per-field audit trail, `qa_passed`, `challenge_passed`,
   `consistency_violations`, `cost_summary`, `timing`, plus the advisory markers that
@@ -603,7 +603,7 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
   One residual, recorded in `_fail`: if a cancel wins the terminal guard
   against a salvaging failure, the extraction is discarded, because `_salvage`
   stays success-only and will not graft a partial record onto a cancelled row
-  through the attach path ([§6](#6-cancel--post-agent-kvjob_idcancel) records
+  through the attach path ([§6](#6-cancel--post-apiv1agentic-extractjob_idcancel) records
   why that path is not widened lightly).
 - **`CANCELLED`**: `200` with `{"success": false, "status": "cancelled"}` — unless
   the cancel lost a race to an extraction that had already finished, in which case
@@ -612,7 +612,7 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
   because the cancel *was* honoured; `success` is `true` because there is a real
   result and it was already billed. Branch on `success` for "is there data",
   on `status` for "was this cancelled" — see
-  [§6](#6-cancel--post-agent-kvjob_idcancel).
+  [§6](#6-cancel--post-apiv1agentic-extractjob_idcancel).
 
 **Calculation result shape** (when `calculations` is supplied and
 `AGENT_KV_CALCULATIONS_ENABLED=true`): a `COMPLETED` result adds these fields to the
@@ -735,7 +735,7 @@ record on a failed job.
 an engine result). Document the code: no `timing` on failure/cancellation bodies.
 
 ```bash
-curl https://api.unstract.example/api/v1/agent-kv/5b6e9b0a-.../result \
+curl https://api.unstract.example/api/v1/agentic-extract/5b6e9b0a-.../result \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345"
 ```
 
@@ -961,7 +961,7 @@ from `timing`, which is an internal structure rather than a contract. There is *
 > two settings of one option: a client that sets the flag must read `tables.rows`
 > instead of iterating `tables`.
 
-## 6. Cancel — `POST /api/v1/agent-kv/{job_id}/cancel`
+## 6. Cancel — `POST /api/v1/agentic-extract/{job_id}/cancel`
 
 Defined precisely per spec §7.4: no task-revocation machinery exists anywhere in the
 platform, so cancel flips the job row to `CANCELLED` via the same guarded
@@ -997,7 +997,7 @@ Either way `GET result` reported `{"success": false, "status": "cancelled"}` and
 the customer had paid for an answer that no longer existed. Both paths now
 attach it to the cancelled row instead
 (`FinalizeView._salvage` / `AgentKVJob.attach_result_to_cancelled`) and it is
-served as described in [§5](#5-result--get-agent-kvjob_idresult).
+served as described in [§5](#5-result--get-apiv1agentic-extractjob_idresult).
 
 A success callback for an already-terminal job is therefore the one case where
 finalize writes a result for a row it read as terminal. It is `CANCELLED`-only,
@@ -1038,7 +1038,7 @@ so a **follow-up notification** carrying `result_available: true` is delivered
 when this happens — see [§8](#8-webhook-delivery).
 
 > **This was reverted three times before it shipped, and the reason is worth
-> knowing before you touch it.** `DELETE /api/v1/agent-kv/{job_id}` guarantees that a
+> knowing before you touch it.** `DELETE /api/v1/agentic-extract/{job_id}` guarantees that a
 > purged job cannot be resurrected, and it used to guarantee that *by relying on*
 > the late finalize deleting its own orphaned write. Keeping the result removes
 > exactly that cleanup, and every attempt to rebuild the guarantee from the job's
@@ -1077,11 +1077,11 @@ when this happens — see [§8](#8-webhook-delivery).
   assertion and had never been run.*
 
 ```bash
-curl -X POST https://api.unstract.example/api/v1/agent-kv/5b6e9b0a-.../cancel \
+curl -X POST https://api.unstract.example/api/v1/agentic-extract/5b6e9b0a-.../cancel \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345"
 ```
 
-## 7. Delete — `DELETE /api/v1/agent-kv/{job_id}`
+## 7. Delete — `DELETE /api/v1/agentic-extract/{job_id}`
 
 Deletes the result and any residual staged input immediately, blanks the refs whose
 objects are confirmed gone, and marks the job `files_purged` (`204`, no body). The job
@@ -1100,7 +1100,7 @@ A few details that matter if you are changing this endpoint:
   can equally mean "nothing was ever staged", and a *non*-blank ref can mean
   "purged, but the object delete failed and the ref is kept so TTL cleanup can
   retry" (`storage.delete_job_files`). Nothing downstream may infer purge state
-  from the ref columns — see the note in [§6](#6-cancel--post-agent-kvjob_idcancel).
+  from the ref columns — see the note in [§6](#6-cancel--post-apiv1agentic-extractjob_idcancel).
 - **A ref whose object delete failed is kept**, deliberately, as that retry handle.
   The response is still `204`: the job is terminal, the intent is recorded, and a
   `5xx` here would only invite a retry of a `DELETE` that already did everything it
@@ -1111,7 +1111,7 @@ A few details that matter if you are changing this endpoint:
   along with everything else, and one attempted afterwards is refused outright.
 
 ```bash
-curl -X DELETE https://api.unstract.example/api/v1/agent-kv/5b6e9b0a-... \
+curl -X DELETE https://api.unstract.example/api/v1/agentic-extract/5b6e9b0a-... \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345"
 ```
 
@@ -1151,7 +1151,7 @@ the permanently-undeliverable case belong to the `ide_callback` worker.
 
 It is sent when a cancel that had already been notified turns out to have lost the
 race to a finished extraction, so the result was kept and is now readable
-([§6](#6-cancel--post-agent-kvjob_idcancel)). Without it a webhook-driven caller —
+([§6](#6-cancel--post-apiv1agentic-extractjob_idcancel)). Without it a webhook-driven caller —
 who has no reason to poll a job they were told was cancelled — would never learn the
 answer arrived. `result_available` is the only thing distinguishing it from the
 cancellation POST they already have; a bare duplicate would carry no information at
@@ -1243,9 +1243,9 @@ production.
   against an already-`CANCELLED` job does not trigger it either: it never wins the
   terminal guard, and `_drop_staged_input` stays gated on a won guard, so even the
   success callback that *does* store a result there
-  ([§6](#6-cancel--post-agent-kvjob_idcancel)) leaves the input alone. A cancelled
+  ([§6](#6-cancel--post-apiv1agentic-extractjob_idcancel)) leaves the input alone. A cancelled
   job's staged input is therefore cleaned up the ordinary way: by the TTL sweep once
-  `expires_at` passes, or by an explicit `DELETE /api/v1/agent-kv/{job_id}`.
+  `expires_at` passes, or by an explicit `DELETE /api/v1/agentic-extract/{job_id}`.
 - **Result retention**: `AGENT_KV_RESULT_TTL_DAYS` (default **7** days, D10's
   engineering default) — results are re-readable until then, then swept by the
   internal `ttl-cleanup` endpoint ([§6](#11-deploy-checklist)), which blanks
@@ -1254,7 +1254,7 @@ production.
   never deleted (audit trail persists past TTL, only the object-store payloads are
   dropped).
 - **TTL cleanup marks every row it processes `files_purged`**, on the same terms as
-  `DELETE` ([§7](#7-delete--delete-agent-kvjob_id)): before the deletes are
+  `DELETE` ([§7](#7-delete--delete-apiv1agentic-extractjob_id)): before the deletes are
   attempted, and whether or not they succeed. The sweep *is* a purge, so it owes
   that marker — and without it, a result attached to a cancelled row by a late
   finalize could land after the sweep had read the row and before it blanked the
@@ -1290,7 +1290,7 @@ if not get_plugin("agent_kv"):
 `get_plugin(...)` (`backend/plugins/__init__.py`) returns an empty dict — falsy — when
 no `plugins/agent_kv/` package is installed, which is the OSS-only case by design (the
 plugin is a cloud deliverable, spec §5.1/§11: "OSS scaffold merges dark"). Every
-`POST /api/v1/agent-kv/` on an OSS-only deployment therefore returns:
+`POST /api/v1/agentic-extract/` on an OSS-only deployment therefore returns:
 
 ```json
 {"detail": "agent-kv engine not available on this deployment"}
@@ -1326,7 +1326,7 @@ On `noop: true`, the executor **must**:
    *A `noop` on a LATER stage report is a different situation and the executor should
    not conflate them.* By the final report the work is done and paid for, and a
    success body carrying the full output is then stored on the cancelled job rather
-   than discarded ([§6](#6-cancel--post-agent-kvjob_idcancel)). So "report whatever
+   than discarded ([§6](#6-cancel--post-apiv1agentic-extractjob_idcancel)). So "report whatever
    you have" is right at both ends of the run, but for different reasons: at pickup
    because nothing can be lost, and at the end because something can.
 
@@ -1782,7 +1782,7 @@ with the default shown:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AGENT_KV_PATH_PREFIX` | `api/v1/agent-kv` | Top-level public URL prefix (whitelisted past tenant middleware). |
+| `AGENT_KV_PATH_PREFIX` | `api/v1/agentic-extract` | Top-level public URL prefix (whitelisted past tenant middleware). |
 | `AGENT_KV_MAX_FILE_SIZE_MB` | `50` | Submit-time file size cap. |
 | `AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS` | `3600` | How long after CANCELLATION a cancelled job's executor is presumed dead, so the sweep's phase 3 may release the concurrency slot it still holds. Must stay **below** `rate_limiter.SLOT_TTL_SECONDS` (6 h) or the window is empty and the phase silently releases nothing. |
 | `AGENT_KV_MAX_PAGES` | `100` | Pre-OCR cap on the pages of the DOCUMENT for PDFs — checked against `pages_total`, **not** against the `page_start`/`page_end` range (§6.1), because the whole file is OCR'd and billed whatever the range. The cloud worker refuses on the same quantity. Excel has no pre-OCR page concept, so it takes the engine's post-OCR virtual-page cap instead; images are not accepted. |
