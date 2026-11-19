@@ -1,6 +1,6 @@
 """Fixtures and HTTP helpers shared by the Agent-KV e2e tests.
 
-This lane exercises the Agent-KV *product* API (``/agent-kv/...``, top-level,
+This lane exercises the Agent-KV *product* API (``/api/v1/agentic-extract/...``,
 API-key authed -- not the tenant-scoped platform surface most other e2e
 lanes hit). It needs a deployment where the cloud ``agentic_kv`` executor
 plugin is installed (``plugins.get_plugin("agent_kv")`` truthy) -- an
@@ -90,7 +90,7 @@ class AgentKVAuth:
 
     #: Mounted under the platform's own API prefix, so it rides the `/api/v1`
     #: route every deployment already has rather than needing its own.
-    PREFIX = "api/v1/agent-kv"
+    PREFIX = "api/v1/agentic-extract"
 
     @property
     def exec_url(self) -> str:
