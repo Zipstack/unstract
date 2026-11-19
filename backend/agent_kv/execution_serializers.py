@@ -311,14 +311,28 @@ class TableOptionsSerializer(serializers.Serializer):
     IDE callback hints (`prompt_key`, `doc_name`) are meaningless on the blind
     API.
 
-    **`enable_highlight` costs real money on this extractor, unlike on `kv`.**
-    The table engine's highlight path builds `HighlightValidator` ("Agent 3.5",
-    LLM-based row-to-line matching) on the `lite_llm` adapter, so turning it on
-    adds a per-page LLM call -- the cost-critical slot. `kv`'s highlight is
-    free by comparison: its OCR already requests LLMWhisperer's line metadata
-    and discards it. That asymmetry is why these flags are per-extractor rather
-    than job-level: one switch would make a `table` job quietly more expensive
-    while a `kv` job stayed free.
+    **`enable_highlight` is free on this extractor too**, which an earlier
+    version of this docstring got wrong. It claimed the engine's
+    `HighlightValidator` ("Agent 3.5", LLM-based row-to-line matching) made
+    the option cost a per-page LLM call. Agent 3.5 is real and is a vision
+    call per page, but it runs only when `RunnerConfig.highlight_validator` is
+    set, and the blind API's binding never constructs one -- it is an IDE
+    stage. The OCR fetch is unconditional on both extractors. So what the flag
+    turns on is the deterministic row-to-line mapping the engine was already
+    computing and discarding.
+
+    These flags stay per-extractor anyway, because what they RETURN differs:
+    `kv` attaches a box and a confidence to each key, `table` returns one
+    mapping for the whole table.
+
+    **`enable_word_confidence` is not offered here**, unlike on `kv`. Per-word
+    confidence arrives from the OCR as one list per line of the extracted
+    text, so attaching it to a value needs that value's line numbers -- which
+    `kv` has on `KeyResult.line_start`/`line_end` and the table rows do not.
+    The engine keeps row line ranges inside `_build_highlight_data`'s own
+    scope and emits coordinates only, so there is no join key on this path.
+    Refused rather than accepted-and-ignored: a caller who set it would
+    otherwise get a result with no confidence in it and nothing saying why.
 
     **`enable_header_mapping` changes the result shape.** With it off, the
     engine returns `output.tables` as a flat list of row dicts. With it on, the
@@ -340,7 +354,6 @@ class TableOptionsSerializer(serializers.Serializer):
         required=False, choices=("US", "EU"), default="US"
     )
     enable_highlight = serializers.BooleanField(required=False, default=False)
-    enable_word_confidence = serializers.BooleanField(required=False, default=False)
 
     def validate_enable_highlight(self, v):
         if v and not settings.AGENT_KV_HIGHLIGHT_ENABLED:
@@ -355,25 +368,24 @@ class TableOptionsSerializer(serializers.Serializer):
         # discarded and the job would run with a configuration the caller
         # never asked for.
         unknown = set(self.initial_data) - set(self.fields)
+        # `enable_word_confidence` IS a real option -- on `kv`. Named
+        # explicitly so a caller who sent it to the wrong extractor is told
+        # that, rather than reading "unknown option" for a field they can see
+        # documented. See the class docstring for why `table` cannot serve it.
+        if "enable_word_confidence" in unknown:
+            raise serializers.ValidationError(
+                {
+                    "enable_word_confidence": (
+                        "not supported by the 'table' extractor: per-word "
+                        "confidence is attached using a value's line numbers, "
+                        "which table rows do not carry. Available on 'kv'."
+                    )
+                }
+            )
         if unknown:
             raise serializers.ValidationError(
                 f"unknown options for extractor '{TABLE_EXTRACTOR_NAME}': "
                 f"{sorted(unknown)}"
-            )
-        # Word confidence is meaningless without the line metadata highlight
-        # fetches, and Prompt Studio forces it off for the same reason rather
-        # than erroring (`answer_prompt.py`). Here it is a 400: that path is a
-        # UI toggle a user can see, this is an API field a caller set on
-        # purpose, and silently ignoring it would return a result missing data
-        # they asked for with nothing saying why.
-        if data.get("enable_word_confidence") and not data.get("enable_highlight"):
-            raise serializers.ValidationError(
-                {
-                    "enable_word_confidence": (
-                        "requires enable_highlight: word confidence is derived "
-                        "from the highlight line metadata"
-                    )
-                }
             )
         return data
 

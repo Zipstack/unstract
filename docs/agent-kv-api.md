@@ -334,8 +334,8 @@ choice and LLM spend sit on your account**, per job.
 | `calculations` | Post-processing instructions; opt-in codegen. Disabled by default; enabled per deployment via `AGENT_KV_CALCULATIONS_ENABLED`. |
 | `document_class` | Free-text hint (as CLI). |
 | `key_notes` | Free-text notes appended to the prompt (as CLI). |
-| `enable_highlight` | Default **off**. Adds per-key highlight and confidence data to the result (§5). Requires an **LLMWhisperer** `x2text` adapter — any other is a 400 at submit naming the adapter. Gated by `AGENT_KV_HIGHLIGHT_ENABLED`. **Free on `kv`**: this extractor's OCR already requests the line metadata. |
-| `enable_word_confidence` | Default **off**. Per-word confidence. **Requires `enable_highlight`** — on its own it is a 400, not a silent force-off. |
+| `enable_highlight` | Default **off**. Adds `highlight` (a coordinate box) and `confidence` to each `keys[]` entry — see [§5a](#5a-highlight-and-confidence-data). Requires an **LLMWhisperer** `x2text` adapter — any other is a 400 at submit naming the adapter. Gated by `AGENT_KV_HIGHLIGHT_ENABLED`. **Free**: this extractor's OCR already requests the line metadata on every job, and this stops it being discarded. **No coordinates for spreadsheet inputs** — see §5a. |
+| `enable_word_confidence` | Default **off**. Adds `word_confidence` to each `keys[]` entry: the OCR's per-word scores for the lines the value was read off. **Requires `enable_highlight`** — on its own it is a 400, not a silent force-off. `kv` only; see the `table` table below. |
 
 **`table` options:**
 
@@ -344,13 +344,13 @@ choice and LLM spend sit on your account**, per job.
 | `instructions` | Free-text extraction guidance handed to the engine. |
 | `json_structure` | Free-text description of the row structure to return. |
 | `enable_header_mapping` | Default **off**. **Changes the result shape** — see [§5](#5-result--get-apiv1agentic-extractjob_idresult). |
-| `enable_highlight` | Default **off**. Per-cell highlight and confidence data (§5). Same LLMWhisperer requirement and the same `AGENT_KV_HIGHLIGHT_ENABLED` gate as `kv`. **Not free on `table`**, unlike `kv`: this extractor's highlight path runs an LLM-based row-to-line validator on your `lite_llm` adapter, so it adds a call per page. |
-| `enable_word_confidence` | Default **off**. Requires `enable_highlight`. |
+| `enable_highlight` | Default **off**. Adds `output.highlight_data`, one coordinate structure mirroring `output.tables` — see [§5a](#5a-highlight-and-confidence-data). Same LLMWhisperer requirement and the same `AGENT_KV_HIGHLIGHT_ENABLED` gate as `kv`. **Free here too**, for the same reason: the OCR call already requests the line metadata, and the engine's LLM-based row-to-line validator is an IDE-only stage this API never constructs. |
+| ~~`enable_word_confidence`~~ | **Not supported on `table`** — sending it is a 400 naming the field, not a silent ignore. Per-word confidence is attached using a value's line numbers; `kv` carries them on each key, table rows do not. Use `kv` if you need it. |
 | `correct_number_separators` | Default **off**. Re-reads thousands/decimal separators in numeric cells. |
 | `number_format` | `US` (default) \| `EU`. Which convention `correct_number_separators` assumes. |
 
-Not exposed for `table` (they are meaningless on a blind API): `output_path`,
-`enable_highlight`, and the IDE callback hints `prompt_key`/`doc_name`.
+Not exposed for `table` (they are meaningless on a blind API): `output_path`
+and the IDE callback hints `prompt_key`/`doc_name`.
 
 > **No backward compatibility with the pre-`extractors` flat shape.** `keys`, `qa`,
 > `challenge`, `extraction_mode`, `structured_output`, `calculations`,
@@ -855,6 +855,84 @@ the job; each extractor keeps its own `success` inside its own block.
 multi-extractor job can be attributed. With one extractor they are the same numbers.
 Note the **failed** and **cancelled** payloads above are NOT extractor-keyed: a
 failure belongs to the job, not to one extractor.
+
+### 5a. Highlight and confidence data
+
+Present only when you asked for it. With `enable_highlight` off, every shape
+below is **absent** — not empty, not null — so a client written before these
+options existed reads an unchanged result.
+
+**Neither option costs an OCR call or an LLM call, on either extractor.** Both
+engines already request LLMWhisperer's line metadata on every job (`kv` needs
+the line numbers for grounding; the table engine's OCR call passes the flag
+unconditionally), and the fetch is metered either way. These options stop that
+data being discarded. The table engine *does* have an LLM-based row-to-line
+validator, but it runs only on the Prompt Studio path, which constructs it;
+this API never does.
+
+#### `kv` — per key
+
+Each `keys[]` entry of `kind: "scalar"` — which includes the cells inside an
+array entry's `rows` — gains up to three fields:
+
+```json
+{
+  "key_path": "invoice_total",
+  "value": "1,240.00",
+  "found": true,
+  "line_start": 12,
+  "line_end": 12,
+  "source_page": 1,
+  "highlight": [[0, 38, 12, 792, {"offset": 0, "width": 612, "page_width": 612}]],
+  "confidence": 0.93,
+  "word_confidence": [{"text": "1,240.00", "confidence": 0.74}]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `highlight` | One entry per line the value spans, each `[page, y, height, 792, {offset, width, page_width}]`. Page is **0-indexed**. Coordinates are scaled into a 792x612 box: a viewer places the overlay with `top = (y - height) / 792 * 100`. This is the same convention the Prompt Studio document viewer and the `table` extractor use. |
+| `confidence` | Mean OCR line confidence across the value's lines, 0–1, rounded to 4 places. Lines the OCR reported no confidence for are excluded from the mean rather than counted as zero. |
+| `word_confidence` | Only with `enable_word_confidence`. The OCR's per-word entries for those lines, as reported — not averaged, since `confidence` is already the single number. |
+
+Each is omitted individually. A key that was not found has no line citation, so
+it gets none of them; a found key always gets `line_start`/`line_end` as before.
+
+**Spreadsheet inputs get `confidence` and `word_confidence` but no
+`highlight`.** Two reasons, either sufficient: the engine injects virtual page
+separators into the extracted text to chunk a workbook, which displaces every
+line after the first insertion relative to the OCR's own numbering — so
+coordinates derived from it would be wrong and drift further down the document;
+and a workbook has no page geometry to draw a box on, since its "pages" are
+fixed line-count chunks the engine invented rather than physical pages. Line
+citations are unaffected.
+
+#### `table` — one structure for the table
+
+`output.highlight_data` mirrors the structure of `output.tables`, so a client
+can walk both in step: a list with one element per row, each a dict of the same
+column keys, whose leaf value is the coordinate list described above (the rows
+of a span share one coordinate list). A row the engine could not place is
+`null`.
+
+```json
+{
+  "tables": [{"Name": "Acme Corp", "Rent": "1000"}],
+  "highlight_data": [
+    {
+      "Name": [[0, 38, 12, 792, {"offset": 0, "width": 612, "page_width": 612}]],
+      "Rent": [[0, 38, 12, 792, {"offset": 0, "width": 612, "page_width": 612}]]
+    }
+  ]
+}
+```
+
+With `enable_header_mapping` on, `output.tables` is `{"header_mapping": …,
+"rows": [...]}`; `highlight_data` still mirrors the **rows**, so index it
+against `tables.rows`.
+
+The whole key is absent when the engine built nothing — an empty table, or
+no usable line metadata — rather than present and empty.
 
 ### `qa_passed` / `challenge_passed`, and the advisory markers that qualify them
 
@@ -1930,7 +2008,7 @@ with the default shown:
 | `AGENT_KV_MAX_PAGES` | `100` | Pre-OCR cap on the pages of the DOCUMENT for PDFs — checked against `pages_total`, **not** against the `page_start`/`page_end` range (§6.1), because the whole file is OCR'd and billed whatever the range. The cloud worker refuses on the same quantity. Excel has no pre-OCR page concept, so it takes the engine's post-OCR virtual-page cap instead; images are not accepted. |
 | `AGENT_KV_MAX_CALCULATIONS_BYTES` | `20000` | Byte cap on the optional `calculations` field. |
 | `AGENT_KV_MAX_CUSTOM_DATA_BYTES` | `20000` | Byte cap on the submit `custom_data` object. It is stored on the job row, echoed in every status and result response, and substituted into billed prompt text, so it is capped for three separate reasons. |
-| `AGENT_KV_HIGHLIGHT_ENABLED` | `false` | Gates `enable_highlight` / `enable_word_confidence` on both extractors; a submit asking for them while off is a 400. Off ships the previous behaviour exactly: no highlight block, and no extra per-page LLM call on `table`. |
+| `AGENT_KV_HIGHLIGHT_ENABLED` | `false` | Gates `enable_highlight` / `enable_word_confidence` on both extractors; a submit asking for them while off is a 400. Off ships the previous behaviour exactly: no highlight block in the result. Neither extractor pays an OCR or LLM call for these options in either state — both already request the OCR line metadata — so the gate exists to hold the result shape stable, not to hold spend down. |
 | `AGENT_KV_HITL_ENABLED` | `false` | Gates `hitl_queue_name`. Off refuses the field at submit rather than accepting it and never pushing. |
 | `AGENT_KV_MAX_SCHEMA_BYTES` | `262144` | Byte cap on the raw `keys` JSON document (256 KiB). |
 | `AGENT_KV_RESULT_TTL_DAYS` | `7` | Result retention window (and a cancelled job's input, which rides the same TTL — a completed/failed job's input is deleted immediately at finalize instead), stamped at submit time (see [§6](#9-retention-and-ttl)). |

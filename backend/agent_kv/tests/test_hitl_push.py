@@ -176,7 +176,36 @@ class TestPushNeverFailsTheJob:
 
 
 class TestPluginProbe:
-    def test_absent_app_resolves_to_none_rather_than_raising(self):
-        # The OSS case. A hard import would make the whole OSS backend depend
-        # on a cloud app, which is why this is a dynamic import.
-        assert hitl._review_plugin() is None
+    """What the probe does, pinned WITHOUT depending on the deployment.
+
+    An earlier version of this asserted `_review_plugin() is None` outright,
+    reasoning that the review app is a cloud app and therefore absent. That
+    holds in the OSS repo's own CI and is false in the merged tree the cloud
+    repo's `ci-test.yaml` builds (OSS checkout + cloud plugins copied in),
+    where `pluggable_apps.manual_review_v2` imports fine -- so the test
+    asserted the test ENVIRONMENT, passed in one lane and failed in the other,
+    and told you nothing about the probe either way.
+    """
+
+    def test_an_absent_app_resolves_to_none_rather_than_raising(self):
+        # `None` in `sys.modules` makes `import` raise ImportError, which is
+        # the OSS deployment's condition reproduced rather than assumed.
+        with mock.patch.dict("sys.modules", {"pluggable_apps.manual_review_v2": None}):
+            assert hitl._review_plugin() is None
+
+    def test_a_present_app_resolves_to_the_push_module(self):
+        # The other half, and the one that actually exercises the cross-repo
+        # seam: a deployment WITH the review app must find
+        # `agentic_extract_push`, by that exact name, or every push silently
+        # does nothing (the caller swallows the failure by design).
+        stub = mock.MagicMock()
+        with mock.patch.dict(
+            "sys.modules",
+            {
+                "pluggable_apps.manual_review_v2": mock.MagicMock(
+                    agentic_extract_push=stub
+                ),
+                "pluggable_apps.manual_review_v2.agentic_extract_push": stub,
+            },
+        ):
+            assert hitl._review_plugin() is stub

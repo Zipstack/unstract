@@ -83,27 +83,71 @@ class TestCustomDataValidation:
 
 
 class TestHighlightOptions:
-    @pytest.mark.parametrize("name", ["kv", "table"])
     @override_settings(AGENT_KV_HIGHLIGHT_ENABLED=True)
-    def test_both_extractors_accept_the_pair(self, name):
-        ser = _options(name, enable_highlight=True, enable_word_confidence=True)
+    def test_kv_accepts_the_pair(self):
+        ser = _options("kv", enable_highlight=True, enable_word_confidence=True)
         assert ser.is_valid(), ser.errors
 
     @pytest.mark.parametrize("name", ["kv", "table"])
-    def test_default_is_off_for_both(self, name):
+    @override_settings(AGENT_KV_HIGHLIGHT_ENABLED=True)
+    def test_both_extractors_accept_highlight(self, name):
+        ser = _options(name, enable_highlight=True)
+        assert ser.is_valid(), ser.errors
+
+    @pytest.mark.parametrize("name", ["kv", "table"])
+    def test_highlight_defaults_off_for_both(self, name):
         ser = _options(name)
         assert ser.is_valid(), ser.errors
         assert ser.validated_data["enable_highlight"] is False
+
+    def test_kv_word_confidence_defaults_off(self):
+        ser = _options("kv")
+        assert ser.is_valid(), ser.errors
         assert ser.validated_data["enable_word_confidence"] is False
 
-    @pytest.mark.parametrize("name", ["kv", "table"])
     @override_settings(AGENT_KV_HIGHLIGHT_ENABLED=True)
-    def test_word_confidence_alone_is_refused(self, name):
+    def test_kv_word_confidence_alone_is_refused(self):
         # Prompt Studio forces it off silently; an API field set on purpose
         # gets told instead.
-        ser = _options(name, enable_word_confidence=True)
+        ser = _options("kv", enable_word_confidence=True)
         assert not ser.is_valid()
         assert "enable_highlight" in str(ser.errors)
+
+
+class TestWordConfidenceIsKvOnly:
+    """`table` refuses the option rather than accepting and ignoring it.
+
+    Per-word confidence arrives from the OCR as one list per line of the
+    extracted text, so attaching it to a value needs that value's line
+    numbers. `kv` has them on `KeyResult`; table rows do not, and the engine
+    keeps row line ranges private to `_build_highlight_data`. Accepting the
+    flag would return a result with no confidence in it and nothing saying why.
+    """
+
+    @override_settings(AGENT_KV_HIGHLIGHT_ENABLED=True)
+    def test_table_refuses_it_even_alongside_highlight(self):
+        ser = _options("table", enable_highlight=True, enable_word_confidence=True)
+        assert not ser.is_valid()
+        assert "not supported by the 'table' extractor" in str(ser.errors)
+
+    @override_settings(AGENT_KV_HIGHLIGHT_ENABLED=True)
+    def test_the_error_names_the_field_and_points_at_kv(self):
+        # Not the generic "unknown options" message: the field is real and
+        # documented, so a caller who aimed it at the wrong extractor needs to
+        # be told that, not that it does not exist.
+        ser = _options("table", enable_word_confidence=True)
+        assert not ser.is_valid()
+        errors = str(ser.errors)
+        assert "enable_word_confidence" in errors
+        assert "'kv'" in errors
+        assert "unknown options" not in errors
+
+    def test_table_never_reports_a_word_confidence_value(self):
+        # The field is gone from the serializer, so it cannot reach
+        # `executor_params` and be read by an engine that has no use for it.
+        ser = _options("table")
+        assert ser.is_valid(), ser.errors
+        assert "enable_word_confidence" not in ser.validated_data
 
     @pytest.mark.parametrize("name", ["kv", "table"])
     @override_settings(AGENT_KV_HIGHLIGHT_ENABLED=False)
