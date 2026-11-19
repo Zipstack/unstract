@@ -129,6 +129,19 @@ is convention.
   toggle does not read and names nothing. A `RadioGroup` never goes inside
   `Field`.
 
+## Buttons and links
+
+- Buttons, icon buttons, inline links, key hints and button groups come from
+  `components/ui/button/` (`Button`, `IconButton`, `Link`, `Kbd`,
+  `ButtonGroup`), imported from `@v1/components/ui/button`; its README lists
+  every prop. New code uses these instead of styling its own `<button>`.
+- Buttons come in four heights only (36, 32, 28, 24); icon buttons are 32,
+  or 28 in dense rows.
+- An `IconButton` needs `aria-label` or `aria-labelledby`, and the types
+  require one.
+- A loading `Button` keeps focus and ignores activation; do not swap it for a
+  disabled one while work runs.
+
 ## Text inputs
 
 - Text controls come from `components/ui/form/` (`Input`, `Textarea`,
