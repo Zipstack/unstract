@@ -547,6 +547,8 @@ class Scenario(unittest.TestCase):
         self.assertEqual(
             [b["branch"] for b in st["branches"]], ["release/1.6", "release/1.5"]
         )
+        # Nor is it a line in RC, so Cut's cap and environment check never count it.
+        self.assertEqual(st["backport_targets"]["rc"], ["release/1.6", "release/1.5"])
 
     def test_retired_lines_are_history_not_anomalies(self):
         self.onprem_ga()

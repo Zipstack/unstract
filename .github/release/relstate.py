@@ -645,6 +645,29 @@ def retire_line_held(state, branch):
     ]
 
 
+# Release-line environments, indexed by minor parity (even, odd), so nothing is stored. Each repo maps the
+# label to its own deployment; nothing here names one.
+LINE_ENVS = ("staging", "integration")
+RC_CAP = 2  # lines in RC (stabilizing) at once, one per environment
+
+
+def line_env(line):
+    """The environment a release line's RCs deploy to; line is X.Y or release/X.Y."""
+    return LINE_ENVS[int(rm.line(line).split(".")[1]) % 2]
+
+
+def cut_refusal(state, line):
+    """Why Cut refuses a new line now, or None: the RC cap is reached, or the line's environment is held."""
+    rc = state["backport_targets"]["rc"]
+    if len(rc) >= RC_CAP:
+        return f"{len(rc)} lines already in RC ({', '.join(rc)}); the cap is {RC_CAP}"
+    env = line_env(line)
+    held = [b for b in rc if line_env(b) == env]
+    if held:
+        return f"its environment {env} is held by {held[0]}, still in RC"
+    return None
+
+
 def _branch_row(state, branch):
     return next((b for b in state["branches"] if b["branch"] == branch), None)
 
