@@ -44,7 +44,7 @@ no worker consumes.
 
 ```
   client
-    │  POST /api/v1/agentic-extract/  (file + keys.json + options[+calc])   Bearer <AgentKVKey>
+    │  POST /api/v1/agentic-extract/  (file + keys.json + options[+calculations])   Bearer <AgentKVKey>
     ▼
 ┌─ OSS: agent_kv Django app ────────────────────────────────────────────────┐
 │  auth (view-owned) · validate + compile keys.json · file/page/size caps    │

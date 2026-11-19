@@ -1779,8 +1779,8 @@ beyond `docker compose up`:
     APPLICABLE FROM THIS RELEASE.** `AGENT_KV_PATH_PREFIX` now defaults to
     `api/v1/agentic-extract`, so every endpoint moves from
     `/api/v1/agent-kv/...` to `/api/v1/agentic-extract/...` — submit, status,
-    result, cancel and delete alike. It was `api/v1/agent-kv` through
-    `ee-v0.186.0` (GA) and the 0.187 RCs. There is **no alias**: the old path
+    result, cancel and delete alike. It was `api/v1/agent-kv` in every release
+    before the one carrying this change. There is **no alias**: the old path
     stops being served, and every caller has to change its URL.
 
     > **Deploy order:** nothing. The new prefix is still under `api/v1`, so the
@@ -1801,32 +1801,43 @@ beyond `docker compose up`:
     or that log line after this release, grep the path before touching any
     key.** It is also how you count who was still on the old URL.
 
-    **Self-hosted upgrades need one manual edit.** Both `sample.env` files set
-    this key as an active assignment, so a deployment set up the documented way
-    has the old value in its `.env` — and `run-platform.sh --update` preserves
-    it (`docker/scripts/merge_env.py` keeps the existing value for any key
-    outside `PREFERRED_BASE_ENV_KEYS`, and re-appends it under
-    `# Additional envs` even if the sample drops the line). So an upgraded
-    compose deployment keeps serving `/api/v1/agent-kv/` while the published
-    docs show the new path. **Remove or update the `AGENT_KV_PATH_PREFIX` line
-    in `backend/.env` as part of the upgrade.**
+    **Who has to do something, and who does not.** The question is whether the
+    deployment carries the Agent-KV capability marker
+    (`backend/plugins/agent_kv/__init__.py`, item 1 above), because without it
+    every submit 501s whichever prefix is configured:
 
-    **Rollback is config-only.** Set `AGENT_KV_PATH_PREFIX=api/v1/agent-kv` and
-    restart the backend: the mount, the auth whitelist and the `status_url` in
-    every submit response all derive from this one setting, so they move
-    together. No code deploy, no migration.
+    | Deployment | Action |
+    |---|---|
+    | **OSS-only compose** (`./run-platform.sh`, no marker) | None. It 501s on either prefix. |
+    | **Compose carrying the marker** — `copy_cloud_deps.py` copies it into an OSS checkout, and item 1 presents installing it as a supported step | **Set `AGENT_KV_PATH_PREFIX=api/v1/agentic-extract` in `backend/.env`.** See below. |
+    | **Cloud and enterprise on-prem** (Helm) | None, unless a values copy pins the key. The chart leaves it unset, so an untouched copy takes the new default. |
 
-    > **Who this reaches, and who it does not.** An **OSS-only** compose
-    > deployment — the `./run-platform.sh` path — is not affected and needs no
-    > action: it has no `backend/plugins/agent_kv/__init__.py` marker, so item 1
-    > above applies and every submit 501s whichever prefix is configured. That
-    > is also why there is deliberately **no entry in
-    > `docker/scripts/release-notes/release_notes.json`** for this change:
-    > `run-platform.sh --update` prints that file, and it would be warning the
-    > one audience that cannot reach this endpoint. The deployments that *can*
-    > are cloud and enterprise on-prem, and neither reads that file. If you are
-    > adding an upgrade notice for this, the enterprise release changelog (built
-    > from PR titles) and this item are the channels — not that file.
+    **Why the marker-bearing compose case needs a manual edit.**
+    `backend/sample.env` ships this key as an active assignment, so a
+    deployment set up the documented way has a value in `backend/.env` — and
+    `./run-platform.sh --update` (and `--only-env`) **preserves it**:
+    `docker/scripts/merge_env.py` keeps the existing value for any key outside
+    `PREFERRED_BASE_ENV_KEYS`, and re-appends it under `# Additional envs` even
+    if the sample drops the line. So the upgrade leaves that deployment serving
+    `/api/v1/agent-kv/` while these docs show the new path. Edit
+    **`backend/.env`** — not `docker/.env`, which no service reads.
+
+    **Rollback is config-only, and symmetric.** Set
+    `AGENT_KV_PATH_PREFIX=api/v1/agent-kv` and restart the backend: the mount,
+    the auth whitelist and the `status_url` in every submit response all derive
+    from this one setting, so they move together. No code deploy, no migration.
+    What it is not is free — every caller who already moved to the new path
+    then gets the identical `401 Invalid or inactive API key`, in the other
+    direction, until they move back.
+
+    > **On the release note.** There is deliberately no entry in
+    > `docker/scripts/release-notes/release_notes.json` **in this change**, and
+    > not because the channel reaches nobody: `./run-platform.sh --update`
+    > prints that file, and a marker-bearing compose checkout both reads it and
+    > serves this API. The entry is omitted because its key is a release
+    > version this PR cannot know, and `print_release_notes.py` fires on
+    > `current < key <= target`, so there is no inert placeholder. **It is owed
+    > at release cut** — see `docker/scripts/release-notes/README.md`.
 
 ## 12. Environment reference
 

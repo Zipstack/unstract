@@ -32,19 +32,37 @@ FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 _DOC = pathlib.Path(__file__).resolve().parents[3] / "docs" / "agent-kv-api.md"
 
 #: The one block allowed to name the OLD path: §11's upgrade item, whose whole
-#: job is to say the path moved. Bounded by its own opening words and the next
-#: heading, and the test asserts the block is present -- deleting it does not
-#: silently widen what the check below tolerates, it fails.
+#: job is to say the path moved. It is bounded by its own opening words and by
+#: the start of the NEXT checklist item or section, whichever comes first --
+#: not by the next heading. Ending it at the heading exempted the whole tail of
+#: §11, and §11 is a checklist that grows per release, so an item appended
+#: after this one would have landed inside the exemption. The block's presence
+#: is asserted too: deleting it fails rather than silently widening the check.
 _UPGRADE_ITEM_OPENS = "**The public path moved"
-_UPGRADE_ITEM_ENDS = "\n## 12."
+_UPGRADE_ITEM_CLOSES = re.compile(r"^(\d+\. |## )", re.M)
 
-#: Every `/api/v1/<segment>` the doc states, wherever it states it. Keying on
-#: the placeholder host instead caught only the six `curl` lines -- 6 of the 31
-#: occurrences -- so reverting the endpoint HEADINGS, the §1 table and the
-#: documented `status_url` while leaving the `curl`s current passed the check.
-#: `status_url` is the one documented value a client persists and replays, and
-#: the headings are what this file's intra-document anchors resolve against.
-_API_PATH = re.compile(r"/api/v1/[a-z0-9-]+")
+#: Three patterns, because no one of them subsumes the others. A rename can go
+#: wrong in two independent directions -- the NAME of the last segment, and the
+#: DEPTH the prefix sits at -- and this doc states the path in three shapes.
+#:
+#: `_API_PATH` catches the name, in both the `/api/v1/...` and the bare
+#: `api/v1/...` shape; the bare one is how §1's prose and §12's
+#: environment-reference row state the value an operator copies into `.env`, and
+#: a slash-only pattern left both unguarded.
+#:
+#: `_EXAMPLE_URL` catches the depth. A `curl` written against the placeholder
+#: host as `https://api.unstract.example/agentic-extract/` matches no
+#: `/api/v1/...` pattern AT ALL, so a path that lost its prefix is invisible to
+#: `_API_PATH` -- and that is not hypothetical: the same mistake was live in
+#: `docs/agent-kv-architecture.md` earlier in this branch. An earlier revision
+#: of this file replaced the host-anchored check with the path one; the two
+#: catch different defects and both are needed.
+#:
+#: `_ANCHOR` catches the links, which carry the path slugified and so contain no
+#: slashes at all. Guarding the headings does not guard the links.
+_API_PATH = re.compile(r"/?api/v1/[a-z0-9-]+")
+_EXAMPLE_URL = re.compile(r"https://api\.unstract\.example(\S*)")
+_ANCHOR = re.compile(r"\]\(#([a-z0-9_-]+)\)")
 
 #: The `-F 'extractors=[...]'` argument of each fenced curl example. Matching on
 #: the curl flag rather than on a fence keeps prose that merely mentions
@@ -123,16 +141,28 @@ def test_every_documented_path_is_the_mounted_one():
     bad when their URL is stale, which is why this belongs in a test rather
     than in a troubleshooting note.
 
-    Every `/api/v1/...` path in the doc must be the mounted prefix. The two
-    other Agent-KV surfaces are deliberately written in forms this does not
-    match: key management as `{PATH_PREFIX}/unstract/...` (templated) and the
-    internal API under `/internal/v1/`. If either is ever spelled out
-    literally, this test is what says so.
+    Three shapes are checked, because a rename can go wrong in two
+    independent directions and no one pattern sees both: the path's NAME
+    (`_API_PATH`, slashed or bare), its DEPTH (`_EXAMPLE_URL`, since a path
+    that lost `/api/v1` matches no `/api/v1/...` pattern at all), and the
+    intra-document links (`_ANCHOR`, which carry the path slugified).
+
+    Key management is out of scope by construction, not by omission: the doc
+    writes it templated as `{PATH_PREFIX}/unstract/...`, so spelling it out
+    literally would yield `/api/v1/unstract` and fail the name check. The
+    internal API is out of reach rather than out of scope -- it lives under
+    `/internal/v1/`, which none of these patterns matches, and the doc already
+    spells it out three times.
 
     It cannot speak for the customer-facing docs site, which lives in another
     repo and has to be updated by hand.
     """
     doc = _DOC.read_text()
+    want = f"/{settings.AGENT_KV_PATH_PREFIX}"
+    overridden = (
+        " (or `AGENT_KV_PATH_PREFIX` is overridden in this environment, in which "
+        "case the doc is fine and this is not a doc problem)"
+    )
 
     # Carve out the upgrade item before scanning. It names both paths on
     # purpose; everywhere else, naming the old one is the defect.
@@ -143,30 +173,56 @@ def test_every_documented_path_is_the_mounted_one():
         "the pre-rename path, so either restore it or drop this carve-out -- do "
         "not leave the check tolerating an old path with nothing explaining it."
     )
-    end = doc.find(_UPGRADE_ITEM_ENDS, start)
-    assert end != -1, f"{_DOC.name}: no heading closes the upgrade item"
-    upgrade_item, doc = doc[start:end], doc[:start] + doc[end:]
+    # End at the next checklist item or section, NOT at the next heading: this
+    # item is currently last in its section, so a heading bound would exempt
+    # anything appended after it.
+    close = _UPGRADE_ITEM_CLOSES.search(doc, start + len(_UPGRADE_ITEM_OPENS))
+    assert close, f"{_DOC.name}: nothing closes the upgrade item"
+    upgrade_item, doc = doc[start : close.start()], doc[:start] + doc[close.start() :]
 
     # The carve-out has to be about the CURRENT path too, or it is just a place
     # for a stale one to hide.
-    assert f"/{settings.AGENT_KV_PATH_PREFIX}" in upgrade_item, (
-        "the upgrade item does not mention the mounted prefix "
-        f"`/{settings.AGENT_KV_PATH_PREFIX}`, so it is not documenting the move"
+    assert want in upgrade_item, (
+        f"the upgrade item does not mention the mounted prefix `{want}`, so it "
+        f"is not documenting the move{overridden}"
     )
 
+    # 1. The name, in both shapes the doc uses.
     paths = _API_PATH.findall(doc)
-    # Non-empty, so a doc that stops stating the path -- or a regex that stops
-    # matching it -- fails here rather than passing on nothing.
     assert paths, (
-        f"no `/api/v1/...` paths found in {_DOC.name}; this guard matches "
-        f"`{_API_PATH.pattern}`, and the doc is expected to state the "
-        "endpoint it documents"
+        f"no `api/v1/...` paths found in {_DOC.name}; this guard matches "
+        f"`{_API_PATH.pattern}`, and the doc is expected to state the endpoint "
+        "it documents"
     )
-    want = f"/{settings.AGENT_KV_PATH_PREFIX}"
     for path in sorted(set(paths)):
-        assert path == want, (
+        assert path.lstrip("/") == want.lstrip("/"), (
             f"{_DOC.name} states `{path}`, but the mounted execution prefix is "
-            f"`{want}`. If the prefix really moved, the doc is the stale half; "
-            "if it did not, AGENT_KV_PATH_PREFIX is overridden in this "
-            "environment and the doc is fine."
+            f"`{want}`. If the prefix really moved, the doc is the stale "
+            f"half{overridden}"
         )
+
+    # 2. The depth. A `curl` that lost `/api/v1` is invisible to the above.
+    urls = _EXAMPLE_URL.findall(doc)
+    assert urls, (
+        f"no example URLs found in {_DOC.name}; this guard matches `curl`s "
+        "written against the `https://api.unstract.example` placeholder host"
+    )
+    for url in sorted(set(urls)):
+        assert url == want or url.startswith(f"{want}/"), (
+            f"{_DOC.name} documents the URL `{url}`, which is not under the "
+            f"mounted prefix `{want}` -- a path at the wrong DEPTH is answered "
+            f"by the SPA, not by this API{overridden}"
+        )
+
+    # 3. The links, which carry the path slugified and so contain no slashes.
+    headings = {
+        re.sub(r"\s", "-", re.sub(r"[^\w\s-]", "", h.lstrip("# ").strip().lower()))
+        for h in _DOC.read_text().splitlines()
+        if h.startswith("#")
+    }
+    unresolved = sorted(set(_ANCHOR.findall(_DOC.read_text())) - headings)
+    assert not unresolved, (
+        f"{_DOC.name} links to anchors that resolve to no heading: "
+        f"{unresolved}. Renaming the prefix renames the endpoint headings, and "
+        "the links have to move with them."
+    )

@@ -402,8 +402,10 @@ def _agent_kv_prefix() -> str:
     """
     for line in DEV_ENV_SAMPLE.read_text().splitlines():
         if line.startswith("AGENT_KV_PATH_PREFIX="):
-            # Strip the trailing alignment comment these samples carry.
-            return line.split("=", 1)[1].split("#")[0].strip()
+            # Strip the trailing alignment comment the way a dotenv parser
+            # does -- on WHITESPACE then `#`, not on a bare `#`. `VALUE#x`
+            # is not a comment at all; the remainder is the value.
+            return re.split(r"\s#", line.split("=", 1)[1], maxsplit=1)[0].strip()
     pytest.fail(f"no AGENT_KV_PATH_PREFIX in {DEV_ENV_SAMPLE.name}")
 
 

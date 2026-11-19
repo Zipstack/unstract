@@ -222,6 +222,11 @@ API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT = int(
 # Refused loudly at startup instead. `ImproperlyConfigured` is Django's own
 # signal for this and aborts the boot, which is the only outcome that cannot
 # be missed.
+#: The prefix this API was served at before UN-4044. Still accepted, because
+#: the documented rollback is to set it back -- but warned about, below.
+RETIRED_AGENT_KV_PATH_PREFIX = "api/v1/agent-kv"
+
+
 def validate_agent_kv_path_prefix(raw, path_prefix, deployment_prefix):
     """Normalise and refuse an unsafe `AGENT_KV_PATH_PREFIX`.
 
@@ -250,6 +255,29 @@ def validate_agent_kv_path_prefix(raw, path_prefix, deployment_prefix):
                 "authentication by prefix match, so this would exempt that "
                 "surface too."
             )
+    # The retired prefix is still ACCEPTED -- the documented rollback
+    # (`docs/agent-kv-api.md` §11 item 12) is to set it back -- but it is no
+    # longer silent. A deployment pinned to it serves a path the docs no longer
+    # describe, and every caller on the documented URL then gets a 401 that
+    # blames their credential. This is the only notice that reaches compose,
+    # on-prem and cloud alike, in the operator's own output, without depending
+    # on which doc or sample file they read.
+    #
+    # Emitted during settings import, which is BEFORE Django configures
+    # `LOGGING` -- so it reaches stderr through logging's last-resort handler
+    # rather than this project's structured logging. That is enough for a
+    # container log and is why it is a warning rather than a structured event;
+    # do not assume a handler here.
+    if prefix == RETIRED_AGENT_KV_PATH_PREFIX:
+        logging.getLogger(__name__).warning(
+            "AGENT_KV_PATH_PREFIX is pinned to the retired %r. The Agent-KV API "
+            "moved to %r (UN-4044); this deployment still serves the old path, "
+            "so callers following the current docs will get "
+            "'401 Invalid or inactive API key'. See docs/agent-kv-api.md §11 "
+            "item 12. Remove the override to adopt the new default.",
+            RETIRED_AGENT_KV_PATH_PREFIX,
+            f"{path_prefix}/agentic-extract",
+        )
     return prefix
 
 

@@ -19,14 +19,18 @@ The engine is proven (QA pass, adversarial challenger, constraint checking, norm
 opt-in codegen post-processing). This design is about *hosting* it safely and metering it
 — not about changing how it extracts.
 
-> **SUPERSEDED IN PART — D1 and D6.** This is a dated design record
-> (2026-08-28). Two of its "locked, not open for re-litigation" decisions were
-> deliberately reversed, and the reversals shipped; the authority for both is
-> `docs/agent-kv-api.md` §3a.
+> **SUPERSEDED IN PART — D1, D4 and D6.** This is a dated design record
+> (2026-08-28). Three of its "locked, not open for re-litigation" decisions
+> were deliberately reversed, and the reversals shipped; the authority for D1
+> and D6 is `docs/agent-kv-api.md` §3a, and for D4 §11 item 12.
 >
 > - **D1 ("v1 is KV only")** — the API now carries two extractors behind one
 >   selector. See the table-extractor carve-out
 >   (`docs/superpowers/plans/2026-10-06-table-extractor-api-carveout.md`).
+> - **D4 ("Public surface is `POST /agent-kv/`")** — the path moved under the
+>   platform API prefix and was then renamed; it is
+>   `POST /api/v1/agentic-extract/` now, with no alias. See the note under the
+>   decision table.
 > - **D6 ("LLM selection is env-configured only ... No end-user model
 >   control")** — reversed. The caller names platform adapter ids by role
 >   (`llm`, `lite_llm`, `x2text`) and both extractors REQUIRE all three. The
@@ -51,7 +55,7 @@ the implementation plan:
 | D1 | v1 is **KV only**. Table extraction may later ride the same substrate; not now. |
 | D2 | The **calculations/codegen path is in scope** for v1 (opt-in per request). |
 | D3 | The extraction engine ships as a **cloud executor plugin** (like `agentic_table`), discovered via entry points, invoked through the executor dispatcher. This repo carries the API scaffold, which **fails closed** with a clear error when the plugin is absent. |
-| D4 | Public surface is **`POST /agent-kv/`** with `Bearer` key auth, same DX family as existing APIs. |
+| D4 | Public surface is **`POST /agent-kv/`** with `Bearer` key auth, same DX family as existing APIs. **SUPERSEDED — see the note below the table.** |
 | D5 | A dedicated **`AgentKVKey`** model; keys are managed in the same area as Platform API key management. Org-scoped, rotatable. |
 | D6 | LLM selection is **system-level, env-configured only** (`AGENT_KV_LITE_MODEL`, `AGENT_KV_ADVANCED_MODEL` + provider keys in worker env). No end-user model control. The engine keeps its LiteLLM client. |
 | D7 | All engine **caching is account-level** (org-scoped cache keys). |
@@ -61,6 +65,21 @@ the implementation plan:
 | D11 | Results are **re-readable until TTL** (deliberate divergence from the one-shot 406 pattern of workflow API deployments), plus explicit `DELETE`. |
 | D12 | One document per job in v1. Batch = N calls. |
 | D13 | Billing: the platform only **meters** (PageUsage + per-agent Usage rows tagged `product=agent_kv`). Price construction, cache-hit discounts, and failed-job policy are cloud-side policy over meter rows. |
+
+> **D4 is SUPERSEDED, in both halves, and this spec is kept as the record
+> rather than rewritten.**
+>
+> * The **depth** changed first: the prefix moved under the platform API
+>   prefix, so the surface became `POST /api/v1/agent-kv/` rather than
+>   top-level.
+> * The **name** changed on 2026-11-19 (UN-4044): once the endpoint served both
+>   `kv` and `table`, naming it after one of its two extractors was wrong, and
+>   it became **`POST /api/v1/agentic-extract/`**, with no alias.
+>
+> `docs/agent-kv-api.md` §11 item 12 is the authoritative description, including
+> what a caller left on the retired path sees (a `401` that blames their
+> credential, not a `404`). §7.1 below states the old surface for the same
+> reason this row does: it is what was decided then.
 
 ## 3. Non-goals (v1)
 
