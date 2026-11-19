@@ -547,6 +547,8 @@ class Scenario(unittest.TestCase):
         self.assertEqual(
             [b["branch"] for b in st["branches"]], ["release/1.6", "release/1.5"]
         )
+        # Nor is it a line in RC, so Cut's cap and environment check never count it.
+        self.assertEqual(st["backport_targets"]["rc"], ["release/1.6", "release/1.5"])
 
     def test_retired_lines_are_history_not_anomalies(self):
         self.onprem_ga()
@@ -2146,6 +2148,38 @@ class Guards(unittest.TestCase):
     def test_main_refuses_an_option_as_rc(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             rs.main(["--repo", self.OUTSIDE, "--rc=-x"], registry=lambda a: {})
+
+
+class LineEnvironment(unittest.TestCase):
+    """Runs in both repos: no workflow file needed."""
+
+    def test_line_env(self):
+        self.assertEqual(rs.line_env("release/0.186"), "staging")
+        self.assertEqual(rs.line_env("0.187"), "integration")
+        self.assertEqual(rs.line_env("release/0.188"), "staging")
+        self.assertEqual(rs.line_env("0.189"), "integration")
+        self.assertEqual(rs.line_env("release/0.191"), "integration")
+        with self.assertRaises(ValueError):
+            rs.line_env("release/v0.181.1001")
+
+    def test_cut_refusal(self):
+        def refusal(line, *rc):
+            return rs.cut_refusal({"backport_targets": {"rc": list(rc)}}, line)
+
+        self.assertIsNone(refusal("0.189"))
+        self.assertIsNone(refusal("0.189", "release/0.188"))
+        self.assertEqual(
+            refusal("0.190", "release/0.188"),
+            "its environment staging is held by release/0.188, still in RC",
+        )
+        self.assertEqual(
+            refusal("0.189", "release/0.187"),
+            "its environment integration is held by release/0.187, still in RC",
+        )
+        self.assertEqual(
+            refusal("0.190", "release/0.188", "release/0.189"),
+            "2 lines already in RC (release/0.188, release/0.189); the cap is 2",
+        )
 
 
 if __name__ == "__main__":
