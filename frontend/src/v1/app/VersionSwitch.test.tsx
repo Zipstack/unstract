@@ -6,6 +6,7 @@ import { buildLiveRegistry, type LiveRegistry } from "@v1/app/registry/live";
 import { toast } from "@v1/lib/notify";
 import { oldVersionStorageKey } from "@v1/lib/oldVersion";
 import { useOldVersionStore } from "@v1/stores/oldVersion";
+import { HttpResponse, http as mock, mockApi } from "@v1/test";
 import { useEffect } from "react";
 import {
   MemoryRouter,
@@ -15,7 +16,7 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { VersionSwitch } from "./VersionSwitch";
 
 // Two test-only pages beside the real demo ones: one that fails to render on
@@ -102,11 +103,18 @@ function renderAt(
 
 const where = () => screen.getByTestId("where").textContent;
 
+// Load the lazy v1 modules once, so a test's wait is not spent loading them.
+beforeAll(() => Promise.all([import("./V1App"), import("@v1/pages/demo")]));
+
 beforeEach(() => {
   visited = [];
   window.localStorage.clear();
   window.sessionStorage.clear();
   useOldVersionStore.setState({ userId: null, oldVersion: null, chosen: {} });
+  // The demo page lists adapters (UN-4313).
+  mockApi(
+    mock.get("/api/v1/unstract/:org/adapter/", () => HttpResponse.json([])),
+  );
 });
 
 describe("VersionSwitch", () => {

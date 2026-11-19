@@ -141,7 +141,9 @@ class TestTheReconciliationKwargSurvives:
     def test_every_scheduled_kwarg_set_binds(self, kwargs) -> None:
         named = {
             p.name
-            for p in inspect.signature(dmt.dashboard_metrics_aggregate).parameters.values()
+            for p in inspect.signature(
+                dmt.dashboard_metrics_aggregate
+            ).parameters.values()
             if p.kind is not inspect.Parameter.VAR_KEYWORD
         }
         # Named parameters only — `**_ignored` makes bind() accept anything.
@@ -361,6 +363,20 @@ class TestTheRunSummaryReachesTheLog:
             {"success": True, "tier": "daily_monthly", "organizations_processed": 4},
         )
         assert "wrote no rows" in text
+
+    def test_a_failed_prefetch_is_reported_at_warning(self, caplog):
+        """Not an error, since the per-org fallback keeps the figures correct."""
+        self._run(
+            caplog,
+            {
+                "success": True,
+                "tier": "hourly",
+                "organizations_processed": 4,
+                "hourly": {"upserted": 12},
+                "prefetch_failed": True,
+            },
+        )
+        assert self._levels(caplog, "prefetch failed") == {"WARNING"}
 
     def test_a_normal_run_logs_no_warning(self, caplog):
         """The control: the arms above must not fire on a healthy run."""

@@ -1,3 +1,4 @@
+import { signOutWhenSignedOutElsewhere } from "@v1";
 import axios from "axios";
 import { ThemeProvider, useTheme } from "next-themes";
 import { DismissableLayer } from "radix-ui/internal";
@@ -40,6 +41,17 @@ function App() {
   const { sessionDetails, isLogoutLoading } = useSessionStore();
   const { alertDetails } = useAlertStore();
   const { pushLogMessages } = useSocketLogsStore();
+
+  // A logout in another tab: drop this tab's stored data and sign it out too,
+  // so the previous user's pages are not left open for the next person. A tab
+  // known to be signed out (landing, an anonymous share) stays where it is.
+  useEffect(
+    () =>
+      signOutWhenSignedOutElsewhere(
+        () => useSessionStore.getState().sessionDetails?.isLoggedIn === false,
+      ),
+    [],
+  );
 
   useEffect(() => {
     if (!alertDetails?.content) {

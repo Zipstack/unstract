@@ -1,3 +1,4 @@
+import { InlineCode } from "@v1/components/ui/code";
 import {
   InlineAlert,
   Skeleton,
@@ -12,6 +13,7 @@ import {
   organizationInitials,
 } from "@v1/lib/organizations";
 import { getPortalContainer } from "@v1/lib/portal";
+import { ApiError } from "@v1/services/errors";
 import {
   listOrganizations,
   type Organization,
@@ -21,7 +23,7 @@ import {
 } from "@v1/services/organizations";
 import { ArrowRightLeft } from "lucide-react";
 import { AlertDialog, Popover as RadixPopover } from "radix-ui";
-import { useCallback, useRef, useState } from "react";
+import { type ReactNode, useCallback, useRef, useState } from "react";
 
 // Frames NEW10 (1638:44855) and page 19, O01 to O04 (2259:182 to 2259:656).
 // ponytail: one colour for every organisation avatar; the frames rotate five,
@@ -61,8 +63,27 @@ export function sessionEndedPath(body: unknown): string {
   return `/error?${query}`;
 }
 
+// A 401 has already sent the page to sign in, so no error is shown.
+const isLeaving = (error: unknown): boolean =>
+  error instanceof ApiError && error.kind === "unauthenticated";
+
+// The id of the request that failed, for support; refusals carry their ApiError's.
+const requestIdOf = (error: unknown): string | undefined =>
+  error instanceof ApiError || error instanceof OrganizationError
+    ? error.requestId
+    : undefined;
+
+/* "Request ID <id>" under an alert, as QueryView and toasts show it. */
+const requestIdNote = (id: string | undefined): ReactNode =>
+  id ? (
+    <>
+      Request ID <InlineCode variant="plain">{id}</InlineCode>
+    </>
+  ) : null;
+
 type ListState =
-  | { status: "idle" | "loading" | "error" }
+  | { status: "idle" | "loading" }
+  | { status: "error"; requestId?: string }
   | { status: "ready"; organizations: Organization[] };
 
 function useOrganizationList() {
@@ -78,7 +99,7 @@ function useOrganizationList() {
         }
       },
       (error: unknown) => {
-        if (request !== latest.current) {
+        if (request !== latest.current || isLeaving(error)) {
           return;
         }
         if (
@@ -89,7 +110,7 @@ function useOrganizationList() {
           return;
         }
         console.error("Could not load the organisations", error);
-        setState({ status: "error" });
+        setState({ status: "error", requestId: requestIdOf(error) });
       },
     );
   }, []);
@@ -143,6 +164,7 @@ function ConfirmSwitch({
 }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<"retry" | "removed">();
+  const [failedId, setFailedId] = useState<string>();
 
   async function confirm() {
     setBusy(true);
@@ -159,6 +181,7 @@ function ConfirmSwitch({
       );
     } catch (error) {
       console.error("Could not switch organisation", error);
+      setFailedId(requestIdOf(error));
       // Retrying cannot work once the user is out of the organisation.
       if (
         error instanceof OrganizationError &&
@@ -168,8 +191,10 @@ function ConfirmSwitch({
         onAccessRemoved();
         return;
       }
-      setFailed("retry");
-      setBusy(false);
+      if (!isLeaving(error)) {
+        setFailed("retry");
+        setBusy(false);
+      }
     }
   }
 
@@ -225,7 +250,9 @@ function ConfirmSwitch({
                   ? `You no longer have access to ${to.display_name}.`
                   : "Could not switch. Try again."
               }
-            />
+            >
+              {requestIdNote(failedId)}
+            </InlineAlert>
           )}
           <div className="ui:flex ui:justify-end ui:gap-2 ui:border-t ui:border-border ui:px-6 ui:py-5">
             <AlertDialog.Cancel
@@ -347,7 +374,9 @@ export function OrganizationSwitcher({
               <InlineAlert
                 title="Could not load your organisations."
                 onRetry={load}
-              />
+              >
+                {requestIdNote(state.requestId)}
+              </InlineAlert>
             )}
             {state.status === "ready" && (
               <>
