@@ -1,0 +1,14 @@
+{
+  "title": "MiniCPM-OCR Text Extractor",
+  "type": "object",
+  "required": ["adapter_name", "base_url"],
+  "properties": {
+    "adapter_name": {"type": "string", "title": "Name", "default": ""},
+    "base_url": {"type": "string", "title": "Base URL", "format": "uri", "description": "Server root or OpenAI-compatible /v1 base URL."},
+    "api_key": {"type": "string", "title": "API Key", "format": "password", "default": ""},
+    "model": {"type": "string", "title": "Model", "default": "minicpm-ocr"},
+    "backend": {"type": "string", "title": "Request dialect", "enum": ["vllm", "openai"], "default": "vllm", "description": "Use openai for servers that do not support vLLM-specific parameters."},
+    "timeout": {"type": "number", "title": "Request timeout (seconds)", "default": 300, "minimum": 1},
+    "max_tokens": {"type": "integer", "title": "Maximum output tokens per page", "default": 8192, "minimum": 1}
+  }
+}
