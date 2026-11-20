@@ -17,8 +17,15 @@ import {
 /** The dim layer behind a drawer or dialog: the whole viewport, under the panel. */
 export const OVERLAY_SCRIM = "ui:fixed ui:inset-0 ui:z-50 ui:bg-scrim";
 
+const TITLE_SIZE = {
+  page: "ui:text-page-title",
+  section: "ui:text-section-title",
+} as const;
+
 export type OverlayHeaderProps = Readonly<{
   title: ReactNode;
+  /** `page` 20 (default; drawers, form dialogs) or `section` 16 (confirm dialogs). */
+  titleSize?: keyof typeof TITLE_SIZE;
   description?: ReactNode;
   /** A logo or icon before the title. */
   leading?: ReactNode;
@@ -31,12 +38,10 @@ export type OverlayHeaderProps = Readonly<{
 
 /** Title, description and a "Close" button for a Radix Dialog (drawer or dialog). */
 export function OverlayHeader({
-  title,
-  description,
   leading,
-  badge,
   busy,
   className,
+  ...text
 }: OverlayHeaderProps): JSX.Element {
   return (
     <div
@@ -47,7 +52,7 @@ export function OverlayHeader({
       )}
     >
       {leading ? <div className="ui:flex ui:shrink-0">{leading}</div> : null}
-      <HeaderText title={title} description={description} badge={badge} />
+      <HeaderText {...text} />
       <RadixDialog.Close asChild>
         <IconButton
           aria-label="Close"
@@ -62,13 +67,19 @@ export function OverlayHeader({
 
 function HeaderText({
   title,
+  titleSize = "page",
   description,
   badge,
-}: Pick<OverlayHeaderProps, "title" | "description" | "badge">) {
+}: Pick<OverlayHeaderProps, "title" | "titleSize" | "description" | "badge">) {
   return (
     <div className="ui:flex ui:min-w-0 ui:flex-1 ui:flex-col ui:gap-1">
       <div className="ui:flex ui:flex-wrap ui:items-center ui:gap-x-2 ui:gap-y-1">
-        <RadixDialog.Title className="ui:m-0 ui:min-w-0 ui:break-words ui:text-page-title ui:text-foreground">
+        <RadixDialog.Title
+          className={cn(
+            "ui:m-0 ui:min-w-0 ui:break-words ui:text-foreground",
+            TITLE_SIZE[titleSize],
+          )}
+        >
           {title}
         </RadixDialog.Title>
         {badge}

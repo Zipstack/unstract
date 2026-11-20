@@ -19,6 +19,7 @@ import {
   OVERLAY_SCRIM,
   OverlayFooter,
   OverlayHeader,
+  type OverlayHeaderProps,
   useReturnFocus,
 } from "./parts";
 
@@ -26,25 +27,26 @@ type PanelProps = Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   busy?: boolean;
+  titleSize?: OverlayHeaderProps["titleSize"];
   own?: DismissHandlers;
   children?: ReactNode;
 }>;
 
 /** A Radix dialog built from the shared parts, as the drawer and dialogs are. */
-function Panel({ open, onOpenChange, busy, own, children }: PanelProps) {
+function Panel({ open, onOpenChange, own, children, ...header }: PanelProps) {
   const onCloseAutoFocus = useReturnFocus(open);
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal container={getPortalContainer()}>
         <div data-testid="scrim" className={OVERLAY_SCRIM} />
         <RadixDialog.Content
-          {...dismissGuards(busy, own)}
+          {...dismissGuards(header.busy, own)}
           onCloseAutoFocus={onCloseAutoFocus}
         >
           <OverlayHeader
             title="health-monitoring API"
             description="API deployment · owner ritwik"
-            busy={busy}
+            {...header}
           />
           {children}
           <OverlayFooter>
@@ -97,6 +99,18 @@ describe("OverlayHeader and OverlayFooter", () => {
     expect(dialog).toHaveAccessibleDescription("API deployment · owner ritwik");
     await user.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("sets the title at page size by default and section size on request", () => {
+    const { unmount } = renderV1(<OpenedByButton />);
+    const title = () =>
+      screen.getByRole("heading", { name: "health-monitoring API" });
+    expect(title()).toHaveClass("ui:text-page-title");
+    expect(title()).not.toHaveClass("ui:text-section-title");
+    unmount();
+    renderV1(<OpenedByButton titleSize="section" />);
+    expect(title()).toHaveClass("ui:text-section-title");
+    expect(title()).not.toHaveClass("ui:text-page-title");
   });
 
   it("disables the close button while busy", () => {

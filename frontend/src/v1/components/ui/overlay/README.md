@@ -83,7 +83,8 @@ popover closed by a click or focus outside: focus stays where the user put it.
 For any overlay built on a Radix Dialog or Popover, the dialogs included:
 
 - `OVERLAY_SCRIM`: the dim layer's classes.
-- `OverlayHeader`: title, description, `leading`, `badge` and a close button
+- `OverlayHeader`: title, description, `leading`, `badge`, `titleSize`
+  (`page` 20, the default, or `section` 16 for a confirm) and a close button
   named "Close" (disabled while `busy`). Inside a Radix Dialog only. Without a
   description, pass `aria-describedby={undefined}` to the Content.
 - `OverlayFooter`: the action bar; `align` `end` (default) or `start`.
