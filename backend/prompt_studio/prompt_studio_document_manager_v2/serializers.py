@@ -9,7 +9,8 @@ from .models import DocumentManager
 def index_status(document: DocumentManager) -> list[dict[str, Any]]:
     """Each of the tool's LLM profiles with this document's index state.
 
-    failed: the last indexing failed (the reason clears on the next success).
+    failed: the last indexing failed (cleared when the document is next
+    indexed; a summary index leaves it).
     indexed: a raw index exists. pending: neither.
     """
     managers = {im.profile_manager_id: im for im in document.index_managers.all()}

@@ -3,6 +3,7 @@ from rest_framework import viewsets
 from rest_framework.versioning import URLPathVersioning
 from utils.filtering import FilterHelper
 
+from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_document_manager_v2.serializers import (
     PromptStudioDocumentStatusSerializer,
 )
@@ -24,9 +25,13 @@ class PromptStudioDocumentManagerView(viewsets.ModelViewSet):
         )
         queryset = None
         if filter_args:
-            # index_status reads both relations for every row.
+            # Same visibility as opening the tool: index_status carries
+            # provider error text. index_status reads both relations per row.
             queryset = (
-                DocumentManager.objects.filter(**filter_args)
+                DocumentManager.objects.filter(
+                    **filter_args,
+                    tool__in=CustomTool.objects.for_user(self.request.user),
+                )
                 .select_related("tool")
                 .prefetch_related("index_managers", "tool__profile_managers")
             )

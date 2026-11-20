@@ -95,8 +95,8 @@ class PromptStudioIndexHelper:
         """Records why indexing a document under a profile failed.
 
         The reason is kept on the IndexManager row so the Documents tab can
-        show it after a reload; handle_index_manager clears it on the next
-        success. Nothing else reads it.
+        show it after a reload; handle_index_manager clears it the next time
+        the document is indexed (a summary index leaves it).
         """
         try:
             with transaction.atomic():

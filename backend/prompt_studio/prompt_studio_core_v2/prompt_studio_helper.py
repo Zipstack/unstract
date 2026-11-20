@@ -2713,6 +2713,10 @@ class PromptStudioHelper:
 
             msg = f"Error while indexing '{filename}'. {msg}"
             logger.error(msg, stack_info=True, exc_info=True)
+            # Shown in the Documents tab after a reload.
+            PromptStudioIndexHelper.mark_index_failed(
+                document_id=document_id, profile_manager=profile_manager, error=msg
+            )
             PromptStudioHelper._publish_log(
                 {"tool_id": tool_id, "run_id": run_id, "doc_name": filename},
                 LogLevels.ERROR,

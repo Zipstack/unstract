@@ -14,7 +14,7 @@ class Migration(migrations.Migration):
             name="index_error",
             field=models.TextField(
                 blank=True,
-                db_comment="Why the last indexing of this document failed; cleared on success",
+                db_comment="Why the last indexing of this document failed; cleared when it is next indexed",
                 editable=False,
                 null=True,
             ),

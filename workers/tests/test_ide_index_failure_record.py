@@ -107,3 +107,93 @@ class TestRecordingIsBestEffort:
 
         api.remove_document_indexing.assert_called_once()
         api.emit.assert_called_once()
+
+
+class TestRecordingWaitsForTheUser:
+    """The best-effort write is retried on 5xx, so it goes last."""
+
+    def _order(self, api) -> list[str]:
+        order: list[str] = []
+        api.remove_document_indexing.side_effect = lambda **_: order.append("cleanup")
+        api.emit.side_effect = lambda *a, **k: order.append("emit")
+        api.mark_index_failed.side_effect = lambda **_: order.append("record")
+        return order
+
+    def test_executor_failure_records_after_cleanup_and_event(self, api):
+        from ide_callback.tasks import ide_index_complete
+
+        order = self._order(api)
+        ide_index_complete({"success": False, "error": "Executor blew up"}, dict(_KWARGS))
+
+        assert order == ["cleanup", "emit", "record"]
+
+    def test_link_error_records_after_cleanup_and_event(self, api):
+        order = self._order(api)
+        _index_error(dict(_KWARGS))
+
+        assert order == ["cleanup", "emit", "record"]
+
+    def test_link_error_still_records_when_cleanup_fails(self, api):
+        api.remove_document_indexing.side_effect = RuntimeError("redis down")
+
+        _index_error(dict(_KWARGS))
+
+        api.mark_index_failed.assert_called_once()
+
+
+class TestRecordsTheRightReason:
+    def test_a_cleanup_error_keeps_the_executor_reason(self, api):
+        from ide_callback.tasks import ide_index_complete
+
+        api.remove_document_indexing.side_effect = RuntimeError("redis down")
+        with pytest.raises(RuntimeError):
+            ide_index_complete(
+                {"success": False, "error": "Executor blew up"}, dict(_KWARGS)
+            )
+
+        _recorded(api, "Executor blew up")
+
+    def test_an_error_after_indexing_records_nothing(self, api):
+        from ide_callback.tasks import ide_index_complete
+
+        # The "completed" event fails after the index is written.
+        api.emit.side_effect = [RuntimeError("socket down"), None]
+        with pytest.raises(RuntimeError):
+            ide_index_complete({"success": True, "data": {"doc_id": "d"}}, dict(_KWARGS))
+
+        api.mark_index_failed.assert_not_called()
+
+    def test_an_empty_reason_is_recorded_as_unknown(self, api):
+        from ide_callback.tasks import _UNKNOWN_EXECUTOR_ERROR, ide_index_complete
+
+        ide_index_complete({"success": False, "error": None}, dict(_KWARGS))
+
+        _recorded(api, _UNKNOWN_EXECUTOR_ERROR)
+
+    def test_a_soft_time_limit_is_not_swallowed(self, api):
+        from celery.exceptions import SoftTimeLimitExceeded
+        from ide_callback.tasks import _record_index_failure
+
+        api.mark_index_failed.side_effect = SoftTimeLimitExceeded()
+        with pytest.raises(SoftTimeLimitExceeded):
+            _record_index_failure(api, "doc-1", "profile-1", "boom", "org-1")
+
+
+def test_client_posts_to_the_backend_route():
+    from shared.clients.prompt_studio_client import PromptStudioAPIClient
+
+    client = PromptStudioAPIClient.__new__(PromptStudioAPIClient)
+    with patch.object(PromptStudioAPIClient, "post") as post:
+        client.mark_index_failed(
+            document_id="doc-1",
+            profile_manager_id="profile-1",
+            error="boom",
+            organization_id="org-1",
+        )
+
+    # The backend route is pinned by its own test against this path.
+    post.assert_called_once_with(
+        "v1/prompt-studio/index-error/",
+        data={"document_id": "doc-1", "profile_manager_id": "profile-1", "error": "boom"},
+        organization_id="org-1",
+    )

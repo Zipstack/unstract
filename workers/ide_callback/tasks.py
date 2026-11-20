@@ -15,6 +15,7 @@ from datetime import date, datetime
 from typing import Any
 
 from celery import current_app as app
+from celery.exceptions import SoftTimeLimitExceeded
 from queue_backend import worker_task
 from shared.clients.prompt_studio_client import PromptStudioAPIClient
 
@@ -56,21 +57,33 @@ def _record_index_failure(
     error: str,
     org_id: str,
 ) -> None:
-    """Keep the failure reason for the Documents tab; never fails the callback."""
-    if not (document_id and profile_manager_id and error):
+    """Keep the failure reason for the Documents tab; never fails the callback.
+
+    Call it after the in-progress flag is cleared and the failure event is
+    sent: the client retries 5xx, and the user must not wait on this write.
+    """
+    if not (document_id and profile_manager_id):
+        logger.warning(
+            "Index failure not recorded: document %s, profile %s missing.",
+            document_id,
+            profile_manager_id,
+        )
         return
     try:
         api.mark_index_failed(
             document_id=document_id,
             profile_manager_id=profile_manager_id,
-            error=error,
+            error=error or _UNKNOWN_EXECUTOR_ERROR,
             organization_id=org_id,
         )
+    except SoftTimeLimitExceeded:
+        raise
     except Exception:
-        logger.warning(
-            "Failed to record index failure for document %s; the socket "
-            "event still reports it.",
+        logger.error(
+            "Failed to record index failure for document %s profile %s; "
+            "the socket event still reports it.",
             document_id,
+            profile_manager_id,
             exc_info=True,
         )
 
@@ -218,13 +231,18 @@ def ide_index_complete(
     run_id = cb.get("run_id", "")
 
     api = _get_api_client()
+    # The executor's reason, kept so a later bookkeeping error cannot
+    # replace it; and whether the document already counts as indexed, after
+    # which an error is bookkeeping noise, not an indexing failure.
+    executor_error: str | None = None
+    indexed = False
 
     try:
         # Check executor-level failure
         if not result_dict.get("success", False):
             error_msg = result_dict.get("error", _UNKNOWN_EXECUTOR_ERROR)
+            executor_error = error_msg
             logger.error("ide_index executor reported failure: %s", error_msg)
-            _record_index_failure(api, document_id, profile_manager_id, error_msg, org_id)
             api.remove_document_indexing(
                 org_id=org_id,
                 user_id=user_id,
@@ -241,6 +259,7 @@ def ide_index_complete(
                 status="failed",
                 error=error_msg,
             )
+            _record_index_failure(api, document_id, profile_manager_id, error_msg, org_id)
             return {"status": "failed", "error": error_msg}
 
         doc_id = result_dict.get("data", {}).get("doc_id", doc_id_key)
@@ -253,6 +272,7 @@ def ide_index_complete(
             doc_id=doc_id,
             organization_id=org_id,
         )
+        indexed = True
 
         # Update index manager ORM record
         if profile_manager_id:
@@ -348,7 +368,6 @@ def ide_index_complete(
 
     except Exception as e:
         logger.exception("ide_index_complete callback failed")
-        _record_index_failure(api, document_id, profile_manager_id, str(e), org_id)
         _emit_event(
             api,
             log_events_id,
@@ -359,6 +378,10 @@ def ide_index_complete(
             status="failed",
             error=str(e),
         )
+        if not indexed:
+            _record_index_failure(
+                api, document_id, profile_manager_id, executor_error or str(e), org_id
+            )
         raise
 
 
@@ -369,7 +392,8 @@ def ide_index_error(
 ) -> None:
     """Celery link_error callback when an ide_index task fails.
 
-    Cleans up the indexing-in-progress flag and pushes an error socket event.
+    Cleans up the indexing-in-progress flag, pushes an error socket event
+    and records the failure reason for the Documents tab.
     """
     cb = callback_kwargs or {}
     log_events_id = cb.get("log_events_id", "")
@@ -381,13 +405,11 @@ def ide_index_error(
     tool_id = cb.get("tool_id", "")
 
     api = _get_api_client()
+    error_msg = ""
 
     try:
         error_msg = _get_task_error(
             failed_task_id, default="Indexing failed", explicit=cb.get("error")
-        )
-        _record_index_failure(
-            api, document_id, cb.get("profile_manager_id"), error_msg, org_id
         )
 
         # Clean up the indexing-in-progress flag
@@ -411,6 +433,9 @@ def ide_index_error(
         )
     except Exception:
         logger.exception("ide_index_error callback failed")
+    _record_index_failure(
+        api, document_id, cb.get("profile_manager_id"), error_msg, org_id
+    )
 
 
 @worker_task(name="ide_prompt_complete")

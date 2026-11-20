@@ -5,18 +5,24 @@ from __future__ import annotations
 import io
 import json
 import secrets
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pypdfium2 as pdfium
 from account_v2.models import Organization, User
 from adapter_processor_v2.models import AdapterInstance
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.test import RequestFactory, TestCase
 from django.test.utils import CaptureQueriesContext
+from django.urls import resolve
 from rest_framework.test import APIRequestFactory, force_authenticate
 from utils.user_context import UserContext
 
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2 import internal_views
+from prompt_studio.prompt_studio_core_v2 import views as core_views
+from prompt_studio.prompt_studio_core_v2.exceptions import IndexingAPIError
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
 from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
@@ -29,7 +35,11 @@ from prompt_studio.prompt_studio_document_manager_v2.views import (
 from prompt_studio.prompt_studio_index_manager_v2.models import IndexManager
 from prompt_studio.prompt_studio_index_manager_v2.prompt_studio_index_helper import (
     INDEX_ERROR_MAX_LENGTH,
+    ExtractionStatusResult,
     PromptStudioIndexHelper,
+)
+from prompt_studio.prompt_studio_index_manager_v2.serializers import (
+    IndexManagerSerializer,
 )
 
 
@@ -61,6 +71,7 @@ class _ToolWithDocument(TestCase):
             organization=self.org,
             created_by=self.user,
         )
+        self.tool.grant_owner(self.user)
         adapter = AdapterInstance.objects.create(
             adapter_name=f"adapter-{slug}",
             adapter_id="openai|test",
@@ -95,11 +106,11 @@ class _ToolWithDocument(TestCase):
             document_name=name, tool=self.tool, created_by=self.user, **fields
         )
 
-    def _list(self) -> list[dict]:
+    def _list(self, user: User | None = None) -> list[dict]:
         request = APIRequestFactory().get(
             "/prompt-document/", {"tool_id": str(self.tool.tool_id)}
         )
-        force_authenticate(request, user=self.user)
+        force_authenticate(request, user=user or self.user)
         response = PromptStudioDocumentManagerView.as_view({"get": "list"})(
             request, version="v1"
         )
@@ -239,6 +250,103 @@ class DocumentStatusTests(_ToolWithDocument):
         )
 
 
+class AccessTests(_ToolWithDocument):
+    def test_an_org_member_without_access_lists_nothing(self) -> None:
+        stranger = User.objects.create_user(
+            username=f"s-{secrets.token_hex(3)}@example.com",
+            email=f"s-{secrets.token_hex(3)}@example.com",
+            password=secrets.token_urlsafe(),
+        )
+        self._fail(self.default)
+        self.assertEqual(self._list(stranger), [])
+
+    def test_the_index_manager_api_omits_the_reason(self) -> None:
+        self._fail(self.default)
+        row = IndexManager.objects.get(profile_manager=self.default)
+        self.assertNotIn("index_error", IndexManagerSerializer(row).data)
+
+
+class PromptRunIndexFailureTests(_ToolWithDocument):
+    def test_a_failed_dynamic_index_is_recorded(self) -> None:
+        self.default.chunk_size = 512
+        self.default.save()
+        dispatcher = MagicMock()
+        dispatcher.dispatch.return_value = SimpleNamespace(
+            success=False, error="vector db down"
+        )
+        helper = PromptStudioHelper
+        with (
+            patch.object(helper, "_get_dispatcher", return_value=dispatcher),
+            patch.object(helper, "_get_platform_api_key", return_value="k"),
+            patch.object(helper, "_publish_log"),
+            patch(
+                "prompt_studio.prompt_studio_core_v2.prompt_studio_helper"
+                ".DocumentIndexingService"
+            ),
+            self.assertRaises(IndexingAPIError),
+        ):
+            helper.dynamic_indexer(
+                profile_manager=self.default,
+                tool_id=str(self.tool.tool_id),
+                file_path="/tmp/a.pdf",
+                org_id=self.org.organization_id,
+                document_id=str(self.document.document_id),
+                user_id=str(self.user.user_id),
+                extracted_text="text",
+                reindex=True,
+                doc_id_key="key",
+            )
+        status = self._status(self.default)
+        self.assertEqual(status["status"], "failed")
+        self.assertIn("vector db down", status["failure_reason"])
+
+
+class UploadWiringTests(_ToolWithDocument):
+    def _upload(self, upload, *, converter=None) -> dict:
+        request = APIRequestFactory().post(
+            "/upload", {"file": [upload]}, format="multipart"
+        )
+        force_authenticate(request, user=self.user)
+        view = core_views.PromptStudioCoreView.as_view({"post": "upload_for_ide"})
+        with (
+            patch.object(core_views, "PromptStudioFileHelper"),
+            patch.object(core_views, "notify_hubspot_event"),
+            patch.object(core_views, "get_plugin", return_value=converter),
+            patch.object(
+                core_views.UserSessionUtils,
+                "get_organization_id",
+                return_value=self.org.organization_id,
+            ),
+        ):
+            response = view(request, pk=str(self.tool.tool_id))
+        self.assertEqual(response.status_code, 200, response.data)
+        (doc,) = response.data["data"]
+        return DocumentManager.objects.get(pk=doc["document_id"])
+
+    def test_a_pdf_upload_stores_its_size_and_pages(self) -> None:
+        data = _pdf(4)
+        document = self._upload(
+            SimpleUploadedFile("four.pdf", data, content_type="application/pdf")
+        )
+        self.assertEqual((document.size_bytes, document.page_count), (len(data), 4))
+
+    def test_a_converted_upload_counts_the_converted_pdf(self) -> None:
+        converted = _pdf(2)
+
+        class Converter:
+            def should_convert_to_pdf(self, file_type: str) -> bool:
+                return True
+
+            def process_file(self, uploaded_file, file_name):
+                return converted, f"{file_name}.pdf"
+
+        upload = SimpleUploadedFile("notes.txt", b"plain text", content_type="text/plain")
+        validated = MagicMock(validated_data={"file": [upload]})
+        with patch.object(core_views, "FileUploadIdeSerializer", return_value=validated):
+            document = self._upload(upload, converter={"service_class": Converter})
+        self.assertEqual((document.size_bytes, document.page_count), (10, 2))
+
+
 class IndexErrorInternalApiTests(_ToolWithDocument):
     def _post(self, body: dict) -> int:
         request = RequestFactory().post(
@@ -257,6 +365,28 @@ class IndexErrorInternalApiTests(_ToolWithDocument):
     def test_records_the_failure(self) -> None:
         self.assertEqual(self._post(self._body()), 200)
         self.assertEqual(self._status(self.default)["status"], "failed")
+
+    def test_records_the_posted_reason_on_the_posted_profile(self) -> None:
+        body = self._body(profile_manager_id=str(self.other.profile_id), error="OOM")
+        self.assertEqual(self._post(body), 200)
+        self.assertEqual(self._status(self.other)["failure_reason"], "OOM")
+        self.assertEqual(self._status(self.default)["status"], "pending")
+
+    def test_a_write_failure_is_a_500(self) -> None:
+        with patch.object(
+            PromptStudioIndexHelper,
+            "mark_index_failed",
+            return_value=ExtractionStatusResult.WRITE_FAILED,
+        ):
+            self.assertEqual(self._post(self._body()), 500)
+
+    def test_a_malformed_document_id_is_a_404(self) -> None:
+        self.assertEqual(self._post(self._body(document_id="not-a-uuid")), 404)
+
+    def test_the_worker_path_routes_here(self) -> None:
+        # The worker client posts to v1/prompt-studio/index-error/.
+        match = resolve("/internal/v1/prompt-studio/index-error/")
+        self.assertIs(match.func, internal_views.index_error)
 
     def test_missing_field_is_400(self) -> None:
         self.assertEqual(self._post(self._body(error="")), 400)
