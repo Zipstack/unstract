@@ -51,3 +51,17 @@ it("asks once while the guard is still answering", async () => {
   expect(beforeClose).toHaveBeenCalledTimes(1);
   expect(onOpenChange).toHaveBeenCalledTimes(1);
 });
+
+it("stays open, logs and asks again after the guard throws", async () => {
+  const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const beforeClose = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("save failed"))
+    .mockReturnValue(true);
+  const { request, onOpenChange } = setup({ beforeClose });
+  await act(async () => request(false));
+  expect(onOpenChange).not.toHaveBeenCalled();
+  expect(error).toHaveBeenCalledOnce();
+  await act(async () => request(false));
+  expect(onOpenChange).toHaveBeenCalledWith(false);
+});

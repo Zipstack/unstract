@@ -3,6 +3,9 @@ import type { ReactNode } from "react";
 
 // The one way to confirm: one request on screen at a time, the rest queue.
 
+/** Text that must render: no null, undefined or boolean. */
+type Text = Exclude<ReactNode, null | undefined | boolean>;
+
 type ConfirmBase = Readonly<{
   /** The question; it names the dialog. */
   title: string;
@@ -14,7 +17,7 @@ type ConfirmBase = Readonly<{
 
 type ConfirmAction = Readonly<{
   /** What happens, under the title; it describes the dialog. */
-  description: ReactNode;
+  description: Text;
   /** The action button's label, a verb: "Delete deployment". */
   confirmLabel: string;
   confirmIcon?: LucideIcon;
@@ -24,23 +27,30 @@ type ConfirmAction = Readonly<{
   action?: () => Promise<void>;
 }>;
 
+// Without a tone, another tone's fields must not compile as a standard confirm.
 export type StandardConfirm = ConfirmBase &
   ConfirmAction &
-  Readonly<{ tone?: "standard" }>;
+  Readonly<{
+    tone?: "standard";
+    consequence?: never;
+    reason?: never;
+    link?: never;
+    closeLabel?: never;
+  }>;
 
 export type DestructiveConfirm = ConfirmBase &
   ConfirmAction &
   Readonly<{
     tone: "destructive";
     /** The red note, e.g. "This cannot be undone." */
-    consequence: ReactNode;
+    consequence: Text;
   }>;
 
 export type BlockedConfirm = ConfirmBase &
   Readonly<{
     tone: "blocked";
     /** Why it cannot proceed, and what to do first. */
-    reason: ReactNode;
+    reason: Text;
     /** A way to fix it, e.g. "Open project"; it closes the dialog. */
     link?: Readonly<{ label: string; onSelect: () => void }>;
     /** Default "Close". */
@@ -94,7 +104,7 @@ export function settleConfirm(id: number, ok: boolean): void {
   setQueue(queue.slice(1));
 }
 
-/** The host's subscription; unsubscribing answers every waiting request false. */
+/** The host's subscription; when the current host unsubscribes, every waiting request resolves false. */
 export function subscribeConfirm(onChange: () => void): () => void {
   listener = onChange;
   return () => {
