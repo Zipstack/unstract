@@ -394,9 +394,17 @@ AGENT_KV_MAX_CUSTOM_DATA_BYTES = int(
     os.environ.get("AGENT_KV_MAX_CUSTOM_DATA_BYTES", 20_000)
 )
 # Gates `enable_highlight` / `enable_word_confidence`. Off ships the behaviour
-# unchanged: no highlight block in the result, and -- for `table` -- no extra
-# per-page LLM call, since that extractor's highlight validator runs on the
-# `lite_llm` adapter.
+# unchanged: no highlight block in the result.
+#
+# Neither option costs an OCR or an LLM call on either extractor, so this gate
+# holds the RESULT SHAPE stable rather than holding spend down. Both engines
+# already request the OCR's line metadata on the PDF/image path -- `kv` because
+# grounding needs the line numbers -- so the fetch happens either way and these
+# options stop the result being discarded. (An earlier version of this comment
+# said `table` paid a per-page LLM call for its highlight validator. The
+# validator is real and is a vision call per page, but it runs only when
+# `RunnerConfig.highlight_validator` is set, and the blind API's binding never
+# constructs one -- it is a Prompt Studio stage.)
 AGENT_KV_HIGHLIGHT_ENABLED = (
     os.environ.get("AGENT_KV_HIGHLIGHT_ENABLED", "false").lower() == "true"
 )

@@ -333,7 +333,7 @@ choice and LLM spend sit on your account**, per job.
 | `calculations` | Post-processing instructions; opt-in codegen. Disabled by default; enabled per deployment via `AGENT_KV_CALCULATIONS_ENABLED`. |
 | `document_class` | Free-text hint (as CLI). |
 | `key_notes` | Free-text notes appended to the prompt (as CLI). |
-| `enable_highlight` | Default **off**. Adds `highlight` (a coordinate box) and `confidence` to each `keys[]` entry — see [§5a](#5a-highlight-and-confidence-data). Requires an **LLMWhisperer** `x2text` adapter — any other is a 400 at submit naming the adapter. Gated by `AGENT_KV_HIGHLIGHT_ENABLED`. **Free**: this extractor's OCR already requests the line metadata on every job, and this stops it being discarded. **No coordinates for spreadsheet inputs** — see §5a. |
+| `enable_highlight` | Default **off**. Adds `highlight` (a coordinate box) and `confidence` to each `keys[]` entry — see [§5a](#5a-highlight-and-confidence-data). Requires an **LLMWhisperer** `x2text` adapter — any other is a 400 at submit naming the adapter. Gated by `AGENT_KV_HIGHLIGHT_ENABLED`. **Free**: this extractor's OCR already requests the line metadata on every job, and this stops it being discarded. **Nothing returned for spreadsheet inputs** — see §5a. |
 | `enable_word_confidence` | Default **off**. Adds `word_confidence` to each `keys[]` entry: the OCR's per-word scores for the lines the value was read off. **Requires `enable_highlight`** — on its own it is a 400, not a silent force-off. `kv` only; see the `table` table below. |
 
 **`table` options:**
@@ -343,7 +343,7 @@ choice and LLM spend sit on your account**, per job.
 | `instructions` | Free-text extraction guidance handed to the engine. |
 | `json_structure` | Free-text description of the row structure to return. |
 | `enable_header_mapping` | Default **off**. **Changes the result shape** — see [§5](#5-result--get-apiv1agentic-extractjob_idresult). |
-| `enable_highlight` | Default **off**. Adds `output.highlight_data`, one coordinate structure mirroring `output.tables` — see [§5a](#5a-highlight-and-confidence-data). Same LLMWhisperer requirement and the same `AGENT_KV_HIGHLIGHT_ENABLED` gate as `kv`. **Free here too**, for the same reason: the OCR call already requests the line metadata, and the engine's LLM-based row-to-line validator is an IDE-only stage this API never constructs. |
+| `enable_highlight` | Default **off**. Adds `output.highlight_data`, one coordinate structure mirroring `output.tables` — see [§5a](#5a-highlight-and-confidence-data). Same LLMWhisperer requirement and the same `AGENT_KV_HIGHLIGHT_ENABLED` gate as `kv`. **Free here too**, for the same reason: the OCR call already requests the line metadata, and the engine's LLM-based row-to-line validator is an IDE-only stage this API never constructs. **Nothing returned for spreadsheet inputs** — the engine's workbook path requests no highlights, so `highlight_data` is absent even with the option on. |
 | ~~`enable_word_confidence`~~ | **Not supported on `table`** — sending it is a 400 naming the field, not a silent ignore. Per-word confidence is attached using a value's line numbers; `kv` carries them on each key, table rows do not. Use `kv` if you need it. |
 | `correct_number_separators` | Default **off**. Re-reads thousands/decimal separators in numeric cells. |
 | `number_format` | `US` (default) \| `EU`. Which convention `correct_number_separators` assumes. |
@@ -839,13 +839,16 @@ Present only when you asked for it. With `enable_highlight` off, every shape
 below is **absent** — not empty, not null — so a client written before these
 options existed reads an unchanged result.
 
-**Neither option costs an OCR call or an LLM call, on either extractor.** Both
-engines already request LLMWhisperer's line metadata on every job (`kv` needs
-the line numbers for grounding; the table engine's OCR call passes the flag
-unconditionally), and the fetch is metered either way. These options stop that
-data being discarded. The table engine *does* have an LLM-based row-to-line
-validator, but it runs only on the Prompt Studio path, which constructs it;
-this API never does.
+**Neither option costs an OCR call or an LLM call, on either extractor.** On
+the PDF and image path both engines already request LLMWhisperer's line
+metadata — `kv` needs the line numbers for grounding, and the table engine's
+OCR call passes the flag with no reference to your option — so the fetch is
+metered either way and these options only stop that data being discarded. The
+table engine *does* have an LLM-based row-to-line validator, but it runs only
+on the Prompt Studio path, which constructs it; this API never does.
+
+Spreadsheets take a different path in both engines and request no highlights at
+all, so asking for them on a workbook costs nothing and returns nothing.
 
 #### `kv` — per key
 
@@ -875,14 +878,18 @@ array entry's `rows` — gains up to three fields:
 Each is omitted individually. A key that was not found has no line citation, so
 it gets none of them; a found key always gets `line_start`/`line_end` as before.
 
-**Spreadsheet inputs get `confidence` and `word_confidence` but no
-`highlight`.** Two reasons, either sufficient: the engine injects virtual page
-separators into the extracted text to chunk a workbook, which displaces every
-line after the first insertion relative to the OCR's own numbering — so
-coordinates derived from it would be wrong and drift further down the document;
-and a workbook has no page geometry to draw a box on, since its "pages" are
-fixed line-count chunks the engine invented rather than physical pages. Line
-citations are unaffected.
+**Spreadsheet inputs get none of the three.** A workbook has no page geometry
+to draw a box on — its "pages" are fixed line-count chunks the engine invented
+by splitting the text, not physical pages with a height — so the engine retains
+no OCR metadata for a spreadsheet at all, and `confidence` and
+`word_confidence` go with the coordinates. `line_start`, `line_end` and
+`source_page` are unaffected, so a spreadsheet value still tells you where it
+was read from.
+
+Confidence could in principle be served for a workbook, since it needs no
+geometry. It is not, because whether the OCR emits line numbers for `.xlsx` at
+all is unverified, and a confidence value attached to the wrong line is worse
+than none.
 
 #### `table` — one structure for the table
 
