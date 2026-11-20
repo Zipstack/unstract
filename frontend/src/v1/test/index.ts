@@ -20,6 +20,11 @@ export {
   type ResizeObserverControl,
 } from "./dom";
 export {
+  expectGalleryAccessible,
+  type GalleryEntry,
+  galleryMarkup,
+} from "./gallery";
+export {
   apiPath,
   delay,
   HttpResponse,

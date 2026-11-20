@@ -150,13 +150,12 @@ useCommandPaletteShortcut(() => setOpen(true));
   (leaving Ctrl+K to text fields there) and Ctrl+K elsewhere, by key
   position, so any keyboard layout works.
 
-## Triggers: a temporary seam
+## Triggers
 
-`MenuButton` (outline, label and chevron) and `MenuIconButton` (32px ghost
-icon button, the kebab by default) stand in for the v1 `Button`, which
-P1-T02 (UN-4272) has not built yet. When it lands they become thin wrappers
-over it and callers do not change. Until then, pass one of them (or any
-element that accepts a ref and props) to `DropdownMenuTrigger asChild` or
+`MenuButton` (an outline `Button` with a chevron that turns while open) and
+`MenuIconButton` (a 32px ghost `IconButton`, the kebab by default) are thin
+wrappers over the v1 buttons (`@v1/components/ui/button`). Pass one of them,
+or any `Button` or `IconButton`, to `DropdownMenuTrigger asChild` or
 `SearchMenu trigger`.
 
 ## Tests

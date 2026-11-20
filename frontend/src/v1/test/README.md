@@ -159,6 +159,14 @@ is `region` (a component rendered alone is outside a page's landmarks). Pass
 `{ rules: { region: { enabled: true } } }` for a whole-page test. Always
 `await` the matcher.
 
+A gallery (`{ name, element }[]`) whose entries each render one inline root
+with no React ids gets both checks from `galleryMarkup(title, entries)`, one
+Markdown document of every entry's markup for `toMatchFileSnapshot`, and
+`expectGalleryAccessible(entries)`, which runs axe on each entry and starts a
+failure with the entry's name. Both read only the render container, so an
+entry that opens a portal (a menu, popover or dialog) or renders `useId` ids
+keeps its own markup test.
+
 ## Browser APIs happy-dom does not drive
 
 ```ts

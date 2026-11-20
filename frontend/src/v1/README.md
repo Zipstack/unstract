@@ -69,11 +69,11 @@ is convention.
   - `scrollbar-color`, `::-webkit-scrollbar*`: the thumb stays light in dark.
   - `[data-radix-popper-content-wrapper] { z-index: 1500 !important }`.
   - `[data-sonner-toaster] { pointer-events: auto }`.
-  - `svg.lucide` under a `span`, `p`, `label`, `li`, `a`, `td` or `th` that
-    is not `.flex`/`.inline-flex`/`.grid` (v0 names, so `ui:inline-flex`
-    does not exempt) is forced to `1em` and `inline-block`, overriding the
-    icon's `size` prop. Put icons in a `ui:flex`/`ui:inline-flex` parent
-    that is not one of those tags, or size the parent's font.
+- v0's `svg.lucide` rule sits in its `base` layer, so any `ui:` class beats
+  it: a lucide svg under a `span`, `p`, `label`, `li`, `a`, `td` or `th` that
+  is not `.flex`/`.inline-flex`/`.grid` (v0 names, so `ui:inline-flex` does
+  not exempt) gets `1em` and `inline-block` unless a class sets them. Its
+  `size` prop is an attribute and loses, so size icons with `ui:size-*`.
 
 ## Feedback
 
@@ -128,6 +128,20 @@ is convention.
 - Never put a toggle inside `Field`: Field's label points at an id the
   toggle does not read and names nothing. A `RadioGroup` never goes inside
   `Field`.
+
+## Buttons and links
+
+- Buttons, icon buttons, inline links, key chips and button groups come from
+  `components/ui/button/` (`Button`, `IconButton`, `Link`, `Kbd`,
+  `ButtonGroup`), imported from `@v1/components/ui/button`; its README lists
+  every prop. New code uses these instead of styling its own `<button>`. A
+  menu row's `shortcut` ("⌘D") stays the row's plain text, not a `Kbd`.
+- Buttons come in four heights only (36, 32, 28, 24); icon buttons are 32,
+  or 28 in dense rows.
+- An `IconButton` needs `aria-label` or `aria-labelledby`, and the types
+  require one.
+- A loading `Button` keeps focus and ignores activation; do not swap it for a
+  disabled one while work runs.
 
 ## Text inputs
 
