@@ -58,6 +58,16 @@ class ToolInstanceSerializer(AuditSerializer):
             raise ValidationError("A tool cannot be moved to another workflow.")
         return value
 
+    def validate_tool_id(self, value: str) -> str:
+        """Refuse deprecated registry tools, except the one an instance already has."""
+        if self.instance and value == self.instance.tool_id:
+            return value
+        if ToolProcessor.is_registry_tool(value):
+            raise ValidationError(
+                f"Tool '{value}' is deprecated and can't be added to a workflow."
+            )
+        return value
+
     def validate_workflow_id(self, value):
         """Same guard for the declared alias -- ``workflow_id`` is the FK's
         attname, so DRF writes the column through it directly.
