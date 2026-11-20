@@ -102,12 +102,6 @@ def _status_document(job) -> dict:
         # null as well as empty.
         "custom_data": job.custom_data or {},
     }
-    # Only when a queue was named. Present-or-absent rather than always-present
-    # with an empty string: its absence is the honest statement that this job
-    # has nothing to do with review, and a client testing `"hitl_queue_name"
-    # in doc` gets the right answer without comparing to "".
-    if job.hitl_queue_name:
-        doc["hitl_queue_name"] = job.hitl_queue_name
     if job.status == JobStatus.FAILED:
         doc["error"] = job.error
     return doc
@@ -619,7 +613,6 @@ class SubmitView(APIView):
             pages_total=serializer.pages_total,
             tags=v["tags"],
             custom_data=v["custom_data"],
-            hitl_queue_name=v.get("hitl_queue_name", ""),
             webhook_url=v["webhook_url"],
             expires_at=timezone.now() + timedelta(days=settings.AGENT_KV_RESULT_TTL_DAYS),
         )

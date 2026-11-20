@@ -1,4 +1,4 @@
-"""The submit-time contract for `custom_data`, the highlight options and `hitl_queue_name`.
+"""The submit-time contract for `custom_data` and the highlight options.
 
 Serializer-level, so no DB: these are the refusals a caller sees before
 anything is staged, slotted or billed, which is the whole point of putting them
@@ -171,43 +171,6 @@ class TestWordConfidenceIsKvOnly:
         ser = _options(name, enable_highlights=True)
         assert not ser.is_valid()
         assert "unknown options" in str(ser.errors)
-
-
-class TestHitlQueueName:
-    def _validate(self, value):
-        return es.SubmitSerializer().validate_hitl_queue_name(value)
-
-    @override_settings(AGENT_KV_HITL_ENABLED=True)
-    @pytest.mark.parametrize(
-        "name", ["high-value-invoices", "batch_review_001", "q1", "a" * 50]
-    )
-    def test_accepted_shapes(self, name):
-        assert self._validate(name) == name
-
-    @override_settings(AGENT_KV_HITL_ENABLED=True)
-    @pytest.mark.parametrize(
-        "name",
-        ["has space", "has:colon", "a" * 51, "slash/es", "dots.are.out", "qué"],
-        ids=["space", "colon", "too-long", "slash", "dot", "non-ascii"],
-    )
-    def test_refused_shapes(self, name):
-        # A `:` would alter the queue name's own structure rather than name a
-        # queue within it, which is why this refuses instead of sanitising.
-        with pytest.raises(Exception) as e:
-            self._validate(name)
-        assert "letters, digits, hyphens and underscores" in str(e.value)
-
-    @override_settings(AGENT_KV_HITL_ENABLED=False)
-    def test_refused_when_the_deployment_has_no_hitl(self):
-        # Accepted-and-dropped is the failure `custom_data` itself shipped
-        # with; this is the one case that must not repeat it.
-        with pytest.raises(Exception) as e:
-            self._validate("some-queue")
-        assert "not available on this deployment" in str(e.value)
-
-    @override_settings(AGENT_KV_HITL_ENABLED=False)
-    def test_empty_passes_even_with_hitl_off(self):
-        assert self._validate("") == ""
 
 
 class TestSubstitutionIsApplied:

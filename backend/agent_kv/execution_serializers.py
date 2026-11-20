@@ -2,7 +2,6 @@
 
 import json
 import logging
-import re
 import tempfile
 
 import magic
@@ -13,7 +12,6 @@ from rest_framework import serializers
 from agent_kv import custom_data
 from agent_kv.constants import (
     EXTRACTOR_ROUTES,
-    HITL_QUEUE_NAME_RE,
     TABLE_EXTRACTOR_NAME,
     V1_EXTRACTOR_NAME,
 )
@@ -688,12 +686,6 @@ class SubmitSerializer(serializers.Serializer):
         max_length=20,
     )
     custom_data = serializers.JSONField(required=False, default=None, allow_null=True)
-    # Mirrors the documented `hitl_queue_name` on API deployments, same name and
-    # same type, so a caller who knows that feature knows this one. Naming a
-    # queue is the whole opt-in: absent means no review push.
-    hitl_queue_name = serializers.CharField(
-        required=False, allow_blank=False, default="", max_length=50
-    )
     webhook_url = serializers.URLField(
         required=False, allow_blank=True, default="", max_length=1024
     )
@@ -725,27 +717,6 @@ class SubmitSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 f"custom_data is {size} bytes, over the "
                 f"{settings.AGENT_KV_MAX_CUSTOM_DATA_BYTES}-byte limit"
-            )
-        return value
-
-    def validate_hitl_queue_name(self, value):
-        """Refused when the feature is off, rather than accepted and dropped.
-
-        That is the exact failure `custom_data` itself shipped with: accepted
-        by the serializer, stored, and never reaching anything. A caller who
-        names a queue on a deployment without HITL would otherwise get a 202
-        and no review, with nothing in the response saying so.
-        """
-        if not value:
-            return value
-        if not settings.AGENT_KV_HITL_ENABLED:
-            raise serializers.ValidationError(
-                "human review is not available on this deployment"
-            )
-        if not re.fullmatch(HITL_QUEUE_NAME_RE, value):
-            raise serializers.ValidationError(
-                "hitl_queue_name may contain only letters, digits, hyphens and "
-                "underscores, and must be 1-50 characters"
             )
         return value
 

@@ -190,9 +190,6 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
     #
     # Stored rather than derived because it is part of the request and the
     # push happens later, at terminalize -- and because it is what a caller
-    # needs back in order to call the approved-results endpoint, which is
-    # keyed on the queue name rather than on this job's id.
-    hitl_queue_name = models.CharField(max_length=50, blank=True, default="")
     webhook_url = models.URLField(max_length=1024, blank=True, default="")
 
     class Meta:

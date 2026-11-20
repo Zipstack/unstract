@@ -153,18 +153,10 @@ def result_payload(job) -> dict:
     the field.
 
     `custom_data` comes back as `{}` when none was sent, so a reader never
-    tests for null as well as empty. `hitl_queue_name` appears only when a
-    queue was named: its absence says this job has nothing to do with review,
-    and when present it is what the caller needs in order to call the
-    approved-results endpoint, which is keyed on the queue name rather than on
-    this job's id.
-
-    Both survive a purge, because they live on the job row rather than in the
-    stored blob `files_purged` destroys -- which is what keeps a purged job's
-    response self-describing.
+    tests for null as well as empty. It survives a purge, because it lives on
+    the job row rather than in the stored blob `files_purged` destroys -- which
+    is what keeps a purged job's response self-describing.
     """
     payload = _terminal_payload(job)
     payload["custom_data"] = job.custom_data or {}
-    if job.hitl_queue_name:
-        payload["hitl_queue_name"] = job.hitl_queue_name
     return payload
