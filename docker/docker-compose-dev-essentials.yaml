@@ -158,3 +158,9 @@ volumes:
   redis_data:
   prompt_studio_data:
   rabbitmq_data:
+
+networks:
+  default:
+    # Match docker-compose.yaml so standalone `up` uses unstract-network, not
+    # docker_default. Traefik is configured with --providers.docker.network below.
+    name: unstract-network
