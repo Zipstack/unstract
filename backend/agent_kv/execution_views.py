@@ -10,7 +10,10 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from agent_kv.constants import STAGE_NAMES_BY_EXTRACTOR
+from agent_kv.constants import (
+    LLM_WHISPERER_ADAPTER_ID,
+    STAGE_NAMES_BY_EXTRACTOR,
+)
 from agent_kv.dispatch import DispatchError, dispatch_cancelled_webhook, dispatch_job
 from agent_kv.exceptions import (
     EngineUnavailable,
@@ -92,6 +95,12 @@ def _status_document(job) -> dict:
         "started_at": job.dispatched_at.isoformat() if job.dispatched_at else None,
         "completed_at": job.completed_at.isoformat() if job.completed_at else None,
         "pages_total": job.pages_total,
+        # Echoed back because `custom_data` was accepted-and-ignored before
+        # this: a caller had no way to confirm the API had received what they
+        # sent, let alone that it had been substituted into the instructions.
+        # `{}` for a job that sent none, so a reader never has to test for
+        # null as well as empty.
+        "custom_data": job.custom_data or {},
     }
     if job.status == JobStatus.FAILED:
         doc["error"] = job.error
@@ -238,6 +247,7 @@ def _dispatch_or_fail(job, org_id: str, entry: dict, options: dict) -> Response 
             schema=entry["keys"],
             options=options,
             adapters=entry.get("adapters") or {},
+            custom_data=job.custom_data,
         )
     except DispatchError:
         logger.exception("agent-kv dispatch failed for job %s", job.id)
@@ -509,6 +519,32 @@ def _resolved_adapters(entry: dict, agent_kv_key) -> dict:
                         "exhausted. Connect your own service account to continue: "
                         "https://docs.unstract.com/unstract_platform/setup_accounts/"
                         "whats_needed"
+                    )
+                }
+            )
+        # Highlight data comes from LLMWhisperer's line metadata and from
+        # nowhere else: `enable_highlight` on that adapter sets both
+        # `ADD_LINE_NOS` and `INCLUDE_LINE_CONFIDENCE` and then fetches
+        # `get_highlight_data` (`sdk1/.../llm_whisperer_v2/src/helper.py`). No
+        # other x2text adapter has that path, so highlight on one of them would
+        # return an empty block on a job the caller paid extra for -- and for
+        # `table`, "extra" is a per-page LLM call.
+        #
+        # Refused at submit, naming the adapter, for the same reason every
+        # other gate in this function is: before staging, before a slot, before
+        # anything is billed. Same rule Prompt Studio states as
+        # "LLMWhisperer only".
+        if (
+            role == "x2text"
+            and (entry.get("options") or {}).get("enable_highlight")
+            and adapter.adapter_id != LLM_WHISPERER_ADAPTER_ID
+        ):
+            raise ValidationError(
+                {
+                    "options": (
+                        "enable_highlight requires an LLMWhisperer x2text "
+                        f"adapter; '{adapter.adapter_name}' cannot produce "
+                        "highlight or confidence data"
                     )
                 }
             )

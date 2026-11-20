@@ -219,6 +219,10 @@ def test_result_for_failed_job_is_200_with_success_false_and_error(
         "success": False,
         "status": "failed",
         "error": "LLM provider timed out",
+        # Echoed on every terminal payload, `{}` when the caller sent none.
+        # Exact equality kept deliberately: this is a wire contract, and a
+        # subset check here would stop noticing a field appearing by accident.
+        "custom_data": {},
     }
     assert not m_read.called
 
@@ -241,7 +245,11 @@ def test_result_for_cancelled_job_is_200_with_cancelled_body(m_keys, m_jobs, m_r
     resp = ev.JobResultView.as_view()(_authed(), job_id=uuid.uuid4())
 
     assert resp.status_code == 200
-    assert resp.data == {"success": False, "status": "cancelled"}
+    assert resp.data == {
+        "success": False,
+        "status": "cancelled",
+        "custom_data": {},
+    }
     assert not m_read.called
 
 
@@ -330,6 +338,7 @@ def _executor_may_exist_in_db(m_jobs, may_exist: bool) -> None:
     NOT be released.
     """
     m_jobs.filter.return_value.exclude.return_value.exists.return_value = may_exist
+
 
 # ---------------------------------------------------------------------------
 # (6c) cancel that LOSES the guard (job already terminal) must NOT release --
@@ -508,7 +517,13 @@ def test_delete_on_a_running_job_does_NOT_release_the_slot(
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_on_a_never_dispatched_job_DOES_release_the_slot(
-    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook,
+    m_keys,
+    m_jobs,
+    m_mark_terminal,
+    m_delete_files,
+    m_save,
+    m_release,
+    m_hook,
     m_purge,
 ):
     """The case the release exists for, and the only one.
@@ -744,9 +759,7 @@ def test_delete_claims_the_purge_even_when_it_wins_the_cancel(
     job.organization_id = "org1"
     m_jobs.get.return_value = job
 
-    with mock.patch.object(
-        AgentKVJob, "mark_files_purged", return_value=None
-    ) as m_purge:
+    with mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None) as m_purge:
         resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=job.id)
 
     assert resp.status_code == 204
@@ -824,7 +837,13 @@ def test_cancel_that_loses_does_not_queue_a_webhook(
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_that_cancels_a_running_job_also_queues_the_webhook(
-    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook,
+    m_keys,
+    m_jobs,
+    m_mark_terminal,
+    m_delete_files,
+    m_save,
+    m_release,
+    m_hook,
     m_purge,
 ):
     """DELETE on a non-terminal job cancels it first; that cancellation is just
