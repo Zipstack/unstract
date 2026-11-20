@@ -15,6 +15,7 @@ covered while `kv` was unroutable and remains the cheaper way to exercise the
 option grammar without building a whole submit.
 """
 
+import hashlib
 import io
 import json
 import os
@@ -285,6 +286,71 @@ def test_an_xlsx_whose_content_types_member_is_not_first_still_passes():
     upload = SimpleUploadedFile("table.xlsx", _zip_bytes(members))
     s = SubmitSerializer(data=_data(file=upload))
     assert s.is_valid(), s.errors
+
+
+def _metadata_first_xlsx():
+    """The `table.xlsx` fixture laid out as some carriers' exporters write it:
+    declaration members first, then `docProps/` and a large `customXml/`
+    item, then `xl/`. libmagic names a package only when the main part's
+    directory is among its first few members, so it calls this one
+    "Microsoft OOXML", which has no MIME -- `application/octet-stream`.
+    """
+    with zipfile.ZipFile(os.path.join(FIXTURES, "table.xlsx")) as src:
+        members = {n: src.read(n) for n in src.namelist()}
+    members["customXml/item1.xml"] = (
+        b'<?xml version="1.0"?><root>' + b"<v>0</v>" * 1750 + b"</root>"
+    )
+    order = [
+        "[Content_Types].xml",
+        "_rels/.rels",
+        "docProps/app.xml",
+        "docProps/core.xml",
+    ]
+    order.append("customXml/item1.xml")
+    order += sorted(n for n in members if n.startswith("xl/"))
+    assert set(order) == set(members)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name in order:
+            stored = name.startswith("customXml/")
+            z.writestr(
+                name,
+                members[name],
+                compress_type=zipfile.ZIP_STORED if stored else zipfile.ZIP_DEFLATED,
+            )
+    return buf.getvalue()
+
+
+def test_an_xlsx_libmagic_calls_octet_stream_still_passes(tmp_path):
+    """Such a package used to be refused: only a file libmagic called
+    `application/zip` was opened to find its main part.
+    """
+    from agent_kv import execution_serializers
+
+    body = _metadata_first_xlsx()
+    path = tmp_path / "table.xlsx"
+    path.write_bytes(body)
+    # The precondition, so this fails on a classifier that opens only zips.
+    assert (
+        execution_serializers.magic.from_file(str(path), mime=True)
+        == "application/octet-stream"
+    )
+
+    upload = SimpleUploadedFile(
+        "table.xlsx", body, content_type="application/octet-stream"
+    )
+    s = SubmitSerializer(data=_data(file=upload))
+    assert s.is_valid(), s.errors
+    assert s.validated_data["file"].tell() == 0
+
+
+def test_an_octet_stream_file_that_is_not_a_zip_is_still_rejected():
+    """Opening an octet-stream file as a zip finds nothing, so it stays refused."""
+    # Hash output: no format's magic, so "data" on every libmagic build.
+    body = b"".join(hashlib.sha256(bytes([i])).digest() for i in range(128))
+    s = SubmitSerializer(data=_data(file=SimpleUploadedFile("table.xlsx", body)))
+    assert not s.is_valid()
+    assert "does not match its '.xlsx' extension" in str(s.errors["file"])
 
 
 def _ooxml_shaped_zip_with_patched_headers(local_offset, central_offset, value):
