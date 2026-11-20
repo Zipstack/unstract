@@ -926,7 +926,7 @@ class SourceConnector(BaseConnector):
         )
 
     def list_files_from_source(
-        self, file_hashes: dict[str, FileHash] = {}
+        self, file_hashes: dict[str, FileHash] | None = None
     ) -> tuple[dict[str, FileHash], int]:
         """List files from source connector.
 
@@ -936,6 +936,7 @@ class SourceConnector(BaseConnector):
             tuple[dict[str, FileHash], int]: A dictionary of FileHashes,
             along with the total count of matched files.
         """
+        file_hashes = file_hashes or {}
         connection_type = self.endpoint.connection_type
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             files = self.list_files_from_file_connector()
