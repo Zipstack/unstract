@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import {
+  type ConfirmOptions,
   confirm,
   currentConfirm,
   settleConfirm,
@@ -51,11 +52,13 @@ it("shows one request at a time and answers them in order", async () => {
   expect(head?.options.title).toBe(DELETE.title);
   settleConfirm(head?.id ?? -1, true);
   await expect(first).resolves.toBe(true);
+  expect(onChange).toHaveBeenCalledTimes(3);
 
   const next = currentConfirm();
   expect(next?.options.title).toBe("Regenerate the key?");
   settleConfirm(next?.id ?? -1, false);
   await expect(second).resolves.toBe(false);
+  expect(onChange).toHaveBeenCalledTimes(4);
   expect(currentConfirm()).toBeNull();
 });
 
@@ -70,12 +73,17 @@ it("resolves a blocked request false even when settled true", async () => {
   await expect(answer).resolves.toBe(false);
 });
 
-it("ignores an answer for a request that is not on screen", () => {
+it("ignores a late answer for a request already answered", async () => {
   mountHost();
-  void confirm(DELETE);
-  const head = currentConfirm();
-  settleConfirm((head?.id ?? 0) + 1, true);
-  expect(currentConfirm()).toBe(head);
+  const first = confirm(DELETE);
+  const second = confirm(DELETE);
+  const id = currentConfirm()?.id ?? -1;
+  settleConfirm(id, true);
+  settleConfirm(id, true);
+  await expect(first).resolves.toBe(true);
+  expect(currentConfirm()?.id).not.toBe(id);
+  const pending = await Promise.race([second, Promise.resolve("pending")]);
+  expect(pending).toBe("pending");
 });
 
 it("answers every waiting request false when the host unmounts", async () => {
@@ -87,6 +95,8 @@ it("answers every waiting request false when the host unmounts", async () => {
   await expect(first).resolves.toBe(false);
   await expect(second).resolves.toBe(false);
   expect(currentConfirm()).toBeNull();
+  vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  await expect(confirm(DELETE)).resolves.toBe(false);
 });
 
 it("leaves the queue alone when a replaced host unsubscribes", () => {
@@ -95,4 +105,26 @@ it("leaves the queue alone when a replaced host unsubscribes", () => {
   void confirm(DELETE);
   stale();
   expect(currentConfirm()?.options.title).toBe(DELETE.title);
+  void confirm(DELETE);
+  settleConfirm(currentConfirm()?.id ?? -1, true);
+  expect(currentConfirm()?.options.title).toBe(DELETE.title);
 });
+
+// Type-level guard, never run: each tone's own text is required and present.
+export function _confirmTypesHoldTheirTone(warning?: string): ConfirmOptions[] {
+  const base = {
+    title: "Delete?",
+    confirmLabel: "Delete",
+    description: "Gone.",
+  };
+  const destructive = { ...base, tone: "destructive" } as const;
+  return [
+    base,
+    // @ts-expect-error a consequence needs the destructive tone
+    { ...base, consequence: "Cannot be undone." },
+    // @ts-expect-error a reason needs the blocked tone
+    { ...base, reason: "Linked to a project." },
+    // @ts-expect-error a destructive consequence cannot be missing
+    { ...destructive, consequence: warning },
+  ];
+}

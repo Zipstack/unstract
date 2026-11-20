@@ -3,7 +3,7 @@ import { cn } from "@v1/lib/cn";
 import { STATUS_ICONS } from "@v1/lib/icons";
 import type { LucideIcon } from "lucide-react";
 import { Dialog as RadixDialog } from "radix-ui";
-import type { JSX, ReactNode } from "react";
+import type { JSX, KeyboardEvent, MouseEvent, ReactNode } from "react";
 import type {
   BlockedConfirm,
   ConfirmOptions,
@@ -71,6 +71,21 @@ function Details({ children }: { children?: ReactNode }) {
   ) : null;
 }
 
+// A queued request reuses the dialog, so a double click or a held Enter must not answer it unread.
+function firstClickOnly(run: () => void) {
+  return (event: MouseEvent) => {
+    if (event.detail <= 1) {
+      run();
+    }
+  };
+}
+
+function ignoreHeldEnter(event: KeyboardEvent): void {
+  if (event.repeat && event.key === "Enter") {
+    event.preventDefault();
+  }
+}
+
 type Answer = Readonly<{
   busy: boolean;
   onConfirm: () => void;
@@ -95,7 +110,7 @@ function ConfirmActions({
         leadingIcon={options.confirmIcon}
         loading={busy}
         data-autofocus={destructive ? undefined : true}
-        onClick={onConfirm}
+        onClick={firstClickOnly(onConfirm)}
       >
         {options.confirmLabel}
       </Button>
@@ -116,10 +131,10 @@ function BlockedActions({
       {link ? (
         <Button
           size="lg"
-          onClick={() => {
+          onClick={firstClickOnly(() => {
             onDismiss();
             link.onSelect();
-          }}
+          })}
         >
           {link.label}
         </Button>
@@ -182,7 +197,11 @@ export function ConfirmDialog({
         }
       }}
     >
-      <DialogContent size="sm" data-slot="confirm-dialog">
+      <DialogContent
+        size="sm"
+        data-slot="confirm-dialog"
+        onKeyDown={ignoreHeldEnter}
+      >
         {options ? (
           <ConfirmParts
             options={options}

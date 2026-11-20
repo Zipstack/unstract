@@ -43,10 +43,11 @@ and focus return come from `@v1/components/ui/overlay` (P1-T08, UN-4315).
     `link` ("Open project") that closes it. Always resolves false.
 - Optional: `details` (a panel under the text), `icon` (the header chip;
   destructive defaults to the warning glyph), `confirmIcon`, `cancelLabel`.
-- `action`: the dialog stays open and busy until it settles. A throw keeps it
-  open and is logged; a mutation through the QueryClient already shows its
-  error toast.
-- One confirm at a time; the next waits and takes focus when it shows.
+- `action`: the dialog stays open and busy until it settles; true then means
+  it already ran, so do not run it again. A throw keeps the dialog open and is
+  logged; a mutation through the QueryClient already shows its error toast.
+- One confirm at a time; the next waits and takes focus when it shows. The
+  second click of a double click and a held Enter never answer it.
 
 ## Tests
 

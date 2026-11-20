@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 import { Button } from "@v1/components/ui/button";
 import { renderV1 } from "@v1/test";
@@ -151,5 +151,46 @@ describe("ConfirmHost", () => {
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(answers).toEqual([true, false]));
     await waitFor(() => expect(opener).toHaveFocus());
+  });
+
+  it("lets a double click answer only the request it started on", async () => {
+    const { user, opener, answers } = setup(STANDARD, DESTRUCTIVE);
+    await ask(user, opener, STANDARD.title);
+    await user.dblClick(screen.getByRole("button", { name: "Regenerate key" }));
+    await waitFor(() => expect(answers).toEqual([true]));
+    expect(
+      screen.getByRole("dialog", { name: DESTRUCTIVE.title }),
+    ).toBeInTheDocument();
+  });
+
+  // user-event never sets `repeat`, so the cancelled keydown stands in for the skipped click.
+  it("cancels a held Enter, so it cannot answer the next request", async () => {
+    const { user, opener } = setup(STANDARD);
+    await ask(user, opener, STANDARD.title);
+    const button = screen.getByRole("button", { name: "Regenerate key" });
+    const press = (repeat: boolean) => {
+      const init = { key: "Enter", repeat, bubbles: true, cancelable: true };
+      const event = new KeyboardEvent("keydown", init);
+      button.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    expect(press(false)).toBe(false);
+    expect(press(true)).toBe(true);
+  });
+
+  it("ignores the second click of a double click on a blocked confirm's link", async () => {
+    const onSelect = vi.fn();
+    const { user, opener } = setup({
+      tone: "blocked",
+      title: "Invoice Vendor Lookup cannot be deleted",
+      reason: "Unlink it from its project first.",
+      link: { label: "Open project", onSelect },
+    });
+    await ask(user, opener, "Invoice Vendor Lookup cannot be deleted");
+    const link = screen.getByRole("button", { name: "Open project" });
+    fireEvent.click(link, { detail: 2 });
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.click(link, { detail: 1 });
+    expect(onSelect).toHaveBeenCalledOnce();
   });
 });
