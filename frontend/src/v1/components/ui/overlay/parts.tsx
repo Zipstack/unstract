@@ -29,11 +29,7 @@ export type OverlayHeaderProps = Readonly<{
   className?: string;
 }>;
 
-/**
- * The header of a Radix Dialog (drawer or dialog): title, description and a
- * close button named "Close". Without a description, pass
- * `aria-describedby={undefined}` to the Content.
- */
+/** Title, description and a "Close" button for a Radix Dialog (drawer or dialog). */
 export function OverlayHeader({
   title,
   description,
@@ -123,12 +119,7 @@ function isOnToast(target: EventTarget | null): boolean {
   );
 }
 
-/**
- * The Escape and outside-click rules every overlay shares; spread the result
- * onto the Radix Content. Escape first clears a filled SearchField, and a
- * click on a toast never closes the overlay. While `busy`, neither closes it.
- * `own` handlers run first and may prevent the close themselves.
- */
+/** Shared Escape and outside-click rules, spread onto a Radix Content; `own` handlers run first. */
 export function dismissGuards(
   busy = false,
   own: DismissHandlers = {},
@@ -177,12 +168,7 @@ function returnTarget(opener: Opener | null): HTMLElement | null {
     : null;
 }
 
-/**
- * Remembers what had focus when `open` turned true. Pass the result as the
- * Content's `onCloseAutoFocus`: focus goes back there, or, when that was a
- * menu item that has since closed, to the menu's trigger. With neither, Radix
- * falls back to its own trigger.
- */
+/** An `onCloseAutoFocus` that refocuses the opener, or its menu's trigger once the menu is gone. */
 export function useReturnFocus(open: boolean): (event: Event) => void {
   const opener = useRef<Opener | null>(null);
   // A layout effect runs before a menu that opened the overlay unmounts.
