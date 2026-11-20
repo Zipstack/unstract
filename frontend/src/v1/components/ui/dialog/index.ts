@@ -1,4 +1,6 @@
-// Public API of the dialogs; the queue internals stay inside the folder.
+// Public API; the gallery (`./dialog.gallery`) is imported directly, not from here.
+
+export { ConfirmHost } from "./ConfirmHost";
 export {
   type BlockedConfirm,
   type ConfirmOptions,
@@ -6,3 +8,17 @@ export {
   type DestructiveConfirm,
   type StandardConfirm,
 } from "./confirm";
+export {
+  Dialog,
+  DialogBody,
+  DialogCancel,
+  type DialogCancelProps,
+  DialogContent,
+  type DialogContentProps,
+  DialogFooter,
+  DialogHeader,
+  type DialogHeaderProps,
+  type DialogProps,
+  type DialogSize,
+  DialogTrigger,
+} from "./Dialog";
