@@ -16,6 +16,7 @@ from django.db import connection
 from django.test import RequestFactory, TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import resolve
+from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory, force_authenticate
 from utils.user_context import UserContext
 
@@ -28,6 +29,7 @@ from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudi
 from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
 from prompt_studio.prompt_studio_document_manager_v2.serializers import (
     PromptStudioDocumentManagerSerializer,
+    PromptStudioDocumentStatusSerializer,
 )
 from prompt_studio.prompt_studio_document_manager_v2.views import (
     PromptStudioDocumentManagerView,
@@ -251,14 +253,34 @@ class DocumentStatusTests(_ToolWithDocument):
 
 
 class AccessTests(_ToolWithDocument):
-    def test_an_org_member_without_access_lists_nothing(self) -> None:
+    def _reasons(self, user: User | None = None) -> list:
+        (row,) = self._list(user)
+        return [(s["status"], s["failure_reason"]) for s in row["index_status"]]
+
+    def test_an_org_member_without_access_sees_the_status_not_the_reason(
+        self,
+    ) -> None:
         stranger = User.objects.create_user(
             username=f"s-{secrets.token_hex(3)}@example.com",
             email=f"s-{secrets.token_hex(3)}@example.com",
             password=secrets.token_urlsafe(),
         )
         self._fail(self.default)
-        self.assertEqual(self._list(stranger), [])
+        self.assertIn(("failed", None), self._reasons(stranger))
+        self.assertIn(("failed", "Extractor timed out"), self._reasons())
+
+    def test_the_serializer_hides_the_reason_without_the_flag(self) -> None:
+        self._fail(self.default)
+        data = PromptStudioDocumentStatusSerializer(self.document).data
+        reasons = [s["failure_reason"] for s in data["index_status"]]
+        self.assertEqual(reasons, [None, None])
+
+    def test_a_malformed_tool_id_hides_the_reason(self) -> None:
+        view = PromptStudioDocumentManagerView()
+        request = APIRequestFactory().get("/prompt-document/", {"tool_id": "nope"})
+        view.request = Request(request)
+        view.request.user = self.user
+        self.assertFalse(view._can_open_tool())
 
     def test_the_index_manager_api_omits_the_reason(self) -> None:
         self._fail(self.default)

@@ -6,12 +6,15 @@ from .constants import IndexStatus, PSDMKeys
 from .models import DocumentManager
 
 
-def index_status(document: DocumentManager) -> list[dict[str, Any]]:
+def index_status(
+    document: DocumentManager, show_failure_reason: bool
+) -> list[dict[str, Any]]:
     """Each of the tool's LLM profiles with this document's index state.
 
     failed: the last indexing failed (cleared when the document is next
     indexed; a summary index leaves it).
     indexed: a raw index exists. pending: neither.
+    failure_reason is None unless show_failure_reason is set.
     """
     managers = {im.profile_manager_id: im for im in document.index_managers.all()}
     statuses = []
@@ -29,7 +32,7 @@ def index_status(document: DocumentManager) -> list[dict[str, Any]]:
                 "is_default": profile.is_default,
                 "status": state,
                 "failure_reason": manager.index_error
-                if state == IndexStatus.FAILED
+                if state == IndexStatus.FAILED and show_failure_reason
                 else None,
             }
         )
@@ -54,13 +57,17 @@ class PromptStudioDocumentManagerSerializer(AuditSerializer):
 class PromptStudioDocumentStatusSerializer(PromptStudioDocumentManagerSerializer):
     """The prompt-document list: adds size, pages and per-profile index state.
 
-    Kept off the base serializer, which public shares also render: the
-    failure reason is provider error text meant for the tool's own users.
+    Kept off the base serializer, which public shares also render. The
+    failure reason is provider error text: it is filled in only when the
+    context sets show_failure_reason (the view does so for users who can
+    open the tool).
     """
 
     def to_representation(self, instance: DocumentManager) -> dict[str, Any]:
         data = super().to_representation(instance)
         data[PSDMKeys.SIZE_BYTES] = instance.size_bytes
         data[PSDMKeys.PAGE_COUNT] = instance.page_count
-        data[PSDMKeys.INDEX_STATUS] = index_status(instance)
+        data[PSDMKeys.INDEX_STATUS] = index_status(
+            instance, self.context.get("show_failure_reason", False)
+        )
         return data
