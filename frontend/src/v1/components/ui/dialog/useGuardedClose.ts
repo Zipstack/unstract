@@ -8,6 +8,15 @@ export type CloseGuard = Readonly<{
   onOpenChange: (open: boolean) => void;
 }>;
 
+async function closeIfAllowed(
+  guard: () => boolean | Promise<boolean>,
+  close: () => void,
+): Promise<void> {
+  if (await guard()) {
+    close();
+  }
+}
+
 /**
  * Wraps `onOpenChange` so every close path first passes `busy` and
  * `beforeClose`; a request while the guard is asking is ignored.
@@ -18,21 +27,6 @@ export function useGuardedClose({
   onOpenChange,
 }: CloseGuard): (open: boolean) => void {
   const asking = useRef(false);
-
-  const ask = useCallback(
-    async (guard: () => boolean | Promise<boolean>) => {
-      asking.current = true;
-      try {
-        if (await guard()) {
-          onOpenChange(false);
-        }
-      } finally {
-        asking.current = false;
-      }
-    },
-    [onOpenChange],
-  );
-
   return useCallback(
     (open: boolean) => {
       if (open) {
@@ -42,12 +36,16 @@ export function useGuardedClose({
       if (busy || asking.current) {
         return;
       }
-      if (beforeClose) {
-        void ask(beforeClose);
+      if (!beforeClose) {
+        onOpenChange(false);
         return;
       }
-      onOpenChange(false);
+      asking.current = true;
+      const close = () => onOpenChange(false);
+      void closeIfAllowed(beforeClose, close).finally(() => {
+        asking.current = false;
+      });
     },
-    [ask, beforeClose, busy, onOpenChange],
+    [beforeClose, busy, onOpenChange],
   );
 }

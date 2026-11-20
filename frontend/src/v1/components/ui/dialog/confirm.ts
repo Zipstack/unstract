@@ -13,8 +13,8 @@ type ConfirmBase = Readonly<{
 }>;
 
 type ConfirmAction = Readonly<{
-  /** What happens, under the title. */
-  description?: ReactNode;
+  /** What happens, under the title; it describes the dialog. */
+  description: ReactNode;
   /** The action button's label, a verb: "Delete deployment". */
   confirmLabel: string;
   confirmIcon?: LucideIcon;

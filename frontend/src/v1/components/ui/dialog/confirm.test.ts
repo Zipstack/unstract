@@ -22,6 +22,7 @@ afterEach(() => {
 const DELETE = {
   tone: "destructive",
   title: "Delete “Invoice API”?",
+  description: "The endpoint stops responding immediately.",
   consequence: "This cannot be undone.",
   confirmLabel: "Delete deployment",
 } as const;
@@ -39,7 +40,11 @@ it("resolves false and warns when no host is mounted", async () => {
 it("shows one request at a time and answers them in order", async () => {
   const onChange = mountHost();
   const first = confirm(DELETE);
-  const second = confirm({ title: "Regenerate the key?", confirmLabel: "Go" });
+  const second = confirm({
+    title: "Regenerate the key?",
+    description: "The current key stops working.",
+    confirmLabel: "Regenerate key",
+  });
   expect(onChange).toHaveBeenCalledTimes(2);
 
   const head = currentConfirm();
