@@ -15,6 +15,7 @@ urlpatterns = [
         internal_views.extraction_status,
         name="extraction-status",
     ),
+    path("index-error/", internal_views.index_error, name="index-error"),
     path(
         "profile/<str:profile_id>/",
         internal_views.profile_detail,

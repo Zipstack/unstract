@@ -27,6 +27,20 @@ class DocumentManager(BaseModel):
         blank=False,
     )
 
+    size_bytes = models.BigIntegerField(
+        db_comment="Size of the uploaded file in bytes; null for older documents",
+        editable=False,
+        null=True,
+        blank=True,
+    )
+
+    page_count = models.PositiveIntegerField(
+        db_comment="Pages in the PDF (or its converted PDF); null when unknown",
+        editable=False,
+        null=True,
+        blank=True,
+    )
+
     tool = models.ForeignKey(
         CustomTool,
         on_delete=models.CASCADE,

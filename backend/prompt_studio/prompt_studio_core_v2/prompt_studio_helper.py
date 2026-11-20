@@ -1601,6 +1601,21 @@ class PromptStudioHelper:
         )
 
     @staticmethod
+    def upload_page_count(pdf: Any) -> int | None:
+        """Pages in an uploaded PDF (a file stream or bytes), or None.
+
+        None for no PDF or one that can't be read; the upload never fails on it.
+        """
+        if pdf is None:
+            return None
+        if hasattr(pdf, "seek"):
+            pdf.seek(0)
+        count = LLMWhispererHelper.pdf_page_count(pdf)
+        if hasattr(pdf, "seek"):
+            pdf.seek(0)
+        return count
+
+    @staticmethod
     def validate_upload_page_count_for_image_mode(
         file_data: Any, file_type: str, profile_manager: ProfileManager | None = None
     ) -> None:

@@ -652,3 +652,75 @@ def summary_index_key(request):
             {"success": False, "error": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def index_error(request):
+    """Record why indexing a document under a profile failed.
+
+    Called by the ide_callback worker when an ide_index run fails, so the
+    Documents tab can show the reason after a reload.
+
+    Expected JSON payload:
+    {
+        "document_id": str,
+        "profile_manager_id": str,
+        "error": str
+    }
+    """
+    data, err = _parse_json_body(request)
+    if err:
+        return err
+
+    document_id = data.get("document_id", "")
+    profile_manager_id = data.get("profile_manager_id", "")
+    error = data.get("error", "")
+
+    if not document_id or not profile_manager_id or not error:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "document_id, profile_manager_id, and error are required",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        from prompt_studio.prompt_studio_index_manager_v2.prompt_studio_index_helper import (
+            ExtractionStatusResult,
+            PromptStudioIndexHelper,
+        )
+
+        profile_manager, err = _resolve_profile(profile_manager_id)
+        if err:
+            return err
+        result = PromptStudioIndexHelper.mark_index_failed(
+            document_id=document_id,
+            profile_manager=profile_manager,
+            error=str(error),
+        )
+        # 404 for a missing document stays outside the client's retry set,
+        # as in extraction_status.
+        match result:
+            case ExtractionStatusResult.OK:
+                return JsonResponse({"success": True})
+            case ExtractionStatusResult.DOCUMENT_MISSING:
+                return JsonResponse(
+                    {"success": False, "error": "Document not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            case ExtractionStatusResult.WRITE_FAILED:
+                return JsonResponse(
+                    {"success": False, "error": "Index failure could not be recorded"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            case unhandled:
+                raise AssertionError(f"Unhandled ExtractionStatusResult: {unhandled!r}")
+
+    except Exception as e:
+        logger.exception("index_error internal API failed")
+        return JsonResponse(
+            {"success": False, "error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

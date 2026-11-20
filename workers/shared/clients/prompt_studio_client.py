@@ -16,6 +16,7 @@ _OUTPUT_ENDPOINT = "v1/prompt-studio/output/"
 _INDEX_ENDPOINT = "v1/prompt-studio/index/"
 _INDEXING_STATUS_ENDPOINT = "v1/prompt-studio/indexing-status/"
 _EXTRACTION_STATUS_ENDPOINT = "v1/prompt-studio/extraction-status/"
+_INDEX_ERROR_ENDPOINT = "v1/prompt-studio/index-error/"
 _PROFILE_ENDPOINT = "v1/prompt-studio/profile/{profile_id}/"
 _HUBSPOT_ENDPOINT = "v1/prompt-studio/hubspot-notify/"
 _SUMMARY_INDEX_KEY_ENDPOINT = "v1/prompt-studio/summary-index-key/"
@@ -97,6 +98,23 @@ class PromptStudioAPIClient(BaseAPIClient):
         }
         return self.post(
             _EXTRACTION_STATUS_ENDPOINT, data=payload, organization_id=organization_id
+        )
+
+    def mark_index_failed(
+        self,
+        document_id: str,
+        profile_manager_id: str,
+        error: str,
+        organization_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Record why indexing a document failed, so it survives a reload."""
+        payload = {
+            "document_id": document_id,
+            "profile_manager_id": profile_manager_id,
+            "error": error,
+        }
+        return self.post(
+            _INDEX_ERROR_ENDPOINT, data=payload, organization_id=organization_id
         )
 
     def mark_document_indexed(

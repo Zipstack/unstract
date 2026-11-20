@@ -13,6 +13,9 @@ from .models import IndexManager
 
 logger = logging.getLogger(__name__)
 
+# Long enough for a provider's error text; a stack trace past it is noise.
+INDEX_ERROR_MAX_LENGTH = 2000
+
 
 class ExtractionStatusResult(Enum):
     """Why ``mark_extraction_status`` did or did not write.
@@ -72,6 +75,9 @@ class PromptStudioIndexHelper:
 
                 args[index_id] = doc_id
                 args["index_ids_history"] = json.dumps(index_ids_list)
+                if not is_summary:
+                    # A successful index supersedes an earlier failure.
+                    args["index_error"] = None
 
                 # Update the record with the index id
                 result: IndexManager = IndexManager.objects.filter(
@@ -81,6 +87,42 @@ class PromptStudioIndexHelper:
         except Exception as e:
             transaction.rollback()
             raise IndexingAPIError("Error updating indexing status") from e
+
+    @staticmethod
+    def mark_index_failed(
+        document_id: str, profile_manager: ProfileManager, error: str
+    ) -> ExtractionStatusResult:
+        """Records why indexing a document under a profile failed.
+
+        The reason is kept on the IndexManager row so the Documents tab can
+        show it after a reload; handle_index_manager clears it on the next
+        success. Nothing else reads it.
+        """
+        try:
+            with transaction.atomic():
+                document = DocumentManager.objects.get(pk=document_id)
+                index_manager, _ = IndexManager.objects.select_for_update(
+                    of=("self",)
+                ).get_or_create(
+                    document_manager=document,
+                    profile_manager=profile_manager,
+                    defaults={"extraction_status": {}},
+                )
+                index_manager.index_error = error[:INDEX_ERROR_MAX_LENGTH]
+                index_manager.save(update_fields=["index_error"])
+            return ExtractionStatusResult.OK
+        except (DocumentManager.DoesNotExist, ValidationError):
+            logger.error(
+                "Document %s not found or not visible in the current "
+                "organization; index failure not recorded.",
+                document_id,
+            )
+            return ExtractionStatusResult.DOCUMENT_MISSING
+        except DatabaseError:
+            logger.exception(
+                "Failed to record index failure for document %s", document_id
+            )
+            return ExtractionStatusResult.WRITE_FAILED
 
     @staticmethod
     def mark_extraction_status(

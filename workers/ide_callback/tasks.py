@@ -49,6 +49,32 @@ def _get_api_client() -> PromptStudioAPIClient:
     return PromptStudioAPIClient()
 
 
+def _record_index_failure(
+    api: PromptStudioAPIClient,
+    document_id: str,
+    profile_manager_id: str | None,
+    error: str,
+    org_id: str,
+) -> None:
+    """Keep the failure reason for the Documents tab; never fails the callback."""
+    if not (document_id and profile_manager_id and error):
+        return
+    try:
+        api.mark_index_failed(
+            document_id=document_id,
+            profile_manager_id=profile_manager_id,
+            error=error,
+            organization_id=org_id,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to record index failure for document %s; the socket "
+            "event still reports it.",
+            document_id,
+            exc_info=True,
+        )
+
+
 def _emit_websocket(
     api_client: PromptStudioAPIClient,
     room: str,
@@ -198,6 +224,7 @@ def ide_index_complete(
         if not result_dict.get("success", False):
             error_msg = result_dict.get("error", _UNKNOWN_EXECUTOR_ERROR)
             logger.error("ide_index executor reported failure: %s", error_msg)
+            _record_index_failure(api, document_id, profile_manager_id, error_msg, org_id)
             api.remove_document_indexing(
                 org_id=org_id,
                 user_id=user_id,
@@ -321,6 +348,7 @@ def ide_index_complete(
 
     except Exception as e:
         logger.exception("ide_index_complete callback failed")
+        _record_index_failure(api, document_id, profile_manager_id, str(e), org_id)
         _emit_event(
             api,
             log_events_id,
@@ -357,6 +385,9 @@ def ide_index_error(
     try:
         error_msg = _get_task_error(
             failed_task_id, default="Indexing failed", explicit=cb.get("error")
+        )
+        _record_index_failure(
+            api, document_id, cb.get("profile_manager_id"), error_msg, org_id
         )
 
         # Clean up the indexing-in-progress flag
