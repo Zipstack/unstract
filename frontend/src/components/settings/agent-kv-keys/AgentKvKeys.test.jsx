@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mockApiKeyManagerDeps } from "../api-key-manager/mockApiKeyManagerDeps.js";
 
 /**
  * Which keys this screen manages.
@@ -13,27 +14,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 const axiosPrivate = vi.fn(() => Promise.resolve({ data: [] }));
 
-vi.mock("../../../hooks/useAxiosPrivate", () => ({
-  useAxiosPrivate: () => axiosPrivate,
-}));
-vi.mock("../../../hooks/useCopyToClipboard", () => ({
-  useCopyToClipboard: () => vi.fn(),
-}));
-vi.mock("../../../hooks/useExceptionHandler.jsx", () => ({
-  useExceptionHandler: () => (_err, fallback) => ({ content: fallback }),
-}));
-vi.mock("../../../store/alert-store", () => ({
-  useAlertStore: () => ({ setAlertDetails: vi.fn() }),
-}));
-vi.mock("../../../store/session-store", () => ({
-  useSessionStore: () => ({
-    sessionDetails: { orgId: "org_test", orgName: "acme", csrfToken: "t" },
-  }),
-}));
-vi.mock("react-router-dom", async () => {
-  const actual = await vi.importActual("react-router-dom");
-  return { ...actual, useNavigate: () => vi.fn() };
-});
+mockApiKeyManagerDeps(axiosPrivate);
 
 const { AgentKvKeys } = await import("./AgentKvKeys.jsx");
 
