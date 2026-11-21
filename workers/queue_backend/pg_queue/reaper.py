@@ -324,13 +324,15 @@ def sweep_expired_results(conn: PgConnection) -> int:
 def sweep_orphan_dedup(conn: PgConnection, retention_seconds: int) -> int:
     """Delete orphaned per-batch dedup markers older than *retention_seconds*.
 
-    ``pg_batch_dedup`` markers are normally cleared on barrier teardown / reaper
-    barrier-recovery, but a partial-failure execution can leave them behind. A
-    marker only matters while its execution is in flight, so anything older than
-    the longest possible execution (*retention_seconds*) is a safe-to-drop orphan.
-    Filters on ``created_at``, which is deliberately **unindexed** (see
-    ``backend/pg_queue/models.py``), so each sweep seq-scans — fine at the 5-min
-    cadence on a normally-near-empty table; add an index if the dedup table grows.
+    ``pg_batch_dedup`` markers are cleared on abort / reaper barrier-recovery,
+    but a finalised barrier keeps them on purpose (so a redelivery before the
+    execution is terminal is skipped), and a partial-failure execution can leave
+    them behind too. A marker only matters while its execution is in flight, so
+    anything older than the longest possible execution (*retention_seconds*) is
+    safe to drop. Filters on ``created_at``, which is deliberately **unindexed**
+    (see ``backend/pg_queue/models.py``), so each sweep seq-scans a table holding
+    about one retention window of batch markers (one small row per batch); add an
+    index if that grows large.
     Idempotent; rolls back on error.
     """
     try:

@@ -38,7 +38,6 @@ from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.endpoint_v2.result_cache_utils import ResultCacheUtils
 from workflow_manager.endpoint_v2.source import SourceConnector
-from workflow_manager.execution.dto import ExecutionCache
 from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
 from workflow_manager.utils.pipeline_utils import PipelineUtils
 from workflow_manager.utils.workflow_log import WorkflowLog
@@ -473,20 +472,17 @@ class WorkflowHelper:
             workflow_id=workflow_id, execution_id=execution_id
         )
         if not execution_cache:
+            # Read-only on a miss. Writing a rebuilt entry back could replace a
+            # status a worker wrote (or an acknowledgement deleted) after this
+            # read; the worker's next save() recreates the entry itself. The
+            # cost: until then every 2 s poll reconnects (the wait loop releases
+            # the connection before each sleep) and does one primary-key read,
+            # for as long as the caller's timeout allows (API deployments cap it
+            # at 300 s; the workflow page uses INSTANT_WF_POLLING_TIMEOUT).
             execution_model: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
             )
-            execution_cache = ExecutionCache(
-                workflow_id=workflow_id,
-                execution_id=execution_id,
-                status=ExecutionStatus(execution_model.status),
-                total_files=execution_model.total_files,
-                completed_files=execution_model.completed_files,
-                failed_files=execution_model.failed_files,
-            )
-            ExecutionCacheUtils.create_execution(
-                execution=execution_cache,
-            )
+            return ExecutionStatus(execution_model.status)
         return execution_cache.status
 
     @staticmethod
