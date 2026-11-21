@@ -17,6 +17,12 @@ from typing import Any
 from executor.executors.constants import PromptServiceConstants as PSKeys
 from executor.executors.exceptions import LegacyExecutorError, RateLimitError
 
+from unstract.sdk1.utils.signature_highlights import (
+    format_signature_metadata_context,
+    merge_into_highlight_data,
+    resolve_signature_highlight_coords,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -136,6 +142,7 @@ class AnswerPromptService:
             "platform_postamble": platform_postamble,
             "word_confidence_postamble": word_confidence_postamble,
             "prompt_type": prompt_type,
+            "signature_metadata": tool_settings.get(PSKeys.SIGNATURE_METADATA),
         }
         cache_prefix: str | None = None
         # Only reorder into a cached prefix when this LLM actually caches
@@ -153,7 +160,7 @@ class AnswerPromptService:
         else:
             prompt_str = AnswerPromptService.construct_prompt(**prompt_args)
             output[PSKeys.COMBINED_PROMPT] = prompt_str
-        return AnswerPromptService.run_completion(
+        answer = AnswerPromptService.run_completion(
             llm=llm,
             prompt=prompt_str,
             cache_prefix=cache_prefix,
@@ -166,6 +173,14 @@ class AnswerPromptService:
             execution_source=execution_source,
             process_text=process_text,
         )
+        AnswerPromptService._attach_signature_highlights(
+            answer=answer,
+            signature_metadata=tool_settings.get(PSKeys.SIGNATURE_METADATA),
+            signature_page_references=tool_settings.get(PSKeys.SIGNATURE_PAGE_REFERENCES),
+            metadata=metadata,
+            prompt_key=output[PSKeys.NAME],
+        )
+        return answer
 
     @staticmethod
     def _build_grammar_notes(grammar_list: list[dict[str, Any]]) -> str:
@@ -183,6 +198,42 @@ class AnswerPromptService:
                     f"in both the question and the context."
                 )
         return notes
+
+    @staticmethod
+    def _attach_signature_highlights(
+        answer: str,
+        signature_metadata: dict[str, list[Any]] | None,
+        signature_page_references: dict[str, Any] | None,
+        metadata: dict[str, Any] | None,
+        prompt_key: str | None,
+    ) -> None:
+        """Attach signature page highlights to ``metadata`` when the LLM
+        answer references a known signer or signatures generally.
+
+        Delegates the matching logic to
+        ``unstract.sdk1.utils.signature_highlights`` (shared SDK helper).
+        """
+        if metadata is None or not prompt_key:
+            return
+        new_coords = resolve_signature_highlight_coords(
+            answer=answer,
+            signature_metadata=signature_metadata,
+            signature_page_references=signature_page_references,
+        )
+        if not new_coords:
+            return
+        merge_into_highlight_data(
+            metadata=metadata,
+            prompt_key=prompt_key,
+            new_coords=new_coords,
+            highlight_data_key=PSKeys.HIGHLIGHT_DATA,
+        )
+        logger.info(
+            "DOC_INSIGHTS attach_signature_highlights: prompt=%s, added %d "
+            "signature highlight(s)",
+            prompt_key,
+            len(new_coords),
+        )
 
     @staticmethod
     def _prepare_postambles(
@@ -210,6 +261,31 @@ class AnswerPromptService:
         return postamble, platform_postamble
 
     @staticmethod
+    def _build_signature_context(
+        signature_metadata: dict[str, list[Any]] | None,
+    ) -> str:
+        """Format LLMWhisperer ``document_insights`` signature metadata as an
+        extra context block, or return ``""`` when there is none.
+
+        Shared by :meth:`construct_prompt` and :meth:`construct_cached_prompt`
+        so the signature block lands in the same place (appended to the
+        document context) regardless of prompt-caching reordering.
+        """
+        if not signature_metadata:
+            return ""
+        logger.info(
+            "DOC_INSIGHTS construct_prompt: injecting signature context "
+            "for %d page(s)",
+            len(signature_metadata),
+        )
+        signature_context = format_signature_metadata_context(signature_metadata)
+        logger.debug(
+            "DOC_INSIGHTS construct_prompt: signature_context=%s",
+            signature_context[:200] if signature_context else "empty",
+        )
+        return signature_context
+
+    @staticmethod
     def construct_prompt(
         preamble: str,
         prompt: str,
@@ -219,6 +295,7 @@ class AnswerPromptService:
         platform_postamble: str,
         word_confidence_postamble: str,
         prompt_type: str = "text",
+        signature_metadata: dict[str, list[Any]] | None = None,
     ) -> str:
         """Build the full prompt string with preamble, grammar, postamble, context."""
         prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}"
@@ -226,8 +303,13 @@ class AnswerPromptService:
         postamble, platform_postamble = AnswerPromptService._prepare_postambles(
             postamble, platform_postamble, word_confidence_postamble, prompt_type
         )
+        # Append signature metadata to context if present
+        signature_context = AnswerPromptService._build_signature_context(
+            signature_metadata
+        )
         prompt += (
-            f"\n\n{postamble}\n\nContext:\n---------------\n{context}\n"
+            f"\n\n{postamble}\n\nContext:\n---------------\n{context}"
+            f"{signature_context}\n"
             f"-----------------\n\n{platform_postamble}Answer:"
         )
         return prompt
@@ -242,6 +324,7 @@ class AnswerPromptService:
         platform_postamble: str,
         word_confidence_postamble: str,
         prompt_type: str = "text",
+        signature_metadata: dict[str, list[Any]] | None = None,
     ) -> tuple[str, str]:
         """Build ``(cache_prefix, volatile)`` with the document context first.
 
@@ -255,7 +338,15 @@ class AnswerPromptService:
         postamble, platform_postamble = AnswerPromptService._prepare_postambles(
             postamble, platform_postamble, word_confidence_postamble, prompt_type
         )
-        cache_prefix = f"Context:\n---------------\n{context}\n-----------------\n\n"
+        # Signature metadata is per-document, so it belongs in the stable
+        # (cached) prefix alongside the extracted context.
+        signature_context = AnswerPromptService._build_signature_context(
+            signature_metadata
+        )
+        cache_prefix = (
+            f"Context:\n---------------\n{context}{signature_context}\n"
+            f"-----------------\n\n"
+        )
         volatile = (
             f"{preamble}\n\nQuestion or Instruction: {prompt}"
             + AnswerPromptService._build_grammar_notes(grammar_list)

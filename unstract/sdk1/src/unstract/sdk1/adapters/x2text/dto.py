@@ -10,6 +10,8 @@ from unstract.sdk1.file_storage import FileStorageProvider
 class TextExtractionMetadata:
     whisper_hash: str
     line_metadata: dict[Any, Any] | None = None
+    signature_metadata: dict[str, list[Any]] | None = None
+    signature_page_references: dict[str, Any] | None = None
     # Optional, additive field populated only in image output mode. Defaults to
     # None so existing text-mode consumers are entirely unaffected (the field is
     # never encoded into ``extracted_text``). See PageImageReference below.

@@ -13,6 +13,7 @@ import {
 import "./PromptCard.css";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
+import { hasHighlightData } from "./constants";
 
 const RENDER_CAP = 50;
 
@@ -279,7 +280,33 @@ function DisplayPromptResult({
         );
       }
       if (typeof data === "object" && !details?.enable_highlight) {
-        return JSON.stringify(data, null, 4);
+        const jsonText = JSON.stringify(data, null, 4);
+        // Signature highlights (document_insights) work without the
+        // enable_highlight toggle, so keep JSON answers clickable.
+        if (indent === 0 && hasHighlightData(highlightData)) {
+          return (
+            <Typography.Text
+              wrap
+              onClick={() =>
+                handleSelectHighlight(
+                  highlightData,
+                  promptDetails?.prompt_id,
+                  profileId,
+                  undefined,
+                )
+              }
+              className={`prompt-output-result json-value clickable ${
+                selectedHighlight?.highlightedPrompt ===
+                promptDetails?.prompt_id
+                  ? "selected"
+                  : ""
+              }`}
+            >
+              {jsonText}
+            </Typography.Text>
+          );
+        }
+        return jsonText;
       }
 
       if (typeof data === "string") {
@@ -477,14 +504,21 @@ const TextResult = ({
 
   const confidence = getConfidenceForText();
 
-  return enableHighlight ? (
+  // Make the answer clickable when the tool has highlighting enabled OR
+  // when the backend produced highlight_data (e.g. signature page refs
+  // from LLMWhisperer's document_insights mode), so signature highlights
+  // still work without requiring the separate enable_highlight toggle.
+  const isHighlightable = hasHighlightData(highlightData);
+  const isClickable = enableHighlight || isHighlightable;
+
+  return isClickable ? (
     <Typography.Text
       wrap
       onClick={() =>
         onSelectHighlight(highlightData, promptId, profileId, confidence)
       }
       className={`prompt-output-result json-value ${
-        highlightData ? "clickable" : ""
+        isHighlightable ? "clickable" : ""
       } ${selectedHighlight?.highlightedPrompt === promptId ? "selected" : ""}`}
     >
       {parsedOutput}

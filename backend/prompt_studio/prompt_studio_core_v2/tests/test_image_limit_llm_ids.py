@@ -147,7 +147,7 @@ class TestCachedImageExtractionIsRecheckedForTheLLM:
             org_id="org1",
             profile_manager=profile,
             document_id="doc1",
-        )
+        ).text
 
     def test_over_budget_cache_hit_is_rejected(
         self, monkeypatch: pytest.MonkeyPatch

@@ -84,7 +84,11 @@ def _build(profile) -> dict:
                 "validate_profile_manager_owner_access",
                 MagicMock(return_value=None),
             ),
-            (PromptStudioHelper, "dynamic_extractor", MagicMock(return_value=None)),
+            (
+                PromptStudioHelper,
+                "dynamic_extractor",
+                MagicMock(return_value=_psh_mod.ExtractResult(text="")),
+            ),
             (
                 PromptStudioHelper,
                 "_get_platform_api_key",
