@@ -1,7 +1,7 @@
 # Overlays
 
 Side drawers, popovers, hover cards and tooltips (P1-T08, UN-4315), and the
-parts every overlay shares, dialogs (P1-T07) included. Import everything from
+parts the drawer and the dialogs (P1-T07) share. Import everything from
 `@v1/components/ui/overlay`. All render into the v1 portal container, so they
 follow the theme.
 
@@ -12,11 +12,20 @@ follow the theme.
 | `HoverCard` | A preview of what its trigger names | Never taken | Escape, pointer leave, blur |
 | `Tooltip` | A short text label for a control | Never taken | Escape, pointer leave, blur |
 
-Focus returns to the opener when an overlay closes. Two exceptions: a
-popover closed by a click or focus outside leaves focus where the user put
-it, and a drawer opened from a context-menu item has no control to return to
-(see Drawer). Toasts sit above drawers and dialogs, so a toast they raise
-shows and can be clicked; Escape then closes the newest toast first.
+Focus returns to the opener when an overlay closes (see Drawer for how the
+opener is found). A popover closed by a click or focus outside leaves focus
+where the user put it. Focus lands on the page when no opener is left:
+
+- the opener took no focus: a plain table row, or a clicked button in Safari;
+- the page removed it, such as a drawer action that deletes its row (move
+  focus yourself there);
+- a context-menu item opened it from a row that never had focus.
+
+Toasts sit above drawers and dialogs, so a toast they raise shows and can be
+clicked, and Escape closes the newest toast first. A toast already showing
+when a drawer opens stays visible but takes no clicks until it closes. A
+modal hides toasts from keyboard and screen-reader users, so inside a drawer
+put Retry or Undo in the drawer (an `InlineAlert`), not only on a toast.
 
 ## Drawer
 
@@ -38,10 +47,11 @@ shows and can be clicked; Escape then closes the newest toast first.
   the bar stay put; the body scrolls.
 - `trigger` is the opener itself (`asChild`); `defaultOpen` opens it at
   first render. Leave `trigger` out and use `open` and `onOpenChange` when
-  another control opens the drawer. Focus then goes back to that control, or,
-  when it was inside a menu, submenu or popover that has closed, to the
-  control that opened that menu or popover. A context menu has no such
-  control, so a drawer opened from one closes with focus on the page.
+  another control opens the drawer; rendering it only while open is fine.
+  Focus then goes back to that control. When the control sat in a menu,
+  submenu or popover that has closed, focus goes to the control that opened
+  that, and failing that to the page control that last had focus (a command
+  palette row returns to what had focus before the palette opened).
 - `busy`: Escape, a click outside and the close button do nothing.
 - Loading and error are the body's content: a `Skeleton`, or an
   `InlineAlert` with `onRetry`. A page passes its `QueryView` as the children.
@@ -94,8 +104,9 @@ For overlays built on a Radix Dialog, the dialogs included; a popover uses
 `dismissGuards` only.
 
 - `OVERLAY_SCRIM`: the dim layer's classes.
-- `OverlayHeader`: `title` (text), description, `leading`, `badge`, `titleSize`
-  (`page` 20, the default, or `section` 16 for a confirm) and a close button
+- `OverlayHeader`: `title` (text), description, `leading`, `badge`,
+  `className`, `titleSize` (`page` 20, the default, or `section` 16 for a
+  confirm) and a close button
   named "Close" (disabled while `busy`). Inside a Radix Dialog only. Without a
   description, pass `aria-describedby={undefined}` to the Content.
 - `OverlayFooter`: the action bar; `align` `end` (default) or `start`.
@@ -104,9 +115,11 @@ For overlays built on a Radix Dialog, the dialogs included; a popover uses
   closes it. `own` handlers run first and may prevent the close themselves.
 - `useReturnFocus(open)`: pass the controlled `open` and the result as
   `onCloseAutoFocus`. Focus goes back to what had it when the overlay opened,
-  or to the nearest control still on the page that opened the menu, submenu
-  or popover it sat in. An uncontrolled overlay opened from its own trigger
-  needs no open state: Radix returns focus to that trigger.
+  else to the nearest control still on the page that opened the menu,
+  submenu or popover it sat in, else to the page control that last had focus.
+  An overlay that closes and reopens in one task keeps its first opener, and
+  unmounting while open counts as a close. An uncontrolled overlay opened
+  from its own trigger needs no open state: Radix returns focus there.
 
 ## Tests
 

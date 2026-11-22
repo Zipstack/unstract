@@ -62,8 +62,12 @@ describe("Tooltip", () => {
       </Popover>,
       { userEventOptions: { advanceTimers: vi.advanceTimersByTime } },
     );
-    await user.click(screen.getByRole("button", { name: "Profile" }));
+    const trigger = screen.getByRole("button", { name: "Profile" });
+    await user.click(trigger);
     expect(screen.getByRole("dialog", { name: "test3" })).toBeInTheDocument();
+    // Radix returns focus through the trigger ref the parent passed.
+    await user.keyboard("{Escape}");
+    expect(trigger).toHaveFocus();
   });
 
   it("hides on Escape and leaves focus on the trigger", async () => {

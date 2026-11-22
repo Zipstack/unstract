@@ -24,8 +24,8 @@ import {
   OverlayFooter,
   OverlayHeader,
   type OverlayHeaderProps,
-  useReturnFocus,
 } from "./parts";
+import { useReturnFocus } from "./returnFocus";
 
 type PanelProps = Readonly<{
   open: boolean;
@@ -145,6 +145,48 @@ function Chained() {
       <Panel open={open} onOpenChange={setOpen}>
         <Button onClick={reopen}>Continue</Button>
       </Panel>
+    </>
+  );
+}
+
+/** Two overlays: "Continue" in the first closes it and opens the second in the same task. */
+function TwoInARow() {
+  const [first, setFirst] = useState(false);
+  const [second, setSecond] = useState(false);
+  const next = () => {
+    setFirst(false);
+    void Promise.resolve().then(() => setSecond(true));
+  };
+  return (
+    <>
+      <Button onClick={() => setFirst(true)}>Start</Button>
+      <Panel open={first} onOpenChange={setFirst}>
+        <Button onClick={next}>Continue</Button>
+      </Panel>
+      <Panel open={second} onOpenChange={setSecond} />
+    </>
+  );
+}
+
+/** A controlled popover whose button closes it and opens the overlay in one update, as SearchMenu does. */
+function OpenedFromControlledPopover() {
+  const [popover, setPopover] = useState(false);
+  const [open, setOpen] = useState(false);
+  const edit = () => {
+    setPopover(false);
+    setOpen(true);
+  };
+  return (
+    <>
+      <Popover open={popover} onOpenChange={setPopover}>
+        <PopoverTrigger asChild>
+          <Button>Profile</Button>
+        </PopoverTrigger>
+        <PopoverContent title="test3">
+          <Button onClick={edit}>Edit profile</Button>
+        </PopoverContent>
+      </Popover>
+      <Panel open={open} onOpenChange={setOpen} />
     </>
   );
 }
@@ -280,7 +322,7 @@ describe("useReturnFocus", () => {
     expect(trigger).toHaveFocus();
   });
 
-  it("returns focus to the first opener when one overlay closes and the next opens in the same task", async () => {
+  it("returns focus to the first opener when an overlay closes and reopens in the same task", async () => {
     const { user } = renderV1(<Chained />);
     const start = screen.getByRole("button", { name: "Start" });
     await user.click(start);
@@ -291,6 +333,30 @@ describe("useReturnFocus", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(start).toHaveFocus();
+  });
+
+  it("returns focus to the first opener when one overlay closes and another opens in the same task", async () => {
+    const { user } = renderV1(<TwoInARow />);
+    const start = screen.getByRole("button", { name: "Start" });
+    await user.click(start);
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Close" })).toHaveFocus(),
+    );
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(start).toHaveFocus();
+  });
+
+  it("returns focus to a controlled popover's trigger that closed as the overlay opened", async () => {
+    const { user } = renderV1(<OpenedFromControlledPopover />);
+    const trigger = screen.getByRole("button", { name: "Profile" });
+    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: "Edit profile" }));
+    expect(screen.queryByRole("dialog", { name: "test3" })).toBeNull();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(trigger).toHaveFocus();
   });
 
   it("returns focus to the popover's trigger when a button in the popover opened it", async () => {

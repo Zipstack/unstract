@@ -63,9 +63,11 @@ describe("HoverCard", () => {
   });
 
   it("takes no asChild or forceMount on its content", () => {
+    // @ts-expect-error the content renders its own surface
+    const slotted = <HoverCardContent asChild />;
     // @ts-expect-error the content renders through its own portal
-    const forced = <HoverCardContent forceMount>x</HoverCardContent>;
-    expect(forced).toBeTruthy();
+    const forced = <HoverCardContent forceMount />;
+    expect([slotted, forced]).toHaveLength(2);
   });
 
   it("closes on Escape", async () => {

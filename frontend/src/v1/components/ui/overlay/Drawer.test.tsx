@@ -1,4 +1,4 @@
-import { act, screen } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { Button } from "@v1/components/ui/button";
 import { Toaster } from "@v1/components/ui/feedback";
 import { toast } from "@v1/lib/notify";
@@ -28,13 +28,41 @@ function DetailDrawer(props: Partial<DrawerProps>) {
   );
 }
 
-/** A drawer a plain control opens, as a list row does. */
+/** A drawer another control opens through `open`. */
 function RowDrawer() {
   const [open, setOpen] = useState(false);
   return (
     <>
       <Button onClick={() => setOpen(true)}>Open row</Button>
       <Drawer open={open} onOpenChange={setOpen} title="Row detail">
+        <p>Detail</p>
+      </Drawer>
+    </>
+  );
+}
+
+/** A drawer rendered only while open, so closing it unmounts it. */
+function MountedWhileOpen() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>Open row</Button>
+      {open ? (
+        <Drawer open onOpenChange={setOpen} title="Row detail">
+          <p>Detail</p>
+        </Drawer>
+      ) : null}
+    </>
+  );
+}
+
+/** A drawer opened while focus is on nothing, as after a click on a plain row. */
+function RowDetail({ open }: Readonly<{ open: boolean }>) {
+  return (
+    <>
+      <input aria-label="Search" />
+      <p>Row text</p>
+      <Drawer open={open} title="Row detail">
         <p>Detail</p>
       </Drawer>
     </>
@@ -173,14 +201,12 @@ describe("Drawer", () => {
   });
 
   it("keeps a toast raised while open above it, clickable, and first to close on Escape", async () => {
-    const harness = renderV1(
+    const { user } = renderV1(
       <>
         <Toaster />
         <DetailDrawer />
       </>,
-      OUTSIDE,
     );
-    const { user } = harness;
     await user.click(screen.getByRole("button", { name: "Details" }));
     act(() => {
       toast.error("Save failed");
@@ -204,8 +230,46 @@ describe("Drawer", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("returns focus to its opener when it unmounts as it closes", async () => {
+    const { user } = renderV1(<MountedWhileOpen />);
+    const row = screen.getByRole("button", { name: "Open row" });
+    await user.click(row);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(row).toHaveFocus());
+  });
+
+  it("does not send focus to a page control the user left for a plain row", async () => {
+    const { user, rerender } = renderV1(<RowDetail open={false} />);
+    const search = screen.getByRole("textbox", { name: "Search" });
+    await user.click(search);
+    // A click on plain text moves focus to nothing.
+    await user.click(screen.getByText("Row text"));
+    rerender(<RowDetail open />);
+    rerender(<RowDetail open={false} />);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(search).not.toHaveFocus();
+  });
+
+  it("keeps the toast list taking clicks while it holds a toast shown before it opened", async () => {
+    const { user } = renderV1(
+      <>
+        <Toaster />
+        <DetailDrawer />
+      </>,
+    );
+    act(() => {
+      toast.success("Saved");
+    });
+    await user.click(screen.getByRole("button", { name: "Details" }));
+    const viewport = screen.getByText("Saved").closest("ol");
+    // Radix leaves the older toast without pointer events; the list behind it takes them.
+    expect(viewport).toHaveClass("ui:has-[li]:pointer-events-auto");
+  });
+
   it("takes text only as its title", () => {
-    // @ts-expect-error a drawer's title is text, so a loading value cannot leave it unnamed
+    // @ts-expect-error the title is text; an undefined one does not compile
     const untitled = <Drawer title={undefined}>x</Drawer>;
     expect(untitled).toBeTruthy();
   });

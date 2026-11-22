@@ -29,6 +29,6 @@ export {
   type OverlayFooterProps,
   OverlayHeader,
   type OverlayHeaderProps,
-  useReturnFocus,
 } from "./parts";
+export { useReturnFocus } from "./returnFocus";
 export { TOOLTIP_DELAY_MS, Tooltip, type TooltipProps } from "./Tooltip";

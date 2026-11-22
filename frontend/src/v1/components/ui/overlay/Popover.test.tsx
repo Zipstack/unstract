@@ -126,6 +126,29 @@ describe("Popover", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
+  it("runs the caller's outside-click handler, which may keep it open", async () => {
+    const onInteractOutside = vi.fn((event: Event) => event.preventDefault());
+    const { user } = renderV1(
+      <>
+        <Popover defaultOpen>
+          <PopoverTrigger asChild>
+            <Button>Columns</Button>
+          </PopoverTrigger>
+          <PopoverContent
+            aria-label="Choose columns"
+            onInteractOutside={onInteractOutside}
+          >
+            <Button>Reset</Button>
+          </PopoverContent>
+        </Popover>
+        <Button>Elsewhere</Button>
+      </>,
+    );
+    await user.click(screen.getByRole("button", { name: "Elsewhere" }));
+    expect(onInteractOutside).toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
   it("takes no asChild or forceMount on its content", () => {
     // @ts-expect-error the content always renders its heading and children
     const slotted = <PopoverContent title="x" asChild />;

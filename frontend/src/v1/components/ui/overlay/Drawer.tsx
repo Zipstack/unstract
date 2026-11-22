@@ -7,8 +7,8 @@ import {
   OVERLAY_SCRIM,
   OverlayFooter,
   OverlayHeader,
-  useReturnFocus,
 } from "./parts";
+import { useReturnFocus } from "./returnFocus";
 
 // Right-hand detail panel (A05, L07, L08, C05); no Dialog.Overlay, so page scroll is not locked.
 
@@ -43,7 +43,7 @@ export type DrawerProps = PanelProps &
     open?: boolean;
     defaultOpen?: boolean;
     onOpenChange?: (open: boolean) => void;
-    /** The opener, used as the trigger itself (`asChild`); omit it when `open` is driven by a row or menu. */
+    /** The opener, used as the trigger itself (`asChild`); omit it when another control drives `open`. */
     trigger?: ReactElement;
   }>;
 
