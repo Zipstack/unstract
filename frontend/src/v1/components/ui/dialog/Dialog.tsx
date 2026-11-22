@@ -125,10 +125,10 @@ const BODY_FIELD = [
   )
   .join(", ");
 
-// A hidden or disabled control does not take focus.
+// A hidden or disabled control does not take focus; a group hands it to its active item.
 function takesFocus(element: HTMLElement): boolean {
   element.focus();
-  return element.ownerDocument.activeElement === element;
+  return element.contains(element.ownerDocument.activeElement);
 }
 
 /** First focus: the control marked `data-autofocus`, else the body's first control, else Radix's default. */

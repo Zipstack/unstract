@@ -1,4 +1,5 @@
 import { Button } from "@v1/components/ui/button";
+import { InlineCode } from "@v1/components/ui/code";
 import { InlineAlert } from "@v1/components/ui/feedback";
 import { cn } from "@v1/lib/cn";
 import { STATUS_ICONS } from "@v1/lib/icons";
@@ -72,6 +73,22 @@ function Details({ children }: { children?: ReactNode }) {
   ) : null;
 }
 
+/** Why the last action failed, and the failed request's id for support. */
+export type ConfirmError = Readonly<{ title: string; requestId?: string }>;
+
+// Above the text, so a long details list cannot push it out of view.
+function FailureAlert({ error }: { error?: ConfirmError }) {
+  return error ? (
+    <InlineAlert title={error.title}>
+      {error.requestId ? (
+        <>
+          Request ID <InlineCode variant="plain">{error.requestId}</InlineCode>
+        </>
+      ) : null}
+    </InlineAlert>
+  ) : null;
+}
+
 type HeldKey = Readonly<{
   key: string;
   repeat: boolean;
@@ -141,7 +158,7 @@ function ConfirmParts({
   options,
   error,
   ...answer
-}: Answer & { options: ConfirmOptions; error?: string }) {
+}: Answer & { options: ConfirmOptions; error?: ConfirmError }) {
   const tone = options.tone ?? "standard";
   const icon =
     options.icon ?? (tone === "destructive" ? STATUS_ICONS.warning : undefined);
@@ -153,9 +170,9 @@ function ConfirmParts({
         leading={icon ? <IconChip icon={icon} tone={tone} /> : undefined}
       />
       <DialogBody>
+        <FailureAlert error={error} />
         <ConfirmText options={options} />
         <Details>{options.details}</Details>
-        {error ? <InlineAlert title={error} /> : null}
       </DialogBody>
       <DialogFooter>
         {options.tone === "blocked" ? (
@@ -174,7 +191,7 @@ export type ConfirmDialogProps = Partial<Pick<Answer, "busy">> &
     /** The request on screen; null closes the dialog. */
     options: ConfirmOptions | null;
     /** Why the last action failed, shown in the dialog (a modal hides toasts from keyboard users). */
-    error?: string;
+    error?: ConfirmError;
   }>;
 
 /** A confirm on the dialog shell: an alert dialog; a destructive one ignores outside clicks. */

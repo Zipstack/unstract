@@ -2,7 +2,7 @@ import { Button } from "@v1/components/ui/button";
 import { Field, Input } from "@v1/components/ui/form";
 import { ACTION_ICONS } from "@v1/lib/icons";
 import type { ReactElement } from "react";
-import { ConfirmDialog } from "./ConfirmDialog";
+import { ConfirmDialog, type ConfirmError } from "./ConfirmDialog";
 import type { ConfirmOptions } from "./confirm";
 import {
   Dialog,
@@ -137,7 +137,7 @@ const BLOCKED: ConfirmOptions = {
 function confirmEntry(
   name: string,
   options: ConfirmOptions,
-  state: Readonly<{ busy?: boolean; error?: string }> = {},
+  state: Readonly<{ busy?: boolean; error?: ConfirmError }> = {},
 ) {
   return {
     name,
@@ -164,7 +164,10 @@ export const DIALOG_GALLERY: readonly GalleryEntry[] = [
   confirmEntry("confirm destructive with details", DESTRUCTIVE),
   confirmEntry("confirm destructive busy", DESTRUCTIVE, { busy: true }),
   confirmEntry("confirm destructive failed", DESTRUCTIVE, {
-    error: "Something went wrong on our side. Try again.",
+    error: {
+      title: "Something went wrong on our side. Try again.",
+      requestId: "a1b2c3d4",
+    },
   }),
   confirmEntry("confirm blocked with a link", BLOCKED),
 ];

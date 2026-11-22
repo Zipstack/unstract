@@ -1,4 +1,10 @@
-import { useCallback, useLayoutEffect, useRef } from "react";
+import {
+  type RefObject,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 export type CloseGuard = Readonly<{
   /** While true, a request to close is ignored. */
@@ -23,30 +29,58 @@ async function allowed(guard: Guard): Promise<boolean> {
   }
 }
 
-/** One ask at a time; a yes closes only if the dialog stayed open and is not busy. */
-function useAsk(open: boolean, busy: boolean) {
-  const busyNow = useRef(busy);
+/** The pending ask's token; a close drops it, so its answer is ignored. */
+function usePendingAsk(open: boolean): RefObject<object | null> {
   const pending = useRef<object | null>(null);
   useLayoutEffect(() => {
-    busyNow.current = busy;
     if (!open) {
       pending.current = null;
     }
-  }, [busy, open]);
-  const ask = useCallback((guard: Guard, close: () => void) => {
-    const token = {};
-    pending.current = token;
-    void allowed(guard).then((ok) => {
-      if (pending.current !== token) {
-        return;
-      }
+  }, [open]);
+  return pending;
+}
+
+/** A yes closes when it commits (never after unmount), unless the dialog is busy or closed by then. */
+function useCloseOnYes(
+  pending: RefObject<object | null>,
+  busy: boolean,
+  onOpenChange: (open: boolean) => void,
+): (token: object) => void {
+  const [yes, setYes] = useState<object | null>(null);
+  // It commits with the guard's own updates, so a busy the guard set and cleared reads false.
+  useLayoutEffect(() => {
+    if (yes === null) {
+      return;
+    }
+    setYes(null);
+    if (yes === pending.current) {
       pending.current = null;
-      if (ok && !busyNow.current) {
-        close();
+      if (!busy) {
+        onOpenChange(false);
       }
-    });
-  }, []);
-  return { pending, ask };
+    }
+  }, [yes, busy, onOpenChange, pending]);
+  return setYes;
+}
+
+/** Asks the guard under a new token; a no or a throw ends the ask at once. */
+function ask(
+  pending: RefObject<object | null>,
+  guard: Guard,
+  onYes: (token: object) => void,
+): void {
+  const token = {};
+  pending.current = token;
+  void allowed(guard).then((ok) => {
+    if (pending.current !== token) {
+      return;
+    }
+    if (ok) {
+      onYes(token);
+    } else {
+      pending.current = null;
+    }
+  });
 }
 
 /**
@@ -59,7 +93,8 @@ export function useGuardedClose({
   beforeClose,
   onOpenChange,
 }: CloseGuard & Readonly<{ open: boolean }>): (open: boolean) => void {
-  const { pending, ask } = useAsk(open, busy);
+  const pending = usePendingAsk(open);
+  const closeOnYes = useCloseOnYes(pending, busy, onOpenChange);
   return useCallback(
     (next: boolean) => {
       if (next) {
@@ -70,11 +105,11 @@ export function useGuardedClose({
         return;
       }
       if (beforeClose) {
-        ask(beforeClose, () => onOpenChange(false));
+        ask(pending, beforeClose, closeOnYes);
       } else {
         onOpenChange(false);
       }
     },
-    [ask, beforeClose, busy, onOpenChange, pending],
+    [beforeClose, busy, closeOnYes, onOpenChange, pending],
   );
 }

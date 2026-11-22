@@ -15,7 +15,7 @@ import { createQueryClient } from "@v1/app/query";
 import type { RegistryEntry } from "@v1/app/registry/types";
 import { RouteGate } from "@v1/app/session/RouteGate";
 import { ThemeProvider } from "@v1/app/theme/ThemeProvider";
-import { ConfirmHost } from "@v1/components/ui/dialog";
+import { type ConfirmError, ConfirmHost } from "@v1/components/ui/dialog";
 import { Toaster } from "@v1/components/ui/feedback";
 import { PluginProvider } from "@v1/lib/plugins";
 import { PluginSlot } from "@v1/plugins";
@@ -31,8 +31,11 @@ export type V1AppProps = Readonly<{ entry: RegistryEntry }>;
 /** One cache for the v1 tree, kept across v1 pages; exported so tests can clear it. */
 export const v1QueryClient = createQueryClient();
 
-// A failed confirm action shows the same message as its toast.
-const describeError = (error: unknown) => toApiError(error).message;
+// A failed confirm action shows its message and request id, as QueryView does.
+const describeError = (error: unknown): ConfirmError => {
+  const { message, requestId } = toApiError(error);
+  return { title: message, requestId };
+};
 
 export function V1App({ entry }: V1AppProps): JSX.Element {
   // An expired session signs out as v0 does, and lands where v0's logout does.

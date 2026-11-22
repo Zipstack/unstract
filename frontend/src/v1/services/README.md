@@ -89,7 +89,7 @@ download service makes `http.ts` parse JSON Blob errors, with a test.
 
 | Failure | Shown as |
 | --- | --- |
-| Mutation | A toast with the request id. Pass `meta: { notify: false }` when the form shows it; it is then logged. |
+| Mutation | A toast with the request id. Pass `meta: { notify: false }` when the form or a confirm dialog shows it; it is then logged. |
 | Read whose first fetch fails (also a next page) | Inline, by `QueryView` (`components/patterns/`): an `InlineAlert` with Retry and the request id, after a skeleton (or, for a next page, the previous page). Also logged. |
 | Refresh that fails while the query's data is on screen | A toast, replaced rather than stacked while the same query keeps failing. Every query that cannot reach the server shares one toast. |
 | A `select` that throws | The page's error boundary once no fetch is in flight: it is a bug, not a failed request. |

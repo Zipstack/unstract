@@ -324,13 +324,17 @@ describe("VersionSwitch", () => {
     expect(dialog.textContent).toContain("Signed in as ");
   });
 
-  it("shows a failed confirm action's API message in the dialog", async () => {
+  it("shows a failed confirm action's API message and request id in the dialog", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const user = userEvent.setup();
     renderAt("/acme/v1-demo");
     await screen.findByTestId("v1-demo");
-    const failure = new ApiError({ kind: "client", message: "It is in use." });
+    const failure = new ApiError({
+      kind: "client",
+      message: "It is in use.",
+      requestId: "req-7",
+    });
     act(() => {
       void confirm({
         title: "Delete the profile?",
@@ -344,7 +348,7 @@ describe("VersionSwitch", () => {
     vi.setSystemTime(Date.now() + 60_000);
     await user.click(within(dialog).getByRole("button", { name: "Delete" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      "It is in use.",
+      "It is in use.Request ID req-7",
     );
     vi.useRealTimers();
   });

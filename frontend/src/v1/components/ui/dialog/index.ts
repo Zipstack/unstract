@@ -1,5 +1,6 @@
 // Public API; the gallery (`./dialog.gallery`) is imported directly, not from here.
 
+export type { ConfirmError } from "./ConfirmDialog";
 export { ConfirmHost, type ConfirmHostProps } from "./ConfirmHost";
 export {
   type BlockedConfirm,

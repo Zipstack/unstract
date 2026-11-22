@@ -6,13 +6,13 @@ type Props = Omit<CloseGuard, "onOpenChange"> & Readonly<{ open?: boolean }>;
 
 function setup(guard: Props) {
   const onOpenChange = vi.fn();
-  const { result, rerender } = renderHook(
+  const { result, rerender, unmount } = renderHook(
     ({ open = true, ...props }: Props) =>
       useGuardedClose({ ...props, open, onOpenChange }),
     { initialProps: guard },
   );
   const request = (open: boolean) => result.current(open);
-  return { request, rerender, onOpenChange };
+  return { request, rerender, unmount, onOpenChange };
 }
 
 // A guard that waits for the test to answer each ask.
@@ -101,4 +101,37 @@ it("ignores the answer to an ask from an earlier open", async () => {
   expect(onOpenChange).not.toHaveBeenCalled();
   await act(async () => answers[1]?.(true));
   expect(onOpenChange.mock.calls).toEqual([[false]]);
+});
+
+it("does not let an earlier open's no end the current ask", async () => {
+  const { beforeClose, answers } = pendingGuard();
+  const { request, rerender } = setup({ beforeClose });
+  request(false);
+  rerender({ beforeClose, open: false });
+  rerender({ beforeClose, open: true });
+  request(false);
+  await act(async () => answers[0]?.(false));
+  request(false);
+  expect(beforeClose).toHaveBeenCalledTimes(2);
+});
+
+it("does not close again when a close from outside lands with the yes", async () => {
+  const { beforeClose, answers } = pendingGuard();
+  const { request, rerender, onOpenChange } = setup({ beforeClose });
+  request(false);
+  await act(async () => {
+    answers[0]?.(true);
+    await new Promise((done) => setTimeout(done, 0));
+    rerender({ beforeClose, open: false });
+  });
+  expect(onOpenChange).not.toHaveBeenCalled();
+});
+
+it("ignores a yes that comes after the dialog unmounted", async () => {
+  const { beforeClose, answers } = pendingGuard();
+  const { request, unmount, onOpenChange } = setup({ beforeClose });
+  request(false);
+  unmount();
+  await act(async () => answers[0]?.(true));
+  expect(onOpenChange).not.toHaveBeenCalled();
 });

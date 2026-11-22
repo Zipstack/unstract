@@ -8,7 +8,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { ConfirmDialog } from "./ConfirmDialog";
+import { ConfirmDialog, type ConfirmError } from "./ConfirmDialog";
 import {
   type ConfirmRequest,
   currentConfirm,
@@ -46,7 +46,7 @@ function useAnswerable(id: number | null): () => boolean {
 
 const FAILED_MESSAGE = "Something went wrong. Try again.";
 
-type Failure = Readonly<{ id: number; message: string }>;
+type Failure = Readonly<{ id: number; error: ConfirmError }>;
 
 /** Runs request `id`'s action marked as running; resolves to what it threw, or null on success. */
 async function attempt(
@@ -67,7 +67,7 @@ async function attempt(
 }
 
 /** Runs the request's action while busy; a failure is logged and shown, and the dialog stays open. */
-function useConfirmAction(describeError: (error: unknown) => string) {
+function useConfirmAction(describeError: (error: unknown) => ConfirmError) {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   const run = useCallback(
@@ -83,7 +83,7 @@ function useConfirmAction(describeError: (error: unknown) => string) {
       const failed = await attempt(request, action);
       setBusyId(null);
       if (failed) {
-        setFailure({ id, message: describeError(failed.error) });
+        setFailure({ id, error: describeError(failed.error) });
       }
     },
     [describeError],
@@ -103,11 +103,11 @@ function followLink({ id, options }: ConfirmRequest): void {
 }
 
 export type ConfirmHostProps = Readonly<{
-  /** Words a failed action's error for the dialog; the app passes the API error's message. */
-  describeError?: (error: unknown) => string;
+  /** Words a failed action's error for the dialog; the app passes the API error's message and request id. */
+  describeError?: (error: unknown) => ConfirmError;
 }>;
 
-const describeAnyError = () => FAILED_MESSAGE;
+const describeAnyError = (): ConfirmError => ({ title: FAILED_MESSAGE });
 
 /** Shows the `confirm()` queue, one request at a time. Mounted beside each v1 page. */
 export function ConfirmHost({
@@ -132,7 +132,7 @@ export function ConfirmHost({
     <ConfirmDialog
       options={request?.options ?? null}
       busy={id !== null && busyId === id}
-      error={failure?.id === id ? failure.message : undefined}
+      error={failure?.id === id ? failure.error : undefined}
       onConfirm={answer(run)}
       onDismiss={answer(({ id: headId }) => settleConfirm(headId, false))}
       onLink={answer(followLink)}

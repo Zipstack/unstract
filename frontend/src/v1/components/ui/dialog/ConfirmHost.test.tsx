@@ -191,8 +191,10 @@ describe("ConfirmHost", () => {
         ? Promise.reject(new Error("409"))
         : new Promise<void>(() => undefined);
     };
-    const describeError = (error: unknown) =>
-      `Not deleted: ${(error as Error).message}`;
+    const describeError = (error: unknown) => ({
+      title: `Not deleted: ${(error as Error).message}`,
+      requestId: "req-9",
+    });
     const { user } = renderV1(
       <>
         <Button onClick={() => void confirm({ ...DESTRUCTIVE, action })}>
@@ -204,9 +206,10 @@ describe("ConfirmHost", () => {
     );
     const dialog = await ask(user, button("Ask"), DESTRUCTIVE.title);
     await user.click(button("Delete deployment"));
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      "Not deleted: 409",
-    );
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent("Not deleted: 409Request ID req-9");
+    // First in the body, so a long details list cannot push it out of view.
+    expect(alert.parentElement?.firstElementChild).toBe(alert);
     await user.click(button("Delete deployment"));
     expect(button("Delete deployment")).toHaveAttribute("aria-busy", "true");
     expect(within(dialog).queryByRole("alert")).toBeNull();

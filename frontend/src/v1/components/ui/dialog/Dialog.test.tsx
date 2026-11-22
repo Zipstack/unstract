@@ -9,6 +9,13 @@ import {
   DropdownMenuTrigger,
   MenuButton,
 } from "@v1/components/ui/menu";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@v1/components/ui/navigation";
+import { Radio, RadioGroup } from "@v1/components/ui/toggles/RadioGroup";
 import { renderV1 } from "@v1/test";
 import { type ReactNode, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -164,6 +171,31 @@ describe("Dialog", () => {
     );
   });
 
+  it.each([
+    [
+      "radio group",
+      <RadioGroup key="g" label="Model" defaultValue="claude">
+        <Radio value="gpt" label="GPT" />
+        <Radio value="claude" label="Claude" />
+      </RadioGroup>,
+      () => screen.getByRole("radio", { name: "Claude" }),
+    ],
+    [
+      "tabs",
+      <Tabs key="t" defaultValue="b">
+        <TabsList aria-label="Views">
+          <TabsTrigger value="a">Alpha</TabsTrigger>
+          <TabsTrigger value="b">Beta</TabsTrigger>
+        </TabsList>
+        <TabsContent value="b">Beta panel</TabsContent>
+      </Tabs>,
+      () => screen.getByRole("tab", { name: "Beta" }),
+    ],
+  ])("focuses a %s's active item when it is the body's first control", async (_, body, active) => {
+    await openSample(<Sample>{body}</Sample>);
+    expect(active()).toHaveFocus();
+  });
+
   it("lets a filled SearchField clear on Escape before closing", async () => {
     const { user } = await openSample(
       <Sample>
@@ -176,6 +208,31 @@ describe("Dialog", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+});
+
+// A form whose guard saves before it says yes, showing busy meanwhile.
+function SavingForm({ save }: Readonly<{ save: () => Promise<void> }>) {
+  const [saving, setSaving] = useState(false);
+  const beforeClose = async () => {
+    setSaving(true);
+    try {
+      await save();
+      return true;
+    } finally {
+      setSaving(false);
+    }
+  };
+  return <Sample busy={saving} beforeClose={beforeClose} />;
+}
+
+it.each([
+  ["at once", () => Promise.resolve()],
+  ["after a delay", () => new Promise<void>((done) => setTimeout(done, 20))],
+])("closes when a guard that sets busy itself saves %s and says yes", async (_, save) => {
+  const { user, trigger } = await openSample(<SavingForm save={save} />);
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(trigger).toHaveFocus();
 });
 
 function OpenedFromMenu() {

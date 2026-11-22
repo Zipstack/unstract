@@ -16,9 +16,10 @@ and focus return come from `@v1/components/ui/overlay` (P1-T08, UN-4315).
   Cancel are disabled. Give the primary button `loading`.
 - `dismissible` (default true): false keeps the dialog open on an outside
   click; Escape still closes it.
-- `beforeClose`: asked before every close; false keeps the dialog open, and so
-  does a yes that comes once the dialog is busy or has closed. For unsaved
-  changes: `beforeClose={() => !dirty || confirm({ ... })}`.
+- `beforeClose`: asked before every close; false keeps the dialog open. A yes
+  is dropped if the dialog has closed since, or is still busy when the yes
+  lands (a guard may set `busy` while it saves). For unsaved changes:
+  `beforeClose={() => !dirty || confirm({ ... })}`.
 - Focus is trapped. It starts on the control marked `data-autofocus`, else the
   body's first control, else Close, skipping any that is hidden or disabled. On
   close it returns to the opener, or to its menu's trigger when a menu item
@@ -49,9 +50,11 @@ and focus return come from `@v1/components/ui/overlay` (P1-T08, UN-4315).
   destructive defaults to the warning glyph), `confirmIcon`, `cancelLabel`.
 - `action`: the dialog stays open and busy until it settles; true then means
   it already ran, so do not run it again. A throw keeps the dialog open, is
-  logged and shows in the dialog as an `InlineAlert`, worded by
-  `ConfirmHost`'s `describeError` (v1's host uses the API error's message, as
-  the toast does).
+  logged and shows at the top of the dialog as an `InlineAlert`, worded by
+  `ConfirmHost`'s `describeError` (v1's host shows the API error's message and
+  request id). Pass `meta: { notify: false }` to a mutation the action runs:
+  the dialog shows the failure, and a modal hides toasts from keyboard and
+  screen-reader users.
 - While the dialog on screen runs its `action`, every `confirm()` resolves
   false and logs, wherever it is called from. Never call it from an `action`.
 - One confirm at a time; the next waits and takes focus when it shows. An
