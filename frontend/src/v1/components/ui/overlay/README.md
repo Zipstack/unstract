@@ -21,8 +21,9 @@ where the user put it. Focus lands on the page when no opener is left:
   focus yourself there);
 - a context-menu item opened it from a row that never had focus.
 
-Toasts sit above drawers and dialogs, so a toast they raise shows and can be
-clicked, and Escape closes the newest toast first. A toast already showing
+Toasts sit above every overlay (drawers and dialogs, and the popovers, menus
+and tooltips whose wrapper v0 pins at z-index 1500), so a toast they raise
+shows and can be clicked, and Escape closes the newest toast first. A toast already showing
 when a drawer opens stays visible but takes no clicks until it closes. A
 modal hides toasts from keyboard and screen-reader users, so inside a drawer
 put Retry or Undo in the drawer (an `InlineAlert`), not only on a toast.

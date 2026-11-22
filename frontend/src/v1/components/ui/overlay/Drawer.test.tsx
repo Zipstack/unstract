@@ -212,7 +212,7 @@ describe("Drawer", () => {
       toast.error("Save failed");
     });
     const viewport = screen.getByText("Save failed").closest("ol");
-    expect(viewport).toHaveClass("ui:z-60");
+    expect(viewport).toHaveClass("ui:z-1600");
     expect(scrim()).toHaveClass("ui:z-50");
 
     const dismiss = { name: "Dismiss notification", hidden: true };
