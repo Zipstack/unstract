@@ -1,13 +1,7 @@
 import { cn } from "@v1/lib/cn";
 import { getPortalContainer } from "@v1/lib/portal";
 import { Dialog as RadixDialog } from "radix-ui";
-import {
-  type ComponentProps,
-  type JSX,
-  type ReactElement,
-  type ReactNode,
-  useState,
-} from "react";
+import type { ComponentProps, JSX, ReactElement, ReactNode } from "react";
 import {
   dismissGuards,
   OVERLAY_SCRIM,
@@ -27,7 +21,7 @@ const DRAWER_SURFACE =
   "ui:fixed ui:inset-y-0 ui:right-0 ui:z-50 ui:flex ui:max-w-full ui:flex-col ui:border-l ui:border-border ui:bg-card ui:text-card-foreground ui:shadow-xl ui:outline-none";
 
 type PanelProps = Readonly<{
-  title: ReactNode;
+  title: string;
   description?: ReactNode;
   /** A logo or icon before the title (C05). */
   leading?: ReactNode;
@@ -56,15 +50,19 @@ export type DrawerProps = PanelProps &
 /** A right-hand drawer with a header, scrolling sections and an action bar. */
 export function Drawer({
   open,
-  defaultOpen = false,
+  defaultOpen,
   onOpenChange,
   trigger,
   ...panel
 }: DrawerProps): JSX.Element {
-  const [isOpen, setOpen] = useOpenState(open, defaultOpen, onOpenChange);
-  const onCloseAutoFocus = useReturnFocus(isOpen);
+  // Uncontrolled, it opens from its trigger, where Radix returns focus.
+  const onCloseAutoFocus = useReturnFocus(open === true);
   return (
-    <RadixDialog.Root open={isOpen} onOpenChange={setOpen}>
+    <RadixDialog.Root
+      open={open}
+      defaultOpen={defaultOpen}
+      onOpenChange={onOpenChange}
+    >
       {trigger ? (
         <RadixDialog.Trigger asChild>{trigger}</RadixDialog.Trigger>
       ) : null}
@@ -74,22 +72,6 @@ export function Drawer({
       </RadixDialog.Portal>
     </RadixDialog.Root>
   );
-}
-
-/** Open state that follows `open` when given and keeps its own otherwise. */
-function useOpenState(
-  controlled: boolean | undefined,
-  initial: boolean,
-  onChange?: (open: boolean) => void,
-): [boolean, (open: boolean) => void] {
-  const [own, setOwn] = useState(initial);
-  const set = (next: boolean) => {
-    if (controlled === undefined) {
-      setOwn(next);
-    }
-    onChange?.(next);
-  };
-  return [controlled ?? own, set];
 }
 
 function DrawerPanel({

@@ -5,6 +5,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
   MenuButton,
 } from "@v1/components/ui/menu";
@@ -13,6 +16,7 @@ import { renderV1 } from "@v1/test";
 import { Dialog as RadixDialog } from "radix-ui";
 import { type ReactNode, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { Popover, PopoverContent, PopoverTrigger } from "./Popover";
 import {
   type DismissHandlers,
   dismissGuards,
@@ -82,6 +86,47 @@ function OpenedFromMenu() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <Panel open={open} onOpenChange={setOpen} />
+    </>
+  );
+}
+
+function OpenedFromSubmenu() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <MenuButton>Actions</MenuButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>More</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuItem onSelect={() => setOpen(true)}>
+                Edit
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Panel open={open} onOpenChange={setOpen} />
+    </>
+  );
+}
+
+function OpenedFromPopover() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button>Profile</Button>
+        </PopoverTrigger>
+        <PopoverContent title="test3">
+          <Button onClick={() => setOpen(true)}>Edit profile</Button>
+        </PopoverContent>
+      </Popover>
       <Panel open={open} onOpenChange={setOpen} />
     </>
   );
@@ -159,22 +204,6 @@ describe("dismissGuards", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("ignores a click on a toast", async () => {
-    const { user } = renderV1(
-      <>
-        <OpenedByButton />
-        <div data-slot="toast">
-          <button type="button">Undo</button>
-        </div>
-      </>,
-      OUTSIDE,
-    );
-    await user.click(
-      screen.getByRole("button", { name: "Undo", hidden: true }),
-    );
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-  });
-
   it("runs the caller's handlers first, which may keep it open", async () => {
     const onEscapeKeyDown = vi.fn((event: KeyboardEvent) =>
       event.preventDefault(),
@@ -215,6 +244,35 @@ describe("useReturnFocus", () => {
     await user.keyboard("{Enter}");
     await user.keyboard("{Enter}");
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(trigger).toHaveFocus();
+  });
+
+  it("returns focus to the root menu's trigger when a submenu item opened it", async () => {
+    const { user } = renderV1(<OpenedFromSubmenu />);
+    const trigger = screen.getByRole("button", { name: "Actions" });
+    trigger.focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("menuitem", { name: "Edit" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem")).toBeNull();
+
+    await user.keyboard("{Escape}");
+    expect(trigger).toHaveFocus();
+  });
+
+  it("returns focus to the popover's trigger when a button in the popover opened it", async () => {
+    const { user } = renderV1(<OpenedFromPopover />);
+    const trigger = screen.getByRole("button", { name: "Profile" });
+    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: "Edit profile" }));
+    expect(
+      screen.getByRole("dialog", { name: "health-monitoring API" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "test3" })).toBeNull();
+
     await user.keyboard("{Escape}");
     expect(trigger).toHaveFocus();
   });

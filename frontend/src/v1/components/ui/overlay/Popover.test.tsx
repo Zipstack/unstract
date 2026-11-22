@@ -3,7 +3,7 @@ import { Button, IconButton } from "@v1/components/ui/button";
 import { SearchField } from "@v1/components/ui/form";
 import { STATUS_ICONS } from "@v1/lib/icons";
 import { renderV1 } from "@v1/test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Popover, PopoverContent, PopoverTrigger } from "./Popover";
 
 function ProfilePopover({ busy }: { busy?: boolean }) {
@@ -102,6 +102,36 @@ describe("Popover", () => {
     expect(
       screen.getByRole("dialog", { name: "Choose columns" }),
     ).not.toHaveAttribute("aria-describedby");
+  });
+
+  it("runs the caller's Escape handler, which may keep it open", async () => {
+    const onEscapeKeyDown = vi.fn((event: KeyboardEvent) =>
+      event.preventDefault(),
+    );
+    const { user } = renderV1(
+      <Popover defaultOpen>
+        <PopoverTrigger asChild>
+          <Button>Columns</Button>
+        </PopoverTrigger>
+        <PopoverContent
+          aria-label="Choose columns"
+          onEscapeKeyDown={onEscapeKeyDown}
+        >
+          <Button>Reset</Button>
+        </PopoverContent>
+      </Popover>,
+    );
+    await user.keyboard("{Escape}");
+    expect(onEscapeKeyDown).toHaveBeenCalledOnce();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("takes no asChild or forceMount on its content", () => {
+    // @ts-expect-error the content always renders its heading and children
+    const slotted = <PopoverContent title="x" asChild />;
+    // @ts-expect-error the content renders through its own portal
+    const forced = <PopoverContent title="x" forceMount />;
+    expect([slotted, forced]).toHaveLength(2);
   });
 
   it("requires a name", () => {

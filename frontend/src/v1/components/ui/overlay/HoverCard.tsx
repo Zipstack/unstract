@@ -31,8 +31,9 @@ export function HoverCardTrigger(props: HoverCardTriggerProps): JSX.Element {
   return <RadixHoverCard.Trigger data-slot="hover-card-trigger" {...props} />;
 }
 
-export type HoverCardContentProps = ComponentProps<
-  typeof RadixHoverCard.Content
+export type HoverCardContentProps = Omit<
+  ComponentProps<typeof RadixHoverCard.Content>,
+  "asChild" | "forceMount"
 >;
 
 /** The card, portalled into the v1 portal container; it stays on screen. */

@@ -35,13 +35,13 @@ type PopoverName =
 
 export type PopoverContentProps = Omit<
   ComponentProps<typeof RadixPopover.Content>,
-  "title" | "aria-label"
+  "title" | "aria-label" | "asChild" | "forceMount"
 > &
   PopoverName &
   Readonly<{
     /** A line under the title. */
     description?: ReactNode;
-    /** While true, Escape and a click outside do nothing. */
+    /** While true, Escape and a click outside do nothing; a trigger click still closes it. */
     busy?: boolean;
   }>;
 

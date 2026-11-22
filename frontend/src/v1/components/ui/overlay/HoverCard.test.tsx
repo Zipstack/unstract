@@ -41,14 +41,16 @@ describe("HoverCard", () => {
     vi.useRealTimers();
   });
 
-  it("opens after the delay on keyboard focus and keeps focus on the trigger", async () => {
-    const { user } = setup();
-    await user.tab();
-    await user.tab();
+  it("opens only after the delay on keyboard focus and keeps focus on the trigger", () => {
+    // A clock without wall time, so a slow runner cannot open it early.
+    vi.useRealTimers();
+    vi.useFakeTimers();
+    setup();
     const link = screen.getByRole("link", { name: "gpt-4o" });
-    expect(link).toHaveFocus();
+    act(() => link.focus());
+    act(() => vi.advanceTimersByTime(499));
     expect(screen.queryByText("OpenAI · 128k context")).toBeNull();
-    await waitOpenDelay();
+    act(() => vi.advanceTimersByTime(1));
     expect(screen.getByText("OpenAI · 128k context")).toBeInTheDocument();
     expect(link).toHaveFocus();
   });
@@ -58,6 +60,12 @@ describe("HoverCard", () => {
     await user.hover(screen.getByRole("link", { name: "gpt-4o" }));
     await waitOpenDelay();
     expect(screen.getByText("OpenAI · 128k context")).toBeInTheDocument();
+  });
+
+  it("takes no asChild or forceMount on its content", () => {
+    // @ts-expect-error the content renders through its own portal
+    const forced = <HoverCardContent forceMount>x</HoverCardContent>;
+    expect(forced).toBeTruthy();
   });
 
   it("closes on Escape", async () => {

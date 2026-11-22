@@ -14,7 +14,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "./HoverCard";
 import { Popover, PopoverContent, PopoverTrigger } from "./Popover";
 import { Tooltip } from "./Tooltip";
 
-// Every overlay open, in each variant and state, for the component gallery (P1-T01).
+// Every overlay open, with the drawer's loading and error states, for the component gallery (P1-T01).
 
 export type GalleryEntry = Readonly<{ name: string; element: ReactElement }>;
 
@@ -51,8 +51,25 @@ const DEPLOYMENT_ACTIONS = (
   </>
 );
 
-/** Frame A05, the API deployment detail. */
-function DeploymentDrawer(props: Partial<DrawerProps>) {
+const DEPLOYMENT_SECTIONS = (
+  <>
+    <DrawerSection title="Last 5 runs" meta="most recent 20 Aug, 16:30">
+      <p className="ui:m-0 ui:text-body-small">All five succeeded.</p>
+    </DrawerSection>
+    <DrawerSection>
+      <Rows
+        rows={[
+          ["Workflow", "health_monitoring_workflow"],
+          ["API keys", "1 active key"],
+          ["Created", "12 Mar 2026 by ritwik"],
+        ]}
+      />
+    </DrawerSection>
+  </>
+);
+
+/** Frame A05, the API deployment detail; `children` replaces its sections. */
+function DeploymentDrawer({ children, ...props }: Partial<DrawerProps>) {
   return (
     <Drawer
       defaultOpen
@@ -63,18 +80,7 @@ function DeploymentDrawer(props: Partial<DrawerProps>) {
       actions={DEPLOYMENT_ACTIONS}
       {...props}
     >
-      <DrawerSection title="Last 5 runs" meta="most recent 20 Aug, 16:30">
-        <p className="ui:m-0 ui:text-body-small">All five succeeded.</p>
-      </DrawerSection>
-      <DrawerSection>
-        <Rows
-          rows={[
-            ["Workflow", "health_monitoring_workflow"],
-            ["API keys", "1 active key"],
-            ["Created", "12 Mar 2026 by ritwik"],
-          ]}
-        />
-      </DrawerSection>
+      {children ?? DEPLOYMENT_SECTIONS}
     </Drawer>
   );
 }

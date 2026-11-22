@@ -1,6 +1,9 @@
-import { screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import { Button } from "@v1/components/ui/button";
+import { Toaster } from "@v1/components/ui/feedback";
+import { toast } from "@v1/lib/notify";
 import { renderV1, type V1Harness } from "@v1/test";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { Drawer, type DrawerProps, DrawerSection } from "./Drawer";
 
@@ -22,6 +25,19 @@ function DetailDrawer(props: Partial<DrawerProps>) {
         <a href="#runs">Open runs</a>
       </DrawerSection>
     </Drawer>
+  );
+}
+
+/** A drawer a plain control opens, as a list row does. */
+function RowDrawer() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>Open row</Button>
+      <Drawer open={open} onOpenChange={setOpen} title="Row detail">
+        <p>Detail</p>
+      </Drawer>
+    </>
   );
 }
 
@@ -136,5 +152,61 @@ describe("Drawer", () => {
   it("leaves out the action bar when there are no actions", async () => {
     await openDrawer({ actions: undefined });
     expect(document.querySelector("[data-slot=overlay-footer]")).toBeNull();
+  });
+
+  it("returns focus to the control that opened it without a trigger", async () => {
+    const { user } = renderV1(<RowDrawer />);
+    const row = screen.getByRole("button", { name: "Open row" });
+    await user.click(row);
+    expect(screen.getByRole("dialog", { name: "Row detail" })).toBeVisible();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(row).toHaveFocus();
+  });
+
+  it("reports opening and closing when uncontrolled", async () => {
+    const onOpenChange = vi.fn();
+    const { user } = await openDrawer({ onOpenChange });
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
+    await user.keyboard("{Escape}");
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("keeps a toast raised while open above it, clickable, and first to close on Escape", async () => {
+    const harness = renderV1(
+      <>
+        <Toaster />
+        <DetailDrawer />
+      </>,
+      OUTSIDE,
+    );
+    const { user } = harness;
+    await user.click(screen.getByRole("button", { name: "Details" }));
+    act(() => {
+      toast.error("Save failed");
+    });
+    const viewport = screen.getByText("Save failed").closest("ol");
+    expect(viewport).toHaveClass("ui:z-60");
+    expect(scrim()).toHaveClass("ui:z-50");
+
+    const dismiss = { name: "Dismiss notification", hidden: true };
+    await user.click(screen.getByRole("button", dismiss));
+    expect(screen.queryByText("Save failed")).toBeNull();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    act(() => {
+      toast.error("Save failed again");
+    });
+    await user.keyboard("{Escape}");
+    expect(screen.queryByText("Save failed again")).toBeNull();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("takes text only as its title", () => {
+    // @ts-expect-error a drawer's title is text, so a loading value cannot leave it unnamed
+    const untitled = <Drawer title={undefined}>x</Drawer>;
+    expect(untitled).toBeTruthy();
   });
 });

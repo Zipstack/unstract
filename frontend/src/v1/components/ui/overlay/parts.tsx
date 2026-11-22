@@ -12,7 +12,7 @@ import {
   useRef,
 } from "react";
 
-// Parts every v1 overlay shares: the drawer here, the dialogs (P1-T07) too.
+// Parts the drawer and dialogs share; the popover uses dismissGuards too.
 
 /** The dim layer behind a drawer or dialog: the whole viewport, under the panel. */
 export const OVERLAY_SCRIM = "ui:fixed ui:inset-0 ui:z-50 ui:bg-scrim";
@@ -23,7 +23,7 @@ const TITLE_SIZE = {
 } as const;
 
 export type OverlayHeaderProps = Readonly<{
-  title: ReactNode;
+  title: string;
   /** `page` 20 (default; drawers, form dialogs) or `section` 16 (confirm dialogs). */
   titleSize?: keyof typeof TITLE_SIZE;
   description?: ReactNode;
@@ -124,12 +124,6 @@ export type DismissHandlers = Pick<
   "onEscapeKeyDown" | "onInteractOutside"
 >;
 
-function isOnToast(target: EventTarget | null): boolean {
-  return (
-    target instanceof Element && target.closest("[data-slot=toast]") !== null
-  );
-}
-
 /** Shared Escape and outside-click rules, spread onto a Radix Content; `own` handlers run first. */
 export function dismissGuards(
   busy = false,
@@ -144,53 +138,61 @@ export function dismissGuards(
     },
     onInteractOutside: (event) => {
       own.onInteractOutside?.(event);
-      if (busy || isOnToast(event.target)) {
+      if (busy) {
         event.preventDefault();
       }
     },
   };
 }
 
-type Opener = Readonly<{ element: HTMLElement; menuTriggerId: string | null }>;
+const LAYER = "[role=menu], [role=dialog]";
 
-function openerOf(doc: Document): Opener | null {
-  const active = doc.activeElement;
-  if (!(active instanceof HTMLElement) || active === doc.body) {
+/** The control that opened the menu or popover `element` sits in. */
+function controllerOf(element: HTMLElement): HTMLElement | null {
+  const layer = element.closest<HTMLElement>(LAYER);
+  if (!layer) {
     return null;
   }
-  // A Radix menu names itself after its trigger.
-  const menu = active.closest("[role=menu]");
-  return {
-    element: active,
-    menuTriggerId: menu?.getAttribute("aria-labelledby") ?? null,
-  };
+  const doc = element.ownerDocument;
+  // A Radix menu is labelled by its trigger; a popover's trigger controls it.
+  const labelledBy = layer.getAttribute("aria-labelledby");
+  if (layer.getAttribute("role") === "menu" && labelledBy) {
+    return doc.getElementById(labelledBy);
+  }
+  const controls = doc.querySelectorAll<HTMLElement>("[aria-controls]");
+  return (
+    [...controls].find((c) => c.getAttribute("aria-controls") === layer.id) ??
+    null
+  );
 }
 
-function returnTarget(opener: Opener | null): HTMLElement | null {
-  if (!opener) {
-    return null;
+/** The focused element, then each control that opened the layer it sits in. */
+function openersOf(doc: Document): HTMLElement[] {
+  const chain: HTMLElement[] = [];
+  let current = doc.activeElement;
+  while (
+    current instanceof HTMLElement &&
+    current !== doc.body &&
+    !chain.includes(current)
+  ) {
+    chain.push(current);
+    current = controllerOf(current);
   }
-  if (opener.element.isConnected) {
-    return opener.element;
-  }
-  const { menuTriggerId } = opener;
-  return menuTriggerId
-    ? opener.element.ownerDocument.getElementById(menuTriggerId)
-    : null;
+  return chain;
 }
 
-/** An `onCloseAutoFocus` that refocuses the opener, or its menu's trigger once the menu is gone. */
+/** Takes the controlled `open`; returns an `onCloseAutoFocus` that refocuses the opener, or the nearest control left that opened its menu or popover. */
 export function useReturnFocus(open: boolean): (event: Event) => void {
-  const opener = useRef<Opener | null>(null);
-  // A layout effect runs before a menu that opened the overlay unmounts.
+  const openers = useRef<HTMLElement[]>([]);
+  // A layout effect runs before a menu or popover that opened the overlay unmounts.
   useLayoutEffect(() => {
     if (open) {
-      opener.current = openerOf(document);
+      openers.current = openersOf(document);
     }
   }, [open]);
   return useCallback((event: Event) => {
-    const target = returnTarget(opener.current);
-    opener.current = null;
+    const target = openers.current.find((element) => element.isConnected);
+    openers.current = [];
     if (target) {
       event.preventDefault();
       target.focus();

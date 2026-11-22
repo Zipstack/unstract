@@ -1,8 +1,9 @@
-import { act, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { Button, IconButton } from "@v1/components/ui/button";
 import { ACTION_ICONS } from "@v1/lib/icons";
 import { renderV1 } from "@v1/test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Popover, PopoverContent, PopoverTrigger } from "./Popover";
 import { TOOLTIP_DELAY_MS, Tooltip } from "./Tooltip";
 
 function setup() {
@@ -37,14 +38,32 @@ describe("Tooltip", () => {
     expect(copyButton()).toHaveAccessibleDescription("Copy endpoint");
   });
 
-  it("shows on hover only after the delay", async () => {
-    const { user } = setup();
-    await user.hover(copyButton());
+  it("shows on hover only after the delay", () => {
+    // A clock without wall time, so a slow runner cannot open it early.
+    vi.useRealTimers();
+    vi.useFakeTimers();
+    setup();
+    fireEvent.pointerMove(copyButton());
+    act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS - 1));
     expect(screen.queryByRole("tooltip")).toBeNull();
-    await act(async () => {
-      vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
-    });
+    act(() => vi.advanceTimersByTime(1));
     expect(screen.getByRole("tooltip")).toBeInTheDocument();
+  });
+
+  it("passes a parent asChild's props to its trigger", async () => {
+    const { user } = renderV1(
+      <Popover>
+        <PopoverTrigger asChild>
+          <Tooltip content="Profile details">
+            <IconButton aria-label="Profile" icon={ACTION_ICONS.view} />
+          </Tooltip>
+        </PopoverTrigger>
+        <PopoverContent title="test3">x</PopoverContent>
+      </Popover>,
+      { userEventOptions: { advanceTimers: vi.advanceTimersByTime } },
+    );
+    await user.click(screen.getByRole("button", { name: "Profile" }));
+    expect(screen.getByRole("dialog", { name: "test3" })).toBeInTheDocument();
   });
 
   it("hides on Escape and leaves focus on the trigger", async () => {

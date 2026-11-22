@@ -5,7 +5,7 @@ import type { ReactElement } from "react";
 import { expect, it } from "vitest";
 import { OVERLAY_GALLERY } from "./overlay.gallery";
 
-// Every entry, open, portal included; React ids and Radix position styles are normalised.
+// Every entry, open, portal included; React ids are normalised and inline styles stripped.
 function normalise(html: string): string {
   return html
     .replaceAll(/_r_[0-9a-z]+_|«r[0-9a-z]+»|:r[0-9a-z]+:/g, "_id_")
