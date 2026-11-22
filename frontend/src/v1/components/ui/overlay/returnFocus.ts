@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useRef } from "react";
 
 // Focus return for overlays built on a Radix Dialog: back to whatever opened them.
 
-const LAYER = "[role=menu], [role=dialog]";
+const LAYER = "[role=menu], [role=dialog], [role=alertdialog]";
 
 // The page control (outside any menu or dialog) that last took focus; cleared when it loses focus to nothing.
 let pageFocus: HTMLElement | null = null;
@@ -56,7 +56,8 @@ function openersOf(doc: Document): HTMLElement[] {
     chain.push(current);
     current = controllerOf(current);
   }
-  if (pageFocus && !chain.includes(pageFocus)) {
+  // A removed control must never replace a live opener.
+  if (pageFocus?.isConnected && !chain.includes(pageFocus)) {
     chain.push(pageFocus);
   }
   return chain;

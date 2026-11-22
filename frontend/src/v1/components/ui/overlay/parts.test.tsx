@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { Button } from "@v1/components/ui/button";
 import { SearchField } from "@v1/components/ui/form";
 import {
@@ -13,7 +13,7 @@ import {
 } from "@v1/components/ui/menu";
 import { getPortalContainer } from "@v1/lib/portal";
 import { renderV1 } from "@v1/test";
-import { Dialog as RadixDialog } from "radix-ui";
+import { AlertDialog, Dialog as RadixDialog } from "radix-ui";
 import { type ReactNode, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { Popover, PopoverContent, PopoverTrigger } from "./Popover";
@@ -191,6 +191,46 @@ function OpenedFromControlledPopover() {
   );
 }
 
+/** A Radix alert dialog (role=alertdialog, as confirms use) wired to the hook. */
+function Confirm({
+  open,
+  title,
+  onContinue,
+}: Readonly<{ open: boolean; title: string; onContinue: () => void }>) {
+  const onCloseAutoFocus = useReturnFocus(open);
+  return (
+    <AlertDialog.Root open={open}>
+      <AlertDialog.Portal container={getPortalContainer()}>
+        <AlertDialog.Content onCloseAutoFocus={onCloseAutoFocus}>
+          <AlertDialog.Title>{title}</AlertDialog.Title>
+          <AlertDialog.Description>Confirm to go on.</AlertDialog.Description>
+          <Button onClick={onContinue}>Continue</Button>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+  );
+}
+
+/** Two confirms chained in one task, as `if (await confirm(A)) await confirm(B)` does. */
+function TwoConfirms() {
+  const [step, setStep] = useState<"none" | "first" | "second">("none");
+  const next = () => {
+    setStep("none");
+    void Promise.resolve().then(() => setStep("second"));
+  };
+  return (
+    <>
+      <Button onClick={() => setStep("first")}>Start</Button>
+      <Confirm open={step === "first"} title="Delete?" onContinue={next} />
+      <Confirm
+        open={step === "second"}
+        title="Really delete?"
+        onContinue={() => setStep("none")}
+      />
+    </>
+  );
+}
+
 // A modal Radix dialog sets pointer-events: none on <body>; clicks outside still reach the document.
 const OUTSIDE = { userEventOptions: { pointerEventsCheck: 0 } } as const;
 
@@ -346,6 +386,36 @@ describe("useReturnFocus", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(start).toHaveFocus();
+  });
+
+  it("keeps a live opener when the page control it saw last has been removed", async () => {
+    const { user } = renderV1(<Chained />);
+    const start = screen.getByRole("button", { name: "Start" });
+    await user.click(start);
+    // A control outside any layer takes focus, then leaves the page.
+    const stray = document.createElement("button");
+    document.body.append(stray);
+    act(() => stray.focus());
+    stray.remove();
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Close" })).toHaveFocus(),
+    );
+    await user.keyboard("{Escape}");
+    expect(start).toHaveFocus();
+  });
+
+  it("returns focus to the first opener when two alert dialogs are chained in one task", async () => {
+    const { user } = renderV1(<TwoConfirms />);
+    const start = screen.getByRole("button", { name: "Start" });
+    await user.click(start);
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    expect(
+      await screen.findByRole("alertdialog", { name: "Really delete?" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    await waitFor(() => expect(start).toHaveFocus());
   });
 
   it("returns focus to a controlled popover's trigger that closed as the overlay opened", async () => {
