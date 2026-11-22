@@ -263,11 +263,14 @@ describe("ConfirmHost", () => {
     return event.defaultPrevented;
   };
 
-  it("cancels a held Enter, so it cannot answer the next request", async () => {
-    const { user, opener } = setup(STANDARD);
+  it("cancels a held Enter, so it cannot answer the next request, but a single Enter answers", async () => {
+    const { user, opener, answers } = setup(STANDARD);
     await ask(user, opener, STANDARD.title);
     expect(held(button("Regenerate key"), "Enter")).toBe(true);
     expect(held(button("Regenerate key"), "a")).toBe(false);
+    expect(button("Regenerate key")).toHaveFocus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(answers).toEqual([true]));
   });
 
   it("ignores a held Escape, so it cannot dismiss the next request", async () => {

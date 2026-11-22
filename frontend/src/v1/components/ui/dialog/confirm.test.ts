@@ -48,17 +48,30 @@ it("keeps a request asked before the host subscribes in the same task", async ()
   await expect(answer).resolves.toBe(true);
 });
 
-it("refuses a request while an action runs, and logs it", async () => {
+it("refuses a request while the one on screen runs its action, and logs it", async () => {
   mountHost();
   const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-  setConfirmRunning(true);
-  try {
-    await expect(confirm(DELETE)).resolves.toBe(false);
-  } finally {
-    setConfirmRunning(false);
-  }
+  void confirm(DELETE);
+  const id = currentConfirm()?.id ?? -1;
+  setConfirmRunning(id, true);
+  await expect(confirm(DELETE)).resolves.toBe(false);
   expect(error).toHaveBeenCalledOnce();
-  expect(currentConfirm()).toBeNull();
+  setConfirmRunning(id + 1, false);
+  await expect(confirm(DELETE)).resolves.toBe(false);
+  setConfirmRunning(id, false);
+  void confirm(DELETE);
+  settleConfirm(id, true);
+  expect(currentConfirm()).not.toBeNull();
+});
+
+it("stops refusing once the host that ran the action unmounts", async () => {
+  mountHost();
+  void confirm(DELETE);
+  setConfirmRunning(currentConfirm()?.id ?? -1, true);
+  unsubscribe?.();
+  mountHost();
+  void confirm(DELETE);
+  expect(currentConfirm()?.options.title).toBe(DELETE.title);
 });
 
 it("shows one request at a time and answers them in order", async () => {

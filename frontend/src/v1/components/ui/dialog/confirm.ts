@@ -68,7 +68,7 @@ type Pending = ConfirmRequest & Readonly<{ resolve: (ok: boolean) => void }>;
 
 let queue: readonly Pending[] = [];
 let listener: (() => void) | null = null;
-let running = false;
+let runningId: number | null = null;
 let nextId = 1;
 
 function setQueue(next: readonly Pending[]): void {
@@ -76,9 +76,13 @@ function setQueue(next: readonly Pending[]): void {
   listener?.();
 }
 
-/** Set by the host while a request's `action` runs; `confirm()` then resolves false. */
-export function setConfirmRunning(value: boolean): void {
-  running = value;
+/** Marks request `id`'s `action` as running or ended; an end for another request is ignored. */
+export function setConfirmRunning(id: number, value: boolean): void {
+  if (value) {
+    runningId = id;
+  } else if (runningId === id) {
+    runningId = null;
+  }
 }
 
 // A host that mounts in the same commit as the caller subscribes after its effects.
@@ -103,7 +107,8 @@ function dropIfNoHost(): void {
  * and warns; called while an `action` runs, it resolves false and logs.
  */
 export function confirm(options: ConfirmOptions): Promise<boolean> {
-  if (running) {
+  // Only while the request on screen is running: a host that unmounted mid-action leaves none.
+  if (runningId !== null && queue[0]?.id === runningId) {
     console.error(
       "[v1 confirm] called while an action runs: %s",
       options.title,

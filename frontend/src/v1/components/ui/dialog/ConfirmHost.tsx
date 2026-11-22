@@ -57,14 +57,14 @@ function useConfirmAction(): [
       return;
     }
     setBusyId(id);
-    setConfirmRunning(true);
+    setConfirmRunning(id, true);
     try {
       await action();
       settleConfirm(id, true);
     } catch (error) {
       console.error("[v1 confirm] action failed: %s", options.title, error);
     } finally {
-      setConfirmRunning(false);
+      setConfirmRunning(id, false);
       setBusyId(null);
     }
   }, []);
