@@ -2,12 +2,29 @@ import { act, renderHook } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { type CloseGuard, useGuardedClose } from "./useGuardedClose";
 
-function setup(guard: Omit<CloseGuard, "onOpenChange">) {
+type Props = Omit<CloseGuard, "onOpenChange"> & Readonly<{ open?: boolean }>;
+
+function setup(guard: Props) {
   const onOpenChange = vi.fn();
-  const { result } = renderHook(() =>
-    useGuardedClose({ ...guard, onOpenChange }),
+  const { result, rerender } = renderHook(
+    ({ open = true, ...props }: Props) =>
+      useGuardedClose({ ...props, open, onOpenChange }),
+    { initialProps: guard },
   );
-  return { request: result.current, onOpenChange };
+  const request = (open: boolean) => result.current(open);
+  return { request, rerender, onOpenChange };
+}
+
+// A guard that waits for the test to answer each ask.
+function pendingGuard() {
+  const answers: Array<(ok: boolean) => void> = [];
+  const beforeClose = vi.fn(
+    () =>
+      new Promise<boolean>((resolve) => {
+        answers.push(resolve);
+      }),
+  );
+  return { beforeClose, answers };
 }
 
 it("opens and closes straight away with no guard", () => {
@@ -37,17 +54,11 @@ it("stays open when the guard says no and closes when it says yes", async () => 
 });
 
 it("asks once while the guard is still answering", async () => {
-  let answer: (ok: boolean) => void = () => undefined;
-  const beforeClose = vi.fn(
-    () =>
-      new Promise<boolean>((resolve) => {
-        answer = resolve;
-      }),
-  );
+  const { beforeClose, answers } = pendingGuard();
   const { request, onOpenChange } = setup({ beforeClose });
   request(false);
   request(false);
-  await act(async () => answer(true));
+  await act(async () => answers[0]?.(true));
   expect(beforeClose).toHaveBeenCalledTimes(1);
   expect(onOpenChange).toHaveBeenCalledTimes(1);
 });
@@ -64,4 +75,30 @@ it("stays open, logs and asks again after the guard throws", async () => {
   expect(error).toHaveBeenCalledOnce();
   await act(async () => request(false));
   expect(onOpenChange).toHaveBeenCalledWith(false);
+});
+
+it("ignores a yes that comes after the dialog turned busy", async () => {
+  const { beforeClose, answers } = pendingGuard();
+  const { request, rerender, onOpenChange } = setup({ beforeClose });
+  request(false);
+  rerender({ beforeClose, busy: true });
+  await act(async () => answers[0]?.(true));
+  expect(onOpenChange).not.toHaveBeenCalled();
+  rerender({ beforeClose });
+  request(false);
+  expect(beforeClose).toHaveBeenCalledTimes(2);
+});
+
+it("ignores the answer to an ask from an earlier open", async () => {
+  const { beforeClose, answers } = pendingGuard();
+  const { request, rerender, onOpenChange } = setup({ beforeClose });
+  request(false);
+  rerender({ beforeClose, open: false });
+  rerender({ beforeClose, open: true });
+  request(false);
+  expect(beforeClose).toHaveBeenCalledTimes(2);
+  await act(async () => answers[0]?.(true));
+  expect(onOpenChange).not.toHaveBeenCalled();
+  await act(async () => answers[1]?.(true));
+  expect(onOpenChange.mock.calls).toEqual([[false]]);
 });

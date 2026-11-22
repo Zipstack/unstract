@@ -74,7 +74,12 @@ export function Dialog({
   children,
 }: DialogProps): JSX.Element {
   const [isOpen, change] = useOpenState(open, defaultOpen, onOpenChange);
-  const request = useGuardedClose({ busy, beforeClose, onOpenChange: change });
+  const request = useGuardedClose({
+    open: isOpen,
+    busy,
+    beforeClose,
+    onOpenChange: change,
+  });
   const state = useMemo(
     () => ({ open: isOpen, busy, dismissible }),
     [isOpen, busy, dismissible],
@@ -120,18 +125,24 @@ const BODY_FIELD = [
   )
   .join(", ");
 
-/** First focus: the control marked `data-autofocus`, else the body's first control. */
+// A hidden or disabled control does not take focus.
+function takesFocus(element: HTMLElement): boolean {
+  element.focus();
+  return element.ownerDocument.activeElement === element;
+}
+
+/** First focus: the control marked `data-autofocus`, else the body's first control, else Radix's default. */
 function focusDefault(event: Event): void {
   const root = event.target;
   if (!(root instanceof HTMLElement)) {
     return;
   }
-  const target =
-    root.querySelector<HTMLElement>("[data-autofocus]") ??
-    root.querySelector<HTMLElement>(BODY_FIELD);
-  if (target) {
+  const candidates = [
+    ...root.querySelectorAll<HTMLElement>("[data-autofocus]"),
+    ...root.querySelectorAll<HTMLElement>(BODY_FIELD),
+  ];
+  if (candidates.some(takesFocus)) {
     event.preventDefault();
-    target.focus();
   }
 }
 

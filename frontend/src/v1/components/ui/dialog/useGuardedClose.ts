@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 
 export type CloseGuard = Readonly<{
   /** While true, a request to close is ignored. */
@@ -8,21 +8,45 @@ export type CloseGuard = Readonly<{
   onOpenChange: (open: boolean) => void;
 }>;
 
+type Guard = NonNullable<CloseGuard["beforeClose"]>;
+
 // A guard that throws or rejects keeps the dialog open; the error is logged.
-async function closeIfAllowed(
-  guard: () => boolean | Promise<boolean>,
-  close: () => void,
-): Promise<void> {
+async function allowed(guard: Guard): Promise<boolean> {
   try {
-    if (await guard()) {
-      close();
-    }
+    return await guard();
   } catch (error) {
     console.error(
       "[v1 dialog] beforeClose failed; the dialog stays open",
       error,
     );
+    return false;
   }
+}
+
+/** One ask at a time; a yes closes only if the dialog stayed open and is not busy. */
+function useAsk(open: boolean, busy: boolean) {
+  const busyNow = useRef(busy);
+  const pending = useRef<object | null>(null);
+  useLayoutEffect(() => {
+    busyNow.current = busy;
+    if (!open) {
+      pending.current = null;
+    }
+  }, [busy, open]);
+  const ask = useCallback((guard: Guard, close: () => void) => {
+    const token = {};
+    pending.current = token;
+    void allowed(guard).then((ok) => {
+      if (pending.current !== token) {
+        return;
+      }
+      pending.current = null;
+      if (ok && !busyNow.current) {
+        close();
+      }
+    });
+  }, []);
+  return { pending, ask };
 }
 
 /**
@@ -30,30 +54,27 @@ async function closeIfAllowed(
  * `beforeClose`; a request while the guard is asking is ignored.
  */
 export function useGuardedClose({
+  open,
   busy = false,
   beforeClose,
   onOpenChange,
-}: CloseGuard): (open: boolean) => void {
-  const asking = useRef(false);
+}: CloseGuard & Readonly<{ open: boolean }>): (open: boolean) => void {
+  const { pending, ask } = useAsk(open, busy);
   return useCallback(
-    (open: boolean) => {
-      if (open) {
+    (next: boolean) => {
+      if (next) {
         onOpenChange(true);
         return;
       }
-      if (busy || asking.current) {
+      if (busy || pending.current) {
         return;
       }
-      if (!beforeClose) {
+      if (beforeClose) {
+        ask(beforeClose, () => onOpenChange(false));
+      } else {
         onOpenChange(false);
-        return;
       }
-      asking.current = true;
-      const close = () => onOpenChange(false);
-      void closeIfAllowed(beforeClose, close).finally(() => {
-        asking.current = false;
-      });
     },
-    [beforeClose, busy, onOpenChange],
+    [ask, beforeClose, busy, onOpenChange, pending],
   );
 }

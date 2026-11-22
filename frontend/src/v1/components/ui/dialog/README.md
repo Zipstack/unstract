@@ -16,11 +16,13 @@ and focus return come from `@v1/components/ui/overlay` (P1-T08, UN-4315).
   Cancel are disabled. Give the primary button `loading`.
 - `dismissible` (default true): false keeps the dialog open on an outside
   click; Escape still closes it.
-- `beforeClose`: asked before every close; false keeps the dialog open. For
-  unsaved changes: `beforeClose={() => !dirty || confirm({ ... })}`.
+- `beforeClose`: asked before every close; false keeps the dialog open, and so
+  does a yes that comes once the dialog is busy or has closed. For unsaved
+  changes: `beforeClose={() => !dirty || confirm({ ... })}`.
 - Focus is trapped. It starts on the control marked `data-autofocus`, else the
-  body's first control, else Close. On close it returns to the opener, or to
-  its menu's trigger when a menu item opened it.
+  body's first control, else Close, skipping any that is hidden or disabled. On
+  close it returns to the opener, or to its menu's trigger when a menu item
+  opened it.
 - `DialogHeader` takes `titleSize`: `page` 20 (default, forms) or `section`
   16 (confirms, as drawn).
 - The dialog is named by the header's title and described by its description.

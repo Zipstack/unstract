@@ -146,6 +146,24 @@ describe("Dialog", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
   });
 
+  it("skips a disabled data-autofocus control for the body's first field", async () => {
+    await openSample(
+      <Sample busy cancelFirst>
+        <Field id="t-name" label="Display name">
+          <Input />
+        </Field>
+      </Sample>,
+    );
+    expect(screen.getByRole("textbox", { name: "Display name" })).toHaveFocus();
+  });
+
+  it("keeps focus in the dialog when no marked or body control can take it", async () => {
+    await openSample(<Sample busy cancelFirst />);
+    expect(screen.getByRole("dialog")).toContainElement(
+      document.activeElement as HTMLElement,
+    );
+  });
+
   it("lets a filled SearchField clear on Escape before closing", async () => {
     const { user } = await openSample(
       <Sample>
