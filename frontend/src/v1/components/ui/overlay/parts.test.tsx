@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { Button } from "@v1/components/ui/button";
 import { SearchField } from "@v1/components/ui/form";
 import {
@@ -132,6 +132,23 @@ function OpenedFromPopover() {
   );
 }
 
+/** One overlay whose "Continue" closes it and reopens it in the same task, as chained confirms do. */
+function Chained() {
+  const [open, setOpen] = useState(false);
+  const reopen = () => {
+    setOpen(false);
+    void Promise.resolve().then(() => setOpen(true));
+  };
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>Start</Button>
+      <Panel open={open} onOpenChange={setOpen}>
+        <Button onClick={reopen}>Continue</Button>
+      </Panel>
+    </>
+  );
+}
+
 // A modal Radix dialog sets pointer-events: none on <body>; clicks outside still reach the document.
 const OUTSIDE = { userEventOptions: { pointerEventsCheck: 0 } } as const;
 
@@ -261,6 +278,19 @@ describe("useReturnFocus", () => {
 
     await user.keyboard("{Escape}");
     expect(trigger).toHaveFocus();
+  });
+
+  it("returns focus to the first opener when one overlay closes and the next opens in the same task", async () => {
+    const { user } = renderV1(<Chained />);
+    const start = screen.getByRole("button", { name: "Start" });
+    await user.click(start);
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Close" })).toHaveFocus(),
+    );
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(start).toHaveFocus();
   });
 
   it("returns focus to the popover's trigger when a button in the popover opened it", async () => {

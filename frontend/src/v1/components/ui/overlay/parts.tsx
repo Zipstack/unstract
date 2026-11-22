@@ -184,13 +184,22 @@ function openersOf(doc: Document): HTMLElement[] {
 /** Takes the controlled `open`; returns an `onCloseAutoFocus` that refocuses the opener, or the nearest control left that opened its menu or popover. */
 export function useReturnFocus(open: boolean): (event: Event) => void {
   const openers = useRef<HTMLElement[]>([]);
+  const isOpen = useRef(open);
   // A layout effect runs before a menu or popover that opened the overlay unmounts.
   useLayoutEffect(() => {
-    if (open) {
-      openers.current = openersOf(document);
+    isOpen.current = open;
+    const next = open ? openersOf(document) : [];
+    // Reopened with focus on the page (chained confirms): keep the first opener.
+    if (next.length > 0) {
+      openers.current = next;
     }
   }, [open]);
   return useCallback((event: Event) => {
+    // A late close from before a reopen: the reopened overlay keeps focus.
+    if (isOpen.current) {
+      event.preventDefault();
+      return;
+    }
     const target = openers.current.find((element) => element.isConnected);
     openers.current = [];
     if (target) {
