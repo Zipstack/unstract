@@ -1,4 +1,5 @@
 import { Button } from "@v1/components/ui/button";
+import { InlineAlert } from "@v1/components/ui/feedback";
 import { cn } from "@v1/lib/cn";
 import { STATUS_ICONS } from "@v1/lib/icons";
 import type { LucideIcon } from "lucide-react";
@@ -138,8 +139,9 @@ function BlockedActions({
 
 function ConfirmParts({
   options,
+  error,
   ...answer
-}: Answer & { options: ConfirmOptions }) {
+}: Answer & { options: ConfirmOptions; error?: string }) {
   const tone = options.tone ?? "standard";
   const icon =
     options.icon ?? (tone === "destructive" ? STATUS_ICONS.warning : undefined);
@@ -153,6 +155,7 @@ function ConfirmParts({
       <DialogBody>
         <ConfirmText options={options} />
         <Details>{options.details}</Details>
+        {error ? <InlineAlert title={error} /> : null}
       </DialogBody>
       <DialogFooter>
         {options.tone === "blocked" ? (
@@ -170,12 +173,15 @@ export type ConfirmDialogProps = Partial<Pick<Answer, "busy">> &
   Readonly<{
     /** The request on screen; null closes the dialog. */
     options: ConfirmOptions | null;
+    /** Why the last action failed, shown in the dialog (a modal hides toasts from keyboard users). */
+    error?: string;
   }>;
 
 /** A confirm on the dialog shell: an alert dialog; a destructive one ignores outside clicks. */
 export function ConfirmDialog({
   options,
   busy = false,
+  error,
   ...answer
 }: ConfirmDialogProps): JSX.Element {
   return (
@@ -193,7 +199,12 @@ export function ConfirmDialog({
         onEscapeKeyDown={ignoreHeldKey}
       >
         {options ? (
-          <ConfirmParts options={options} busy={busy} {...answer} />
+          <ConfirmParts
+            options={options}
+            busy={busy}
+            error={error}
+            {...answer}
+          />
         ) : null}
       </DialogContent>
     </Dialog>

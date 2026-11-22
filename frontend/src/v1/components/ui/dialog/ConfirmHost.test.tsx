@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 import { Button } from "@v1/components/ui/button";
 import { renderV1 } from "@v1/test";
@@ -163,18 +163,53 @@ describe("ConfirmHost", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
-  it("stays open and logs when the action fails", async () => {
+  it("stays open, logs and shows the error in the dialog when the action fails", async () => {
     const error = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
     const action = () => Promise.reject(new Error("409"));
-    const { user, opener, answers } = setup({ ...DESTRUCTIVE, action });
-    await ask(user, opener, DESTRUCTIVE.title);
+    const { user, opener, answers } = setup({ ...DESTRUCTIVE, action }, SECOND);
+    const dialog = await ask(user, opener, DESTRUCTIVE.title);
     await user.click(button("Delete deployment"));
     await waitFor(() => expect(error).toHaveBeenCalledOnce());
     expect(button("Delete deployment")).not.toHaveAttribute("aria-busy");
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+      "Something went wrong. Try again.",
+    );
     await user.click(button("Cancel"));
     await waitFor(() => expect(answers).toEqual([false]));
+    await shown(SECOND.title);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("words the error with describeError and clears it when the action runs again", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let calls = 0;
+    const action = () => {
+      calls += 1;
+      return calls === 1
+        ? Promise.reject(new Error("409"))
+        : new Promise<void>(() => undefined);
+    };
+    const describeError = (error: unknown) =>
+      `Not deleted: ${(error as Error).message}`;
+    const { user } = renderV1(
+      <>
+        <Button onClick={() => void confirm({ ...DESTRUCTIVE, action })}>
+          Ask
+        </Button>
+        <ConfirmHost describeError={describeError} />
+      </>,
+      OUTSIDE,
+    );
+    const dialog = await ask(user, button("Ask"), DESTRUCTIVE.title);
+    await user.click(button("Delete deployment"));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Not deleted: 409",
+    );
+    await user.click(button("Delete deployment"));
+    expect(button("Delete deployment")).toHaveAttribute("aria-busy", "true");
+    expect(within(dialog).queryByRole("alert")).toBeNull();
   });
 
   it("refuses a confirm() asked from inside an action, so the dialog cannot lock", async () => {

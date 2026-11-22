@@ -29,6 +29,12 @@ const DELETE = {
   confirmLabel: "Delete deployment",
 } as const;
 
+const NEXT = {
+  title: "Regenerate the key?",
+  description: "The current key stops working.",
+  confirmLabel: "Regenerate key",
+} as const;
+
 it("resolves false and warns when no host is mounted", async () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
   await expect(confirm(DELETE)).resolves.toBe(false);
@@ -59,19 +65,28 @@ it("refuses a request while the one on screen runs its action, and logs it", asy
   setConfirmRunning(id + 1, false);
   await expect(confirm(DELETE)).resolves.toBe(false);
   setConfirmRunning(id, false);
-  void confirm(DELETE);
+  void confirm(NEXT);
   settleConfirm(id, true);
-  expect(currentConfirm()).not.toBeNull();
+  // The refused requests never queued: the one asked after the flag cleared is next.
+  expect(currentConfirm()?.options.title).toBe(NEXT.title);
 });
 
 it("stops refusing once the host that ran the action unmounts", async () => {
   mountHost();
   void confirm(DELETE);
-  setConfirmRunning(currentConfirm()?.id ?? -1, true);
+  const oldId = currentConfirm()?.id ?? -1;
+  setConfirmRunning(oldId, true);
   unsubscribe?.();
   mountHost();
-  void confirm(DELETE);
-  expect(currentConfirm()?.options.title).toBe(DELETE.title);
+  const first = confirm(NEXT);
+  void confirm(NEXT);
+  const head = currentConfirm();
+  expect(head?.id).not.toBe(oldId);
+  expect(head?.options.title).toBe(NEXT.title);
+  settleConfirm(head?.id ?? -1, true);
+  await expect(first).resolves.toBe(true);
+  expect(currentConfirm()?.options.title).toBe(NEXT.title);
+  setConfirmRunning(oldId, false);
 });
 
 it("shows one request at a time and answers them in order", async () => {

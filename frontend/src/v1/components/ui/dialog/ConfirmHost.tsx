@@ -44,31 +44,55 @@ function useAnswerable(id: number | null): () => boolean {
   return () => Date.now() - shown.current.at >= ANSWER_GUARD_MS;
 }
 
-/** Runs the request's action while busy; a failure is logged and the dialog stays open. */
-function useConfirmAction(): [
-  number | null,
-  (request: ConfirmRequest) => void,
-] {
+const FAILED_MESSAGE = "Something went wrong. Try again.";
+
+type Failure = Readonly<{ id: number; message: string }>;
+
+/** Runs request `id`'s action marked as running; resolves to what it threw, or null on success. */
+async function attempt(
+  { id, options }: ConfirmRequest,
+  action: () => Promise<void>,
+): Promise<{ error: unknown } | null> {
+  setConfirmRunning(id, true);
+  try {
+    await action();
+    settleConfirm(id, true);
+    return null;
+  } catch (error) {
+    console.error("[v1 confirm] action failed: %s", options.title, error);
+    return { error };
+  } finally {
+    setConfirmRunning(id, false);
+  }
+}
+
+/** Runs the request's action while busy; a failure is logged and shown, and the dialog stays open. */
+function useConfirmAction(describeError: (error: unknown) => string) {
   const [busyId, setBusyId] = useState<number | null>(null);
-  const run = useCallback(async ({ id, options }: ConfirmRequest) => {
-    const action = options.tone === "blocked" ? undefined : options.action;
-    if (!action) {
-      settleConfirm(id, true);
-      return;
-    }
-    setBusyId(id);
-    setConfirmRunning(id, true);
-    try {
-      await action();
-      settleConfirm(id, true);
-    } catch (error) {
-      console.error("[v1 confirm] action failed: %s", options.title, error);
-    } finally {
-      setConfirmRunning(id, false);
+  const [failure, setFailure] = useState<Failure | null>(null);
+  const run = useCallback(
+    async (request: ConfirmRequest) => {
+      const { id, options } = request;
+      const action = options.tone === "blocked" ? undefined : options.action;
+      if (!action) {
+        settleConfirm(id, true);
+        return;
+      }
+      setFailure(null);
+      setBusyId(id);
+      const failed = await attempt(request, action);
       setBusyId(null);
-    }
-  }, []);
-  return [busyId, (request) => void run(request)];
+      if (failed) {
+        setFailure({ id, message: describeError(failed.error) });
+      }
+    },
+    [describeError],
+  );
+  return {
+    busyId,
+    failure,
+    run: (request: ConfirmRequest) => void run(request),
+  };
 }
 
 function followLink({ id, options }: ConfirmRequest): void {
@@ -78,15 +102,24 @@ function followLink({ id, options }: ConfirmRequest): void {
   }
 }
 
+export type ConfirmHostProps = Readonly<{
+  /** Words a failed action's error for the dialog; the app passes the API error's message. */
+  describeError?: (error: unknown) => string;
+}>;
+
+const describeAnyError = () => FAILED_MESSAGE;
+
 /** Shows the `confirm()` queue, one request at a time. Mounted beside each v1 page. */
-export function ConfirmHost(): JSX.Element {
+export function ConfirmHost({
+  describeError = describeAnyError,
+}: ConfirmHostProps): JSX.Element {
   const request = useSyncExternalStore(
     subscribeConfirm,
     currentConfirm,
     currentConfirm,
   );
   const id = request?.id ?? null;
-  const [busyId, run] = useConfirmAction();
+  const { busyId, failure, run } = useConfirmAction(describeError);
   const answerable = useAnswerable(id);
   useFocusOnSwap(id);
   // Not straight after a request shows: that is the second click of a double click.
@@ -99,6 +132,7 @@ export function ConfirmHost(): JSX.Element {
     <ConfirmDialog
       options={request?.options ?? null}
       busy={id !== null && busyId === id}
+      error={failure?.id === id ? failure.message : undefined}
       onConfirm={answer(run)}
       onDismiss={answer(({ id: headId }) => settleConfirm(headId, false))}
       onLink={answer(followLink)}

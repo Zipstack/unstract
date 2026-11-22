@@ -20,6 +20,7 @@ import { Toaster } from "@v1/components/ui/feedback";
 import { PluginProvider } from "@v1/lib/plugins";
 import { PluginSlot } from "@v1/plugins";
 import { onSessionExpired } from "@v1/services/context";
+import { toApiError } from "@v1/services/errors";
 import { signOutAndLeave } from "@v1/services/session";
 import { type JSX, Suspense, useEffect } from "react";
 import { Route, Routes } from "react-router-dom";
@@ -29,6 +30,9 @@ export type V1AppProps = Readonly<{ entry: RegistryEntry }>;
 
 /** One cache for the v1 tree, kept across v1 pages; exported so tests can clear it. */
 export const v1QueryClient = createQueryClient();
+
+// A failed confirm action shows the same message as its toast.
+const describeError = (error: unknown) => toApiError(error).message;
 
 export function V1App({ entry }: V1AppProps): JSX.Element {
   // An expired session signs out as v0 does, and lands where v0's logout does.
@@ -40,7 +44,7 @@ export function V1App({ entry }: V1AppProps): JSX.Element {
   const page = (
     <RouteGate access={entry.access}>
       <Page />
-      <ConfirmHost />
+      <ConfirmHost describeError={describeError} />
     </RouteGate>
   );
   return (

@@ -46,9 +46,12 @@ and focus return come from `@v1/components/ui/overlay` (P1-T08, UN-4315).
 - Optional: `details` (a panel under the text), `icon` (the header chip;
   destructive defaults to the warning glyph), `confirmIcon`, `cancelLabel`.
 - `action`: the dialog stays open and busy until it settles; true then means
-  it already ran, so do not run it again. A throw keeps the dialog open and is
-  logged; a mutation through the QueryClient already shows its error toast.
-  Never call `confirm()` from an `action`: it resolves false and logs.
+  it already ran, so do not run it again. A throw keeps the dialog open, is
+  logged and shows in the dialog as an `InlineAlert`, worded by
+  `ConfirmHost`'s `describeError` (v1's host uses the API error's message, as
+  the toast does).
+- While the dialog on screen runs its `action`, every `confirm()` resolves
+  false and logs, wherever it is called from. Never call it from an `action`.
 - One confirm at a time; the next waits and takes focus when it shows. An
   answer in the first 400 ms after a request shows (the second click of a
   double click) is ignored, and a held Enter or Escape answers only once.

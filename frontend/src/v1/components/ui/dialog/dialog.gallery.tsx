@@ -134,13 +134,18 @@ const BLOCKED: ConfirmOptions = {
   link: { label: "Open project", onSelect: noop },
 };
 
-function confirmEntry(name: string, options: ConfirmOptions, busy = false) {
+function confirmEntry(
+  name: string,
+  options: ConfirmOptions,
+  state: Readonly<{ busy?: boolean; error?: string }> = {},
+) {
   return {
     name,
     element: (
       <ConfirmDialog
         options={options}
-        busy={busy}
+        busy={state.busy}
+        error={state.error}
         onConfirm={noop}
         onDismiss={noop}
       />
@@ -157,6 +162,9 @@ export const DIALOG_GALLERY: readonly GalleryEntry[] = [
   { name: "dialog with a form", element: <FormDialog /> },
   confirmEntry("confirm standard", STANDARD),
   confirmEntry("confirm destructive with details", DESTRUCTIVE),
-  confirmEntry("confirm destructive busy", DESTRUCTIVE, true),
+  confirmEntry("confirm destructive busy", DESTRUCTIVE, { busy: true }),
+  confirmEntry("confirm destructive failed", DESTRUCTIVE, {
+    error: "Something went wrong on our side. Try again.",
+  }),
   confirmEntry("confirm blocked with a link", BLOCKED),
 ];

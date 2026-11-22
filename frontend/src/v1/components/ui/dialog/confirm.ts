@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
-// The one way to confirm: one request on screen at a time, the rest queue.
+// The one way to confirm: one request on screen at a time.
 
 /** Text that must render: no null, undefined or boolean. */
 type Text = Exclude<ReactNode, null | undefined | boolean>;
@@ -104,7 +104,7 @@ function dropIfNoHost(): void {
 /**
  * Resolves true when the user confirms; any other close, and every blocked
  * request, resolves false. With no host by the next task it resolves false
- * and warns; called while an `action` runs, it resolves false and logs.
+ * and warns.
  */
 export function confirm(options: ConfirmOptions): Promise<boolean> {
   // Only while the request on screen is running: a host that unmounted mid-action leaves none.
