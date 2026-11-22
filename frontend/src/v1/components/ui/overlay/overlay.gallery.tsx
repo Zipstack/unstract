@@ -20,7 +20,9 @@ export type GalleryEntry = Readonly<{ name: string; element: ReactElement }>;
 
 const noop = (): void => undefined;
 
-function Rows({ rows }: { rows: readonly (readonly [string, string])[] }) {
+function Rows({
+  rows,
+}: Readonly<{ rows: readonly (readonly [string, string])[] }>) {
   return (
     <dl className="ui:m-0 ui:grid ui:grid-cols-2 ui:gap-y-2 ui:text-body-small">
       {rows.flatMap(([label, value]) => [
@@ -35,7 +37,7 @@ function Rows({ rows }: { rows: readonly (readonly [string, string])[] }) {
   );
 }
 
-function StatusChip({ children }: { children: ReactNode }) {
+function StatusChip({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <span className="ui:rounded-sm ui:bg-success/10 ui:px-1.5 ui:py-0.5 ui:text-caption ui:font-medium ui:text-success">
       {children}
