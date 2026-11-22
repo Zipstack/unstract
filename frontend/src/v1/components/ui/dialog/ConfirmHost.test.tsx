@@ -207,6 +207,27 @@ describe("ConfirmHost", () => {
     await waitFor(() => expect(opener).toHaveFocus());
   });
 
+  it("returns focus to the opener after a confirm asked right after another", async () => {
+    const answers: boolean[] = [];
+    const chain = async () => {
+      if (await confirm(STANDARD)) {
+        answers.push(await confirm(SECOND));
+      }
+    };
+    const { user } = renderV1(
+      <>
+        <Button onClick={() => void chain()}>Chain</Button>
+        <ConfirmHost />
+      </>,
+    );
+    await ask(user, button("Chain"), STANDARD.title);
+    await user.click(button("Regenerate key"));
+    await shown(SECOND.title);
+    await user.click(button("Cancel"));
+    await waitFor(() => expect(answers).toEqual([false]));
+    await waitFor(() => expect(button("Chain")).toHaveFocus());
+  });
+
   it("lets a double click on the action answer only the request it started on", async () => {
     const { user, opener, answers } = setup(STANDARD, DESTRUCTIVE);
     await ask(user, opener, STANDARD.title);
