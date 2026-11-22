@@ -3,6 +3,7 @@ import {
   type ConfirmOptions,
   confirm,
   currentConfirm,
+  setConfirmRunning,
   settleConfirm,
   subscribeConfirm,
 } from "./confirm";
@@ -35,6 +36,28 @@ it("resolves false and warns when no host is mounted", async () => {
     "[v1 confirm] no ConfirmHost mounted: %s",
     DELETE.title,
   );
+  expect(currentConfirm()).toBeNull();
+});
+
+it("keeps a request asked before the host subscribes in the same task", async () => {
+  const answer = confirm(DELETE);
+  mountHost();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(currentConfirm()?.options.title).toBe(DELETE.title);
+  settleConfirm(currentConfirm()?.id ?? -1, true);
+  await expect(answer).resolves.toBe(true);
+});
+
+it("refuses a request while an action runs, and logs it", async () => {
+  mountHost();
+  const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  setConfirmRunning(true);
+  try {
+    await expect(confirm(DELETE)).resolves.toBe(false);
+  } finally {
+    setConfirmRunning(false);
+  }
+  expect(error).toHaveBeenCalledOnce();
   expect(currentConfirm()).toBeNull();
 });
 

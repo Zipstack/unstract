@@ -3,7 +3,7 @@ import { cn } from "@v1/lib/cn";
 import { STATUS_ICONS } from "@v1/lib/icons";
 import type { LucideIcon } from "lucide-react";
 import { Dialog as RadixDialog } from "radix-ui";
-import type { JSX, KeyboardEvent, MouseEvent, ReactNode } from "react";
+import type { JSX, ReactNode } from "react";
 import type {
   BlockedConfirm,
   ConfirmOptions,
@@ -71,17 +71,15 @@ function Details({ children }: { children?: ReactNode }) {
   ) : null;
 }
 
-// A queued request reuses the dialog, so a double click or a held Enter must not answer it unread.
-function firstClickOnly(run: () => void) {
-  return (event: MouseEvent) => {
-    if (event.detail <= 1) {
-      run();
-    }
-  };
-}
+type HeldKey = Readonly<{
+  key: string;
+  repeat: boolean;
+  preventDefault: () => void;
+}>;
 
-function ignoreHeldEnter(event: KeyboardEvent): void {
-  if (event.repeat && event.key === "Enter") {
+// A held Enter or Escape repeats; only its first press may answer.
+function ignoreHeldKey(event: HeldKey): void {
+  if (event.repeat && (event.key === "Enter" || event.key === "Escape")) {
     event.preventDefault();
   }
 }
@@ -90,6 +88,8 @@ type Answer = Readonly<{
   busy: boolean;
   onConfirm: () => void;
   onDismiss: () => void;
+  /** The blocked tone's link; it closes the dialog first. */
+  onLink?: () => void;
 }>;
 
 // A destructive action is never the default: focus starts on Cancel.
@@ -110,7 +110,7 @@ function ConfirmActions({
         leadingIcon={options.confirmIcon}
         loading={busy}
         data-autofocus={destructive ? undefined : true}
-        onClick={firstClickOnly(onConfirm)}
+        onClick={onConfirm}
       >
         {options.confirmLabel}
       </Button>
@@ -120,23 +120,16 @@ function ConfirmActions({
 
 function BlockedActions({
   options,
-  onDismiss,
-}: Pick<Answer, "onDismiss"> & { options: BlockedConfirm }) {
-  const { link } = options;
+  onLink,
+}: Pick<Answer, "onLink"> & { options: BlockedConfirm }) {
   return (
     <>
       <DialogCancel data-autofocus>
         {options.closeLabel ?? "Close"}
       </DialogCancel>
-      {link ? (
-        <Button
-          size="lg"
-          onClick={firstClickOnly(() => {
-            onDismiss();
-            link.onSelect();
-          })}
-        >
-          {link.label}
+      {options.link ? (
+        <Button size="lg" onClick={onLink}>
+          {options.link.label}
         </Button>
       ) : null}
     </>
@@ -163,7 +156,7 @@ function ConfirmParts({
       </DialogBody>
       <DialogFooter>
         {options.tone === "blocked" ? (
-          <BlockedActions options={options} onDismiss={answer.onDismiss} />
+          <BlockedActions options={options} onLink={answer.onLink} />
         ) : (
           <ConfirmActions options={options} {...answer} />
         )}
@@ -179,36 +172,28 @@ export type ConfirmDialogProps = Partial<Pick<Answer, "busy">> &
     options: ConfirmOptions | null;
   }>;
 
-/** A confirm on the dialog shell; a destructive one ignores outside clicks. */
+/** A confirm on the dialog shell: an alert dialog; a destructive one ignores outside clicks. */
 export function ConfirmDialog({
   options,
   busy = false,
-  onConfirm,
-  onDismiss,
+  ...answer
 }: ConfirmDialogProps): JSX.Element {
   return (
     <Dialog
       open={options !== null}
       busy={busy}
       dismissible={options?.tone !== "destructive"}
-      onOpenChange={(open) => {
-        if (!open) {
-          onDismiss();
-        }
-      }}
+      onOpenChange={(open) => open || answer.onDismiss()}
     >
       <DialogContent
         size="sm"
+        role="alertdialog"
         data-slot="confirm-dialog"
-        onKeyDown={ignoreHeldEnter}
+        onKeyDown={ignoreHeldKey}
+        onEscapeKeyDown={ignoreHeldKey}
       >
         {options ? (
-          <ConfirmParts
-            options={options}
-            busy={busy}
-            onConfirm={onConfirm}
-            onDismiss={onDismiss}
-          />
+          <ConfirmParts options={options} busy={busy} {...answer} />
         ) : null}
       </DialogContent>
     </Dialog>

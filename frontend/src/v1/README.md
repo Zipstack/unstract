@@ -160,9 +160,9 @@ is convention.
   `DialogContent`, `DialogHeader`, `DialogBody`, `DialogFooter`,
   `DialogCancel`); its README lists every prop. Do not build another modal.
 - Ask with `await confirm({ ... })` from `@v1/components/ui/dialog`, never
-  `window.confirm`. It resolves true or false; `ConfirmHost` in `V1App`
-  shows one at a time. A destructive confirm states the consequence; a
-  blocked one states why and resolves false.
+  `window.confirm`. It resolves true or false; `ConfirmHost`, beside each
+  page, shows one at a time. A destructive confirm states the consequence;
+  a blocked one states why and resolves false.
 - Escape closes unless busy; an outside click closes unless busy or
   `dismissible={false}` (a destructive confirm). `beforeClose` guards unsaved
   changes. Focus returns to the opener.

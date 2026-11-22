@@ -68,6 +68,7 @@ type Pending = ConfirmRequest & Readonly<{ resolve: (ok: boolean) => void }>;
 
 let queue: readonly Pending[] = [];
 let listener: (() => void) | null = null;
+let running = false;
 let nextId = 1;
 
 function setQueue(next: readonly Pending[]): void {
@@ -75,17 +76,45 @@ function setQueue(next: readonly Pending[]): void {
   listener?.();
 }
 
+/** Set by the host while a request's `action` runs; `confirm()` then resolves false. */
+export function setConfirmRunning(value: boolean): void {
+  running = value;
+}
+
+// A host that mounts in the same commit as the caller subscribes after its effects.
+function dropIfNoHost(): void {
+  if (listener) {
+    return;
+  }
+  const pending = queue;
+  queue = [];
+  for (const entry of pending) {
+    console.warn(
+      "[v1 confirm] no ConfirmHost mounted: %s",
+      entry.options.title,
+    );
+    entry.resolve(false);
+  }
+}
+
 /**
  * Resolves true when the user confirms; any other close, and every blocked
- * request, resolves false. With no host mounted it resolves false and warns.
+ * request, resolves false. With no host by the next task it resolves false
+ * and warns; called while an `action` runs, it resolves false and logs.
  */
 export function confirm(options: ConfirmOptions): Promise<boolean> {
-  if (!listener) {
-    console.warn("[v1 confirm] no ConfirmHost mounted: %s", options.title);
+  if (running) {
+    console.error(
+      "[v1 confirm] called while an action runs: %s",
+      options.title,
+    );
     return Promise.resolve(false);
   }
   return new Promise((resolve) => {
     setQueue([...queue, { id: nextId++, options, resolve }]);
+    if (!listener) {
+      setTimeout(dropIfNoHost, 0);
+    }
   });
 }
 

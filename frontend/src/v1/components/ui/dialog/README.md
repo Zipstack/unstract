@@ -32,8 +32,10 @@ and focus return come from `@v1/components/ui/overlay` (P1-T08, UN-4315).
 
 ## confirm()
 
-- `await confirm(options)` resolves true or false. `ConfirmHost` is mounted
-  once in `V1App`; with no host, `confirm()` resolves false and warns.
+- `await confirm(options)` resolves true or false. `ConfirmHost` mounts
+  beside each v1 page, inside its gate, so `details` may use the page's
+  session, route and plugins. With no host by the next task, `confirm()`
+  resolves false and warns. A confirm is a `role="alertdialog"`.
 - `tone`:
   - `standard` (default): `description`, `confirmLabel`.
   - `destructive`: also `consequence` (the red note). The button is the solid
@@ -46,8 +48,10 @@ and focus return come from `@v1/components/ui/overlay` (P1-T08, UN-4315).
 - `action`: the dialog stays open and busy until it settles; true then means
   it already ran, so do not run it again. A throw keeps the dialog open and is
   logged; a mutation through the QueryClient already shows its error toast.
-- One confirm at a time; the next waits and takes focus when it shows. The
-  second click of a double click and a held Enter never answer it.
+  Never call `confirm()` from an `action`: it resolves false and logs.
+- One confirm at a time; the next waits and takes focus when it shows. An
+  answer in the first 400 ms after a request shows (the second click of a
+  double click) is ignored, and a held Enter or Escape answers only once.
 
 ## Tests
 

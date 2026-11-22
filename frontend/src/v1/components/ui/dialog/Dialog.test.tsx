@@ -11,8 +11,8 @@ import {
 } from "@v1/components/ui/menu";
 import { renderV1 } from "@v1/test";
 import { type ReactNode, useState } from "react";
-import { describe, expect, it, vi } from "vitest";
-import { ConfirmHost } from "./ConfirmHost";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ANSWER_GUARD_MS, ConfirmHost } from "./ConfirmHost";
 import { confirm } from "./confirm";
 import {
   Dialog,
@@ -194,6 +194,14 @@ it("returns focus to the menu's trigger when a menu item opened it", async () =>
 });
 
 describe("a dirty form guarded by confirm()", () => {
+  // Only Date is faked, so the confirm's answer guard can be passed without waiting.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   const discard = () =>
     confirm({
       tone: "destructive",
@@ -211,7 +219,10 @@ describe("a dirty form guarded by confirm()", () => {
       </>,
     );
     await opened.user.keyboard("{Escape}");
-    await screen.findByRole("dialog", { name: "Discard unsaved changes?" });
+    await screen.findByRole("alertdialog", {
+      name: "Discard unsaved changes?",
+    });
+    vi.setSystemTime(Date.now() + ANSWER_GUARD_MS);
     return opened;
   }
 
@@ -219,6 +230,7 @@ describe("a dirty form guarded by confirm()", () => {
     const { user, trigger } = await openGuarded();
     await user.click(screen.getByRole("button", { name: "Discard" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 
@@ -227,7 +239,7 @@ describe("a dirty form guarded by confirm()", () => {
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
       expect(
-        screen.queryByRole("dialog", { name: "Discard unsaved changes?" }),
+        screen.queryByRole("alertdialog", { name: "Discard unsaved changes?" }),
       ).toBeNull(),
     );
     expect(

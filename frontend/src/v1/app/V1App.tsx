@@ -2,11 +2,12 @@
  * The v1 tree: its own providers and routes, never inside a v0 layout or
  * guard. Loaded lazily by the version switch, so v1's code reaches the
  * browser only when a v1 page renders; its styles are in the global
- * stylesheet (vite.config.js sets cssCodeSplit: false). The Toaster and the
- * ConfirmHost mount here, once, so `notify()` and `confirm()` reach the user
- * on every v1 page, and so do the one QueryClient and the plugin slots.
- * Each page renders behind its
- * session guard (`app/session/`); the shell will mount here.
+ * stylesheet (vite.config.js sets cssCodeSplit: false). The Toaster mounts
+ * here, once, so `notify()` reaches the user on every v1 page, and so do the
+ * one QueryClient and the plugin slots. The ConfirmHost mounts beside each
+ * page, inside its gate, so confirm content can use the page's session and
+ * route. Each page renders behind its session guard (`app/session/`); the
+ * shell will mount here.
  */
 
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -39,6 +40,7 @@ export function V1App({ entry }: V1AppProps): JSX.Element {
   const page = (
     <RouteGate access={entry.access}>
       <Page />
+      <ConfirmHost />
     </RouteGate>
   );
   return (
@@ -54,7 +56,6 @@ export function V1App({ entry }: V1AppProps): JSX.Element {
           </Suspense>
         </PluginProvider>
         <Toaster />
-        <ConfirmHost />
       </ThemeProvider>
     </QueryClientProvider>
   );
