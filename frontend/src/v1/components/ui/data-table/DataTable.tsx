@@ -162,10 +162,10 @@ export function DataTable<TRow>({
     useState<readonly string[]>(defaultSelectedIds);
   const heldSelection = selectedProp ?? ownSelected;
   // Without server pagination the table holds every row, so a held id that
-  // is not in `rows` (a filter hides it) is kept but not shown: the count,
-  // the header box and the bulk bar see only rows the user can see, and the
-  // row is selected again when the filter clears. Server pages show ids from
-  // other pages on purpose.
+  // is not in `rows` is not shown: the count, the header box and the bulk
+  // bar see only rows the user can see. While `filtered` it is kept (see
+  // `base` below) and shows again when the filter clears. Server pages show
+  // ids from other pages on purpose.
   const rowIds = useMemo(
     () => (server ? null : new Set(rows.map(getRowId))),
     [server, rows, getRowId],
@@ -240,8 +240,9 @@ export function DataTable<TRow>({
   // rather than one empty render before Pagination corrects it.
   const lastPageIndex = Math.max(0, Math.ceil(rows.length / ownPageSize) - 1);
   const shownPageIndex = Math.min(pageIndex, lastPageIndex);
-  if (shownPageIndex !== pageIndex) {
-    // Stored, so growing rows again do not jump back to the old page.
+  if (shownPageIndex !== pageIndex && rows.length > 0) {
+    // Stored, so growing rows again do not jump back to the old page. Not
+    // while empty: a refetch clears the rows and should come back in place.
     setPageIndex(shownPageIndex);
   }
   const paginationState = useMemo(
@@ -300,15 +301,17 @@ export function DataTable<TRow>({
     announce(text);
   };
 
-  // Changes apply to the held selection, so rows a filter hides keep their
-  // state; the count and the announcement are of the rows the table holds.
+  // While `filtered`, changes apply to the held selection, so rows the filter
+  // hides keep their state. Unfiltered, a row missing from `rows` is gone
+  // (deleted), so changes start from the visible selection and drop it.
+  const base = filtered ? heldSelection : selectedList;
   const visibleCount = (ids: readonly string[]): number =>
     rowIds === null ? ids.length : ids.filter((id) => rowIds.has(id)).length;
 
   const toggleRow = (id: string): void => {
-    const next = heldSelection.includes(id)
-      ? heldSelection.filter((item) => item !== id)
-      : [...heldSelection, id];
+    const next = base.includes(id)
+      ? base.filter((item) => item !== id)
+      : [...base, id];
     commitSelection(next, selectionAnnouncement(visibleCount(next), null));
   };
 
@@ -320,10 +323,10 @@ export function DataTable<TRow>({
   const togglePage = (): void => {
     if (allOnPage) {
       const onPage = new Set(pageIds);
-      const next = heldSelection.filter((id) => !onPage.has(id));
+      const next = base.filter((id) => !onPage.has(id));
       commitSelection(next, selectionAnnouncement(visibleCount(next), null));
     } else {
-      const next = [...new Set([...heldSelection, ...pageIds])];
+      const next = [...new Set([...base, ...pageIds])];
       commitSelection(
         next,
         selectionAnnouncement(visibleCount(next), pageIds.length),
@@ -510,14 +513,14 @@ export function DataTable<TRow>({
         key: "select",
         className: UTILITY_CELL,
         content: (
-          <span className="ui:inline-flex ui:items-center ui:justify-center">
+          <div className="ui:flex ui:items-center ui:justify-center">
             <Checkbox
               checked={isSelected}
               onCheckedChange={() => toggleRow(row.id)}
               aria-label={`Select ${rowLabel}`}
               tabIndex={controlTab}
             />
-          </span>
+          </div>
         ),
       });
     }
@@ -689,7 +692,7 @@ export function DataTable<TRow>({
       if (item.start > end) {
         parts.push(
           <Spacer
-            key={`spacer:${item.key}`}
+            key={`gap:${item.key}`}
             height={item.start - end}
             columns={columnCount}
           />,
@@ -708,9 +711,7 @@ export function DataTable<TRow>({
     }
     const rest = virtualizer.getTotalSize() - end;
     if (rest > 0) {
-      parts.push(
-        <Spacer key="spacer:end" height={rest} columns={columnCount} />,
-      );
+      parts.push(<Spacer key="tail" height={rest} columns={columnCount} />);
     }
     body = parts;
   } else {
@@ -723,14 +724,14 @@ export function DataTable<TRow>({
       <tr aria-rowindex={virtual ? 1 : undefined}>
         {selectable && (
           <th scope="col" className={cn(HEAD_CELL, UTILITY_CELL)}>
-            <span className="ui:inline-flex ui:items-center ui:justify-center">
+            <div className="ui:flex ui:items-center ui:justify-center">
               <Checkbox
                 checked={someOnPage ? "indeterminate" : allOnPage}
                 onCheckedChange={togglePage}
                 aria-label="Select all rows on this page"
                 disabled={loading || pageIds.length === 0}
               />
-            </span>
+            </div>
           </th>
         )}
         {expandable && (

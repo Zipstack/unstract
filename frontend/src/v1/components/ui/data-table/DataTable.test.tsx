@@ -1030,7 +1030,7 @@ describe("review fixes", () => {
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
     // Ids shaped like spacer keys under any naive scheme.
-    const SHAPED = ["rest", "spacer:end", "gap-dep-5", "spacer:dep-6", "end"];
+    const SHAPED = ["tail", "gap:dep-6", "rest", "spacer:end", "end"];
     const rows = galleryRows(200).map((row, i) => ({
       ...row,
       id: SHAPED[i] ?? row.id,
@@ -1052,5 +1052,42 @@ describe("review fixes", () => {
     expect(
       errors.mock.calls.some((call) => String(call[0]).includes("same key")),
     ).toBe(false);
+  });
+
+  it("drops a selected row that left the table unfiltered (deleted) on the next change", async () => {
+    const onSelectionChange = vi.fn();
+    const props = {
+      label: "API deployments",
+      columns: GALLERY_COLUMNS,
+      getRowId: rowId,
+      getRowLabel: rowLabel,
+      selectable: true,
+      onSelectionChange,
+    };
+    const { user, rerender } = renderV1(<DataTable {...props} rows={FIVE} />);
+    await user.click(
+      screen.getByRole("checkbox", { name: "Select health-monitoring API" }),
+    );
+    rerender(<DataTable {...props} rows={FIVE.slice(1)} />);
+    await user.click(screen.getByRole("checkbox", { name: "Select masa_cms" }));
+    expect(onSelectionChange).toHaveBeenLastCalledWith(["dep-3"]);
+  });
+
+  it("comes back to the same client page after a refetch that empties the rows", async () => {
+    const props = {
+      label: "API deployments",
+      columns: GALLERY_COLUMNS,
+      getRowId: rowId,
+      getRowLabel: rowLabel,
+      pagination: { mode: "client", pageSize: 10 } as const,
+    };
+    const { user, rerender } = renderV1(
+      <DataTable {...props} rows={galleryRows(30)} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    rerender(<DataTable {...props} rows={[]} loading />);
+    rerender(<DataTable {...props} rows={galleryRows(30)} />);
+    expect(screen.getByText("Showing 21 to 30 of 30 entries")).toBeTruthy();
   });
 });

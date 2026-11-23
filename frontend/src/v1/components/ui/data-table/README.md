@@ -94,19 +94,20 @@ const columns: DataTableColumn<Deployment>[] = [
 - **Pagination** uses `Pagination` from `navigation`. `client` pages the
   rows given; `server` shows the rows given as page `page` of `total`.
   Without `pagination` every row renders. A client page past the end (the
-  rows shrank) shows the last page; new rows do not go back to page 1 by
-  themselves (a refetch would), so give the table a `key` that changes with
-  the search when a new search should start on page 1. Client `pageSize` is
+  rows shrank) shows the last page, and stays there; a refetch that empties
+  the rows meanwhile comes back on the same page. New rows do not go back to
+  page 1 by themselves, so give the table a `key` that changes with the
+  search when a new search should start on page 1. Client `pageSize` is
   the starting size.
 - **Selection** is keyed by row id. With server pagination it survives page
-  changes, and the count includes rows on other pages. Otherwise a row a
-  filter hides stays selected but is not shown: the count, the header box,
-  the announcements and the bulk bar's `selectedIds` and `selectedRows` cover
-  only the rows in `rows`, so a bulk action never touches a row the user
-  cannot see. Selecting or clearing other rows while filtered keeps it, and
-  it shows as selected again when the filter clears. `onSelectionChange`
-  reports the whole held selection, hidden rows included; "Clear selection"
-  clears all of it. The header box
+  changes, and the count includes rows on other pages. Otherwise the count,
+  the header box, the announcements and the bulk bar's `selectedIds` and
+  `selectedRows` cover only the rows in `rows`, so a bulk action never
+  touches a row the user cannot see. While `filtered`, a selected row the
+  filter hides stays selected through other changes (`onSelectionChange`
+  reports it) and shows as selected when the filter clears. Unfiltered, a
+  row missing from `rows` counts as gone: the next change drops its id.
+  "Clear selection" clears everything, hidden rows included. The header box
   selects or clears the rows on the current page; it shows mixed
   (`aria-checked="mixed"`) when some are selected. The bulk bar (count,
   "Clear selection", then `bulkActions`) sits between the toolbar and the
