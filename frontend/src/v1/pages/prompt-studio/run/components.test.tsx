@@ -176,11 +176,30 @@ describe("captions", () => {
     expect(screen.queryByText(/Not run on/)).toBeNull();
   });
 
+  it("shows a prompt that covers no document in the warning colour (C06)", () => {
+    const { rerender } = renderV1(
+      <CoverageCaption
+        coverage={{ covered: 0, total: 4, missing: DOCUMENTS }}
+      />,
+    );
+    expect(screen.getByText("Coverage: 0 of 4 docs").parentElement).toHaveClass(
+      "ui:text-warning",
+    );
+    rerender(
+      <CoverageCaption
+        coverage={{ covered: 3, total: 4, missing: [DOCUMENTS[3]] }}
+      />,
+    );
+    expect(screen.getByText("Coverage: 3 of 4 docs").parentElement).toHaveClass(
+      "ui:text-primary",
+    );
+  });
+
   it("explains single pass extraction (C11)", async () => {
     const { container } = renderV1(<SinglePassBanner />);
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Single pass extraction is on",
-    );
+    expect(
+      screen.getByText("Single pass extraction is on"),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(/All prompts are sent to the model in one request/),
     ).toBeInTheDocument();

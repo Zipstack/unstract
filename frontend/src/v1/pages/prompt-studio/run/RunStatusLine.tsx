@@ -46,7 +46,7 @@ function RunningLine({
     <div
       data-slot="run-status"
       data-state="running"
-      className="ui:flex ui:items-center ui:gap-2 ui:bg-primary-muted ui:px-3.5 ui:py-2 ui:text-body-small ui:text-primary"
+      className="ui:flex ui:items-center ui:gap-2 ui:bg-primary-muted ui:py-2 ui:pr-3 ui:pl-3.5 ui:text-caption ui:font-medium ui:text-primary"
     >
       <Spinner />
       <p className="ui:m-0 ui:min-w-0 ui:flex-1" aria-live="polite">
@@ -54,7 +54,11 @@ function RunningLine({
         of {documentCount} complete
       </p>
       {startedAt === null ? null : (
-        <InlineCode variant="plain" aria-label="Elapsed time">
+        <InlineCode
+          variant="plain"
+          aria-label="Elapsed time"
+          className="ui:text-caption"
+        >
           {formatTimer(now - startedAt)}
         </InlineCode>
       )}
@@ -77,18 +81,21 @@ function FailedLine({
   const hint = retryHint(failure);
   return (
     <div data-slot="run-status" data-state="failed" role="alert">
-      <div className="ui:flex ui:items-center ui:gap-2 ui:bg-muted ui:px-3.5 ui:py-2 ui:text-body-small ui:text-destructive">
-        <ErrorIcon aria-hidden className="ui:size-4 ui:shrink-0" />
+      <div className="ui:flex ui:items-center ui:gap-2 ui:bg-muted ui:py-2 ui:pr-3 ui:pl-3.5 ui:text-caption ui:font-medium ui:text-destructive">
+        <ErrorIcon aria-hidden className="ui:size-3.5 ui:shrink-0" />
         <p className="ui:m-0 ui:min-w-0 ui:flex-1">
           Run failed on {failedCount} of {documentCount}{" "}
           {documents(documentCount)}
         </p>
-        <InlineCode variant="plain" className="ui:text-muted-foreground">
+        <InlineCode
+          variant="plain"
+          className="ui:text-caption ui:text-muted-foreground"
+        >
           {formatClock(failedAt)}
         </InlineCode>
       </div>
       <div className="ui:flex ui:flex-col ui:gap-2 ui:px-3.5 ui:py-3">
-        <p className="ui:m-0 ui:text-body-small ui:text-foreground">
+        <p className="ui:m-0 ui:text-body-small ui:leading-5 ui:text-foreground">
           {failure.message}
         </p>
         {hint ? (

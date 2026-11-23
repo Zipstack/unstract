@@ -210,6 +210,10 @@ describe("responses", () => {
 });
 
 describe("stale runs", () => {
+  it("waits sixteen minutes, longer than the LLM adapter's 900 s timeout", () => {
+    expect(STALE_RUN_MS).toBe(960_000);
+  });
+
   it("fails a run with no result after sixteen minutes", async () => {
     engine.run({
       toolId: TOOL_ID,

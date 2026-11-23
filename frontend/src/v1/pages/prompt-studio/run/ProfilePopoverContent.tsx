@@ -33,7 +33,7 @@ export function ProfilePopoverContent({
       aria-labelledby={titleId}
       className="ui:flex ui:w-75 ui:flex-col ui:text-body-small"
     >
-      <header className="ui:flex ui:flex-col ui:gap-0.5 ui:border-b ui:border-border ui:px-4 ui:py-3">
+      <header className="ui:flex ui:flex-col ui:gap-0.5 ui:border-b ui:border-border ui:px-4 ui:pt-3.5 ui:pb-2.5">
         <h3
           id={titleId}
           className="ui:m-0 ui:text-body ui:font-semibold ui:text-foreground"
@@ -48,11 +48,15 @@ export function ProfilePopoverContent({
         {rows.map(([label, value]) => (
           <div
             key={label}
-            className="ui:flex ui:items-center ui:justify-between ui:gap-4 ui:border-b ui:border-border ui:px-4 ui:py-2 ui:last:border-b-0 ui:even:bg-muted"
+            className="ui:flex ui:items-center ui:justify-between ui:gap-2.5 ui:border-b ui:border-border ui:px-4 ui:py-2 ui:last:border-b-0"
           >
-            <dt className="ui:text-muted-foreground">{label}</dt>
+            <dt className="ui:text-caption ui:text-muted-foreground">
+              {label}
+            </dt>
             <dd className="ui:m-0 ui:min-w-0 ui:truncate ui:text-right ui:text-foreground">
-              <InlineCode variant="plain">{value}</InlineCode>
+              <InlineCode variant="plain" className="ui:text-caption">
+                {value}
+              </InlineCode>
             </dd>
           </div>
         ))}

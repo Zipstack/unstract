@@ -1,5 +1,5 @@
 import { InlineCode } from "@v1/components/ui/code";
-import { InlineAlert, Spinner } from "@v1/components/ui/feedback";
+import { Spinner } from "@v1/components/ui/feedback";
 import { cn } from "@v1/lib/cn";
 import { SHELL_ICONS, STATUS_ICONS } from "@v1/lib/icons";
 import type { JSX } from "react";
@@ -20,6 +20,11 @@ export function CoverageCaption({
   onOpen,
 }: CoverageCaptionProps): JSX.Element {
   const SearchIcon = SHELL_ICONS.search;
+  // C06 draws a prompt that covers nothing in the warning colour.
+  const tone =
+    coverage.covered === 0 && coverage.total > 0
+      ? "ui:text-warning"
+      : "ui:text-primary";
   const label = `Coverage: ${coverage.covered} of ${coverage.total} docs`;
   const missing = describeMissing(coverage.missing);
   const body = (
@@ -31,18 +36,21 @@ export function CoverageCaption({
   return (
     <p
       data-slot="coverage-caption"
-      className="ui:m-0 ui:flex ui:min-w-0 ui:items-center ui:gap-1.5 ui:text-body-small"
+      className="ui:m-0 ui:flex ui:min-w-0 ui:items-center ui:gap-1.5 ui:text-caption ui:font-medium"
     >
       {onOpen ? (
         <button
           type="button"
           onClick={onOpen}
-          className="ui:inline-flex ui:cursor-pointer ui:items-center ui:gap-1.5 ui:rounded-sm ui:border-0 ui:bg-transparent ui:p-0 ui:text-primary ui:hover:underline ui:focus-visible:focus-ring"
+          className={cn(
+            "ui:inline-flex ui:cursor-pointer ui:items-center ui:gap-1.5 ui:rounded-sm ui:border-0 ui:bg-transparent ui:p-0 ui:font-medium ui:hover:underline ui:focus-visible:focus-ring",
+            tone,
+          )}
         >
           {body}
         </button>
       ) : (
-        <span className="ui:inline-flex ui:items-center ui:gap-1.5 ui:text-primary">
+        <span className={cn("ui:inline-flex ui:items-center ui:gap-1.5", tone)}>
           {body}
         </span>
       )}
@@ -57,15 +65,26 @@ export function CoverageCaption({
 
 /** Frame C11's banner while single pass extraction is on. */
 export function SinglePassBanner(): JSX.Element {
+  const InfoIcon = STATUS_ICONS.info;
   return (
-    <InlineAlert
-      kind="info"
-      title="Single pass extraction is on"
-      className="ui:bg-primary-muted"
+    <div
+      data-slot="single-pass-banner"
+      className="ui:flex ui:items-start ui:gap-2.5 ui:rounded-lg ui:bg-primary-muted ui:px-3.5 ui:py-3"
     >
-      All prompts are sent to the model in one request. Cost drops, but
-      per-prompt timing and per-prompt retries are no longer available.
-    </InlineAlert>
+      <InfoIcon
+        aria-hidden
+        className="ui:mt-0.5 ui:size-4 ui:shrink-0 ui:text-primary"
+      />
+      <div className="ui:flex ui:min-w-0 ui:flex-col ui:gap-0.5">
+        <p className="ui:m-0 ui:text-body-small ui:leading-5 ui:font-semibold ui:text-primary">
+          Single pass extraction is on
+        </p>
+        <p className="ui:m-0 ui:text-caption ui:text-foreground">
+          All prompts are sent to the model in one request. Cost drops, but
+          per-prompt timing and per-prompt retries are no longer available.
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -90,13 +109,19 @@ export function RunMetadata({
     <p
       data-slot="run-metadata"
       className={cn(
-        "ui:m-0 ui:flex ui:flex-wrap ui:gap-x-3 ui:text-caption ui:text-muted-foreground",
+        "ui:m-0 ui:flex ui:flex-wrap ui:gap-x-2.5 ui:text-caption ui:text-muted-foreground",
         className,
       )}
     >
-      <InlineCode variant="plain">Tokens: {formatTokens(tokens)}</InlineCode>
-      <InlineCode variant="plain">Time: {formatSeconds(seconds)}</InlineCode>
-      <InlineCode variant="plain">Cost: {formatCost(cost)}</InlineCode>
+      <InlineCode variant="plain" className="ui:text-caption">
+        Tokens: {formatTokens(tokens)}
+      </InlineCode>
+      <InlineCode variant="plain" className="ui:text-caption">
+        Time: {formatSeconds(seconds)}
+      </InlineCode>
+      <InlineCode variant="plain" className="ui:text-caption">
+        Cost: {formatCost(cost)}
+      </InlineCode>
     </p>
   );
 }
@@ -110,12 +135,12 @@ export type CellRunStateProps = Readonly<{
 export function CellRunState({ status }: CellRunStateProps): JSX.Element {
   const WarningIcon = STATUS_ICONS.warning;
   return status === "running" ? (
-    <p className="ui:m-0 ui:flex ui:items-center ui:gap-2 ui:text-body-small ui:text-muted-foreground">
+    <p className="ui:m-0 ui:flex ui:items-center ui:gap-1.5 ui:text-caption ui:font-medium ui:text-muted-foreground">
       <Spinner />
       Running…
     </p>
   ) : (
-    <p className="ui:m-0 ui:flex ui:items-center ui:gap-2 ui:text-body-small ui:text-muted-foreground">
+    <p className="ui:m-0 ui:flex ui:items-center ui:gap-1.5 ui:text-caption ui:font-medium ui:text-muted-foreground">
       <WarningIcon
         aria-hidden
         className="ui:size-3.5 ui:shrink-0 ui:text-warning"
