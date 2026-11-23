@@ -11,7 +11,6 @@ from typing import Any
 
 from executor.executors.constants import PromptServiceConstants as PSKeys
 from executor.executors.plugins import ExecutorPluginLoader
-
 from unstract.sdk1.constants import LogLevel
 
 logger = logging.getLogger(__name__)

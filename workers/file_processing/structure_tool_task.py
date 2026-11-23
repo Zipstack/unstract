@@ -33,7 +33,6 @@ from shared.utils.manual_review_factory import (
     HIGHLIGHT_AUTO_ENABLED_MESSAGE,
     HIGHLIGHT_IMAGE_MODE_MESSAGE,
 )
-
 from unstract.sdk1.constants import LogLevel, ToolEnv, UsageKwargs
 from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.result import ExecutionResult

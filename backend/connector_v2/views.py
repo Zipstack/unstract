@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from account_v2.custom_exceptions import DuplicateData
+from backend.constants import RequestKey
 from connection_check.filters import filter_by_test_status
 from connection_check.models import ConnectorTestResult
 from connection_check.schema import LIST_FILTER_PARAMETERS, connection_test_schema
@@ -32,13 +33,12 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tenant_account_v2.capabilities import Capability, enforce_capability
+from unstract.connectors.connectorkit import Connectorkit
+from unstract.connectors.enums import ConnectorMode
 from utils.filtering import FilterHelper
 from utils.user_context import UserContext
 
-from backend.constants import RequestKey
 from connector_v2.constants import ConnectorInstanceKey as CIKey
-from unstract.connectors.connectorkit import Connectorkit
-from unstract.connectors.enums import ConnectorMode
 
 from .exceptions import DeleteConnectorInUseError
 from .models import ConnectorInstance

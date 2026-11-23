@@ -11,6 +11,8 @@ import struct
 import zlib
 
 import pytest
+
+from tests.llmw_image_fixtures import minimal_png
 from unstract.sdk1.adapters.x2text.constants import ImageOutputConstants
 from unstract.sdk1.adapters.x2text.page_image_loader import (
     PageCapExceededError,
@@ -28,8 +30,6 @@ from unstract.sdk1.utils.image_limits import (
     resolve_image_limits,
 )
 from unstract.sdk1.utils.image_limits import policy as policy_mod
-
-from tests.llmw_image_fixtures import minimal_png
 
 DIR = "/data/extract/doc/pages"
 

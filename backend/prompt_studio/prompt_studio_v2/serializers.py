@@ -1,7 +1,6 @@
+from backend.serializers import AuditSerializer
 from rest_framework import serializers
 from rest_framework.serializers import ValidationError
-
-from backend.serializers import AuditSerializer
 
 from .models import ToolStudioPrompt
 

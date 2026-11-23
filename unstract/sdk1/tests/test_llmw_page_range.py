@@ -1,6 +1,7 @@
 """Strict page-range resolver for image output mode (mirror of LLMWhisperer's)."""
 
 import pytest
+
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.page_range import (
     PageLimitError,
     PageRangeError,

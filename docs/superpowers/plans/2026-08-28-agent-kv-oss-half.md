@@ -88,10 +88,14 @@ Do not "improve" the ported code — parity with the engine is the point.
 
 ```python
 """compile_schema: structural validation + caps on top of the ported compiler."""
+
 import pytest
 
 from unstract.agent_kv_schema import (
-    CompiledSchema, SchemaCaps, SchemaError, compile_schema,
+    CompiledSchema,
+    SchemaCaps,
+    SchemaError,
+    compile_schema,
 )
 
 VALID = {
@@ -146,8 +150,10 @@ def test_regex_length_cap():
 
 
 def test_bad_constraint_syntax_rejected():
-    spec = {"a": {"description": "d"},
-            "_constraints": ["__import__('os').system('true')"]}
+    spec = {
+        "a": {"description": "d"},
+        "_constraints": ["__import__('os').system('true')"],
+    }
     with pytest.raises(SchemaError, match="constraint"):
         compile_schema(spec)
 
@@ -159,8 +165,7 @@ def test_constraint_call_allowlist():
 
 
 def test_constraints_cap():
-    spec = {"a": {"description": "d"},
-            "_constraints": ["a > 0"] * 31}
+    spec = {"a": {"description": "d"}, "_constraints": ["a > 0"] * 31}
     with pytest.raises(SchemaError, match="max_constraints"):
         compile_schema(spec)
 
@@ -186,6 +191,7 @@ This is the single entry point both the API (submit-time validation) and the
 cloud engine use. Anything compile_schema accepts, the engine must execute;
 anything it rejects never reaches OCR or an LLM.
 """
+
 import ast
 from dataclasses import dataclass, field
 
@@ -218,10 +224,30 @@ class CompiledSchema:
 
 _ALLOWED_CALLS = {"sum", "count", "min", "max", "avg"}
 _ALLOWED_NODES = (
-    ast.Expression, ast.BoolOp, ast.And, ast.Or, ast.UnaryOp, ast.Not,
-    ast.USub, ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE,
-    ast.Gt, ast.GtE, ast.BinOp, ast.Add, ast.Sub, ast.Mult, ast.Div,
-    ast.Call, ast.Name, ast.Attribute, ast.Constant, ast.Load,
+    ast.Expression,
+    ast.BoolOp,
+    ast.And,
+    ast.Or,
+    ast.UnaryOp,
+    ast.Not,
+    ast.USub,
+    ast.Compare,
+    ast.Eq,
+    ast.NotEq,
+    ast.Lt,
+    ast.LtE,
+    ast.Gt,
+    ast.GtE,
+    ast.BinOp,
+    ast.Add,
+    ast.Sub,
+    ast.Mult,
+    ast.Div,
+    ast.Call,
+    ast.Name,
+    ast.Attribute,
+    ast.Constant,
+    ast.Load,
 )
 
 
@@ -234,15 +260,17 @@ def _check_constraint_syntax(expr: str) -> None:
     for node in ast.walk(tree):
         if not isinstance(node, _ALLOWED_NODES):
             raise SchemaError(
-                f"constraint uses disallowed syntax "
-                f"({type(node).__name__}): {expr!r}"
+                f"constraint uses disallowed syntax ({type(node).__name__}): {expr!r}"
             )
         if isinstance(node, ast.Call):
             if not isinstance(node.func, ast.Name) or node.func.id not in _ALLOWED_CALLS:
                 raise SchemaError(f"constraint calls a disallowed function: {expr!r}")
-            if node.keywords or len(node.args) != 1 or not isinstance(
-                node.args[0], ast.Constant
-            ) or not isinstance(node.args[0].value, str):
+            if (
+                node.keywords
+                or len(node.args) != 1
+                or not isinstance(node.args[0], ast.Constant)
+                or not isinstance(node.args[0].value, str)
+            ):
                 raise SchemaError(
                     f"constraint aggregate needs one string literal arg: {expr!r}"
                 )
@@ -263,7 +291,10 @@ def compile_schema(spec: dict, caps: SchemaCaps | None = None) -> CompiledSchema
     caps = caps or SchemaCaps()
     if not isinstance(spec, dict):
         raise SchemaError("Top-level key schema must be a JSON object")
-    if _max_depth({k: v for k, v in spec.items() if k != "_constraints"}) > caps.max_depth:
+    if (
+        _max_depth({k: v for k, v in spec.items() if k != "_constraints"})
+        > caps.max_depth
+    ):
         raise SchemaError(f"schema exceeds max_depth={caps.max_depth}")
     try:
         key_specs = kv_schema.compile(spec)
@@ -283,7 +314,9 @@ def compile_schema(spec: dict, caps: SchemaCaps | None = None) -> CompiledSchema
             )
     for kspec in key_specs + [s for a in array_specs for s in a.item_specs]:
         if len(kspec.regex_pattern) > caps.max_regex_len:
-            raise SchemaError(f"'{kspec.path}' regex exceeds max_regex_len={caps.max_regex_len}")
+            raise SchemaError(
+                f"'{kspec.path}' regex exceeds max_regex_len={caps.max_regex_len}"
+            )
         if len(kspec.aliases) > caps.max_aliases:
             raise SchemaError(f"'{kspec.path}' exceeds max_aliases={caps.max_aliases}")
         if len(kspec.effective_description) > caps.max_description_len:
@@ -302,8 +335,9 @@ def compile_schema(spec: dict, caps: SchemaCaps | None = None) -> CompiledSchema
     for expr in constraints:
         _check_constraint_syntax(expr)
 
-    return CompiledSchema(key_specs=key_specs, array_specs=array_specs,
-                          constraints=list(constraints))
+    return CompiledSchema(
+        key_specs=key_specs, array_specs=array_specs, constraints=list(constraints)
+    )
 ```
 
 `__init__.py`:
@@ -315,8 +349,14 @@ from .dataclasses import ArraySpec, KeySpec
 from .validators import validate_format
 
 __all__ = [
-    "ArraySpec", "CompiledSchema", "KeySpec", "SchemaCaps", "SchemaError",
-    "compile_schema", "evaluate_constraints", "validate_format",
+    "ArraySpec",
+    "CompiledSchema",
+    "KeySpec",
+    "SchemaCaps",
+    "SchemaError",
+    "compile_schema",
+    "evaluate_constraints",
+    "validate_format",
 ]
 ```
 
@@ -353,7 +393,8 @@ git commit -m "feat(agent-kv): shared keys.json schema compiler package with cap
 
 ```python
 from unstract.filesystem.file_storage_config import (
-    FILE_STORAGE_CREDENTIALS_TO_ENV_NAME_MAPPING, STORAGE_MAPPING,
+    FILE_STORAGE_CREDENTIALS_TO_ENV_NAME_MAPPING,
+    STORAGE_MAPPING,
 )
 from unstract.filesystem.file_storage_types import FileStorageType
 
@@ -416,6 +457,7 @@ git commit -m "feat(agent-kv): AGENT_KV file storage type with its own creds env
 
 ```python
 """Terminal-state write guard: the invariant everything else leans on (spec §5.4)."""
+
 import os
 import uuid
 from unittest import mock
@@ -442,8 +484,10 @@ def test_mark_terminal_excludes_terminal_rows_and_reports_success(m_objects):
     m_qs = m_objects.filter.return_value.exclude.return_value
     m_qs.update.return_value = 1
     ok = AgentKVJob.mark_terminal(
-        job_id=uuid.uuid4(), organization_id="org1",
-        new_status=JobStatus.FAILED, error="boom",
+        job_id=uuid.uuid4(),
+        organization_id="org1",
+        new_status=JobStatus.FAILED,
+        error="boom",
     )
     assert ok is True
     _, exclude_kwargs = m_objects.filter.return_value.exclude.call_args
@@ -458,7 +502,8 @@ def test_mark_terminal_excludes_terminal_rows_and_reports_success(m_objects):
 def test_mark_terminal_on_already_terminal_row_is_noop_false(m_objects):
     m_objects.filter.return_value.exclude.return_value.update.return_value = 0
     ok = AgentKVJob.mark_terminal(
-        job_id=uuid.uuid4(), organization_id="org1",
+        job_id=uuid.uuid4(),
+        organization_id="org1",
         new_status=JobStatus.COMPLETED,
     )
     assert ok is False
@@ -501,11 +546,16 @@ class AgentKVKey(DefaultOrganizationMixin, BaseModel):
     key = models.UUIDField(default=uuid.uuid4, unique=True)
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True,
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
         related_name="agent_kv_keys_created",
     )
     modified_by = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, related_name="+",
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="+",
     )
 
     class Meta:
@@ -535,11 +585,16 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     api_key = models.ForeignKey(
-        AgentKVKey, on_delete=models.SET_NULL, null=True, related_name="jobs",
+        AgentKVKey,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="jobs",
     )
     task_id = models.UUIDField(null=True, blank=True)
     status = models.CharField(
-        max_length=16, choices=JobStatus.choices, default=JobStatus.PENDING,
+        max_length=16,
+        choices=JobStatus.choices,
+        default=JobStatus.PENDING,
     )
     stage = models.CharField(max_length=32, blank=True, default="")
     stages = models.JSONField(default=dict, blank=True)
@@ -564,8 +619,14 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
 
     @classmethod
     def mark_terminal(
-        cls, job_id, organization_id, new_status, *,
-        error="", result_ref="", usage_summary=None,
+        cls,
+        job_id,
+        organization_id,
+        new_status,
+        *,
+        error="",
+        result_ref="",
+        usage_summary=None,
     ) -> bool:
         """The ONLY way to reach a terminal state (spec §5.4 write guard).
 
@@ -591,8 +652,14 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
 
 ```python
 STAGE_NAMES = [
-    "document_processing", "extraction", "qa", "challenge",
-    "normalize", "constraints", "codegen", "code_execution",
+    "document_processing",
+    "extraction",
+    "qa",
+    "challenge",
+    "normalize",
+    "constraints",
+    "codegen",
+    "code_execution",
 ]
 EXECUTOR_NAME = "agentic_kv"
 OPERATION_KV_EXTRACT = "kv_extract"
@@ -766,6 +833,7 @@ def _wrapped():
     @AgentKVKeyValidator.validate_api_key
     def view(self, request, *args, **kwargs):
         return kwargs["agent_kv_key"]
+
     return view
 
 
@@ -798,6 +866,7 @@ def test_non_uuid_key_is_forbidden_without_db_hit(m_objects):
 
 def test_prefix_is_whitelisted():
     from django.conf import settings
+
     assert f"/{settings.AGENT_KV_PATH_PREFIX}" in settings.WHITELISTED_PATHS
 ```
 
@@ -891,8 +960,8 @@ urlpatterns = [
 `base_urls.py` — after the pipeline mount:
 
 ```python
-    # Agent-KV product API (views own auth; prefix is middleware-whitelisted)
-    path(f"{settings.AGENT_KV_PATH_PREFIX}/", include("agent_kv.execution_urls")),
+# Agent-KV product API (views own auth; prefix is middleware-whitelisted)
+(path(f"{settings.AGENT_KV_PATH_PREFIX}/", include("agent_kv.execution_urls")),)
 ```
 
 `settings/base.py` — next to the API-deployment whitelist append (copy its comment style):
@@ -1040,6 +1109,7 @@ Expected: FAIL — `ImportError: agent_kv.execution_serializers`
 
 ```python
 """Submit-time validation: every §6.1 cap lives here, before any paid work."""
+
 import json
 
 import pdfplumber
@@ -1063,11 +1133,11 @@ class SubmitSerializer(serializers.Serializer):
     key_notes = serializers.CharField(
         required=False, allow_blank=True, default="", max_length=10_000
     )
-    calculations = serializers.CharField(
-        required=False, allow_blank=True, default=""
-    )
+    calculations = serializers.CharField(required=False, allow_blank=True, default="")
     page_start = serializers.IntegerField(required=False, default=1, min_value=1)
-    page_end = serializers.IntegerField(required=False, default=None, allow_null=True, min_value=1)
+    page_end = serializers.IntegerField(
+        required=False, default=None, allow_null=True, min_value=1
+    )
     qa = serializers.BooleanField(required=False, default=True)
     challenge = serializers.BooleanField(required=False, default=True)
     extraction_mode = serializers.ChoiceField(
@@ -1076,7 +1146,9 @@ class SubmitSerializer(serializers.Serializer):
     structured_output = serializers.BooleanField(required=False, default=False)
     timeout = serializers.IntegerField(required=False, default=0, min_value=0)
     tags = serializers.ListField(
-        child=serializers.CharField(max_length=64), required=False, default=list,
+        child=serializers.CharField(max_length=64),
+        required=False,
+        default=list,
         max_length=20,
     )
     custom_data = serializers.JSONField(required=False, default=None, allow_null=True)
@@ -1150,8 +1222,10 @@ class SubmitSerializer(serializers.Serializer):
                 f.seek(0)
             if self.pages_total > settings.AGENT_KV_MAX_PAGES:
                 raise serializers.ValidationError(
-                    {"file": f"Document has {self.pages_total} pages; "
-                             f"max is {settings.AGENT_KV_MAX_PAGES} (§6.1)"}
+                    {
+                        "file": f"Document has {self.pages_total} pages; "
+                        f"max is {settings.AGENT_KV_MAX_PAGES} (§6.1)"
+                    }
                 )
         elif ext in IMAGE_LIKE:
             self.pages_total = 1
@@ -1217,9 +1291,7 @@ def test_acquire_at_limit_refused(m_redis):
 @mock.patch.object(rl, "_redis")
 def test_release_removes_member(m_redis):
     rl.AgentKVConcurrencyLimiter.release("org1", "job1")
-    m_redis.return_value.zrem.assert_called_once_with(
-        "agent_kv:inflight:org1", "job1"
-    )
+    m_redis.return_value.zrem.assert_called_once_with("agent_kv:inflight:org1", "job1")
 
 
 @mock.patch.object(rl, "_redis")
@@ -1258,6 +1330,7 @@ _SLOT_TTL_SECONDS = 6 * 3600
 def _redis():
     # Same handle acquisition as api_v2.rate_limiter — copy that import/call here.
     from api_v2.rate_limiter import APIDeploymentRateLimiter
+
     return APIDeploymentRateLimiter._get_redis_client()
 
 
@@ -1467,6 +1540,7 @@ Expected: ImportErrors / stub 501s where real logic is asserted
 Paths are the contract: org/{org_id}/agent_kv/{job_id}/input{ext} and
 .../result.json. No document bytes ever ride the broker.
 """
+
 import json
 import logging
 import os
@@ -1521,6 +1595,7 @@ def delete_job_files(job) -> None:
 
 ```python
 """Executor dispatch glue (spec §5.3). One dispatch per job; UUID task_id."""
+
 import logging
 import uuid
 
@@ -1544,6 +1619,7 @@ class DispatchError(Exception):
 def _dispatcher():
     from backend.celery_service import app as celery_app
     from pg_queue.executor_rpc import get_executor_dispatcher
+
     return get_executor_dispatcher(celery_app=celery_app)
 
 
@@ -1551,6 +1627,7 @@ def _platform_api_key(org_id: str) -> str:
     from platform_settings_v2.platform_auth_service import (
         PlatformAuthenticationService,
     )
+
     platform_key = PlatformAuthenticationService.get_active_platform_key(org_id)
     if not platform_key:
         raise DispatchError(f"No active platform key for org {org_id}")
@@ -1582,9 +1659,7 @@ def dispatch_job(job, *, schema: dict, options: dict) -> None:
             on_success=signature(
                 "agent_kv_complete", kwargs=cb_kwargs, queue=CALLBACK_QUEUE
             ),
-            on_error=signature(
-                "agent_kv_error", kwargs=cb_kwargs, queue=CALLBACK_QUEUE
-            ),
+            on_error=signature("agent_kv_error", kwargs=cb_kwargs, queue=CALLBACK_QUEUE),
             task_id=str(job.task_id),
         )
     except Exception as e:
@@ -1649,8 +1724,7 @@ class SubmitView(APIView):
             tags=v["tags"],
             custom_data=v["custom_data"],
             webhook_url=v["webhook_url"],
-            expires_at=timezone.now()
-            + timedelta(days=settings.AGENT_KV_RESULT_TTL_DAYS),
+            expires_at=timezone.now() + timedelta(days=settings.AGENT_KV_RESULT_TTL_DAYS),
         )
         if not AgentKVConcurrencyLimiter.check_and_acquire(org_id, str(job.id)):
             raise RateLimited("Concurrent job limit reached")
@@ -1660,22 +1734,35 @@ class SubmitView(APIView):
 
         options = {
             k: v[k]
-            for k in ("qa", "challenge", "extraction_mode", "structured_output",
-                      "page_start", "page_end", "document_class", "key_notes",
-                      "calculations")
+            for k in (
+                "qa",
+                "challenge",
+                "extraction_mode",
+                "structured_output",
+                "page_start",
+                "page_end",
+                "document_class",
+                "key_notes",
+                "calculations",
+            )
         }
         try:
             dispatch_job(job, schema=v["keys"], options=options)
         except DispatchError:
             logger.error("agent-kv dispatch failed for job %s", job.id, exc_info=True)
             AgentKVJob.mark_terminal(
-                job.id, job.organization_id, JobStatus.FAILED,
+                job.id,
+                job.organization_id,
+                JobStatus.FAILED,
                 error="Job could not be dispatched; nothing was billed.",
             )
             AgentKVConcurrencyLimiter.release(org_id, str(job.id))
             return Response(
-                {"job_id": str(job.id), "status": JobStatus.FAILED,
-                 "error": "Job could not be dispatched; nothing was billed."},
+                {
+                    "job_id": str(job.id),
+                    "status": JobStatus.FAILED,
+                    "error": "Job could not be dispatched; nothing was billed.",
+                },
                 status=500,
             )
 
@@ -1686,6 +1773,7 @@ class SubmitView(APIView):
                 job.refresh_from_db()
                 if job.status in AgentKVJob.TERMINAL:
                     from agent_kv.execution_views_result import result_payload
+
                     return Response(result_payload(job), status=200)
                 time.sleep(1)
 
@@ -1768,8 +1856,10 @@ def test_foreign_org_job_is_404(m_keys, m_jobs):
 
 def test_all_job_views_401_without_key():
     for view, method in [
-        (ev.JobStatusView, "get"), (ev.JobResultView, "get"),
-        (ev.JobCancelView, "post"), (ev.JobDeleteView, "delete"),
+        (ev.JobStatusView, "get"),
+        (ev.JobResultView, "get"),
+        (ev.JobCancelView, "post"),
+        (ev.JobDeleteView, "delete"),
     ]:
         req = getattr(APIRequestFactory(), method)("/agent-kv/x")
         with pytest.raises(Forbidden):
@@ -1837,9 +1927,12 @@ class ValidateView(APIView):
         except SchemaError as e:
             return Response({"valid": False, "error": str(e)}, status=200)
         return Response(
-            {"valid": True, "leaves": len(compiled.key_specs),
-             "arrays": len(compiled.array_specs),
-             "constraints": len(compiled.constraints)},
+            {
+                "valid": True,
+                "leaves": len(compiled.key_specs),
+                "arrays": len(compiled.array_specs),
+                "constraints": len(compiled.constraints),
+            },
             status=200,
         )
 ```
@@ -1875,9 +1968,9 @@ git commit -m "feat(agent-kv): free authenticated schema validation endpoint"
 - [ ] **Step 3: Implement** — plain DRF `APIView`s with empty auth classes (middleware owns auth), reading `org_id` from body and requiring it. Stage merge:
 
 ```python
-job_qs = AgentKVJob.objects.filter(
-    id=job_id, organization_id=org_id
-).exclude(status__in=list(AgentKVJob.TERMINAL))
+job_qs = AgentKVJob.objects.filter(id=job_id, organization_id=org_id).exclude(
+    status__in=list(AgentKVJob.TERMINAL)
+)
 job = job_qs.first()
 if job is None:
     return Response({"ok": True, "noop": True})  # late report; terminal guard
@@ -1930,10 +2023,13 @@ git commit -m "feat(agent-kv): internal stage-report and finalize APIs (idempote
 
 ```python
 """Agent-KV terminal callbacks (spec §5.3). Thin: parse, finalize, webhook."""
+
 import logging
 from typing import Any
 
-from shared.infrastructure.worker_singleton import worker_task  # match ide_callback/tasks.py's actual import
+from shared.infrastructure.worker_singleton import (
+    worker_task,
+)  # match ide_callback/tasks.py's actual import
 from shared.utils.webhook_notify import send_webhook
 
 logger = logging.getLogger(__name__)
@@ -1942,12 +2038,14 @@ _UNKNOWN = "Executor failed without an error message"
 
 def _get_api_client():
     from ide_callback.tasks import _get_api_client as base
+
     return base()
 
 
 @worker_task(name="agent_kv_complete")
-def agent_kv_complete(result_dict: dict[str, Any],
-                      callback_kwargs: dict[str, Any] | None = None) -> dict:
+def agent_kv_complete(
+    result_dict: dict[str, Any], callback_kwargs: dict[str, Any] | None = None
+) -> dict:
     cb = callback_kwargs or {}
     job_id, org_id = cb.get("job_id", ""), cb.get("org_id", "")
     api = _get_api_client()
@@ -1957,7 +2055,9 @@ def agent_kv_complete(result_dict: dict[str, Any],
     else:
         data = result_dict.get("data") or {}
         out = api.agent_kv_finalize(
-            job_id, org_id, success=True,
+            job_id,
+            org_id,
+            success=True,
             result=data.get("output") or {},
             usage_summary=data.get("usage_summary"),
         )
@@ -1966,13 +2066,16 @@ def agent_kv_complete(result_dict: dict[str, Any],
 
 
 @worker_task(name="agent_kv_error")
-def agent_kv_error(request=None, exc=None, traceback=None,
-                   callback_kwargs: dict[str, Any] | None = None) -> dict:
+def agent_kv_error(
+    request=None, exc=None, traceback=None, callback_kwargs: dict[str, Any] | None = None
+) -> dict:
     cb = callback_kwargs or {}
     job_id, org_id = cb.get("job_id", ""), cb.get("org_id", "")
     api = _get_api_client()
     out = api.agent_kv_finalize(
-        job_id, org_id, success=False,
+        job_id,
+        org_id,
+        success=False,
         error=str(exc) if exc else _UNKNOWN,
     )
     _maybe_webhook(out, job_id)
@@ -1985,8 +2088,7 @@ def _maybe_webhook(finalize_response: dict, job_id: str) -> None:
     url = finalize_response.get("webhook_url") or ""
     if not url:
         return
-    send_webhook(url, {"job_id": job_id,
-                       "status": finalize_response.get("status", "")})
+    send_webhook(url, {"job_id": job_id, "status": finalize_response.get("status", "")})
 ```
 
 (Open `workers/ide_callback/tasks.py` first and align the `worker_task` import and `_get_api_client` acquisition with what it actually does — those two lines must match the codebase, not this listing.)
@@ -2074,6 +2176,7 @@ Residual accepted risk (documented in the spec): DNS is resolved for the
 check and again by requests — a rebinding window exists. The payload carries
 only {job_id, status}; the response body is never read.
 """
+
 import ipaddress
 import json
 import logging
@@ -2096,8 +2199,14 @@ def _host_is_public(host: str) -> bool:
         return False
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
-        if (ip.is_private or ip.is_loopback or ip.is_link_local
-                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
             return False
     return True
 

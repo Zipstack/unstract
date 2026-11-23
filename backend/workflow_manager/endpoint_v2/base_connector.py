@@ -2,12 +2,11 @@ import json
 from typing import Any
 
 from fsspec import AbstractFileSystem
-from utils.constants import Common
-from utils.user_context import UserContext
-
 from unstract.connectors.filesystems import connectors
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.workflow_execution.execution_file_handler import ExecutionFileHandler
+from utils.constants import Common
+from utils.user_context import UserContext
 
 
 class BaseConnector(ExecutionFileHandler):

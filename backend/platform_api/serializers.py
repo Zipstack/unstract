@@ -1,11 +1,11 @@
 from api_key_usage.expiry import expires_at_field
 from api_key_usage.serializers import USAGE_FIELDS, KeyUsageFieldsMixin
+from backend.serializers import AuditSerializer
 from platform_audit.actions import TargetType
 from rest_framework import serializers
 from utils.input_sanitizer import validate_safe_text
 from utils.user_context import UserContext
 
-from backend.serializers import AuditSerializer
 from platform_api.models import PlatformApiKey
 
 

@@ -44,7 +44,6 @@ import json
 import logging
 
 import requests
-
 from unstract.core.network.ssrf import is_safe_webhook_url, safe_host
 
 logger = logging.getLogger(__name__)
