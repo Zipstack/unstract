@@ -15,6 +15,9 @@ export type Distribution = "oss" | PluginDistribution;
 export const SLOT_IDS = [
   "prompt-studio.lookups",
   "prompt-studio.cloud-tools",
+  "prompt-studio.settings.summarized-extraction",
+  "prompt-studio.settings.llm-challenge",
+  "prompt-studio.settings.highlighting",
   "workflows.human-review",
   "account-menu.plan-billing",
   "shell.product-switcher",
@@ -42,13 +45,39 @@ export type GateSlotId = (typeof GATE_SLOT_IDS)[number];
 
 export type GateProps = Readonly<{ children: ReactNode }>;
 
+/**
+ * A Prompt Studio Settings section (Summarized Extraction, LLM Challenge,
+ * Highlighting). The filler renders the whole section, heading included,
+ * saves through `PATCH prompt-studio/{toolId}/`, and reports unsaved
+ * changes so the tab can ask before they are lost.
+ */
+export type SettingsSectionProps = Readonly<{
+  toolId: string;
+  /** Show the saved values without save controls (public share). */
+  readOnly: boolean;
+  /** The id the section's root element takes, so the section list can link to it. */
+  anchorId: string;
+  onDirtyChange: (dirty: boolean) => void;
+}>;
+
+/** Slots whose host passes props; every other slot gets none. */
+type HostProps = {
+  "prompt-studio.settings.summarized-extraction": SettingsSectionProps;
+  "prompt-studio.settings.llm-challenge": SettingsSectionProps;
+  "prompt-studio.settings.highlighting": SettingsSectionProps;
+};
+
 /*
  * The props a filler receives; the host passes them.
  * ponytail: props are empty until the host page that renders each slot is
- * built; that task adds the fields it passes.
+ * built; that task adds the fields it passes to HostProps.
  */
 export type SlotProps = {
-  [K in SlotId]: K extends GateSlotId ? GateProps : Record<string, never>;
+  [K in SlotId]: K extends GateSlotId
+    ? GateProps
+    : K extends keyof HostProps
+      ? HostProps[K]
+      : Record<string, never>;
 };
 
 export type ComponentLoader<P> = () => Promise<{ default: ComponentType<P> }>;
