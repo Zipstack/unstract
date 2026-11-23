@@ -65,13 +65,54 @@ describe("client sort values", () => {
     ).toBeUndefined();
   });
 
-  it("compares numbers, dates and booleans by value", () => {
-    expect(compareSortValues(9, 10)).toBeLessThan(0);
+  it("compares numbers, dates and booleans by value, where text order disagrees", () => {
+    // Each pair sorts the other way as text.
+    expect(compareSortValues(1.5, 1.25)).toBeGreaterThan(0);
+    expect(compareSortValues(-1, -2)).toBeGreaterThan(0);
+    expect(compareSortValues(100, 20)).toBeGreaterThan(0);
+    // Mon 2 Feb 2026 after Sat 1 Feb 2025; as text "Mon…" sorts before "Sat…".
     expect(
-      compareSortValues(new Date(2026, 1, 1), new Date(2025, 1, 1)),
+      compareSortValues(new Date(2026, 1, 2), new Date(2025, 1, 1)),
     ).toBeGreaterThan(0);
     expect(compareSortValues(false, true)).toBeLessThan(0);
     expect(compareSortValues(true, true)).toBe(0);
+  });
+
+  it("treats NaN and an invalid date as missing", () => {
+    type N = { n: number; d: Date };
+    const byN: DataTableColumn<N> = {
+      id: "n",
+      header: "N",
+      sortKey: "n",
+      cell: () => null,
+    };
+    const byD: DataTableColumn<N> = {
+      id: "d",
+      header: "D",
+      sortKey: "d",
+      cell: () => null,
+    };
+    expect(sortValue(byN, { n: Number.NaN, d: new Date() })).toBeUndefined();
+    expect(sortValue(byD, { n: 1, d: new Date("nope") })).toBeUndefined();
+    expect(sortValue(byN, { n: 0, d: new Date() })).toBe(0);
+  });
+
+  it("only accepts row fields that hold a sortable value", () => {
+    type O = { name: string; owner: { id: string } };
+    const ok: DataTableColumn<O> = {
+      id: "n",
+      header: "N",
+      sortKey: "name",
+      cell: () => null,
+    };
+    const bad: DataTableColumn<O> = {
+      id: "o",
+      header: "O",
+      // @ts-expect-error an object field cannot be compared
+      sortKey: "owner",
+      cell: () => null,
+    };
+    expect([ok.sortKey, bad.sortKey]).toEqual(["name", "owner"]);
   });
 
   it("compares text case-blind and numeric-aware", () => {

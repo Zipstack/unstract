@@ -21,7 +21,10 @@ export function sortAnnouncement(
 const count = (n: number): string => n.toLocaleString("en-US");
 const rows = (n: number): string => `${count(n)} ${n === 1 ? "row" : "rows"}`;
 
-/** "3 rows selected", or "All 25 rows on this page selected" from the header box. */
+/**
+ * "3 rows selected", or from the header box "All 25 rows on this page
+ * selected, 40 in total".
+ */
 export function selectionAnnouncement(
   total: number,
   allOnPage: number | null,

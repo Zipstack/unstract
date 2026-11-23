@@ -180,6 +180,43 @@ describe("TopNavBar Switch Org", () => {
 });
 
 describe("TopNavBar current org", () => {
+  it("names the selected org in the bar", () => {
+    renderTopNavBar();
+
+    expect(screen.getByTestId("top-navbar-org-name")).toHaveTextContent(
+      "Org A",
+    );
+  });
+
+  it("names the org the session points at, not the first in the list", () => {
+    useSessionStore.setState({
+      sessionDetails: {
+        ...useSessionStore.getState().sessionDetails,
+        orgName: "org-b",
+        orgId: "org-b",
+      },
+    });
+    renderTopNavBar();
+
+    expect(screen.getByTestId("top-navbar-org-name")).toHaveTextContent(
+      "Org B",
+    );
+  });
+
+  it("shows no org name in the open-source build", () => {
+    useSessionStore.setState({
+      sessionDetails: {
+        ...useSessionStore.getState().sessionDetails,
+        orgName: "mock_org",
+        orgId: "mock_org",
+        allOrganization: [{ id: "mock_org", display_name: "mock_org" }],
+      },
+    });
+    renderTopNavBar();
+
+    expect(screen.queryByTestId("top-navbar-org-name")).not.toBeInTheDocument();
+  });
+
   it("tells a keyboard user they are already in the org", async () => {
     const user = userEvent.setup();
     renderTopNavBar();
@@ -204,7 +241,8 @@ describe("TopNavBar current org", () => {
     renderTopNavBar();
 
     await openSwitchOrg(user);
-    await user.click(await screen.findByText("Org A"));
+    // "Org A" is also the bar's label; pick the list entry.
+    await user.click(await screen.findByRole("menuitem", { name: "Org A" }));
 
     expect(useAlertStore.getState().alertDetails).toMatchObject({
       type: "error",

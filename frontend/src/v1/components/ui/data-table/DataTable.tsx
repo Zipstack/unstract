@@ -7,14 +7,17 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
+import { IconButton } from "@v1/components/ui/button";
 import {
   InlineAlert,
   Skeleton,
   SkeletonBlock,
 } from "@v1/components/ui/feedback";
-import { DEFAULT_PAGE_SIZES, Pagination } from "@v1/components/ui/navigation";
+import { RowActionMenu, RowContextMenu } from "@v1/components/ui/menu";
+import { Pagination } from "@v1/components/ui/navigation";
 import { Checkbox } from "@v1/components/ui/toggles";
 import { cn } from "@v1/lib/cn";
+import { PORTAL_CONTAINER_ID } from "@v1/lib/portal";
 import { ArrowDown, ArrowUp, ChevronRight, ChevronsUpDown } from "lucide-react";
 import {
   Fragment,
@@ -22,14 +25,14 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
-  useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { selectionAnnouncement, sortAnnouncement } from "./announce";
+import { sortAnnouncement } from "./announce";
 import { BulkBar } from "./BulkBar";
 import {
   ALIGN_CLASS,
@@ -39,23 +42,29 @@ import {
   sortValue,
   WIDTH_CLASS,
 } from "./columns";
-import { RowActions } from "./row-actions";
 import type {
   DataTableColumn,
   DataTableProps,
   DataTableSort,
   DataTableSortValue,
 } from "./types";
+import { pageSizeOr, useClientPage } from "./useClientPage";
 import { usePriorityTier } from "./usePriorityTier";
+import { type SelectionChange, useSelection } from "./useSelection";
 
 /** Spec: 56-pixel rows (`ui:h-14`). The virtualiser's estimate and floor. */
-export const ROW_HEIGHT = 56;
+const ROW_HEIGHT = 56;
 /** `scroll="container"` renders only the rows in view past this many. */
-export const VIRTUALIZE_ABOVE = 50;
-export const DEFAULT_PAGE_SIZE = 25;
+const VIRTUALIZE_ABOVE = 50;
+/** The default 25 is in the list, so the user can always go back to it. */
+const TABLE_PAGE_SIZES: readonly number[] = [10, 25, 50, 100];
 const MAX_LOADING_ROWS = 10;
 const NO_BREAK_SPACE = " ";
+const SEP = "\u0000";
+const EMPTY: readonly string[] = [];
 const INITIAL_VIEWPORT = { width: 0, height: ROW_HEIGHT * 12 };
+/** The skeleton's three widths (dev spec section 8, as `feedback/Skeleton`). */
+const SKELETON_WIDTHS = ["ui:w-full", "ui:w-[78%]", "ui:w-[46%]"] as const;
 
 /*
  * Frames A01 (1078:936) and L10 (1252:4201) and the dev spec board
@@ -63,7 +72,8 @@ const INITIAL_VIEWPORT = { width: 0, height: ROW_HEIGHT * 12 };
  * caps; 56-tall rows (the spec; the frames draw 52) with a 1px rule; the
  * selected row in primary-muted with a 2px primary bar on its left edge; the
  * hover in accent; a failed row in the destructive token at 5% (the frames'
- * #fef2f2 has no token).
+ * #fef2f2 has no token). `data-selected`, not `data-state`: the row is a
+ * context-menu trigger, which owns `data-state`.
  */
 const HEAD_CELL =
   "ui:sticky ui:top-0 ui:z-10 ui:box-border ui:h-10 ui:border-0 ui:border-b ui:border-solid ui:border-border ui:bg-muted ui:px-4 ui:py-0 ui:align-middle ui:font-sans ui:text-overline ui:font-semibold ui:text-muted-foreground ui:uppercase";
@@ -71,13 +81,11 @@ const CELL =
   "ui:box-border ui:border-0 ui:border-b ui:border-solid ui:border-border ui:px-4 ui:py-2 ui:align-middle ui:font-sans ui:text-body ui:text-foreground";
 const UTILITY_CELL = "ui:w-12 ui:px-0 ui:text-center";
 const ROW =
-  "ui:h-14 ui:outline-none ui:focus-visible:focus-ring ui:data-[tone=failure]:bg-destructive/5 ui:data-[state=selected]:bg-primary-muted";
+  "ui:h-14 ui:outline-none ui:focus-visible:focus-ring ui:data-[tone=failure]:bg-destructive/5 ui:data-selected:bg-primary-muted";
 const ROW_HOVER =
-  "ui:not-data-[state=selected]:hover:bg-accent ui:data-[tone=failure]:not-data-[state=selected]:hover:bg-destructive/10";
+  "ui:not-data-selected:hover:bg-accent ui:data-[tone=failure]:not-data-selected:hover:bg-destructive/10";
 const SELECTED_BAR =
   "ui:relative ui:before:absolute ui:before:inset-y-0 ui:before:left-0 ui:before:w-0.5 ui:before:bg-primary ui:before:content-['']";
-const ICON_BUTTON =
-  "ui:inline-flex ui:size-8 ui:cursor-pointer ui:items-center ui:justify-center ui:rounded-md ui:border-0 ui:bg-transparent ui:p-0 ui:text-muted-foreground ui:outline-none ui:hover:bg-accent ui:hover:text-foreground ui:focus-visible:focus-ring";
 
 /** A click on these inside a row is theirs, not the row's. */
 const OWN_CLICK = [
@@ -129,6 +137,14 @@ function nextSort(
   return current.direction === "asc" ? { columnId, direction: "desc" } : null;
 }
 
+const sortKeyOf = (sort: DataTableSort | null): string =>
+  sort ? `${sort.columnId}:${sort.direction}` : "";
+
+const visibleIn = (
+  ids: readonly string[],
+  rowIds: ReadonlySet<string>,
+): readonly string[] => ids.filter((id) => rowIds.has(id));
+
 const SORT_ICON = { asc: ArrowUp, desc: ArrowDown } as const;
 const ARIA_SORT = { asc: "ascending", desc: "descending" } as const;
 
@@ -170,53 +186,58 @@ export function DataTable<TRow>({
   className,
 }: DataTableProps<TRow>): JSX.Element {
   const server = pagination?.mode === "server";
+  const clientPaged = pagination?.mode === "client";
   const tier = usePriorityTier();
   const detailIdBase = useId();
 
   // ── Sort ──────────────────────────────────────────────────────────────
+  // Always kept, so a parent that stops controlling (passes undefined again)
+  // gets the last sort, not one from before it took over.
   const [ownSort, setOwnSort] = useState<DataTableSort | null>(defaultSort);
   const sort = sortProp === undefined ? ownSort : sortProp;
+  const canSort = (column: DataTableColumn<TRow>): boolean =>
+    column.sortKey !== undefined && (!server || onSortChange !== undefined);
 
   // ── Selection ─────────────────────────────────────────────────────────
-  const [ownSelected, setOwnSelected] =
-    useState<readonly string[]>(defaultSelectedIds);
-  const heldSelection = selectedProp ?? ownSelected;
-  // Without server pagination the table holds every row, so a held id that
-  // is not in `rows` is not shown: the count, the header box and the bulk
-  // bar see only rows the user can see. While `filtered` it is kept (see
-  // `base` below) and shows again when the filter clears. Server pages show
-  // ids from other pages on purpose.
   const rowIds = useMemo(
     () => (server ? null : new Set(rows.map(getRowId))),
     [server, rows, getRowId],
   );
-  const selectedList = useMemo(
-    () =>
-      rowIds === null
-        ? heldSelection
-        : heldSelection.filter((id) => rowIds.has(id)),
-    [rowIds, heldSelection],
-  );
-  const selected = useMemo(() => new Set(selectedList), [selectedList]);
+  const selection = useSelection({
+    rowIds,
+    controlled: selectedProp,
+    initial: defaultSelectedIds,
+    filtered,
+    onChange: onSelectionChange,
+  });
+  const selectedList = selectable ? selection.visible : EMPTY;
 
   // ── Expansion and client paging ───────────────────────────────────────
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(defaultExpandedIds.map((id) => [id, true])),
   );
-  const [pageIndex, setPageIndex] = useState(0);
-  const [ownPageSize, setOwnPageSize] = useState(
-    pagination?.mode === "client"
-      ? (pagination.pageSize ?? DEFAULT_PAGE_SIZE)
-      : DEFAULT_PAGE_SIZE,
-  );
+  const page = useClientPage({
+    rowCount: rows.length,
+    defaultPageSize: clientPaged ? pagination.defaultPageSize : undefined,
+    filtered,
+    resetKey: clientPaged ? pagination.resetKey : undefined,
+    sortKey: sortKeyOf(sort),
+  });
 
   // ── What the live region says ─────────────────────────────────────────
-  // A repeat of the same words would not be read again, so every other
-  // message carries a no-break space.
+  // A change is announced once it shows, so a controlled parent that
+  // ignores it announces nothing. A repeat of the same words would not be
+  // read again, so every other message carries a no-break space.
   const [announcement, setAnnouncement] = useState({ text: "", flip: false });
-  const announce = useCallback((text: string) => {
-    setAnnouncement((last) => ({ text, flip: !last.flip }));
-  }, []);
+  const pending = useRef<{ key: string; text: string } | null>(null);
+  const shownKey = `${sortKeyOf(sort)}|${selectedList.join(SEP)}`;
+  useEffect(() => {
+    const due = pending.current;
+    if (due !== null && due.key === shownKey) {
+      pending.current = null;
+      setAnnouncement((last) => ({ text: due.text, flip: !last.flip }));
+    }
+  }, [shownKey]);
 
   const columnDefs = useMemo<ColumnDef<TRow, DataTableSortValue | undefined>[]>(
     () =>
@@ -256,21 +277,11 @@ export function DataTable<TRow>({
         : [{ id: sortColumn, desc: sortDirection === "desc" }],
     [sortColumn, sortDirection],
   );
-  // A page past the end (the rows shrank) shows the last page at once,
-  // rather than one empty render before Pagination corrects it.
-  const lastPageIndex = Math.max(0, Math.ceil(rows.length / ownPageSize) - 1);
-  const shownPageIndex = Math.min(pageIndex, lastPageIndex);
-  if (shownPageIndex !== pageIndex && rows.length > 0) {
-    // Stored, so growing rows again do not jump back to the old page. Not
-    // while empty: a refetch clears the rows and should come back in place.
-    setPageIndex(shownPageIndex);
-  }
   const paginationState = useMemo(
-    () => ({ pageIndex: shownPageIndex, pageSize: ownPageSize }),
-    [shownPageIndex, ownPageSize],
+    () => ({ pageIndex: page.pageIndex, pageSize: page.pageSize }),
+    [page.pageIndex, page.pageSize],
   );
 
-  const clientPaged = pagination?.mode === "client";
   const table = useReactTable<TRow>({
     data: rows as TRow[],
     columns: columnDefs,
@@ -303,59 +314,42 @@ export function DataTable<TRow>({
 
   const changeSort = (columnId: string): void => {
     const next = nextSort(sort, columnId);
-    if (sortProp === undefined) {
-      setOwnSort(next);
-    }
+    setOwnSort(next);
     onSortChange?.(next);
-    if (clientPaged) {
-      setPageIndex(0);
+    // A new order starts on page 1: a client table resets itself when the
+    // shown sort changes (useClientPage); a server table asks its parent.
+    if (server && pagination.page !== 1) {
+      pagination.onPageChange(1);
     }
-    announce(sortAnnouncement(next, headerOf));
+    pending.current = {
+      key: `${sortKeyOf(next)}|${selectedList.join(SEP)}`,
+      text: sortAnnouncement(next, headerOf),
+    };
   };
 
-  const commitSelection = (next: readonly string[], text: string): void => {
-    if (selectedProp === undefined) {
-      setOwnSelected(next);
-    }
-    onSelectionChange?.(next);
-    announce(text);
-  };
-
-  // While `filtered`, changes apply to the held selection, so rows the filter
-  // hides keep their state. Unfiltered, a row missing from `rows` is gone
-  // (deleted), so changes start from the visible selection and drop it.
-  const base = filtered ? heldSelection : selectedList;
-  const visibleCount = (ids: readonly string[]): number =>
-    rowIds === null ? ids.length : ids.filter((id) => rowIds.has(id)).length;
-
-  const toggleRow = (id: string): void => {
-    const next = base.includes(id)
-      ? base.filter((item) => item !== id)
-      : [...base, id];
-    commitSelection(next, selectionAnnouncement(visibleCount(next), null));
+  const commitSelection = (change: SelectionChange): void => {
+    selection.commit(change);
+    const shown =
+      rowIds === null ? change.next : visibleIn(change.next, rowIds);
+    pending.current = {
+      key: `${sortKeyOf(sort)}|${shown.join(SEP)}`,
+      text: change.text,
+    };
   };
 
   const pageIds = pageRows.map((row) => row.id);
-  const pageSelectedCount = pageIds.filter((id) => selected.has(id)).length;
+  const pageSelectedCount = pageIds.filter((id) => selection.has(id)).length;
   const allOnPage = pageIds.length > 0 && pageSelectedCount === pageIds.length;
   const someOnPage = pageSelectedCount > 0 && !allOnPage;
 
-  const togglePage = (): void => {
-    if (allOnPage) {
-      const onPage = new Set(pageIds);
-      const next = base.filter((id) => !onPage.has(id));
-      commitSelection(next, selectionAnnouncement(visibleCount(next), null));
-    } else {
-      const next = [...new Set([...base, ...pageIds])];
-      commitSelection(
-        next,
-        selectionAnnouncement(visibleCount(next), pageIds.length),
-      );
-    }
+  const toggleRow = (id: string): void => {
+    commitSelection(selection.toggle(id));
   };
-
+  const togglePage = (): void => {
+    commitSelection(selection.togglePage(pageIds));
+  };
   const clearSelection = (): void => {
-    commitSelection([], selectionAnnouncement(0, null));
+    commitSelection(selection.clear());
   };
 
   const isOpen = (row: Row<TRow>): boolean =>
@@ -381,8 +375,10 @@ export function DataTable<TRow>({
   const focusTarget = useRef<string | null>(null);
 
   // ── Virtualisation (container scroll only) ───────────────────────────
+  const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const virtual = scroll === "container" && pageRows.length > VIRTUALIZE_ABOVE;
+  const virtual =
+    scroll === "container" && !loading && pageRows.length > VIRTUALIZE_ABOVE;
   const virtualizer = useVirtualizer({
     count: pageRows.length,
     getScrollElement: () => scrollRef.current,
@@ -417,6 +413,83 @@ export function DataTable<TRow>({
     }
   });
 
+  // A container table opens a new page or order at the top.
+  const viewKey = `${server ? pagination.page : page.pageIndex}|${sortKeyOf(sort)}`;
+  const shownView = useRef(viewKey);
+  useEffect(() => {
+    if (shownView.current === viewKey) {
+      return;
+    }
+    shownView.current = viewKey;
+    if (scroll === "container" && scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+  }, [viewKey, scroll]);
+
+  // ── Focus that would drop to <body> ───────────────────────────────────
+  // When the focused control unmounts (Clear selection, Retry, a deleted
+  // row, the skeleton replacing the body), focus goes to the active row, or
+  // to the header when there are no rows, so a screen reader keeps its place.
+  const lastFocused = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) {
+      return;
+    }
+    const doc = root.ownerDocument;
+    const inside = (node: EventTarget | null): boolean =>
+      node instanceof Node &&
+      (root.contains(node) ||
+        // The row menu is portalled; focus there still belongs to the table.
+        doc.getElementById(PORTAL_CONTAINER_ID)?.contains(node) === true);
+    const onFocusIn = (event: FocusEvent): void => {
+      if (root.contains(event.target as Node)) {
+        lastFocused.current = event.target as HTMLElement;
+      }
+    };
+    const onFocusOut = (event: FocusEvent): void => {
+      if (event.relatedTarget !== null && !inside(event.relatedTarget)) {
+        lastFocused.current = null;
+      }
+    };
+    const onPointerDown = (event: PointerEvent): void => {
+      if (!inside(event.target)) {
+        lastFocused.current = null;
+      }
+    };
+    root.addEventListener("focusin", onFocusIn);
+    root.addEventListener("focusout", onFocusOut);
+    doc.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      root.removeEventListener("focusin", onFocusIn);
+      root.removeEventListener("focusout", onFocusOut);
+      doc.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, []);
+  useLayoutEffect(() => {
+    const last = lastFocused.current;
+    const root = rootRef.current;
+    if (!last || last.isConnected || !root) {
+      return;
+    }
+    const now = root.ownerDocument.activeElement;
+    if (now && now !== root.ownerDocument.body) {
+      lastFocused.current = null;
+      return;
+    }
+    const row = active === null ? undefined : rowElements.current.get(active);
+    const fallback =
+      (interactive ? row : undefined) ??
+      root.querySelector<HTMLElement>(
+        "thead button:not(:disabled), thead [role=checkbox]:not(:disabled)",
+      );
+    if (fallback) {
+      fallback.focus();
+    } else {
+      lastFocused.current = null;
+    }
+  });
+
   const moveTo = (index: number): void => {
     const target = pageRows[Math.min(Math.max(index, 0), pageRows.length - 1)];
     if (!target) {
@@ -448,7 +521,7 @@ export function DataTable<TRow>({
     ) {
       return;
     }
-    const canExpand = row.getCanExpand();
+    const rowCanExpand = row.getCanExpand();
     const go = (target: number): boolean => {
       moveTo(target);
       return true;
@@ -463,10 +536,10 @@ export function DataTable<TRow>({
       Enter: () => {
         if (onRowClick) {
           onRowClick(row.original);
-        } else if (canExpand) {
+        } else if (rowCanExpand) {
           toggleExpanded(row.id);
         }
-        return onRowClick !== undefined || canExpand;
+        return onRowClick !== undefined || rowCanExpand;
       },
       " ": () => {
         if (selectable) {
@@ -475,16 +548,16 @@ export function DataTable<TRow>({
         return selectable;
       },
       ArrowRight: () => {
-        if (canExpand) {
+        if (rowCanExpand) {
           toggleExpanded(row.id, true);
         }
-        return canExpand;
+        return rowCanExpand;
       },
       ArrowLeft: () => {
-        if (canExpand) {
+        if (rowCanExpand) {
           toggleExpanded(row.id, false);
         }
-        return canExpand;
+        return rowCanExpand;
       },
     };
     if (keys[event.key]?.()) {
@@ -512,9 +585,9 @@ export function DataTable<TRow>({
     (selectable ? 1 : 0) +
     (expandable ? 1 : 0) +
     (rowActions ? 1 : 0);
-  const pageSize = server ? pagination.pageSize : ownPageSize;
+  const pageSize = server ? pagination.pageSize : page.pageSize;
   const skeletonRows = Math.min(
-    loadingRows ?? (pagination ? pageSize : 5),
+    pageSizeOr(loadingRows, pagination ? pageSize : 5),
     MAX_LOADING_ROWS,
   );
 
@@ -526,6 +599,7 @@ export function DataTable<TRow>({
     const isActive = interactive && row.id === active;
     const controlTab = interactive && !isActive ? -1 : undefined;
     const detailId = `${detailIdBase}-detail-${index}`;
+    const actions = rowActions?.(row.original);
     // Cells as data, so the first can carry the selected bar.
     const cells: { key: string; className: string; content: ReactNode }[] = [];
     if (selectable) {
@@ -549,23 +623,18 @@ export function DataTable<TRow>({
         key: "expand",
         className: UTILITY_CELL,
         content: row.getCanExpand() ? (
-          <button
-            type="button"
-            className={ICON_BUTTON}
+          <IconButton
+            icon={ChevronRight}
             aria-label={`Details for ${rowLabel}`}
             aria-expanded={isExpanded}
             aria-controls={isExpanded ? detailId : undefined}
             tabIndex={controlTab}
             onClick={() => toggleExpanded(row.id)}
-          >
-            <ChevronRight
-              aria-hidden
-              className={cn(
-                "ui:size-4 ui:transition-transform ui:motion-reduce:transition-none",
-                isExpanded && "ui:rotate-90",
-              )}
-            />
-          </button>
+            className={cn(
+              "ui:[&>svg]:transition-transform ui:motion-reduce:[&>svg]:transition-none",
+              isExpanded && "ui:[&>svg]:rotate-90",
+            )}
+          />
         ) : null,
       });
     }
@@ -579,68 +648,71 @@ export function DataTable<TRow>({
         }),
       });
     }
-    if (rowActions) {
+    if (actions) {
       cells.push({
         key: "actions",
         className: "ui:px-2 ui:text-right",
         content: (
-          <span className="ui:inline-flex ui:items-center">
-            <RowActions
+          <div className="ui:inline-flex ui:items-center">
+            <RowActionMenu
               label={`Actions for ${rowLabel}`}
-              actions={rowActions(row.original)}
+              actions={actions}
               tabIndex={controlTab}
             />
-          </span>
+          </div>
         ),
       });
     }
+    const tr = (
+      <tr
+        ref={(element) => {
+          if (element) {
+            rowElements.current.set(row.id, element);
+          } else {
+            rowElements.current.delete(row.id);
+          }
+        }}
+        data-slot="data-table-row"
+        data-selected={isSelected ? "" : undefined}
+        data-tone={tone === "failure" ? "failure" : undefined}
+        aria-rowindex={virtual ? ariaRowIndex[index] : undefined}
+        tabIndex={interactive ? (isActive ? 0 : -1) : undefined}
+        className={cn(ROW, ROW_HOVER, onRowClick && "ui:cursor-pointer")}
+        onFocus={() => {
+          if (interactive && activeId !== row.id) {
+            setActiveId(row.id);
+          }
+        }}
+        onClick={
+          onRowClick
+            ? (event) => {
+                if (!fromControl(event)) {
+                  onRowClick(row.original);
+                }
+              }
+            : undefined
+        }
+        onKeyDown={
+          interactive ? (event) => onRowKeyDown(event, row, index) : undefined
+        }
+      >
+        {cells.map(({ key, className: cellClass, content }, i) => (
+          <td
+            key={key}
+            className={cn(
+              CELL,
+              cellClass,
+              i === 0 && isSelected && SELECTED_BAR,
+            )}
+          >
+            {content}
+          </td>
+        ))}
+      </tr>
+    );
     return (
       <Fragment key={row.id}>
-        <tr
-          ref={(element) => {
-            if (element) {
-              rowElements.current.set(row.id, element);
-            } else {
-              rowElements.current.delete(row.id);
-            }
-          }}
-          data-slot="data-table-row"
-          data-state={isSelected ? "selected" : undefined}
-          data-tone={tone === "failure" ? "failure" : undefined}
-          aria-rowindex={virtual ? ariaRowIndex[index] : undefined}
-          tabIndex={interactive ? (isActive ? 0 : -1) : undefined}
-          className={cn(ROW, ROW_HOVER, onRowClick && "ui:cursor-pointer")}
-          onFocus={() => {
-            if (interactive && activeId !== row.id) {
-              setActiveId(row.id);
-            }
-          }}
-          onClick={
-            onRowClick
-              ? (event) => {
-                  if (!fromControl(event)) {
-                    onRowClick(row.original);
-                  }
-                }
-              : undefined
-          }
-          onKeyDown={
-            interactive ? (event) => onRowKeyDown(event, row, index) : undefined
-          }
-        >
-          {cells.map(({ key, className: cellClass, content }, i) => (
-            <td
-              key={key}
-              className={cn(
-                CELL,
-                cellClass,
-                i === 0 && isSelected && SELECTED_BAR,
-              )}
-            >
-              {content}
-            </td>
-          ))}
-        </tr>
+        {actions ? <RowContextMenu actions={actions}>{tr}</RowContextMenu> : tr}
         {isExpanded && renderExpanded && (
           <tr
             data-slot="data-table-expanded"
@@ -688,7 +760,7 @@ export function DataTable<TRow>({
                 <SkeletonBlock
                   className={cn(
                     "ui:h-3",
-                    ["ui:w-full", "ui:w-3/4", "ui:w-1/2"][(r + c) % 3],
+                    SKELETON_WIDTHS[(r + c) % SKELETON_WIDTHS.length],
                   )}
                 />
               </td>
@@ -741,7 +813,6 @@ export function DataTable<TRow>({
     body = <tbody>{pageRows.map((row, index) => renderRow(row, index))}</tbody>;
   }
 
-  const sortedColumn = sort?.columnId;
   const header = (
     <thead>
       <tr aria-rowindex={virtual ? 1 : undefined}>
@@ -766,7 +837,8 @@ export function DataTable<TRow>({
           <HeaderCell
             key={column.id}
             column={column}
-            sorted={sortedColumn === column.id ? sort?.direction : undefined}
+            sortable={canSort(column)}
+            sorted={sortColumn === column.id ? sortDirection : undefined}
             onSort={() => changeSort(column.id)}
           />
         ))}
@@ -784,6 +856,7 @@ export function DataTable<TRow>({
 
   return (
     <div
+      ref={rootRef}
       data-slot="data-table"
       className={cn(
         "ui:flex ui:min-h-0 ui:flex-col ui:gap-3 ui:font-sans",
@@ -795,7 +868,7 @@ export function DataTable<TRow>({
         <BulkBar label={label} count={selectedCount} onClear={clearSelection}>
           {bulkActions?.({
             selectedIds: selectedList,
-            selectedRows: rows.filter((row) => selected.has(getRowId(row))),
+            selectedRows: rows.filter((row) => selection.has(getRowId(row))),
             clearSelection,
           })}
         </BulkBar>
@@ -838,19 +911,17 @@ export function DataTable<TRow>({
           {pagination && (
             <Pagination
               aria-label={`${label} pages`}
-              page={server ? pagination.page : shownPageIndex + 1}
+              page={server ? pagination.page : page.pageIndex + 1}
               pageSize={pageSize}
               total={totalRows}
-              pageSizeOptions={pagination.pageSizeOptions ?? DEFAULT_PAGE_SIZES}
+              pageSizeOptions={pagination.pageSizeOptions ?? TABLE_PAGE_SIZES}
               onPageChange={
                 server
                   ? pagination.onPageChange
-                  : (page) => setPageIndex(page - 1)
+                  : (next) => page.setPageIndex(next - 1)
               }
               onPageSizeChange={
-                server
-                  ? pagination.onPageSizeChange
-                  : (size) => setOwnPageSize(size)
+                server ? pagination.onPageSizeChange : page.setPageSize
               }
             />
           )}
@@ -883,10 +954,12 @@ function Spacer({
 
 function HeaderCell<TRow>({
   column,
+  sortable,
   sorted,
   onSort,
 }: Readonly<{
   column: DataTableColumn<TRow>;
+  sortable: boolean;
   sorted: "asc" | "desc" | undefined;
   onSort: () => void;
 }>): JSX.Element {
@@ -902,9 +975,7 @@ function HeaderCell<TRow>({
         column.width && WIDTH_CLASS[column.width],
       )}
     >
-      {column.sortKey === undefined ? (
-        column.header
-      ) : (
+      {sortable ? (
         <button
           type="button"
           onClick={onSort}
@@ -923,6 +994,8 @@ function HeaderCell<TRow>({
             )}
           />
         </button>
+      ) : (
+        column.header
       )}
     </th>
   );
