@@ -90,12 +90,12 @@ describe("buildLiveRegistry", () => {
   it("with dev routes, the demo pages and previewed pages are live", () => {
     expect(
       livePages({ devRoutes: true, distribution: "cloud", storage: preview }),
-    ).toEqual(["UN05", "DEMO-PAGE", "DEMO-REVIEW"]);
+    ).toEqual(["UN05", "DEMO-PAGE", "DEMO-REVIEW", "DEMO-VIEWER"]);
   });
 
   it("drops pages the build's distribution lacks, previewed or not", () => {
     expect(
       livePages({ devRoutes: true, distribution: "oss", storage: preview }),
-    ).toEqual(["DEMO-PAGE", "DEMO-REVIEW"]);
+    ).toEqual(["DEMO-PAGE", "DEMO-REVIEW", "DEMO-VIEWER"]);
   });
 });
