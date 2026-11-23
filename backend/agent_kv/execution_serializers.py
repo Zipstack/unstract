@@ -912,10 +912,42 @@ class SubmitSerializer(serializers.Serializer):
         entries = data.get("extractors") or []
         if any(custom_data.entry_references(e) for e in entries):
             try:
-                data["extractors"] = [
+                resolved = [
                     custom_data.resolve_entry(e, data.get("custom_data")) for e in entries
                 ]
             except custom_data.MissingCustomDataKey as e:
-                raise serializers.ValidationError({"custom_data": str(e)}) from e
+                # Built from the exception's own fields rather than `str(e)`:
+                # the message is ours either way, but passing the exception
+                # object into the response body is what CodeQL flags as
+                # information exposure, and there is nothing here that needs
+                # the object.
+                raise serializers.ValidationError(
+                    {"custom_data": e.message_for_caller()}
+                ) from e
+
+            # **Re-measured AFTER substitution, against the same cap.**
+            # `validate_extractors` measures the payload as SENT, which is the
+            # template; substitution then expands it by up to the whole
+            # `custom_data` allowance PER PLACEHOLDER. A 256 KiB `extractors`
+            # holding ~10,000 copies of `{{custom_data.x}}` against a
+            # 20,000-byte value resolves to hundreds of megabytes -- all of it
+            # held in memory, dispatched, and billed as prompt text, from a
+            # request where both halves were individually within their limits.
+            #
+            # The cap is the one the caller was already told about, so this
+            # adds no knob; the message says the size is the resolved one,
+            # because a payload that measured 200 KiB being refused for being
+            # too large is otherwise baffling.
+            size = len(json.dumps(resolved, ensure_ascii=False).encode("utf-8"))
+            if size > settings.AGENT_KV_MAX_SCHEMA_BYTES:
+                raise serializers.ValidationError(
+                    {
+                        "extractors": f"extractors resolves to {size} bytes after "
+                        f"custom_data substitution; max is "
+                        f"{settings.AGENT_KV_MAX_SCHEMA_BYTES}. Shorten the "
+                        "substituted values or the number of placeholders"
+                    }
+                )
+            data["extractors"] = resolved
 
         return data

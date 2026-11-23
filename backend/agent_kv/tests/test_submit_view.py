@@ -617,8 +617,7 @@ def test_sync_wait_returns_200_with_failure_body_when_job_fails_mid_wait(
         "status": "failed",
         "error": "LLM provider timed out",
         # The sync-wait path returns the same terminal payload the result
-        # endpoint does, so it carries the same echo.
-        "custom_data": {},
+        # endpoint does, so it omits the echo for the same reason.
     }
     assert not m_sleep.called
 
@@ -1252,6 +1251,6 @@ def test_the_other_agent_kv_routes_are_not_exempted():
         ("agent_kv_cancel", {"job_id": "00000000-0000-0000-0000-000000000001"}),
     ):
         match = resolver.resolve(reverse(name, kwargs=kwargs))
-        assert not getattr(match.func, "_non_atomic_requests", set()), (
-            f"{name} is exempt from ATOMIC_REQUESTS but has no in-request wait"
-        )
+        assert not getattr(
+            match.func, "_non_atomic_requests", set()
+        ), f"{name} is exempt from ATOMIC_REQUESTS but has no in-request wait"

@@ -219,10 +219,11 @@ def test_result_for_failed_job_is_200_with_success_false_and_error(
         "success": False,
         "status": "failed",
         "error": "LLM provider timed out",
-        # Echoed on every terminal payload, `{}` when the caller sent none.
-        # Exact equality kept deliberately: this is a wire contract, and a
-        # subset check here would stop noticing a field appearing by accident.
-        "custom_data": {},
+        # No `custom_data` key at all: this job sent none, and a caller who
+        # does not use the field must get the body they got before it existed.
+        # Exact equality kept deliberately -- this is a wire contract, and a
+        # subset check would stop noticing a field appearing by accident,
+        # which is exactly how the echo first went out unconditionally.
     }
     assert not m_read.called
 
@@ -248,9 +249,35 @@ def test_result_for_cancelled_job_is_200_with_cancelled_body(m_keys, m_jobs, m_r
     assert resp.data == {
         "success": False,
         "status": "cancelled",
-        "custom_data": {},
     }
     assert not m_read.called
+
+
+@mock.patch.object(evr, "read_result")
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_a_job_that_sent_custom_data_gets_it_echoed(m_keys, m_jobs, m_read):
+    """The other half of the omission, and the one that keeps the echo alive.
+
+    Asserting only that the key is absent for a job that sent none would pass
+    with the echo deleted outright. This is the case that fails if it is.
+    """
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(
+        status=JobStatus.CANCELLED,
+        expires_at=timezone.now() + timedelta(days=1),
+        custom_data={"vendor": "Acme", "nested": {"k": "v"}},
+    )
+    m_jobs.get.return_value = job
+
+    resp = ev.JobResultView.as_view()(_authed(), job_id=uuid.uuid4())
+
+    assert resp.status_code == 200
+    assert resp.data == {
+        "success": False,
+        "status": "cancelled",
+        "custom_data": {"vendor": "Acme", "nested": {"k": "v"}},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1017,9 +1044,9 @@ def test_cancel_loss_reports_the_refreshed_status(
     resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
 
     assert resp.status_code == 409
-    assert resp.data == {"status": "completed"}, (
-        "the 409 body reported the status read BEFORE the guard was lost"
-    )
+    assert resp.data == {
+        "status": "completed"
+    }, "the 409 body reported the status read BEFORE the guard was lost"
 
 
 # ---------------------------------------------------------------------------

@@ -95,13 +95,14 @@ def _status_document(job) -> dict:
         "started_at": job.dispatched_at.isoformat() if job.dispatched_at else None,
         "completed_at": job.completed_at.isoformat() if job.completed_at else None,
         "pages_total": job.pages_total,
-        # Echoed back because `custom_data` was accepted-and-ignored before
-        # this: a caller had no way to confirm the API had received what they
-        # sent, let alone that it had been substituted into the instructions.
-        # `{}` for a job that sent none, so a reader never has to test for
-        # null as well as empty.
-        "custom_data": job.custom_data or {},
     }
+    # Echoed back because `custom_data` was accepted-and-ignored before this: a
+    # caller had no way to confirm the API had received what they sent, let
+    # alone that it had been substituted into the instructions. Omitted
+    # entirely for a job that sent none, so a caller who does not use the
+    # feature sees the document they saw before it existed.
+    if job.custom_data:
+        doc["custom_data"] = job.custom_data
     if job.status == JobStatus.FAILED:
         doc["error"] = job.error
     return doc

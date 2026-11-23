@@ -45,10 +45,25 @@ class MissingCustomDataKey(KeyError):
     def __init__(self, path: str, *, reason: str) -> None:
         self.path = path
         self.reason = reason
-        super().__init__(
+        super().__init__(self._text(path, reason))
+
+    @staticmethod
+    def _text(path: str, reason: str) -> str:
+        return (
             f"{{{{custom_data.{path}}}}}: {reason}. Include this key in the "
             "'custom_data' object of your request."
         )
+
+    def message_for_caller(self) -> str:
+        """The 400 body, built from this exception's fields.
+
+        The caller of this module uses this rather than `str(self)` so that no
+        exception object reaches the response. Both produce the same text --
+        `reason` is always one of this module's own literals and `path` is the
+        caller's own placeholder -- but an exception flowing into a response
+        body is what static analysis flags, and nothing here needs it.
+        """
+        return self._text(self.path, self.reason)
 
 
 def referenced_paths(text: str) -> list[str]:

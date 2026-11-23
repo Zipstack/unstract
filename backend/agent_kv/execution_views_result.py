@@ -152,11 +152,19 @@ def result_payload(job) -> dict:
     a client would have to know which terminal state it got before trusting
     the field.
 
-    `custom_data` comes back as `{}` when none was sent, so a reader never
-    tests for null as well as empty. It survives a purge, because it lives on
-    the job row rather than in the stored blob `files_purged` destroys -- which
-    is what keeps a purged job's response self-describing.
+    `custom_data` is **omitted entirely for a job that sent none**, rather
+    than echoed as `{}`. An earlier version echoed it unconditionally, which
+    added a key to every cancelled and failed body that had never carried one
+    -- caught by the two salvage tests that assert those bodies are
+    byte-identical to before. A caller who sends no custom data must get the
+    response they got before the field existed, which is the same rule the
+    highlight fields follow one layer down.
+
+    It survives a purge, because it lives on the job row rather than in the
+    stored blob `files_purged` destroys -- which is what keeps a purged job's
+    response self-describing.
     """
     payload = _terminal_payload(job)
-    payload["custom_data"] = job.custom_data or {}
+    if job.custom_data:
+        payload["custom_data"] = job.custom_data
     return payload
