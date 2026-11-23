@@ -22,6 +22,7 @@ const plain: RegistryEntry = {
     "/:orgName/workflows/:id": "/:orgName/flows/:id/*",
   },
   toggle: false,
+  access: "authenticated",
   distributions: ["oss", "cloud"],
   registeredBy: "P3-T01",
 };
@@ -39,6 +40,7 @@ const review: RegistryEntry = {
     "/:orgName/review/approve": "/:orgName/hitl",
   },
   toggle: true,
+  access: "authenticated",
   distributions: ["cloud"],
   registeredBy: "P6-T07",
 };

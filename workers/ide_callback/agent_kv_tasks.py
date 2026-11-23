@@ -123,10 +123,43 @@ def agent_kv_complete(
     try:
         if not result_dict.get("success", False):
             error = result_dict.get("error") or _UNKNOWN
+            # A failed run can still carry an extraction, and this arm used to
+            # drop it. The `kv` engine fails the job when a `calculations` run
+            # fails, because the caller asked for calculations and did not get
+            # them -- but the extraction itself succeeded and the OCR and LLM
+            # spend for it was already flushed. The executor therefore hands
+            # the record over on that path instead of destroying it
+            # (`agentic_kv/src/executor.py`, which says in as many words that
+            # "reporting a failure and destroying the extraction are two
+            # different things, and only the second is a defect").
+            #
+            # It then died here: this call passed `error` and nothing else, so
+            # the executor's care was undone one hop later and the customer
+            # was billed for an answer they could not read back.
+            #
+            # NOTE the shape difference from the success arm below. There,
+            # `data` is `{"output": ..., "usage_summary": ...}` and the engine
+            # result is `data["output"]`. On the failure path `data` IS the
+            # salvaged engine fields, flat -- so it is forwarded whole.
+            #
+            # Forwarded unconditionally: an ordinary failure has `data={}`, and
+            # `agent_kv_finalize` already omits an empty `result` from the
+            # request body, so a guard here could not change what goes over the
+            # wire. Same reasoning the executor recorded when mutation testing
+            # showed its own `if salvage:` guard was dead.
+            #
+            # `agent_kv_error` -- the error link, taken when the executor
+            # RAISED -- has no structured result and is deliberately untouched.
+            salvaged = result_dict.get("data") or {}
             logger.error(
-                "agent_kv executor reported failure: job_id=%s error=%s", job_id, error
+                "agent_kv executor reported failure: job_id=%s error=%s salvaged=%s",
+                job_id,
+                error,
+                bool(salvaged),
             )
-            out = api.agent_kv_finalize(job_id, org_id, success=False, error=error)
+            out = api.agent_kv_finalize(
+                job_id, org_id, success=False, error=error, result=salvaged
+            )
         else:
             data = result_dict.get("data") or {}
             out = api.agent_kv_finalize(
@@ -444,7 +477,7 @@ def _notify_result_available(url: str, job_id: str) -> None:
     Sent only when ``FinalizeView`` reports ``result_attached``: the job was
     cancelled while its extraction was finishing, the usage was already flushed
     and billed, and the result is therefore kept and served by
-    ``GET /agent-kv/{job_id}/result`` alongside ``status: "cancelled"``.
+    ``GET /api/v1/agentic-extract/{job_id}/result`` alongside ``status: "cancelled"``.
 
     Logged at ERROR rather than raised on failure, matching the fresh-finalize
     branch above and for the same reason: the job is already terminal and its

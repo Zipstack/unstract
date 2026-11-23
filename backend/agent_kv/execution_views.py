@@ -85,7 +85,8 @@ def _status_document(job) -> dict:
         # chose them and is paying for them: a run naming the wrong `llm` id
         # produces a correct-looking result at a different price, and without
         # this the only record is in `usage_v2`, which the caller cannot read.
-        # `{}` for an env-configured extractor.
+        # `{}` only for a job predating the field. Both shipped extractors
+        # now require all three roles, so a new job always carries them.
         "adapters": job.adapters or {},
         "created_at": job.created_at.isoformat() if job.created_at else None,
         "started_at": job.dispatched_at.isoformat() if job.dispatched_at else None,
@@ -261,7 +262,7 @@ def _sync_wait_response(job, wait: float) -> Response | None:
     while time.monotonic() < deadline:
         job.refresh_from_db()
         if job.status in AgentKVJob.TERMINAL:
-            # A concurrent `DELETE /agent-kv/{job_id}` while this request is
+            # A concurrent `DELETE /api/v1/agentic-extract/{job_id}` while this request is
             # still waiting purges the job, and this is the second reader of a
             # stored result -- so it owes the same answer `JobResultView` gives
             # a purged job, for the same reason. Without it, the one caller who
@@ -633,16 +634,22 @@ class ValidateView(APIView):
     """Dry-run schema compile. **NOT ROUTED ON THIS DEPLOYMENT.**
 
     ``execution_urls.py`` deliberately omits this view, and that file carries
-    the full rationale. The short version: it compiles a `kv` keys schema and
-    does nothing else, and `kv` is the one extractor this build refuses
-    (``EXTRACTOR_ROUTES`` carries `table` only), so publishing it would
-    advertise validation for an extractor every submit 400s. The `table`
-    extractor's ``keys`` is ``{"target_table": ...}``, validated by
+    the full rationale. It compiles a `kv` keys schema and does nothing else.
+    The `table` extractor's ``keys`` is ``{"target_table": ...}``, validated by
     ``TableKeysSerializer`` at submit instead.
 
-    Kept in the tree, not deleted: restoring the endpoint is one line in
-    ``execution_urls.py``, and deleting it would force a content merge in the
-    file the branch carrying the KV engine rewrites most.
+    **Its original reason for being unpublished no longer holds, and routing it
+    is now an open decision rather than a blocked one.** That reason was that
+    `kv` was the one extractor this build refused, so publishing this would
+    advertise validation for an extractor every submit 400s. `kv` is routable
+    now, so the endpoint would validate something a caller can actually run.
+
+    It stays unrouted because publishing it is a separate decision from
+    enabling the extractor: it is a new public, rate-limited, key-authenticated
+    surface, and whoever wants it should weigh that rather than acquire it as a
+    side effect. Routing it is one line in ``execution_urls.py``, and
+    ``test_validate_is_not_a_public_route_on_this_deployment`` will fail
+    deliberately when someone adds it -- read its message and update it.
 
     So read the code below as dormant. Nothing reaches it but the unit tests
     that keep it honest -- in particular, it is NOT a live surface for the

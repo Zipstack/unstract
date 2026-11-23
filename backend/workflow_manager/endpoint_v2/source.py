@@ -55,7 +55,7 @@ from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
-from unstract.core.mime_gate import identify_zip_container
+from unstract.core.mime_gate import ZIP_CANDIDATE_MIME_TYPES, identify_zip_container
 from unstract.filesystem import FileStorageType, FileSystem
 from unstract.sdk1.file_storage import FileStorage
 from unstract.workflow_execution.enums import LogLevel, LogStage, LogState
@@ -1245,7 +1245,7 @@ class SourceConnector(BaseConnector):
     def _classify_file_path(cls, path: str, fallback: str) -> str:
         """Classify a staged path, looking inside a zip when that is all we get."""
         mime_type = magic.from_file(path, mime=True)
-        if mime_type == "application/zip":
+        if mime_type in ZIP_CANDIDATE_MIME_TYPES:
             inside = identify_zip_container(path)
             return inside or mime_type
         return mime_type or fallback

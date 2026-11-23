@@ -114,7 +114,11 @@ groups:
     workdir: workers
     # executor/tests: the executor's own unit tests (image-limit resolution,
     # the vlm_image_answer bridge); no lane collected them before UN-4427.
-    paths: [tests, shared/tests, shared/infrastructure/config/tests,
+    # sandbox/tests: the Agent-KV codegen sandbox's own unit tests, added on
+    # this branch. Both are independent additions to this lane -- main added
+    # executor/tests while this branch added sandbox/tests, so the merge keeps
+    # both rather than choosing.
+    paths: [tests, shared/tests, sandbox/tests, shared/infrastructure/config/tests,
             ide_callback/tests, executor/tests]
     # Negative filter: worker unit tests aren't tagged `unit` (~1100 of them),
     # so select by exclusion. `conftest.py` marks real-Postgres tests
@@ -308,7 +312,7 @@ groups:
     depends_on: [e2e-smoke]
     optional: true
 
-  # Agent-KV product API (/agent-kv/...). Needs the cloud `agentic_kv`
+  # Agent-KV product API (/api/v1/agentic-extract/...). Needs the cloud `agentic_kv`
   # executor plugin installed (docs/agent-kv-api.md §11) -- an OSS-only image
   # 501s every submit, so this is optional: an OSS-only CI run must not go
   # red just because the plugin isn't there. The module itself additionally

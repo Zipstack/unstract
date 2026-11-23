@@ -413,7 +413,12 @@ def test_ttl_cleanup_queries_expired_jobs_with_a_nonblank_ref(m_objects, m_delet
         resp = iv.TTLCleanupView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
-    assert resp.data == {"cleaned": 0, "retained": 0}
+    assert resp.data == {
+        "cleaned": 0,
+        "retained": 0,
+        "cache_deleted": 0,
+        "cache_failed": 0,
+    }
     assert m_objects.filter.call_args_list[0].kwargs == {"expires_at__lt": frozen_now}
     # TERMINAL-only: a job still RUNNING past its TTL must keep its staged
     # input. The retention policy covers finished work, not running work.
@@ -498,7 +503,12 @@ def test_ttl_cleanup_reserves_capacity_for_retries_under_a_flood_of_new_expiries
     # Every retry was attempted even though 500 fresh rows were queued behind
     # them, and the batch cap still held: 100 + 400 == 500.
     assert m_delete.call_count == 500
-    assert resp.data == {"cleaned": 0, "retained": 500}
+    assert resp.data == {
+        "cleaned": 0,
+        "retained": 500,
+        "cache_deleted": 0,
+        "cache_failed": 0,
+    }
 
 
 # (7) files are deleted BEFORE the refs are blanked -- order matters: a
@@ -523,7 +533,12 @@ def test_ttl_cleanup_deletes_files_before_blanking_refs(m_objects, m_delete, m_p
     resp = iv.TTLCleanupView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
-    assert resp.data == {"cleaned": 1, "retained": 0}
+    assert resp.data == {
+        "cleaned": 1,
+        "retained": 0,
+        "cache_deleted": 0,
+        "cache_failed": 0,
+    }
     assert [c[0] for c in manager.mock_calls] == ["delete_job_files", "update"]
     m_delete.assert_called_once_with(job)
 
@@ -572,7 +587,12 @@ def test_ttl_cleanup_returns_count_of_jobs_cleaned(m_objects, m_delete, m_purge)
 
     resp = iv.TTLCleanupView.as_view()(_post("/x"))
 
-    assert resp.data == {"cleaned": 2, "retained": 0}
+    assert resp.data == {
+        "cleaned": 2,
+        "retained": 0,
+        "cache_deleted": 0,
+        "cache_failed": 0,
+    }
     assert m_delete.call_count == 2
     assert m_qs.update.call_count == 2
 
@@ -590,7 +610,12 @@ def test_ttl_cleanup_with_no_candidates_is_a_pure_noop(m_objects, m_delete):
     resp = iv.TTLCleanupView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
-    assert resp.data == {"cleaned": 0, "retained": 0}
+    assert resp.data == {
+        "cleaned": 0,
+        "retained": 0,
+        "cache_deleted": 0,
+        "cache_failed": 0,
+    }
     assert not m_delete.called
     assert not m_qs.update.called
 
@@ -629,7 +654,12 @@ def test_ttl_cleanup_keeps_the_ref_whose_file_delete_failed(m_objects, m_delete,
     assert kwargs["cleanup_failed_at"] is not None
     # Not counted as cleaned -- it is unfinished, and `retained` is what makes a
     # permanently-failing backlog visible instead of silently draining to zero.
-    assert resp.data == {"cleaned": 0, "retained": 1}
+    assert resp.data == {
+        "cleaned": 0,
+        "retained": 1,
+        "cache_deleted": 0,
+        "cache_failed": 0,
+    }
 
 
 # (10c) nothing confirmed gone -> no ref is blanked, but the failure is still
@@ -656,7 +686,12 @@ def test_ttl_cleanup_blanks_no_ref_but_still_stamps_the_failure(m_objects, m_del
     (), kwargs = m_qs.update.call_args
     assert kwargs == {"cleanup_failed_at": mock.ANY}
     assert kwargs["cleanup_failed_at"] is not None
-    assert resp.data == {"cleaned": 0, "retained": 1}
+    assert resp.data == {
+        "cleaned": 0,
+        "retained": 1,
+        "cache_deleted": 0,
+        "cache_failed": 0,
+    }
 
 
 # (10d) a row that failed before and succeeds now must have its stale failure
@@ -683,7 +718,12 @@ def test_ttl_cleanup_clears_a_stale_failure_marker_on_success(m_objects, m_delet
     m_qs.update.assert_called_once_with(
         input_ref="", result_ref="", cleanup_failed_at=None
     )
-    assert resp.data == {"cleaned": 1, "retained": 0}
+    assert resp.data == {
+        "cleaned": 1,
+        "retained": 0,
+        "cache_deleted": 0,
+        "cache_failed": 0,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -1,13 +1,21 @@
 """Fleet queue wiring, DERIVED from `EXTRACTOR_ROUTES` rather than literal-pinned.
 
 `workers/tests/test_queue_consumer_wiring.py` guards the same property with
-hardcoded queue names (`UNSERVED_KV_QUEUE`, `AGENT_TABLE_QUEUE`). That works
-today and catches a real, expensive failure -- but it cannot survive the change
-it most needs to survive. Re-enabling the `kv` extractor means adding one entry
-to `EXTRACTOR_ROUTES`, at which point `celery_executor_agentic_kv` flips from
-"must NOT be advertised" to "must be served", and the literal-pinned assertion
-has to be *deleted* to make the suite pass. An assertion whose correct response
-to a change is deletion is not protecting anything at that moment.
+hardcoded queue names (`KV_QUEUE`, `AGENT_TABLE_QUEUE`). That catches a real,
+expensive failure -- but it cannot survive the change it most needs to survive,
+and this paragraph predicted exactly how. It read: re-enabling the `kv`
+extractor means adding one entry to `EXTRACTOR_ROUTES`, at which point
+`celery_executor_agentic_kv` flips from "must NOT be advertised" to "must be
+served", and the literal-pinned assertion has to be rewritten to make the suite
+pass.
+
+That is what happened. The entry was added, three literal assertions over there
+went red, and all three had to be inverted by hand -- the constant renamed from
+`UNSERVED_KV_QUEUE` to `KV_QUEUE` along with them. An assertion whose correct
+response to a change is being rewritten is not protecting anything at that
+moment, which is why this suite exists alongside it rather than instead of it:
+this one needed no edit at all for the same change, and it is what caught the
+three fleets that were still missing the queue.
 
 This suite derives both directions from the routing table, so the same change
 flips the expectation automatically:
@@ -16,9 +24,14 @@ flips the expectation automatically:
   queue served by every fleet configuration. Unserved means jobs are accepted
   and sit in DISPATCHED forever -- `enqueue_task` succeeds, rows land in
   `pg_queue_message`, nothing errors at the producer.
-* Every executor this module names but deliberately does NOT route
-  (`EXECUTOR_NAME` = `agentic_kv`, kept dormant by the carve-out) must NOT be
-  advertised anywhere. Same silent failure from the other side.
+* Every executor this module names but deliberately does NOT route must NOT
+  be advertised anywhere. Same silent failure from the other side.
+  `agentic_kv` was that executor while the engine shipped on its own branch;
+  it is routed now, so both shipped executors are routed and this direction
+  currently has nothing to check. It is kept, not deleted: it fires the moment
+  an executor name appears here without a route, which is exactly when the
+  question matters. See `test_the_derivation_is_not_vacuous`, which says so
+  rather than hiding it behind a passing assertion.
 
 Lives in the backend suite because that is where `EXTRACTOR_ROUTES` is
 importable; the fleet configs it reads are plain text. The workers-side suite
@@ -148,14 +161,25 @@ def test_every_routed_executor_has_a_consumer(fleet):
 def test_no_fleet_advertises_an_unrouted_executor(fleet):
     """The inverse direction, derived.
 
-    `agentic_kv` is the live case: this deployment ships no such plugin, so a
-    fleet listing its queue would accept work nothing can drain. When `kv` is
-    re-enabled by adding its `EXTRACTOR_ROUTES` entry, this expectation inverts
-    on its own and `test_every_routed_executor_has_a_consumer` starts requiring
-    the queue instead -- which is the whole reason this is derived.
+    Fires when an executor name is known but has no `EXTRACTOR_ROUTES` entry,
+    and a fleet advertises its queue anyway -- work accepted that nothing can
+    drain.
+
+    **Vacuous today, and it skips rather than passing silently.** Both known
+    executors are routed, so `_unrouted_executors()` is empty and there is
+    nothing to forbid. A green tick here would read as coverage; the skip says
+    what is actually true. (This docstring previously described `agentic_kv` as
+    the unrouted live case and predicted its own inversion -- it was left
+    behind by the change that routed `kv`.)
     """
     served = _all_executor_fleets()[fleet]()
-    forbidden = {_queue_name(e) for e in _unrouted_executors()}
+    unrouted = _unrouted_executors()
+    if not unrouted:
+        pytest.skip(
+            "no unrouted executors: every known executor has an EXTRACTOR_ROUTES "
+            "entry, so this direction has nothing to check"
+        )
+    forbidden = {_queue_name(e) for e in unrouted}
 
     advertised = forbidden & served
     assert not advertised, (
@@ -166,19 +190,26 @@ def test_no_fleet_advertises_an_unrouted_executor(fleet):
 
 
 def test_the_derivation_is_not_vacuous():
-    """Both sets must be non-empty, or the two tests above assert nothing.
+    """`EXTRACTOR_ROUTES` must be non-empty, or the forward test asserts nothing.
 
-    If `EXTRACTOR_ROUTES` were emptied, `test_every_routed_executor_...` would
-    pass with an empty expectation -- green while nothing was wired. If every
-    known executor were routed, the inverse test would pass trivially. This is
-    the guard on the guards.
+    If it were emptied, `test_every_routed_executor_...` would pass with an
+    empty expectation -- green while nothing was wired.
+
+    **The companion assertion on `_unrouted_executors()` is deliberately gone,
+    and its own message said to remove it in exactly this case.** It guarded
+    the INVERSE test (`test_no_fleet_advertises_an_unrouted_executor`) against
+    being trivially satisfiable, and it held only while `kv` was the one known
+    executor with no route. `kv` is routable now -- same API, selected by
+    `extractors[].name` -- so every known executor is routed and that
+    assertion can no longer be satisfied by any correct state of the tree.
+
+    The inverse test is therefore vacuous today, and that is the honest
+    position rather than a hidden one: it fires again the moment someone adds
+    an executor name without a route, which is precisely when it is wanted.
+    Re-adding the assertion would mean keeping an unrouted executor around to
+    satisfy a test, which is the tail wagging the dog.
     """
     assert _routed_executors(), "no routed executors: the forward test is vacuous"
-    assert _unrouted_executors(), (
-        "every known executor is routed, so the inverse test is vacuous. If "
-        "`kv` was deliberately re-enabled, that is correct -- delete this "
-        "assertion and say so."
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -196,9 +227,7 @@ CALLBACK_QUEUE = "agent_kv_callback"
 
 def test_the_docker_launcher_drains_the_terminal_callback_queue():
     """The launcher the workers-side suite does not cover."""
-    queues = _shell_role_queues(
-        RUN_WORKER_DOCKER, r'\["ide_callback"\]="([^"]+)"'
-    )
+    queues = _shell_role_queues(RUN_WORKER_DOCKER, r'\["ide_callback"\]="([^"]+)"')
 
     assert CALLBACK_QUEUE in queues, (
         f"run-worker-docker.sh's ide_callback role omits {CALLBACK_QUEUE}; a "

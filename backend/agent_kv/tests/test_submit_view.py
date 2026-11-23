@@ -22,7 +22,7 @@ from agent_kv.tests._factories import kv_key  # noqa: E402
 
 
 def _post(data=None):
-    return APIRequestFactory().post("/agent-kv/", data or {}, format="multipart")
+    return APIRequestFactory().post("/api/v1/agentic-extract/", data or {}, format="multipart")
 
 
 def _plugin_with_gate(denial=None):
@@ -765,7 +765,7 @@ def _real_multipart_post(extractors, **job_level):
     with open(fixture, "rb") as fh:
         upload = SimpleUploadedFile("doc.pdf", fh.read(), content_type="application/pdf")
     payload = {"file": upload, "extractors": _json.dumps(extractors), **job_level}
-    req = APIRequestFactory().post("/agent-kv/", payload, format="multipart")
+    req = APIRequestFactory().post("/api/v1/agentic-extract/", payload, format="multipart")
     req.META["HTTP_AUTHORIZATION"] = "Bearer 123e4567-e89b-12d3-a456-426614174001"
     return req
 
@@ -843,7 +843,7 @@ def test_real_serializer_rejects_the_old_flat_shape_with_400(m_keys, m_plugin, m
     with open(fixture, "rb") as fh:
         upload = SimpleUploadedFile("doc.pdf", fh.read(), content_type="application/pdf")
     req = APIRequestFactory().post(
-        "/agent-kv/",
+        "/api/v1/agentic-extract/",
         {
             "file": upload,
             "keys": _json.dumps({"total": {"description": "T"}}),
@@ -890,7 +890,9 @@ def test_an_oversized_extractors_part_is_rejected_by_size(m_keys, m_plugin, m_ra
     cap = 64
     part = SimpleUploadedFile("extractors.json", b"x" * (cap * 50))
 
-    req = APIRequestFactory().post("/agent-kv/", {"extractors": part}, format="multipart")
+    req = APIRequestFactory().post(
+        "/api/v1/agentic-extract/", {"extractors": part}, format="multipart"
+    )
     req.META["HTTP_AUTHORIZATION"] = "Bearer 123e4567-e89b-12d3-a456-426614174001"
     with mock.patch.object(ev.settings, "AGENT_KV_MAX_SCHEMA_BYTES", cap):
         resp = ev.SubmitView.as_view()(req)
@@ -914,7 +916,7 @@ def test_a_non_utf8_extractors_part_is_rejected(m_keys, m_plugin, m_rate):
             return b'[{"name": "table", "keys": {"target_table": "\xe9"}}]'
 
     req = APIRequestFactory().post(
-        "/agent-kv/", {"extractors": _Latin1Part()}, format="multipart"
+        "/api/v1/agentic-extract/", {"extractors": _Latin1Part()}, format="multipart"
     )
     req.META["HTTP_AUTHORIZATION"] = "Bearer 123e4567-e89b-12d3-a456-426614174001"
     resp = ev.SubmitView.as_view()(req)
@@ -969,7 +971,7 @@ def test_a_save_failure_after_staging_removes_the_staged_object(
 # ---------------------------------------------------------------------------
 # The adapter tenancy gate.
 #
-# `POST /agent-kv/` names platform adapters by id. The platform service DOES
+# `POST /api/v1/agentic-extract/` names platform adapters by id. The platform service DOES
 # re-scope its lookups by organization (`WHERE id=%s and organization_id=%s`,
 # against the org of the job's own platform key), so this gate is defence in
 # depth rather than the only thing standing between a caller and another
@@ -1182,7 +1184,7 @@ def test_an_upload_over_the_memory_threshold_is_not_a_500():
 
     payload = b"%PDF-1.4\n" + b"0" * (settings.FILE_UPLOAD_MAX_MEMORY_SIZE + 4096)
     request = APIRequestFactory().post(
-        "/agent-kv/",
+        "/api/v1/agentic-extract/",
         {
             "file": SimpleUploadedFile("big.pdf", payload, "application/pdf"),
             "extractors": '[{"name": "table"}]',

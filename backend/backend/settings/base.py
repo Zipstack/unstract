@@ -222,6 +222,11 @@ API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT = int(
 # Refused loudly at startup instead. `ImproperlyConfigured` is Django's own
 # signal for this and aborts the boot, which is the only outcome that cannot
 # be missed.
+#: The prefix this API was served at before UN-4044. Still accepted, because
+#: the documented rollback is to set it back -- but warned about, below.
+RETIRED_AGENT_KV_PATH_PREFIX = "api/v1/agent-kv"
+
+
 def validate_agent_kv_path_prefix(raw, path_prefix, deployment_prefix):
     """Normalise and refuse an unsafe `AGENT_KV_PATH_PREFIX`.
 
@@ -250,20 +255,46 @@ def validate_agent_kv_path_prefix(raw, path_prefix, deployment_prefix):
                 "authentication by prefix match, so this would exempt that "
                 "surface too."
             )
+    # The retired prefix is still ACCEPTED -- the documented rollback
+    # (`docs/agent-kv-api.md` §11 item 12) is to set it back -- but it is no
+    # longer silent. A deployment pinned to it serves a path the docs no longer
+    # describe, and every caller on the documented URL then gets a 401 that
+    # blames their credential. This is the only notice that reaches compose,
+    # on-prem and cloud alike, in the operator's own output, without depending
+    # on which doc or sample file they read.
+    #
+    # Emitted during settings import, which is BEFORE Django configures
+    # `LOGGING` -- so it reaches stderr through logging's last-resort handler
+    # rather than this project's structured logging. That is enough for a
+    # container log and is why it is a warning rather than a structured event;
+    # do not assume a handler here.
+    if prefix == RETIRED_AGENT_KV_PATH_PREFIX:
+        logging.getLogger(__name__).warning(
+            "AGENT_KV_PATH_PREFIX is pinned to the retired %r. The Agent-KV API "
+            "moved to %r (UN-4044); this deployment still serves the old path, "
+            "so callers following the current docs will get "
+            "'401 Invalid or inactive API key'. See docs/agent-kv-api.md §11 "
+            "item 12. Remove the override to adopt the new default.",
+            RETIRED_AGENT_KV_PATH_PREFIX,
+            f"{path_prefix}/agentic-extract",
+        )
     return prefix
 
 
-# Under PATH_PREFIX, not beside it: `/api/v1/agent-kv/`. It is a product API
-# like every other one the platform serves, and sharing the prefix means the
-# LB rule that already routes `/api/v1` covers it -- no dedicated ingress
+# Under PATH_PREFIX, not beside it: `/api/v1/agentic-extract/`. It is a product
+# API like every other one the platform serves, and sharing the prefix means
+# the LB rule that already routes `/api/v1` covers it -- no dedicated ingress
 # entry to add, and nothing to keep in step with this value. That coupling
-# was a real gap: on-prem values files replace `ingress.hosts` wholesale and
-# carried no `/agent-kv`, so the API answered the SPA's HTML there.
+# was a real gap: back when this prefix was top-level, an on-prem values file
+# that replaced `ingress.hosts` wholesale carried no `/agent-kv` entry, so the
+# API answered the SPA's HTML there. One file at one point in time -- those
+# files carry whatever the operator wrote, which is exactly why a prefix that
+# needs its own entry is a prefix that can lose it.
 #
 # It is NOT under TENANT_SUBFOLDER_PREFIX (`api/v1/unstract`), because it
 # resolves its organisation from the Bearer key rather than a URL segment.
 AGENT_KV_PATH_PREFIX = validate_agent_kv_path_prefix(
-    os.environ.get("AGENT_KV_PATH_PREFIX", f"{PATH_PREFIX}/agent-kv"),
+    os.environ.get("AGENT_KV_PATH_PREFIX", f"{PATH_PREFIX}/agentic-extract"),
     PATH_PREFIX,
     API_DEPLOYMENT_PATH_PREFIX,
 )
@@ -295,6 +326,20 @@ AGENT_KV_MAX_CALCULATIONS_BYTES = int(
 )
 AGENT_KV_MAX_SCHEMA_BYTES = int(os.environ.get("AGENT_KV_MAX_SCHEMA_BYTES", 262_144))
 AGENT_KV_RESULT_TTL_DAYS = int(os.environ.get("AGENT_KV_RESULT_TTL_DAYS", 7))
+# How long an OCR document-cache entry may live. DERIVED from the result TTL
+# rather than chosen: the cache holds the document's extracted TEXT, so it must
+# not outlive the job data it came from, and defaulting it to the same number
+# means one knob moves both unless an operator deliberately splits them.
+#
+# It needs its own sweep because the entries are CONTENT-addressed
+# (`{prefix}/{org}/cache/{doc_sha256}-...`) with no job row to hang off, so
+# neither `delete_job_files` nor the row-driven TTL cleanup could ever reach
+# them -- and an object-store lifecycle rule cannot either, because `org_id`
+# sits ABOVE `cache/` in the path and S3/MinIO lifecycle prefixes are literal.
+# Reported by greptile on unstract-cloud#1816.
+AGENT_KV_CACHE_TTL_DAYS = int(
+    os.environ.get("AGENT_KV_CACHE_TTL_DAYS", AGENT_KV_RESULT_TTL_DAYS)
+)
 AGENT_KV_MAX_TIMEOUT_SECONDS = int(os.environ.get("AGENT_KV_MAX_TIMEOUT_SECONDS", 300))
 AGENT_KV_CONCURRENT_LIMIT = int(os.environ.get("AGENT_KV_CONCURRENT_LIMIT", 5))
 AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE = int(
@@ -342,6 +387,43 @@ AGENT_KV_CALCULATIONS_ENABLED = (
 )
 AGENT_KV_STRUCTURED_OUTPUT_ENABLED = (
     os.environ.get("AGENT_KV_STRUCTURED_OUTPUT_ENABLED", "false").lower() == "true"
+)
+
+#: Whether this deployment ACCEPTS `kv` submits. False by default, and that
+#: default is the whole point.
+#:
+#: `EXTRACTOR_ROUTES` records where an extractor's work is dispatched. It cannot
+#: record whether anything DRAINS that queue, and the backend has no way to see
+#: the worker fleet's subscription list -- the engine probe in `SubmitView`
+#: (`get_plugin("agent_kv")`) is per-deployment, so it is already truthy
+#: wherever the `table` extractor shipped and says nothing about `kv`.
+#:
+#: A routed-but-undrained extractor is the worst shape available: the submit is
+#: accepted with a 202, the file is staged, a concurrency slot is taken, and the
+#: row sits in DISPATCHED until the sweep force-fails it -- with no error at the
+#: producer and nothing in any log naming the cause.
+#:
+#: The CHART sets this flag in the same values file that adds
+#: `celery_executor_agentic_kv` to the executor fleet's queue list, which is
+#: what keeps those two together on that surface. It is NOT an invariant of
+#: every surface, and an earlier version of this comment claimed it was: the
+#: compose stacks in this repo add that queue (`docker/docker-compose.yaml`,
+#: `tests/compose/docker-compose.test.yaml`, `workers/run-worker.sh`) and set
+#: this flag nowhere, so they ship drained-but-not-accepting. That direction is
+#: the safe one -- a refusal, not a hang -- but it is drift, so do not read
+#: "they travel together" as a guarantee.
+#:
+#: Nor does one values file give one cutover. The backend and executor
+#: Deployments roll independently inside a single `helm upgrade`, so a backend
+#: replica can pick the flag up before the executor fleet has replaced its
+#: pods, and for the length of that window a `kv` submit takes the accepted-
+#: but-undrained path below. Order the rollout (subscription first) if that
+#: window matters. Defaulting false is what makes merge ORDER safe: this
+#: repo merges before the chart (the cloud half imports `unstract-agent-kv-schema`
+#: from here), and until the chart lands a `kv` submit is refused at validation
+#: rather than accepted into a queue nothing serves.
+AGENT_KV_KV_EXTRACTOR_ENABLED = (
+    os.environ.get("AGENT_KV_KV_EXTRACTOR_ENABLED", "false").lower() == "true"
 )
 
 
@@ -507,9 +589,9 @@ CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL, WEB_APP_ORIGIN_URL_WITH_WILD_CARD]
 CORS_ALLOW_ALL_ORIGINS = False
 
 # Request ID middleware settings
-LOG_REQUEST_ID_HEADER = "X-Request-ID"
+# The request.META key: Django stores the X-Request-ID header as HTTP_X_REQUEST_ID.
+LOG_REQUEST_ID_HEADER = "HTTP_X_REQUEST_ID"
 REQUEST_ID_RESPONSE_HEADER = "X-Request-ID"
-GENERATE_REQUEST_ID_IF_NOT_IN_HEADER = True
 NO_REQUEST_ID = "-"
 
 
@@ -1232,6 +1314,7 @@ PLATFORM_METRICS_QUEUES = [
                 "celery_api_deployments",
                 "celery_callback",
                 "celery_executor_agentic",
+                "celery_executor_agentic_kv",
                 "celery_executor_agentic_table",
                 "celery_executor_legacy",
                 "celery_executor_lookup_test",
@@ -1248,6 +1331,14 @@ PLATFORM_METRICS_QUEUES = [
                 "notifications_priority",
                 "notifications_sms",
                 "notifications_webhook",
+                # The sandbox codegen fleet's PG queue. Listed for the same
+                # reason as every sibling: `QueueMetricGroup.families()`
+                # reports `configured | observed`, and the table holds only
+                # undelivered rows, so an UNLISTED queue vanishes from the
+                # scrape the moment it drains instead of reporting 0 --
+                # indistinguishable from a broken scrape to a dashboard or a
+                # queue-depth autoscaler.
+                "sandbox_codegen",
                 "scheduler",
             ]
         ),

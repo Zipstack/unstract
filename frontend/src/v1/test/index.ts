@@ -3,6 +3,7 @@
  * (`*.test.ts(x)`, `*.spec.ts(x)`) and test/ itself may import it.
  */
 
+export { createQueryClient } from "@v1/app/query";
 export { PORTAL_CONTAINER_ID, V1_ROOT_CLASS } from "@v1/lib/portal";
 export {
   type A11yOptions,
@@ -18,6 +19,11 @@ export {
   mockMatchMedia,
   type ResizeObserverControl,
 } from "./dom";
+export {
+  expectGalleryAccessible,
+  type GalleryEntry,
+  galleryMarkup,
+} from "./gallery";
 export {
   apiPath,
   delay,
@@ -47,4 +53,5 @@ export {
   type TestSessionOverrides,
   type TestUser,
   type ThemeMode,
+  toV1Session,
 } from "./session";

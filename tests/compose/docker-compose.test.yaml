@@ -64,17 +64,21 @@ services:
       # CELERY_QUEUES_EXECUTOR is read only by workers/executor/worker.py -- the
       # now-disabled Celery executor -- so setting it here drained nothing and
       # the agent-kv lane hung in DISPATCHED with no error at the producer.
-      - WORKER_PG_QUEUE_CONSUMER_QUEUE=${WORKER_PG_QUEUE_CONSUMER_QUEUE:-celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test}
-      # Agent-KV engine config, read by the cloud `agentic_table` executor plugin
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=${WORKER_PG_QUEUE_CONSUMER_QUEUE:-celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test,celery_executor_agentic_kv}
+      # Agent-KV engine config, read by the cloud `agentic_kv` and `agentic_table`
+      # executor plugins
       # (not by backend settings) -- docs/agent-kv-api.md §12 item 5 / §13.
-      # `AGENT_KV_LLM_PROVIDER` is a v1 hard allowlist of `anthropic`|`openai`.
-      # Model names have no safe default -- Task 13b must supply real ones.
-      - AGENT_KV_LLM_PROVIDER=${AGENT_KV_LLM_PROVIDER:-anthropic}
-      - AGENT_KV_LITE_MODEL=${AGENT_KV_LITE_MODEL:-}
-      - AGENT_KV_ADVANCED_MODEL=${AGENT_KV_ADVANCED_MODEL:-}
-      - AGENT_KV_LLM_API_KEY=${AGENT_KV_LLM_API_KEY:-}
-      - AGENT_KV_LLMWHISPERER_API_KEY=${AGENT_KV_LLMWHISPERER_API_KEY:-}
-      - AGENT_KV_LLMWHISPERER_BASE_URL=${AGENT_KV_LLMWHISPERER_BASE_URL:-https://llmwhisperer-api.us-central.unstract.com/api/v2}
+      #
+      # The six credential vars that used to be exported here are GONE, not
+      # merely unset: AGENT_KV_LLM_PROVIDER, _LITE_MODEL, _ADVANCED_MODEL,
+      # _LLM_API_KEY, _LLMWHISPERER_API_KEY, _LLMWHISPERER_BASE_URL. Both
+      # extractors resolve the caller's own `llm` / `lite_llm` / `x2text`
+      # platform adapters from the request, so nothing in the worker reads them.
+      # Exporting them here would be worse than useless: the e2e lane would read
+      # as credentialed while the thing under test ignored them, which is the
+      # exact confusion `tests/e2e/agent_kv/test_agent_kv_e2e.py` documents in
+      # its `require_adapters` fixture (it replaced a `require_llm` gate on
+      # AGENT_KV_LLM_API_KEY that had started skipping every valuable scenario).
       # Same root the backend stages into (see `backend` above) -- the executor
       # reads `input_ref` from it and keys its OCR cache under
       # `{prefix}/{org_id}/cache/`. Both sides MUST agree.
@@ -98,6 +102,41 @@ services:
   worker-pg-ide-callback:
     environment:
       - AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE=${AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE:-}
+
+  # Codegen sandbox worker (Task 5/12) -- consumes sandbox_codegen. Pinned to
+  # the test image like backend/platform-service/runner above; SANDBOX_* are
+  # deliberately NOT set here (see the environment block); the task's own
+  # code-level defaults apply -- see workers/sandbox/tasks.py. SANDBOX_HEALTH_PORT stays fixed at 8092
+  # (see docker/docker-compose.yaml's worker-sandbox and controller ruling R2)
+  # since it is not part of the pass-through set.
+  worker-sandbox:
+    image: unstract/worker-unified:${UNSTRACT_TEST_VERSION:-latest}
+    # Mirrors docker/docker-compose.yaml's worker-sandbox. 150s, derived there:
+    # above the single-process drain (~75s) AND above the supervised budget
+    # `max(30, VT_SECONDS)` = 120s, so an in-flight job is not SIGKILLed at
+    # Docker's 10s default and redelivered to run a second time.
+    stop_grace_period: 150s
+    environment:
+      # The health port moved with the transport: on the PG consumer path the
+      # launcher reads WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT, not the Celery
+      # worker's SANDBOX_HEALTH_PORT. 8092 stays the sandbox's fixed slot.
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8092
+      # Mirrors docker/docker-compose.yaml's worker-sandbox. Both defaults sit
+      # at or below this role's worst case (SANDBOX_TIMEOUT_MAX 60s + reap +
+      # I/O): the liveness heartbeat is frozen while a batch runs, so a stale
+      # threshold of 60 makes a job that uses its full timeout trip the probe,
+      # and a 30s VT would re-claim it mid-run.
+      - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=1
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=120
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=180
+      # The SANDBOX_* caps below are read by workers/sandbox/tasks.py itself, so
+      # they are transport-independent and keep their names.
+      # No SANDBOX_* entries here, deliberately. ANY form of them in this
+      # overlay -- `=${VAR:-}` or bare -- overrides the base service's
+      # `env_file: ../workers/.env`, so a cap an operator sets there would
+      # never reach the container in this lane. The base env_file plus the
+      # task's own code-level defaults already give the lane what it needs,
+      # so this block was subtracting and adding nothing.
 
   # The `ui` Playwright group drives a browser at the frontend's OWN origin, and
   # the app derives every API URL from window.location.origin. The production

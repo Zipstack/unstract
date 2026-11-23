@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { ApiError } from "@v1/services/errors";
 import {
   type Organization,
   OrganizationError,
@@ -8,7 +9,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   type CurrentOrganization,
   OrganizationSwitcher,
-  sessionEndedPath,
 } from "./OrganizationSwitcher";
 
 const list = vi.fn<() => Promise<Organization[]>>();
@@ -271,6 +271,38 @@ describe("OrganizationSwitcher", () => {
     expect(assign).not.toHaveBeenCalled();
   });
 
+  test("a failed load shows the failed request's id", async () => {
+    list.mockRejectedValue(
+      new ApiError({ kind: "server", message: "Boom", requestId: "req-7" }),
+    );
+    await open();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Could not load your organisations.");
+    expect(alert).toHaveTextContent("Request ID req-7");
+  });
+
+  test("a refused switch shows the refused request's id", async () => {
+    list.mockResolvedValue([zipstack, personal]);
+    switchTo.mockRejectedValue(
+      new OrganizationError(
+        "access-removed",
+        {},
+        new ApiError({ kind: "forbidden", message: "No", requestId: "req-8" }),
+      ),
+    );
+    await open();
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Switch to Tanushree’s organisation",
+      }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Switch organisation" }),
+    );
+    expect(await screen.findByText("Request ID")).toBeInTheDocument();
+    expect(screen.getByText("req-8")).toBeInTheDocument();
+  });
+
   test("a failed switch says so and stays put", async () => {
     list.mockResolvedValue([zipstack, personal]);
     switchTo.mockRejectedValue(new Error("HTTP 403"));
@@ -334,6 +366,34 @@ describe("OrganizationSwitcher", () => {
     ).toBeEnabled();
   });
 
+  const expired = () =>
+    new ApiError({ kind: "unauthenticated", message: "m", status: 401 });
+
+  test("a 401 on the list shows no error while the page leaves for sign-in", async () => {
+    list.mockRejectedValue(expired());
+    await open();
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      screen.queryByText("Could not load your organisations."),
+    ).not.toBeInTheDocument();
+  });
+
+  test("a 401 on switch shows no retry while the page leaves for sign-in", async () => {
+    switchTo.mockRejectedValue(expired());
+    const dialog = await openConfirm();
+    const confirm = within(dialog).getByRole("button", {
+      name: "Switch organisation",
+    });
+    await userEvent.click(confirm);
+    await waitFor(() => expect(switchTo).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      screen.queryByText("Could not switch. Try again."),
+    ).not.toBeInTheDocument();
+    expect(confirm).toBeDisabled();
+  });
+
   test("a 412 with a known cause goes to the error page that explains it", async () => {
     list.mockRejectedValue(
       new OrganizationError("session-ended", {
@@ -345,16 +405,6 @@ describe("OrganizationSwitcher", () => {
     await waitFor(() =>
       expect(assign).toHaveBeenCalledWith("/error?code=INS&domain=acme.com"),
     );
-  });
-
-  test("sessionEndedPath: code without domain, and junk bodies", () => {
-    expect(sessionEndedPath({ code: "USR" })).toBe("/error?code=USR");
-    expect(sessionEndedPath({ code: "a&b", domain: "x y" })).toBe(
-      "/error?code=a%26b&domain=x+y",
-    );
-    expect(sessionEndedPath(undefined)).toBe("/landing");
-    expect(sessionEndedPath("<html>")).toBe("/landing");
-    expect(sessionEndedPath({ code: 7 })).toBe("/landing");
   });
 
   test("a 412 with an empty body means the session is gone: go to sign-in", async () => {
