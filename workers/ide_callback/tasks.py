@@ -15,6 +15,7 @@ from datetime import date, datetime
 from typing import Any
 
 from celery import current_app as app
+from ide_callback.run_event_fields import error_details, inline_outputs
 from queue_backend import worker_task
 from shared.clients.prompt_studio_client import PromptStudioAPIClient
 
@@ -421,6 +422,8 @@ def ide_prompt_complete(
                     "prompt_ids": prompt_ids,
                     "document_id": document_id,
                     "profile_manager_id": profile_manager_id,
+                    "run_id": run_id,
+                    "error_details": error_details(result_dict.get("metadata")),
                 },
                 status="failed",
                 error=error_msg,
@@ -452,7 +455,7 @@ def ide_prompt_complete(
         )
 
         # Persist outputs via internal API
-        api.update_prompt_output(
+        output_response = api.update_prompt_output(
             run_id=run_id,
             prompt_ids=prompt_ids,
             outputs=outputs,
@@ -489,6 +492,8 @@ def ide_prompt_complete(
                 "document_id": document_id,
                 "profile_manager_id": profile_manager_id,
                 "elapsed": int(time.time() - dispatch_time) if dispatch_time else 0,
+                "run_id": run_id,
+                "outputs": inline_outputs(output_response),
             },
             status="completed",
             # result intentionally omitted — output already persisted via
@@ -510,6 +515,8 @@ def ide_prompt_complete(
                 "prompt_ids": prompt_ids,
                 "document_id": document_id,
                 "profile_manager_id": profile_manager_id,
+                "run_id": run_id,
+                "error_details": error_details(),
             },
             status="failed",
             error=str(e),
@@ -549,6 +556,8 @@ def ide_prompt_error(
                 "prompt_ids": cb.get("prompt_ids", []),
                 "document_id": cb.get("document_id", ""),
                 "profile_manager_id": cb.get("profile_manager_id"),
+                "run_id": cb.get("run_id", ""),
+                "error_details": error_details(),
             },
             status="failed",
             error=error_msg,
