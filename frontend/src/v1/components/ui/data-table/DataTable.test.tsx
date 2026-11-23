@@ -1533,4 +1533,19 @@ describe("second review round", () => {
     expect(onRowClick).toHaveBeenCalledWith(FIVE[0]);
     expect(screen.queryByText("Detail of health-monitoring API")).toBeNull();
   });
+
+  it("goes back to page 1 when a controlling parent changes the sort", async () => {
+    const paged = {
+      ...props,
+      rows: galleryRows(30),
+      pagination: { mode: "client", defaultPageSize: 10 } as const,
+    };
+    const { user, rerender } = renderV1(<DataTable {...paged} sort={null} />);
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Showing 11 to 20 of 30 entries")).toBeTruthy();
+    rerender(
+      <DataTable {...paged} sort={{ columnId: "name", direction: "desc" }} />,
+    );
+    expect(screen.getByText("Showing 1 to 10 of 30 entries")).toBeTruthy();
+  });
 });

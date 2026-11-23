@@ -2,8 +2,8 @@ import { useState } from "react";
 
 /*
  * The page a client-paged table shows. It goes back to page 1 when the sort
- * changes (the caller says so), when `filtered` flips, and when `resetKey`
- * changes (pass the search text). A page past the end (the rows shrank) is
+ * changes (from a header or from a controlling parent), when `filtered`
+ * flips, and when `resetKey` changes (pass the search text). A page past the end (the rows shrank) is
  * clamped to the last page and stored; a render with no rows (a refetch)
  * leaves the page alone.
  */
@@ -33,21 +33,28 @@ export function useClientPage({
   defaultPageSize,
   filtered,
   resetKey,
+  sortKey,
 }: Readonly<{
   rowCount: number;
   defaultPageSize: number | undefined;
   filtered: boolean;
   resetKey: unknown;
+  /** The shown sort, as a string; a new one starts on page 1. */
+  sortKey: string;
 }>): ClientPage {
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(() => pageSizeOr(defaultPageSize));
-  const [seen, setSeen] = useState({ filtered, resetKey });
+  const [seen, setSeen] = useState({ filtered, resetKey, sortKey });
 
   let index = pageIndex;
-  if (seen.filtered !== filtered || !Object.is(seen.resetKey, resetKey)) {
-    // A new search or filter starts on page 1 (set during render, so the
-    // stale page never shows).
-    setSeen({ filtered, resetKey });
+  if (
+    seen.filtered !== filtered ||
+    seen.sortKey !== sortKey ||
+    !Object.is(seen.resetKey, resetKey)
+  ) {
+    // A new order, search or filter starts on page 1 (set during render, so
+    // the stale page never shows).
+    setSeen({ filtered, resetKey, sortKey });
     index = 0;
   }
   const last = Math.max(0, Math.ceil(rowCount / pageSize) - 1);

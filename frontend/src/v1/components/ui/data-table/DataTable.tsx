@@ -221,6 +221,7 @@ export function DataTable<TRow>({
     defaultPageSize: clientPaged ? pagination.defaultPageSize : undefined,
     filtered,
     resetKey: clientPaged ? pagination.resetKey : undefined,
+    sortKey: sortKeyOf(sort),
   });
 
   // ── What the live region says ─────────────────────────────────────────
@@ -315,10 +316,9 @@ export function DataTable<TRow>({
     const next = nextSort(sort, columnId);
     setOwnSort(next);
     onSortChange?.(next);
-    // A new order starts on page 1.
-    if (clientPaged) {
-      page.setPageIndex(0);
-    } else if (server && pagination.page !== 1) {
+    // A new order starts on page 1: a client table resets itself when the
+    // shown sort changes (useClientPage); a server table asks its parent.
+    if (server && pagination.page !== 1) {
       pagination.onPageChange(1);
     }
     pending.current = {
