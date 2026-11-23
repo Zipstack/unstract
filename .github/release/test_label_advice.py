@@ -183,7 +183,9 @@ class Advise(unittest.TestCase):
         ):
             commits = json.dumps([[{"commit": {"message": msg}}]])
             with mock.patch.object(la, "_gh", return_value=commits):
-                a = la.advise_pr("o/r", 7, pr=pr, patches={"backend/x.py": "@@ -1 +1 @@"})
+                a = la.advise_pr(
+                    "o/r", 7, pr=pr, patches={"backend/x.py": "@@ -1 +1 @@\n-a\n+b"}
+                )
             self.assertEqual((a["result"], a["label"]), (result, "release-branch-only"))
 
     def test_the_relabel_command_drops_old_and_line_labels(self):
@@ -299,6 +301,10 @@ class Advise(unittest.TestCase):
         for ans, label in (("0.186", "backport/0.186"), ("main-only", "main-only")):
             b = la.advise("main", ["backend/x.py"], lines, pr=7, line=ans)
             self.assertEqual((b["result"], b["label"]), ("suggest", label))
+        with self.assertRaisesRegex(la.Usage, "line=0.185 is not a live release line"):
+            la.advise(
+                "main", ["backend/x.py"], lines, pr=7, line="0.185"
+            )  # retired since
         self.assertIn(
             "main-only: main-only, then:", la.render({**a, "pr": 7, "info": []})
         )
@@ -348,17 +354,28 @@ class Advise(unittest.TestCase):
 
 
 class OldRanges(unittest.TestCase):
-    def test_old_side_ranges(self):
-        self.assertEqual(la.old_ranges("@@ -5,3 +5,4 @@ def f():\n-a\n+b"), [(5, 7)])
+    def test_removed_lines_not_their_context(self):
+        self.assertEqual(
+            la.old_ranges("@@ -5,4 +5,4 @@ def f():\n a\n-b\n+B\n c\n d"), [(6, 6)]
+        )
         self.assertEqual(la.old_ranges("@@ -5 +5 @@\n-a\n+b"), [(5, 5)])
         self.assertEqual(
-            la.old_ranges("@@ -1,2 +1,2 @@\n x\n@@ -40,0 +41,3 @@\n+new"), [(1, 2)]
+            la.old_ranges(
+                "@@ -1,3 +1,2 @@\n-a\n-b\n c\n@@ -20,3 +19,3 @@ x\n p\n-q\n+Q\n r"
+            ),
+            [(1, 2), (21, 21)],
         )
-        self.assertEqual(la.old_ranges("@@ -0,0 +1,9 @@\n+new file"), [])  # pure addition
+
+    def test_an_insertion_gives_its_neighbours(self):
+        self.assertEqual(
+            la.old_ranges("@@ -10,4 +10,5 @@\n a\n b\n+x\n c\n d"), [(10, 13)]
+        )
+        self.assertEqual(la.old_ranges("@@ -0,0 +1,9 @@\n+new file"), [])
         self.assertEqual(la.old_ranges(None), [])  # GitHub omits the patch of a binary
 
 
 OLD, NEW = "0a" * 20, "0b" * 20  # blame commit SHAs
+P12 = "@@ -12,2 +12,2 @@\n-a\n-b\n+A\n+B"
 
 
 class LineFacts(unittest.TestCase):
@@ -407,7 +424,10 @@ class LineFacts(unittest.TestCase):
 
     def test_blame_decides_presence(self):
         f, how = self.facts(
-            {"backend/x.py": "@@ -12,2 +12,2 @@", "docs/a.md": "@@ -1 +1 @@"}
+            {
+                "backend/x.py": "@@ -12,2 +12,2 @@\n-a\n-b\n+A\n+B",
+                "docs/a.md": "@@ -1 +1 @@",
+            }
         )
         self.assertEqual(
             self.blamed, ["path=backend/x.py"]
@@ -417,7 +437,13 @@ class LineFacts(unittest.TestCase):
             {l: (x["present"], x["ga"]) for l, x in f.items()},
             {"0.188": (True, False), "0.186": (False, False), "0.185": (False, False)},
         )
-        f, how = self.facts({"backend/x.py": "@@ -5,6 +5,6 @@"})  # both commits
+        # Unchanged context lines are not blamed: lines 8-9 are OLD's, only line 10 (NEW's) changes.
+        f, how = self.facts({"backend/x.py": "@@ -8,5 +8,5 @@\n a\n b\n-c\n+C\n d\n e"})
+        self.assertEqual(how, "blame: 1 commit(s) behind the changed lines")
+        self.assertFalse(f["0.186"]["present"])
+        f, how = self.facts(
+            {"backend/x.py": "@@ -5,6 +5,6 @@\n" + "-a\n" * 6}
+        )  # both commits
         self.assertEqual(how, "blame: 2 commit(s) behind the changed lines")
         self.assertTrue(f["0.186"]["present"])
         self.assertTrue(f["0.186"]["ga"])  # stable tag
@@ -425,17 +451,33 @@ class LineFacts(unittest.TestCase):
 
     def test_a_picked_commit_counts_as_on_the_line(self):
         # Backport's pick of "new" onto 0.186 has its own SHA; only its trailer names "new".
-        msg = "fix: thing (#12)\n\n(cherry picked from commit " + "a" * 40 + ")\n"
-        f, _ = self.facts({"backend/x.py": "@@ -12,2 +12,2 @@"}, picked={"0.186": msg})
+        msg = json.dumps(
+            "fix: thing (#12)\n\n(cherry picked from commit " + "a" * 40 + ")\n"
+        )
+        f, _ = self.facts(
+            {"backend/x.py": "@@ -12,2 +12,2 @@\n-a\n-b\n+A\n+B"}, picked={"0.186": msg}
+        )
         self.assertFalse(f["0.186"]["present"])  # the trailer names another commit
         msg = msg.replace("a" * 40, NEW)
-        f, _ = self.facts({"backend/x.py": "@@ -12,2 +12,2 @@"}, picked={"0.186": msg})
+        f, _ = self.facts(
+            {"backend/x.py": "@@ -12,2 +12,2 @@\n-a\n-b\n+A\n+B"}, picked={"0.186": msg}
+        )
         self.assertTrue(f["0.186"]["present"])
         self.assertFalse(f["0.185"]["present"])
+        short = msg.replace(NEW, NEW[:12])  # a hand-written trailer may be abbreviated
+        f, _ = self.facts({"backend/x.py": P12}, picked={"0.186": short})
+        self.assertTrue(f["0.186"]["present"])
+        declined = json.dumps(json.loads(msg) + "\nDeclined: not needed on 0.186\n")
+        f, _ = self.facts({"backend/x.py": P12}, picked={"0.186": declined})
+        self.assertFalse(
+            f["0.186"]["present"]
+        )  # a decline keeps the trailer but not the code
 
     def test_a_file_without_a_patch_falls_back_to_paths(self):
         # GitHub's pulls/N/files omits `patch` for a large or binary file.
-        _, how = self.facts({"backend/x.py": None, "backend/y.py": "@@ -12,2 +12,2 @@"})
+        _, how = self.facts(
+            {"backend/x.py": None, "backend/y.py": "@@ -12,2 +12,2 @@\n-a\n-b\n+A\n+B"}
+        )
         self.assertEqual(how, "by file path: GitHub sends no diff for backend/x.py")
         self.assertEqual(self.blamed, [])
 
@@ -445,7 +487,7 @@ class LineFacts(unittest.TestCase):
                 {
                     "filename": "backend/y.py",
                     "previous_filename": "backend/x.py",
-                    "patch": "@@ -12,2 +12,2 @@",
+                    "patch": "@@ -12,2 +12,2 @@\n-a\n-b\n+A\n+B",
                 }
             ]
         ]
@@ -454,7 +496,8 @@ class LineFacts(unittest.TestCase):
         ):
             _, patches = la.pr_facts("o/r", 7)
         self.assertEqual(
-            patches, {"backend/y.py": "", "backend/x.py": "@@ -12,2 +12,2 @@"}
+            patches,
+            {"backend/y.py": "", "backend/x.py": "@@ -12,2 +12,2 @@\n-a\n-b\n+A\n+B"},
         )
         _, how = self.facts(patches)
         self.assertEqual(self.blamed, ["path=backend/x.py"])
@@ -463,7 +506,7 @@ class LineFacts(unittest.TestCase):
     def test_path_fallback_says_why(self):
         f, how = self.facts({"backend/x.py": "@@ -0,0 +1,3 @@"})
         self.assertEqual(
-            how, "by file path: the change only adds lines, so blame cannot tell"
+            how, "by file path: the change only adds new files, so blame cannot tell"
         )
         self.assertEqual(self.blamed, [])
         self.assertIsNone(f["0.188"]["present"])  # a truncated tree cannot tell
@@ -473,7 +516,9 @@ class LineFacts(unittest.TestCase):
         self.assertFalse(f["0.186"]["present"])
         self.assertFalse(f["0.186"]["ga"])  # GA is looked up only where the code is
 
-        many = {f"backend/m{i}.py": "@@ -1 +1 @@" for i in range(la.BLAME_MAX + 1)}
+        many = {
+            f"backend/m{i}.py": "@@ -1 +1 @@\n-a\n+b" for i in range(la.BLAME_MAX + 1)
+        }
         _, how = self.facts(many)
         self.assertEqual(
             how,
@@ -481,11 +526,11 @@ class LineFacts(unittest.TestCase):
         )
         self.assertEqual(self.blamed, [])
         _, how = self.facts(
-            {f"backend/m{i}.py": "@@ -1 +1 @@" for i in range(la.BLAME_MAX)}
+            {f"backend/m{i}.py": "@@ -1 +1 @@\n-a\n+b" for i in range(la.BLAME_MAX)}
         )
         self.assertTrue(how.startswith("blame: "))  # at the limit, still blamed
 
-        f, how = self.facts({"backend/x.py": "@@ -12 +12 @@"}, blame_fails=True)
+        f, how = self.facts({"backend/x.py": P12}, blame_fails=True)
         self.assertTrue(how.startswith("by file path: blame failed ("), how)
         self.assertIn("HTTP 502", how)
         self.assertTrue(f["0.186"]["present"])

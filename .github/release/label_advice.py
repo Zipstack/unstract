@@ -34,7 +34,7 @@ NONCODE = re.compile(
     r"^[^/]*\.(md|mdx|rst)$|(^|/)README\.md$|^docs/|(^|/)tests?/|(^|/)test_[^/]*\.py$|_test\.py$|\.(test|spec)\.[jt]sx?$"
     r"|(^|/)__tests__/|(^|/)unittests/|^\.github/|^\.claude(-plugin)?/|^\.pre-commit-config\.yaml$"
 )
-HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? ", re.M)
+HUNK_RE = re.compile(r"^@@ -(\d+)(?:,\d+)? .*$", re.M)
 BLAME_MAX = 20  # files blamed per PR; past it, presence is judged by path
 
 
@@ -77,6 +77,10 @@ def advise(
         }
     why = f" ({how})" if how else ""
     if line:  # the developer's answer to the line question
+        if line != MAIN_ONLY and line not in [l["line"] for l in lines]:
+            raise Usage(
+                f"line={line} is not a live release line ({', '.join(l['line'] for l in lines) or 'none'})"
+            )
         label = MAIN_ONLY if line == MAIN_ONLY else f"backport/{line}"
         return {
             **out,
@@ -187,12 +191,23 @@ def has_ga(slug, line):
 
 
 def old_ranges(patch):
-    """Line ranges a unified diff changes or deletes on the old side; pure additions give none."""
-    return [
-        (int(m[1]), int(m[1]) + int(m[2] or 1) - 1)
-        for m in HUNK_RE.finditer(patch or "")
-        if (m[2] or "1") != "0"
-    ]
+    """Old-side lines a unified diff removes or replaces. A hunk that only adds lines gives its unchanged neighbours
+    instead, since an addition has no old line of its own; a new file gives none.
+    """
+    out = []
+    parts = HUNK_RE.split(patch or "")[1:]
+    for n, body in zip(parts[::2], parts[1::2], strict=True):
+        n, seen, gone = int(n), [], []
+        for row in body.split("\n"):
+            if row[:1] in (" ", "-"):
+                (gone if row[0] == "-" else seen).append(n)
+                n += 1
+        for i in gone or seen:
+            if out and out[-1][1] == i - 1:
+                out[-1] = (out[-1][0], i)
+            else:
+                out.append((i, i))
+    return out
 
 
 BLAME_Q = """query($owner: String!, $name: String!, $oid: GitObjectID!, $path: String!) {
@@ -242,9 +257,13 @@ def picks(slug, line):
         "--paginate",
         f"repos/{slug}/compare/main...release/{line}",
         "--jq",
-        ".commits[].commit.message",
+        ".commits[].commit.message | @json",
     )
-    return set(rm.PICK_RE.findall(out))
+    msgs = [json.loads(m) for m in out.splitlines()]
+    # A decline is an empty commit that keeps the pick's trailer: the code never landed.
+    return {
+        s for m in msgs if not rm.DECLINED_RE.search(m) for s in rm.PICK_RE.findall(m)
+    }
 
 
 def line_facts(slug, base, patches, need_ga=True):
@@ -258,7 +277,7 @@ def line_facts(slug, base, patches, need_ga=True):
     if nodiff := sorted(p for p, t in changed.items() if t is None):
         how = f"by file path: GitHub sends no diff for {nodiff[0]}"
     elif not touched:
-        how = "by file path: the change only adds lines, so blame cannot tell"
+        how = "by file path: the change only adds new files, so blame cannot tell"
     elif len(touched) > BLAME_MAX:
         how = f"by file path: {len(touched)} files is past the blame limit of {BLAME_MAX}"
     else:
@@ -276,7 +295,9 @@ def line_facts(slug, base, patches, need_ga=True):
     for line in live_lines(slug):
         if commits is not None:
             # ponytail: one compare per (commit, line) where the code is absent; cap commits if Lint's API budget bites.
-            present = bool(commits & picks(slug, line)) or any(
+            # A trailer may be abbreviated; blame gives full SHAs.
+            done = tuple(picks(slug, line))
+            present = any(c.startswith(done) for c in commits) or any(
                 on_line(slug, c, line) for c in commits
             )
         else:
