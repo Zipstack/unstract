@@ -3,6 +3,7 @@ import { setOrganizationId } from "@v1/services/context";
 import {
   apiPath,
   DEFAULT_SESSION,
+  delay,
   HttpResponse,
   http,
   mockApi,
@@ -39,12 +40,35 @@ it("puts the previous document back when the save fails", async () => {
   await waitFor(() => expect(result.current.selectedId).toBe("a"));
 });
 
-it("moves to the first document left when the shown one is removed", () => {
+it("moves to the first document left, and saves it, when the shown one is removed", async () => {
+  const saved: unknown[] = [];
+  mockApi(
+    http.patch(TOOL, async ({ request }) => {
+      saved.push(await request.json());
+      return HttpResponse.json({});
+    }),
+  );
   const { result } = renderHookV1(() => useDocumentSelection(TOOL_ID, "a"));
   act(() => result.current.removed("b", ["a", "c"]));
   expect(result.current.selectedId).toBe("a");
   act(() => result.current.removed("a", ["c"]));
   expect(result.current.selectedId).toBe("c");
+  await waitFor(() => expect(saved).toEqual([{ output: "c" }]));
   act(() => result.current.removed("c", []));
   expect(result.current.selectedId).toBeNull();
+});
+
+it("keeps a newer choice when an earlier save fails", async () => {
+  mockApi(
+    http.patch(TOOL, async ({ request }) => {
+      const { output } = (await request.json()) as { output: string };
+      await delay(output === "b" ? 20 : 0);
+      return HttpResponse.json({}, { status: output === "b" ? 500 : 200 });
+    }),
+  );
+  const { result } = renderHookV1(() => useDocumentSelection(TOOL_ID, "a"));
+  act(() => result.current.select("b"));
+  act(() => result.current.select("c"));
+  await delay(40);
+  expect(result.current.selectedId).toBe("c");
 });

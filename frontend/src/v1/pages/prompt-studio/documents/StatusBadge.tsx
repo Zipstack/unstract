@@ -29,7 +29,7 @@ export function StatusBadge({
     <span
       data-state={state}
       className={cn(
-        "ui:inline-flex ui:h-5 ui:items-center ui:rounded-md ui:px-2 ui:text-caption ui:font-medium",
+        "ui:inline-flex ui:h-5 ui:items-center ui:rounded-full ui:px-2 ui:text-caption ui:font-medium",
         TONE[state],
       )}
     >

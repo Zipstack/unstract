@@ -63,7 +63,7 @@ export function FileDrop({
       data-slot="file-drop"
       data-over={over || undefined}
       className={cn(
-        "ui:rounded-lg ui:border ui:border-dashed ui:border-border ui:bg-muted/50 ui:data-over:border-primary ui:data-over:bg-primary-muted",
+        "ui:rounded-lg ui:border ui:border-dashed ui:border-border ui:bg-muted ui:data-over:border-primary ui:data-over:bg-primary-muted",
         disabled && "ui:opacity-60",
       )}
     >
@@ -81,12 +81,15 @@ export function FileDrop({
         onDragLeave={() => setOver(false)}
         onDrop={onDrop}
         onClick={() => !disabled && inputRef.current?.click()}
-        className="ui:flex ui:w-full ui:cursor-pointer ui:flex-col ui:items-center ui:gap-2 ui:rounded-lg ui:px-6 ui:py-5 ui:text-center ui:focus-visible:focus-ring ui:aria-disabled:cursor-not-allowed"
+        className="ui:flex ui:w-full ui:cursor-pointer ui:flex-col ui:items-center ui:gap-1.5 ui:rounded-lg ui:px-6 ui:py-5 ui:text-center ui:focus-visible:focus-ring ui:aria-disabled:cursor-not-allowed"
       >
-        <div className="ui:flex ui:size-10 ui:items-center ui:justify-center ui:rounded-full ui:bg-primary-muted ui:text-primary">
-          <UploadIcon aria-hidden className="ui:size-4" />
-        </div>
-        <span id={promptId} className="ui:text-body ui:text-foreground">
+        <span className="ui:flex ui:size-10 ui:items-center ui:justify-center ui:rounded-2xl ui:bg-primary-muted ui:text-muted-foreground">
+          <UploadIcon aria-hidden className="ui:size-4.5" />
+        </span>
+        <span
+          id={promptId}
+          className="ui:text-body-small ui:font-medium ui:text-foreground"
+        >
           Drag &amp; drop files here, or click to browse
         </span>
         <span

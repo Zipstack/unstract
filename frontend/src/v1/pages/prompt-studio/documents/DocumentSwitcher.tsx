@@ -1,10 +1,10 @@
+import { Button } from "@v1/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
-  MenuButton,
 } from "@v1/components/ui/menu";
 import { ACTION_ICONS } from "@v1/lib/icons";
 import type { PromptDocument } from "@v1/services/promptDocuments";
@@ -21,6 +21,7 @@ export type DocumentSwitcherProps = Readonly<{
 }>;
 
 const FileIcon = ACTION_ICONS.document;
+const ExpandIcon = ACTION_ICONS.expand;
 
 /**
  * The viewer's document picker (frame C10): each document with pages · size ·
@@ -38,11 +39,13 @@ export function DocumentSwitcher({
   );
   const selected = index >= 0 ? documents[index] : undefined;
   return (
-    <div className="ui:flex ui:min-w-0 ui:items-center ui:gap-3">
+    <div className="ui:flex ui:min-w-0 ui:items-center ui:gap-2">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <MenuButton
+          <Button
+            variant="ghost"
             leadingIcon={FileIcon}
+            trailingIcon={ExpandIcon}
             disabled={disabled || documents.length === 0}
             aria-label={
               selected
@@ -56,9 +59,9 @@ export function DocumentSwitcher({
                 ? "No documents"
                 : (selected?.document_name ?? "Choose a document")}
             </span>
-          </MenuButton>
+          </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="ui:w-72">
+        <DropdownMenuContent align="start" className="ui:w-75">
           <DropdownMenuRadioGroup
             value={selectedId ?? ""}
             onValueChange={(id) => id !== selectedId && onSelect(id)}
@@ -80,7 +83,7 @@ export function DocumentSwitcher({
         </DropdownMenuContent>
       </DropdownMenu>
       {selected ? (
-        <span className="ui:shrink-0 ui:text-body-small ui:text-muted-foreground">
+        <span className="ui:shrink-0 ui:text-caption ui:text-muted-foreground">
           {index + 1} of {documents.length}
         </span>
       ) : null}

@@ -38,7 +38,7 @@ export function useIndexing(toolId: string): Indexing {
   const [asked, setAsked] = useState<ReadonlyMap<string, IndexSnapshot>>(
     () => new Map(),
   );
-  const { mutate } = useMutation({
+  const { mutateAsync } = useMutation({
     mutationFn: (params: DocumentRef) => indexPromptDocument(params),
   });
 
@@ -63,13 +63,12 @@ export function useIndexing(toolId: string): Indexing {
           at: Date.now(),
         }),
       );
-      mutate(
-        { toolId, documentId: id },
-        // The mutation cache shows the error; the row stops processing.
-        { onError: () => forget([id]) },
-      );
+      // Per call, not mutate's per-call onError: a shared mutation keeps only
+      // the latest call's callbacks, so an earlier failure would be lost.
+      // The mutation cache shows the error; here the row stops processing.
+      mutateAsync({ toolId, documentId: id }).catch(() => forget([id]));
     },
-    [forget, mutate, toolId],
+    [forget, mutateAsync, toolId],
   );
 
   const settle = useCallback(

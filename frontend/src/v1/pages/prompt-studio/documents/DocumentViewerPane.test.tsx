@@ -224,3 +224,22 @@ it("shows processing while the workspace indexes the shown document", async () =
     await screen.findByText("6 pages · 412 KB · processing"),
   ).toBeInTheDocument();
 });
+
+it("shows the list's error with Retry instead of an empty project", async () => {
+  mockApi(
+    http.get(apiPath(ORG, "/prompt-studio/prompt-document/"), () =>
+      HttpResponse.json(
+        {
+          type: "server_error",
+          errors: [{ code: "error", detail: "Server error.", attr: null }],
+        },
+        { status: 500 },
+      ),
+    ),
+  );
+  renderPane({ selectedId: null });
+  expect(
+    await screen.findByRole("button", { name: "Retry" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("Nothing to preview yet")).not.toBeInTheDocument();
+});

@@ -135,7 +135,7 @@ export function DocumentsPanel({
 
   return (
     <div data-slot="documents-panel" className="ui:flex ui:min-h-0 ui:flex-col">
-      <div className="ui:flex ui:flex-col ui:gap-3 ui:px-5 ui:pb-4">
+      <div className="ui:flex ui:flex-col ui:gap-3 ui:px-5.5 ui:pb-3.5">
         <FileDrop
           ref={drop}
           onFiles={uploads.add}
@@ -155,7 +155,10 @@ export function DocumentsPanel({
         ))}
       </div>
       <div className="ui:min-h-0 ui:flex-1 ui:overflow-y-auto">
-        <QueryView query={list} loading={<SkeletonTableRows rows={4} />}>
+        <QueryView
+          query={list}
+          loading={<SkeletonTableRows rows={4} columns={1} />}
+        >
           {(rows) =>
             rows.length === 0 && uploads.rows.length === 0 ? (
               <EmptyDocuments
@@ -164,11 +167,12 @@ export function DocumentsPanel({
               />
             ) : (
               <>
-                {uploads.rows.length === 0 ? (
-                  <div className="ui:flex ui:items-center ui:justify-between ui:px-5 ui:pb-3">
-                    <h3 className="ui:m-0 ui:text-body ui:font-semibold ui:text-foreground">
+                {/* Frames D06 and D07 drop the heading while a row uploads or failed. */}
+                {uploads.rows.length === 0 && failed.length === 0 ? (
+                  <div className="ui:flex ui:items-center ui:justify-between ui:px-5.5 ui:pb-2.5">
+                    <h3 className="ui:m-0 ui:text-body-small ui:font-semibold ui:text-foreground">
                       Documents{" "}
-                      <span className="ui:font-normal ui:text-muted-foreground">
+                      <span className="ui:text-caption ui:font-normal ui:text-muted-foreground">
                         {rows.length}
                       </span>
                     </h3>
@@ -208,7 +212,7 @@ export function DocumentsPanel({
           }
         </QueryView>
       </div>
-      <footer className="ui:flex ui:items-center ui:justify-between ui:gap-3 ui:border-t ui:border-border ui:bg-muted/50 ui:px-5 ui:py-3">
+      <footer className="ui:flex ui:items-center ui:justify-between ui:gap-3 ui:border-t ui:border-border ui:bg-card ui:px-5.5 ui:py-3.5">
         <p
           className="ui:m-0 ui:text-body-small ui:text-muted-foreground"
           aria-live="polite"
@@ -236,18 +240,23 @@ function EmptyDocuments({
   onUpload,
 }: Readonly<{ blocked: boolean; onUpload: () => void }>): JSX.Element {
   return (
-    <div className="ui:flex ui:flex-col ui:items-center ui:gap-3 ui:px-5 ui:py-8 ui:text-center">
+    <div className="ui:flex ui:flex-col ui:items-center ui:px-5.5 ui:pt-6 ui:pb-8 ui:text-center">
       <div className="ui:flex ui:size-14 ui:items-center ui:justify-center ui:rounded-xl ui:bg-primary-muted ui:text-primary">
         <EmptyIcon aria-hidden className="ui:size-6" />
       </div>
-      <h3 className="ui:m-0 ui:text-section-title ui:text-foreground">
+      <h3 className="ui:m-0 ui:mt-6 ui:text-section-title ui:text-foreground">
         No documents yet
       </h3>
-      <p className="ui:m-0 ui:max-w-md ui:text-body ui:text-muted-foreground">
+      <p className="ui:m-0 ui:mt-2.5 ui:mb-6.5 ui:max-w-120 ui:text-body ui:text-muted-foreground">
         Prompts run against every document in this list. Add at least one before
         you write a prompt.
       </p>
-      <Button leadingIcon={AddIcon} disabled={blocked} onClick={onUpload}>
+      <Button
+        size="lg"
+        leadingIcon={AddIcon}
+        disabled={blocked}
+        onClick={onUpload}
+      >
         Upload documents
       </Button>
     </div>

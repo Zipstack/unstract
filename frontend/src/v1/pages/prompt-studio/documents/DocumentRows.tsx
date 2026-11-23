@@ -10,7 +10,7 @@ import type { UploadRow } from "./useUploads";
 const FileIcon = ACTION_ICONS.document;
 
 const ROW =
-  "ui:flex ui:items-center ui:gap-3 ui:border-t ui:border-border ui:px-5 ui:py-3";
+  "ui:flex ui:items-center ui:gap-3 ui:border-t ui:border-border ui:px-5.5 ui:py-3";
 
 function RowShell({
   name,
@@ -19,19 +19,19 @@ function RowShell({
 }: Readonly<{ name: string; children: ReactNode; trailing: ReactNode }>) {
   return (
     <li className={ROW}>
-      <div className="ui:flex ui:size-9 ui:shrink-0 ui:items-center ui:justify-center ui:rounded-md ui:border ui:border-border ui:bg-muted ui:text-destructive">
+      <div className="ui:flex ui:size-8.5 ui:shrink-0 ui:items-center ui:justify-center ui:rounded-md ui:bg-muted ui:text-destructive">
         <FileIcon aria-hidden className="ui:size-4" />
       </div>
-      <div className="ui:flex ui:min-w-0 ui:flex-1 ui:flex-col ui:gap-1">
+      <div className="ui:flex ui:min-w-0 ui:flex-1 ui:flex-col ui:gap-0.5">
         <p
-          className="ui:m-0 ui:truncate ui:text-body ui:text-foreground"
+          className="ui:m-0 ui:truncate ui:text-body-small ui:font-medium ui:text-foreground"
           title={name}
         >
           {name}
         </p>
         {children}
       </div>
-      <div className="ui:flex ui:shrink-0 ui:items-center ui:gap-1">
+      <div className="ui:flex ui:shrink-0 ui:items-center ui:gap-2">
         {trailing}
       </div>
     </li>
@@ -61,7 +61,7 @@ export function DocumentRow({
       name={name}
       trailing={
         <>
-          <div className="ui:mr-2">
+          <div className="ui:mr-1">
             <StatusBadge state={state} />
           </div>
           {onView ? (

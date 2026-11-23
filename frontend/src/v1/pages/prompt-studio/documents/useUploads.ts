@@ -31,8 +31,6 @@ export type Uploads = Readonly<{
   add: (files: readonly File[]) => void;
 }>;
 
-let nextKey = 0;
-
 /**
  * Uploads files one at a time, so each row shows its own progress. Refused
  * files never start: each gets a toast saying why. A failed upload is
@@ -49,6 +47,7 @@ export function useUploads({
   const [rows, setRows] = useState<readonly UploadRow[]>([]);
   const pending = useRef<UploadRow[]>([]);
   const busy = useRef(false);
+  const nextKey = useRef(0);
   const { mutateAsync } = useMutation({
     mutationFn: (params: UploadParams) => uploadPromptDocument(params),
   });
@@ -107,7 +106,7 @@ export function useUploads({
         toast.error(`${name} was not uploaded`, { description: reason });
       }
       const added = plan.accepted.map((file) => ({
-        key: `upload-${nextKey++}`,
+        key: `upload-${nextKey.current++}`,
         file,
         loaded: 0,
         started: false,

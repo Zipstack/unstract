@@ -9,7 +9,7 @@ export type DocumentSelection = Readonly<{
   selectedId: string | null;
   /** Shows the document at once and saves it as the tool's; reverts if the save fails. */
   select: (documentId: string) => void;
-  /** After a removal: the removed document gives way to the first one left. */
+  /** After a removal: the removed document gives way to the first one left, which is saved. */
   removed: (documentId: string, remaining: readonly string[]) => void;
 }>;
 
@@ -23,7 +23,7 @@ export function useDocumentSelection(
   savedId: string | null,
 ): DocumentSelection {
   const [selectedId, setSelectedId] = useState(savedId);
-  const { mutate } = useMutation({
+  const { mutateAsync } = useMutation({
     mutationFn: (params: DocumentRef) => selectToolDocument(params),
   });
 
@@ -31,21 +31,31 @@ export function useDocumentSelection(
     (documentId: string) => {
       const previous = selectedId;
       setSelectedId(documentId);
-      mutate(
-        { toolId, documentId },
-        { onError: () => setSelectedId(previous) },
+      // A failed save puts the previous document back, unless another choice
+      // has been made since. Handled per call: a shared mutation keeps only
+      // the latest call's own callbacks.
+      mutateAsync({ toolId, documentId }).catch(() =>
+        setSelectedId((current) =>
+          current === documentId ? previous : current,
+        ),
       );
     },
-    [mutate, selectedId, toolId],
+    [mutateAsync, selectedId, toolId],
   );
 
   const removed = useCallback(
     (documentId: string, remaining: readonly string[]) => {
-      if (documentId === selectedId) {
-        setSelectedId(remaining[0] ?? null);
+      if (documentId !== selectedId) {
+        return;
+      }
+      const [next] = remaining;
+      if (next === undefined) {
+        setSelectedId(null);
+      } else {
+        select(next);
       }
     },
-    [selectedId],
+    [select, selectedId],
   );
 
   return { selectedId, select, removed };

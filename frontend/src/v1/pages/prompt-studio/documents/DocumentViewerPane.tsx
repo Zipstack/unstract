@@ -56,7 +56,7 @@ const RetryIcon = ACTION_ICONS.refresh;
 const WarningIcon = STATUS_ICONS.warning;
 
 const CENTRED =
-  "ui:flex ui:h-full ui:min-h-48 ui:flex-col ui:items-center ui:justify-center ui:gap-3 ui:p-6 ui:text-center";
+  "ui:flex ui:h-full ui:min-h-48 ui:flex-col ui:items-center ui:justify-center ui:p-6 ui:text-center";
 
 /**
  * The workspace's document pane (frames C10, C14, D05): the switcher, PDF
@@ -98,14 +98,20 @@ export function DocumentViewerPane({
 
   let body: ReactNode;
   if (!selected) {
-    body = list.isPending ? (
-      <SkeletonBlock className="ui:h-full" />
-    ) : (
-      <p
-        className={cn(CENTRED, "ui:m-0 ui:text-body ui:text-muted-foreground")}
-      >
-        Nothing to preview yet
-      </p>
+    // A list that failed to load shows its error and Retry, not an empty project.
+    body = (
+      <QueryView query={list} loading={<SkeletonBlock className="ui:h-full" />}>
+        {() => (
+          <p
+            className={cn(
+              CENTRED,
+              "ui:m-0 ui:text-body ui:text-muted-foreground",
+            )}
+          >
+            Nothing to preview yet
+          </p>
+        )}
+      </QueryView>
     );
   } else if (unrenderable) {
     body = (
@@ -136,9 +142,9 @@ export function DocumentViewerPane({
   return (
     <section
       aria-label="Document"
-      className="ui:flex ui:h-full ui:min-h-0 ui:flex-col ui:rounded-lg ui:border ui:border-border ui:bg-card"
+      className="ui:flex ui:h-full ui:min-h-0 ui:flex-col ui:rounded-lg ui:border ui:border-border ui:bg-card ui:shadow-sm"
     >
-      <header className="ui:flex ui:items-center ui:justify-between ui:gap-3 ui:border-b ui:border-border ui:px-3 ui:py-2">
+      <header className="ui:flex ui:items-center ui:justify-between ui:gap-2 ui:border-b ui:border-border ui:px-1 ui:py-1.5">
         <DocumentSwitcher
           documents={documents}
           selectedId={selectedId}
@@ -155,7 +161,7 @@ export function DocumentViewerPane({
         onValueChange={(value) => setView(value as DocumentView)}
         className="ui:min-h-0 ui:flex-1"
       >
-        <div className="ui:flex ui:items-center ui:justify-between ui:gap-3 ui:border-b ui:border-border ui:px-3">
+        <div className="ui:flex ui:items-center ui:justify-between ui:gap-3 ui:border-b ui:border-border ui:px-4">
           <TabsList aria-label="Document view">
             <TabsTrigger value="ORIGINAL">PDF View</TabsTrigger>
             <TabsTrigger value="EXTRACT">Raw View</TabsTrigger>
@@ -170,7 +176,7 @@ export function DocumentViewerPane({
           {body}
         </TabsContent>
       </Tabs>
-      <footer className="ui:border-t ui:border-border ui:px-4 ui:py-3 ui:text-body-small ui:text-muted-foreground">
+      <footer className="ui:border-t ui:border-border ui:px-4 ui:py-3.5 ui:text-caption ui:text-muted-foreground">
         {footerText(selected, unrenderable, indexingIds)}
       </footer>
     </section>
@@ -203,18 +209,18 @@ function FailedToLoad({
       <div className="ui:flex ui:size-14 ui:items-center ui:justify-center ui:rounded-xl ui:bg-primary-muted ui:text-primary">
         <WarningIcon aria-hidden className="ui:size-6" />
       </div>
-      <h3 className="ui:m-0 ui:text-section-title ui:text-foreground">
+      <h3 className="ui:m-0 ui:mt-6 ui:text-section-title ui:text-foreground">
         Failed to load the document
       </h3>
-      <p className="ui:m-0 ui:max-w-md ui:text-body ui:text-muted-foreground">
+      <p className="ui:m-0 ui:mt-2.5 ui:mb-6.5 ui:max-w-120 ui:text-body ui:text-muted-foreground">
         The file is stored but the viewer could not render it. Prompts still run
         against the parsed text.
       </p>
       <div className="ui:flex ui:gap-2">
-        <Button leadingIcon={RetryIcon} onClick={onRetry}>
+        <Button size="lg" leadingIcon={RetryIcon} onClick={onRetry}>
           Retry
         </Button>
-        <Button variant="outline" onClick={onRawView}>
+        <Button size="lg" variant="outline" onClick={onRawView}>
           Open Raw View
         </Button>
       </div>

@@ -102,7 +102,10 @@ describe("the list (D04)", () => {
   });
 
   it("has no accessibility violations", async () => {
-    serveList([...promptDocumentFixtures.list, promptDocumentFixtures.failed]);
+    serveList([
+      ...promptDocumentFixtures.list.slice(0, 3),
+      promptDocumentFixtures.failed,
+    ]);
     const { container } = renderPanel({ onView: () => undefined });
     await screen.findByRole("list", { name: "Documents" });
     await expectNoA11yViolations(container);
@@ -271,6 +274,10 @@ describe("parse failure (D07)", () => {
     );
     expect(screen.getByText("305 KB · 0 pages parsed")).toBeInTheDocument();
     expect(screen.getByText("1 failed · 1 document")).toBeInTheDocument();
+    // As drawn: no "Documents N" heading while a document has failed.
+    expect(
+      screen.queryByRole("heading", { name: /Documents/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("says so when the backend withholds the reason", async () => {
@@ -313,6 +320,39 @@ describe("parse failure (D07)", () => {
     await user.click(await screen.findByRole("button", { name: "Retry" }));
     await waitFor(() => expect(shown).toHaveLength(1));
     expect(screen.getByText("Failed")).toBeInTheDocument();
+  });
+
+  it("stops processing for each failed request when two overlap", async () => {
+    const second = amex({ status: "pending" });
+    const first = makeDocument({ status: "pending" });
+    serveList([first, second]);
+    mockApi(
+      http.post(INDEX, async ({ request }) => {
+        const { document_id } = (await request.json()) as {
+          document_id: string;
+        };
+        // The first request fails after the second has started.
+        await delay(document_id === first.document_id ? 30 : 0);
+        return document_id === first.document_id
+          ? HttpResponse.json({}, { status: 500 })
+          : HttpResponse.json({ status: "accepted" }, { status: 202 });
+      }),
+    );
+    const { user } = renderPanel();
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Index CreditCardStatement.pdf again",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Index amex_jan_2026.pdf again" }),
+    );
+    await waitFor(() => expect(shown).toHaveLength(1));
+    const rows = within(
+      screen.getByRole("list", { name: "Documents" }),
+    ).getAllByRole("listitem");
+    await waitFor(() => expect(rows[0]).toHaveTextContent("Pending"));
+    expect(rows[1]).toHaveTextContent("Processing");
   });
 
   it("shows processing for ids the workspace says are indexing", async () => {
