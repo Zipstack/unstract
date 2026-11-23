@@ -36,7 +36,6 @@ from django.db.models import (
 )
 from django.db.models.functions import Now
 from django.utils import timezone
-
 from unstract.core.data_models import ExecutionStatus, QueueMessageState
 
 if TYPE_CHECKING:

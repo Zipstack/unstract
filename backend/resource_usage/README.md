@@ -59,10 +59,21 @@ the delete guard refuses on, with the exceptions listed under the table.
 from resource_usage.constants import ProfileKind
 from resource_usage.references import Reference, register_provider
 
+
 def my_refs(adapters):
     ...  # one query for all the adapters given
-    yield adapter_pk, Reference(group="my_group", item_type="my_item", model=MyModel,
-                                pk=row_pk, name=row_name, blocks_delete=True)
+    yield (
+        adapter_pk,
+        Reference(
+            group="my_group",
+            item_type="my_item",
+            model=MyModel,
+            pk=row_pk,
+            name=row_name,
+            blocks_delete=True,
+        ),
+    )
+
 
 register_provider(ProfileKind.ADAPTER, my_refs, claims=["my_app.MyModel.llm"])
 ```

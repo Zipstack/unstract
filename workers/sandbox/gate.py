@@ -478,13 +478,10 @@ def _rule_match_class_attribute(node, parents) -> str | None:
             return f"safety gate: {kind} attribute access '{attr}' in a class pattern"
         if attr.startswith(_INTROSPECTION_ATTR_PREFIXES):
             return (
-                f"safety gate: introspection attribute access '{attr}' "
-                "in a class pattern"
+                f"safety gate: introspection attribute access '{attr}' in a class pattern"
             )
         if attr in _DENYLISTED_ATTR_CALLS:
-            return (
-                f"safety gate: disallowed attribute access '{attr}' " "in a class pattern"
-            )
+            return f"safety gate: disallowed attribute access '{attr}' in a class pattern"
         if attr == "sys":
             # The FOURTH predicate, missing from this rule's first version --
             # which is why

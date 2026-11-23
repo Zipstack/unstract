@@ -90,7 +90,9 @@ LiteLLM requires provider prefixes on model names:
 
        @staticmethod
        def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
-           adapter_metadata["model"] = NewProviderLLMParameters.validate_model(adapter_metadata)
+           adapter_metadata["model"] = NewProviderLLMParameters.validate_model(
+               adapter_metadata
+           )
            return NewProviderLLMParameters(**adapter_metadata).model_dump()
 
        @staticmethod
@@ -114,6 +116,7 @@ LiteLLM requires provider prefixes on model names:
 5. **Test the adapter**:
    ```python
    from unstract.sdk1.adapters.adapterkit import Adapterkit
+
    kit = Adapterkit()
    adapters = kit.get_adapters_list()
    # Verify new adapter appears
@@ -142,7 +145,9 @@ LiteLLM requires provider prefixes on model names:
 
        @staticmethod
        def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
-           adapter_metadata["model"] = NewProviderEmbeddingParameters.validate_model(adapter_metadata)
+           adapter_metadata["model"] = NewProviderEmbeddingParameters.validate_model(
+               adapter_metadata
+           )
            return NewProviderEmbeddingParameters(**adapter_metadata).model_dump()
 
        @staticmethod

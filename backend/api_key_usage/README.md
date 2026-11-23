@@ -233,7 +233,9 @@ from api_key_usage.recorder import record_key_use
 from api_key_usage.registry import register_key_type
 
 # In your AppConfig.ready():
-register_key_type("review_api_key", lambda org: ReviewApiKey.objects.filter(organization=org))
+register_key_type(
+    "review_api_key", lambda org: ReviewApiKey.objects.filter(organization=org)
+)
 
 # Where the key authenticates:
 record_key_use(key_type="review_api_key", key_id=key.id, organization_id=org.pk)

@@ -8,8 +8,6 @@ import magic
 import pdfplumber
 from django.conf import settings
 from rest_framework import serializers
-
-from agent_kv.constants import EXTRACTOR_ROUTES, TABLE_EXTRACTOR_NAME, V1_EXTRACTOR_NAME
 from unstract.agent_kv_schema import SchemaError, compile_schema
 from unstract.core.mime_gate import (
     INCONCLUSIVE_MIME_TYPES,
@@ -19,6 +17,8 @@ from unstract.core.mime_gate import (
 )
 from unstract.core.network.ssrf import webhook_url_refusal
 from unstract.sdk1.constants import AdapterTypes
+
+from agent_kv.constants import EXTRACTOR_ROUTES, TABLE_EXTRACTOR_NAME, V1_EXTRACTOR_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -647,7 +647,7 @@ class SubmitSerializer(serializers.Serializer):
         reason = webhook_url_refusal(value, allowed_schemes=("https",), resolve=False)
         if reason is not None:
             raise serializers.ValidationError(
-                "webhook_url must be an https URL on a public host " f"({reason})"
+                f"webhook_url must be an https URL on a public host ({reason})"
             )
         return value
 

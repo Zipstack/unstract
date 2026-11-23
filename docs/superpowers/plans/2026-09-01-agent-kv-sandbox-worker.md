@@ -206,6 +206,7 @@ kept there as defense-in-depth). Fail-closed static allowlist — rejects danger
 imports, dynamic-exec calls, dunder attribute access and introspection-escape
 names; permits ``open()`` (SUPERSEDED -- see above; the argv-path restriction was never implemented).
 """
+
 import ast
 
 # SUPERSEDED — the sketch that was here is NOT what shipped, and
@@ -259,8 +260,12 @@ import json
 from sandbox.runner import run_code
 
 _DEFAULTS = dict(
-    timeout=10, max_output_bytes=1_048_576, max_rows=100_000,
-    memory_mb=512, max_pids=16, grace=5,
+    timeout=10,
+    max_output_bytes=1_048_576,
+    max_rows=100_000,
+    memory_mb=512,
+    max_pids=16,
+    grace=5,
 )
 
 # The runner contract: argv[1]=input json path, argv[2]=output jsonl path.
@@ -309,7 +314,8 @@ def test_subprocess_env_is_scrubbed():
 def test_non_json_output_is_error():
     r = run_code(
         "import sys\nopen(sys.argv[2],'w').write('not json\\n')\n",
-        json.dumps({"records": [{}]}), **_DEFAULTS,
+        json.dumps({"records": [{}]}),
+        **_DEFAULTS,
     )
     assert r.success is False
     assert "invalid" in r.error.lower() or "json" in r.error.lower()
@@ -343,6 +349,7 @@ with an EMPTY environment (minimal PATH only), a fresh process group, and
 rlimits on CPU / address space / PIDs / open files / output size, killed at
 ``timeout + grace`` wall-clock seconds.
 """
+
 from __future__ import annotations
 
 import json
@@ -382,6 +389,7 @@ def _limits(cpu_seconds: int, memory_mb: int, max_pids: int, fsize: int):
         resource.setrlimit(resource.RLIMIT_FSIZE, (fsize, fsize))
         resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
         os.setsid()
+
     return _apply
 
 
@@ -432,20 +440,28 @@ def run_code(
                 error=f"execution timed out after {timeout}s",
             )
         except Exception as exc:  # rlimit / spawn failure
-            return RunResult(success=False, error=f"execution failed: {type(exc).__name__}")
+            return RunResult(
+                success=False, error=f"execution failed: {type(exc).__name__}"
+            )
 
         stdout = (proc.stdout or "")[:4096]
         stderr = (proc.stderr or "")[:4096]
         if proc.returncode != 0:
             return RunResult(
-                success=False, stdout=stdout, stderr=stderr,
+                success=False,
+                stdout=stdout,
+                stderr=stderr,
                 error=f"execution failed: exit {proc.returncode}",
             )
 
         raw = out.read_text()
         if len(raw.encode()) > max_output_bytes:
-            return RunResult(success=False, stdout=stdout, stderr=stderr,
-                             error="execution failed: output exceeds size cap")
+            return RunResult(
+                success=False,
+                stdout=stdout,
+                stderr=stderr,
+                error="execution failed: output exceeds size cap",
+            )
         rows = 0
         for line in raw.splitlines():
             if not line.strip():
@@ -453,14 +469,23 @@ def run_code(
             try:
                 json.loads(line)
             except ValueError:
-                return RunResult(success=False, stdout=stdout, stderr=stderr,
-                                 error="execution failed: invalid JSONL output")
+                return RunResult(
+                    success=False,
+                    stdout=stdout,
+                    stderr=stderr,
+                    error="execution failed: invalid JSONL output",
+                )
             rows += 1
             if rows > max_rows:
-                return RunResult(success=False, stdout=stdout, stderr=stderr,
-                                 error="execution failed: output exceeds row cap")
-        return RunResult(success=True, rows_jsonl=raw, rows_written=rows,
-                         stdout=stdout, stderr=stderr)
+                return RunResult(
+                    success=False,
+                    stdout=stdout,
+                    stderr=stderr,
+                    error="execution failed: output exceeds row cap",
+                )
+        return RunResult(
+            success=True, rows_jsonl=raw, rows_written=rows, stdout=stdout, stderr=stderr
+        )
 ```
 
 Note on the timeout kill: `subprocess.run(..., timeout=)` already sends SIGKILL to the direct child on expiry; the `os.setsid()` in `preexec_fn` plus the best-effort `killpg` reap any grandchildren. Keep the `killpg` guarded so a harness bug never masks the timeout result. (An implementer may simplify the kill to `subprocess.Popen` + explicit `os.killpg` if the `run()` semantics prove fiddly — but must keep the "process group is dead after timeout" behaviour and a test for it.)
@@ -561,6 +586,7 @@ Task name ``execute_sandboxed_code`` is routed to the ``sandbox_codegen``
 queue (registry.py). All caps are re-clamped server-side here — the caller's
 values are advisory only.
 """
+
 import logging
 import os
 
@@ -598,9 +624,14 @@ def _execute_sandboxed_code_impl(
 
     eff_timeout = max(1, min(int(timeout) if timeout else timeout_max, timeout_max))
     r: RunResult = run_code(
-        code, input_json,
-        timeout=eff_timeout, max_output_bytes=max_output, max_rows=max_rows,
-        memory_mb=memory_mb, max_pids=max_pids, grace=grace,
+        code,
+        input_json,
+        timeout=eff_timeout,
+        max_output_bytes=max_output,
+        max_rows=max_rows,
+        memory_mb=memory_mb,
+        max_pids=max_pids,
+        grace=grace,
     )
     return {
         "request_id": request_id,
@@ -615,8 +646,13 @@ def _execute_sandboxed_code_impl(
 
 def _fail(request_id: str, msg: str) -> dict:
     return {
-        "request_id": request_id, "success": False, "rows_jsonl": "",
-        "rows_written": 0, "stdout": "", "stderr": "", "error": msg,
+        "request_id": request_id,
+        "success": False,
+        "rows_jsonl": "",
+        "rows_written": 0,
+        "stdout": "",
+        "stderr": "",
+        "error": msg,
     }
 
 
@@ -633,6 +669,7 @@ Import `RunResult` into `tasks` namespace (the test patches `tasks.run_code` and
 """Sandbox Worker — consumes ``sandbox_codegen``; runs generated code
 out-of-process in a scrubbed, rlimit-bounded subprocess (spec §6.3).
 """
+
 from shared.enums.worker_enums import WorkerType
 from shared.infrastructure.config.builder import WorkerBuilder
 from shared.infrastructure.logging import WorkerLogger
@@ -776,19 +813,27 @@ from code_transport import CodeExecutionUnavailable
 class _FakeDispatcher:
     """Stands in for the executor-RPC dispatcher: records the payload, returns
     a canned reply row (``.result`` is the task's dict)."""
+
     def __init__(self, reply=None, raises=None):
         self.reply, self.raises, self.seen = reply, raises, None
 
     def dispatch_sandbox(self, *, queue, request_id, code, input_json, timeout, org_id):
-        self.seen = dict(queue=queue, request_id=request_id, code=code,
-                         input_json=input_json, timeout=timeout, org_id=org_id)
+        self.seen = dict(
+            queue=queue,
+            request_id=request_id,
+            code=code,
+            input_json=input_json,
+            timeout=timeout,
+            org_id=org_id,
+        )
         if self.raises:
             raise self.raises
         return self.reply
 
 
 def _paths(tmp, record):
-    inp = Path(tmp) / "in.json"; out = Path(tmp) / "out.jsonl"
+    inp = Path(tmp) / "in.json"
+    out = Path(tmp) / "out.jsonl"
     inp.write_text(json.dumps({"records": [record]}))
     return str(inp), str(out)
 
@@ -796,11 +841,19 @@ def _paths(tmp, record):
 def test_success_writes_rows_and_returns_result():
     with tempfile.TemporaryDirectory() as tmp:
         inp, out = _paths(tmp, {"n": 2})
-        disp = _FakeDispatcher(reply={"success": True, "rows_jsonl": '{"n2": 4}\n',
-                                      "rows_written": 1, "stdout": "", "stderr": "",
-                                      "error": None})
-        t = SandboxCodeTransport(disp, queue="sandbox_codegen", org_id="7",
-                                 timeout_default=30)
+        disp = _FakeDispatcher(
+            reply={
+                "success": True,
+                "rows_jsonl": '{"n2": 4}\n',
+                "rows_written": 1,
+                "stdout": "",
+                "stderr": "",
+                "error": None,
+            }
+        )
+        t = SandboxCodeTransport(
+            disp, queue="sandbox_codegen", org_id="7", timeout_default=30
+        )
         res = t.execute("code", inp, out, timeout=10)
         assert res.success is True
         assert res.rows_written == 1
@@ -812,11 +865,19 @@ def test_success_writes_rows_and_returns_result():
 def test_failure_reply_maps_to_unsuccessful_result():
     with tempfile.TemporaryDirectory() as tmp:
         inp, out = _paths(tmp, {})
-        disp = _FakeDispatcher(reply={"success": False, "rows_jsonl": "",
-                                      "rows_written": 0, "stdout": "", "stderr": "",
-                                      "error": "safety gate: disallowed import 'os'"})
-        t = SandboxCodeTransport(disp, queue="sandbox_codegen", org_id="7",
-                                 timeout_default=30)
+        disp = _FakeDispatcher(
+            reply={
+                "success": False,
+                "rows_jsonl": "",
+                "rows_written": 0,
+                "stdout": "",
+                "stderr": "",
+                "error": "safety gate: disallowed import 'os'",
+            }
+        )
+        t = SandboxCodeTransport(
+            disp, queue="sandbox_codegen", org_id="7", timeout_default=30
+        )
         res = t.execute("code", inp, out, timeout=10)
         assert res.success is False
         assert "safety gate" in res.error
@@ -826,8 +887,9 @@ def test_no_reply_raises_unavailable():
     with tempfile.TemporaryDirectory() as tmp:
         inp, out = _paths(tmp, {})
         disp = _FakeDispatcher(reply=None)  # RPC timed out / no result row
-        t = SandboxCodeTransport(disp, queue="sandbox_codegen", org_id="7",
-                                 timeout_default=30)
+        t = SandboxCodeTransport(
+            disp, queue="sandbox_codegen", org_id="7", timeout_default=30
+        )
         with pytest.raises(CodeExecutionUnavailable):
             t.execute("code", inp, out, timeout=10)
 ```
@@ -847,6 +909,7 @@ dispatching to the OSS sandbox worker over the executor-RPC request-reply
 machinery. Decoupled from engine.code_executor by convention (duck-typed
 result), mirroring code_transport.py.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -868,15 +931,17 @@ class _Result:
 
 
 class SandboxCodeTransport(CodeExecutionTransport):
-    def __init__(self, dispatcher: Any, *, queue: str, org_id: str,
-                 timeout_default: int) -> None:
+    def __init__(
+        self, dispatcher: Any, *, queue: str, org_id: str, timeout_default: int
+    ) -> None:
         self._dispatcher = dispatcher
         self._queue = queue
         self._org_id = org_id
         self._timeout_default = timeout_default
 
-    def execute(self, code: str, input_json_path: str, output_jsonl_path: str,
-                timeout: int) -> _Result:
+    def execute(
+        self, code: str, input_json_path: str, output_jsonl_path: str, timeout: int
+    ) -> _Result:
         input_json = Path(input_json_path).read_text()
         reply = self._dispatcher.dispatch_sandbox(
             queue=self._queue,
@@ -890,12 +955,20 @@ class SandboxCodeTransport(CodeExecutionTransport):
             raise CodeExecutionUnavailable("sandbox produced no result (RPC timeout)")
         if reply.get("success"):
             Path(output_jsonl_path).write_text(reply.get("rows_jsonl", ""))
-            return _Result(success=True, output_path=output_jsonl_path,
-                           rows_written=reply.get("rows_written", 0),
-                           stdout=reply.get("stdout", ""), stderr=reply.get("stderr", ""))
-        return _Result(success=False, output_path=output_jsonl_path,
-                       error=reply.get("error") or "sandbox execution failed",
-                       stdout=reply.get("stdout", ""), stderr=reply.get("stderr", ""))
+            return _Result(
+                success=True,
+                output_path=output_jsonl_path,
+                rows_written=reply.get("rows_written", 0),
+                stdout=reply.get("stdout", ""),
+                stderr=reply.get("stderr", ""),
+            )
+        return _Result(
+            success=False,
+            output_path=output_jsonl_path,
+            error=reply.get("error") or "sandbox execution failed",
+            stdout=reply.get("stdout", ""),
+            stderr=reply.get("stderr", ""),
+        )
 ```
 
 The `dispatch_sandbox` method on the dispatcher is defined in Task 8 (a thin wrapper over `PgExecutionDispatcher.dispatch`/the routing dispatcher that packs these kwargs into a task call and returns the reply dict, or `None` on timeout). The transport depends only on that duck-typed method — the test's `_FakeDispatcher` documents its contract.
