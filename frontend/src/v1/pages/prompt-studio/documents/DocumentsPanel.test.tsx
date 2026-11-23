@@ -1,0 +1,388 @@
+import { screen, waitFor, within } from "@testing-library/react";
+import { type NotifyInput, setNotifier } from "@v1/lib/notify";
+import { setOrganizationId } from "@v1/services/context";
+import type { PromptDocument } from "@v1/services/promptDocuments";
+import {
+  apiPath,
+  DEFAULT_SESSION,
+  delay,
+  expectNoA11yViolations,
+  HttpResponse,
+  http,
+  mockApi,
+  renderV1,
+} from "@v1/test";
+import {
+  makeDocument,
+  promptDocumentFixtures,
+  TOOL_ID,
+  uploadedFixture,
+} from "@v1/test/fixtures/promptDocuments";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DocumentsPanel, type DocumentsPanelProps } from "./DocumentsPanel";
+
+const ORG = DEFAULT_SESSION;
+const LIST = apiPath(ORG, "/prompt-studio/prompt-document/");
+const FILE = apiPath(ORG, `/prompt-studio/file/${TOOL_ID}`);
+const INDEX = apiPath(ORG, `/prompt-studio/index-document/${TOOL_ID}`);
+
+let shown: NotifyInput[] = [];
+let unregister: () => void = () => undefined;
+
+beforeEach(() => {
+  setOrganizationId(ORG.organization.id);
+  shown = [];
+  unregister = setNotifier({
+    show: (input) => {
+      shown.push(input);
+      return String(shown.length);
+    },
+    dismiss: () => undefined,
+  });
+});
+afterEach(() => {
+  unregister();
+  setOrganizationId(null);
+});
+
+/** A list endpoint whose rows the test can change between reads. */
+function serveList(initial: readonly PromptDocument[]) {
+  let rows = initial;
+  mockApi(http.get(LIST, () => HttpResponse.json(rows)));
+  return (next: readonly PromptDocument[]) => {
+    rows = next;
+  };
+}
+
+function renderPanel(props: Partial<DocumentsPanelProps> = {}) {
+  return renderV1(<DocumentsPanel toolId={TOOL_ID} {...props} />, {
+    // The picker's accept is checked by the panel itself, not the browser.
+    userEventOptions: { applyAccept: false },
+  });
+}
+
+/** The failed fixture's document in another state. */
+const amex = (state: Parameters<typeof makeDocument>[0]) =>
+  makeDocument({
+    document_id: promptDocumentFixtures.failed.document_id,
+    document_name: promptDocumentFixtures.failed.document_name,
+    size_bytes: promptDocumentFixtures.failed.size_bytes,
+    page_count: promptDocumentFixtures.failed.page_count,
+    ...state,
+  });
+
+const pdf = (name: string) =>
+  new File(["%PDF-1.4"], name, { type: "application/pdf" });
+
+describe("the list (D04)", () => {
+  it("shows each document with size · pages and its state, and a footer", async () => {
+    serveList(promptDocumentFixtures.list);
+    renderPanel();
+    const list = await screen.findByRole("list", { name: "Documents" });
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows).toHaveLength(4);
+    expect(rows[0]).toHaveTextContent("CreditCardStatement.pdf");
+    expect(rows[0]).toHaveTextContent("412 KB · 6 pages");
+    expect(rows[0]).toHaveTextContent("Parsed");
+    expect(rows[3]).toHaveTextContent("Pending");
+    expect(
+      screen.getByText("4 documents · 14 pages total"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Supports PDF · up to 200 MB")).toBeInTheDocument();
+  });
+
+  it("calls onView with the document's id", async () => {
+    serveList(promptDocumentFixtures.list);
+    const onView = vi.fn();
+    const { user } = renderPanel({ onView });
+    await user.click(
+      await screen.findByRole("button", { name: "View boa_march_2026.pdf" }),
+    );
+    expect(onView).toHaveBeenCalledWith("d0000000-0000-4000-8000-000000000002");
+  });
+
+  it("has no accessibility violations", async () => {
+    serveList([...promptDocumentFixtures.list, promptDocumentFixtures.failed]);
+    const { container } = renderPanel({ onView: () => undefined });
+    await screen.findByRole("list", { name: "Documents" });
+    await expectNoA11yViolations(container);
+  });
+});
+
+describe("empty (D05)", () => {
+  it("explains that prompts need a document", async () => {
+    serveList([]);
+    renderPanel();
+    expect(await screen.findByText("No documents yet")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Prompts run against every document in this list. Add at least one before you write a prompt.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("0 documents")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Upload documents" }),
+    ).toBeEnabled();
+  });
+
+  it("refuses uploads, saying why, until the tool has a default profile", async () => {
+    serveList([]);
+    const { user } = renderPanel({
+      uploadBlockedReason:
+        "Set the default LLM profile before uploading a document",
+    });
+    expect(
+      await screen.findByRole("button", { name: "Upload documents" }),
+    ).toBeDisabled();
+    const zone = screen.getByRole("button", {
+      name: "Drag & drop files here, or click to browse",
+    });
+    expect(zone).toHaveAttribute("aria-disabled", "true");
+    expect(zone).toHaveAccessibleDescription(
+      "Set the default LLM profile before uploading a document",
+    );
+    const input = screen.getByTestId("file-drop-input");
+    const click = vi.spyOn(input, "click");
+    await user.click(zone);
+    expect(click).not.toHaveBeenCalled();
+  });
+});
+
+describe("uploads (D06)", () => {
+  it("shows the file uploading, then lists it", async () => {
+    const setRows = serveList(promptDocumentFixtures.list.slice(0, 2));
+    let release: () => void = () => undefined;
+    const arrived = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const posted: string[] = [];
+    mockApi(
+      http.post(FILE, async ({ request }) => {
+        posted.push(((await request.formData()).get("file") as File).name);
+        await arrived;
+        return HttpResponse.json({ data: [uploadedFixture] });
+      }),
+    );
+    const onUploaded = vi.fn();
+    const { user } = renderPanel({ onUploaded });
+    await screen.findByText("2 documents · 8 pages total");
+    await user.upload(
+      screen.getByTestId("file-drop-input"),
+      pdf("new_statement.pdf"),
+    );
+
+    expect(
+      await screen.findByRole("progressbar", {
+        name: "Uploading new_statement.pdf",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("1 uploading · 2 documents")).toBeInTheDocument();
+
+    setRows([
+      ...promptDocumentFixtures.list.slice(0, 2),
+      makeDocument({
+        document_id: uploadedFixture.document_id,
+        document_name: uploadedFixture.document_name,
+        status: "pending",
+      }),
+    ]);
+    release();
+    expect(
+      await screen.findByText("3 documents · 14 pages total"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(posted).toEqual(["new_statement.pdf"]);
+    expect(onUploaded).toHaveBeenCalledWith(uploadedFixture);
+  });
+
+  it("uploads several files one at a time", async () => {
+    serveList([]);
+    const order: string[] = [];
+    let inFlight = 0;
+    mockApi(
+      http.post(FILE, async ({ request }) => {
+        inFlight += 1;
+        expect(inFlight).toBe(1);
+        order.push(((await request.formData()).get("file") as File).name);
+        await delay(5);
+        inFlight -= 1;
+        return HttpResponse.json({ data: [uploadedFixture] });
+      }),
+    );
+    const { user } = renderPanel();
+    await screen.findByText("No documents yet");
+    await user.upload(screen.getByTestId("file-drop-input"), [
+      pdf("a.pdf"),
+      pdf("b.pdf"),
+    ]);
+    await waitFor(() => expect(order).toEqual(["a.pdf", "b.pdf"]));
+  });
+
+  it("refuses a file the backend would refuse, without sending it", async () => {
+    serveList(promptDocumentFixtures.list);
+    const posted = vi.fn();
+    mockApi(http.post(FILE, posted));
+    const { user } = renderPanel();
+    await screen.findByText("4 documents · 14 pages total");
+    await user.upload(screen.getByTestId("file-drop-input"), [
+      new File(["x"], "scan.png", { type: "image/png" }),
+      pdf("CreditCardStatement.pdf"),
+    ]);
+    expect(shown.map((toast) => toast.description)).toEqual([
+      "scan.png is not a supported type. Upload PDF.",
+      "A document named CreditCardStatement already exists.",
+    ]);
+    expect(posted).not.toHaveBeenCalled();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
+  it("drops the row and reports a failed upload", async () => {
+    serveList([]);
+    mockApi(
+      http.post(FILE, () =>
+        HttpResponse.json(
+          {
+            type: "validation_error",
+            errors: [
+              { code: "invalid", detail: "File too large.", attr: "file" },
+            ],
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+    const { user } = renderPanel();
+    await screen.findByText("No documents yet");
+    await user.upload(screen.getByTestId("file-drop-input"), pdf("a.pdf"));
+    await waitFor(() => expect(shown).toHaveLength(1));
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(screen.getByText("0 documents")).toBeInTheDocument();
+  });
+});
+
+describe("parse failure (D07)", () => {
+  it("shows the extractor's reason with the two suggestions", async () => {
+    serveList([promptDocumentFixtures.failed, makeDocument()]);
+    renderPanel();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("amex_jan_2026.pdf could not be parsed");
+    expect(alert).toHaveTextContent(
+      "LLM Whisperer V2 returned no text. Try a higher-resolution file, or switch the text extractor in Settings.",
+    );
+    expect(screen.getByText("305 KB · 0 pages parsed")).toBeInTheDocument();
+    expect(screen.getByText("1 failed · 1 document")).toBeInTheDocument();
+  });
+
+  it("says so when the backend withholds the reason", async () => {
+    serveList([amex({ status: "failed", reason: null })]);
+    renderPanel();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The extractor gave no reason.",
+    );
+  });
+
+  it("retries indexing, shows it processing, and settles on the new state", async () => {
+    const setRows = serveList([promptDocumentFixtures.failed]);
+    const indexed = vi.fn();
+    mockApi(
+      http.post(INDEX, async ({ request }) => {
+        indexed(await request.json());
+        return HttpResponse.json({ status: "accepted" }, { status: 202 });
+      }),
+    );
+    const { user, queryClient } = renderPanel();
+    await user.click(await screen.findByRole("button", { name: "Retry" }));
+    expect(indexed).toHaveBeenCalledWith({
+      document_id: promptDocumentFixtures.failed.document_id,
+    });
+    expect(await screen.findByText("Processing")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Remove amex_jan_2026.pdf" }),
+    ).toBeDisabled();
+
+    setRows([amex({ status: "indexed" })]);
+    await queryClient.refetchQueries();
+    expect(await screen.findByText("Parsed")).toBeInTheDocument();
+  });
+
+  it("stops processing when the index request fails", async () => {
+    serveList([promptDocumentFixtures.failed]);
+    mockApi(http.post(INDEX, () => HttpResponse.json({}, { status: 500 })));
+    const { user } = renderPanel();
+    await user.click(await screen.findByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(shown).toHaveLength(1));
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+  });
+
+  it("shows processing for ids the workspace says are indexing", async () => {
+    serveList([makeDocument({ status: "pending" })]);
+    renderPanel({
+      indexingIds: new Set(["d0000000-0000-4000-8000-000000000001"]),
+    });
+    expect(await screen.findByText("Processing")).toBeInTheDocument();
+  });
+});
+
+describe("remove (D08)", () => {
+  const prompts = [1, 2, 3, 4].map(() => ({
+    coverage: promptDocumentFixtures.list.map(
+      (document) => document.document_id,
+    ),
+  }));
+
+  it("asks, with the coverage drop, then removes the document", async () => {
+    const setRows = serveList(promptDocumentFixtures.list);
+    const ask = vi.spyOn(window, "confirm").mockReturnValue(true);
+    let body: unknown = null;
+    mockApi(
+      http.delete(FILE, async ({ request }) => {
+        body = await request.json();
+        setRows(promptDocumentFixtures.list.slice(0, 3));
+        return HttpResponse.json("File deleted succesfully.");
+      }),
+    );
+    const onRemoved = vi.fn();
+    const { user } = renderPanel({ prompts, onRemoved });
+    await user.click(
+      await screen.findByRole("button", { name: "Remove amex_jan_2026.pdf" }),
+    );
+    expect(ask).toHaveBeenCalledWith(
+      "Remove amex_jan_2026.pdf?\n\nThe document and every prompt output produced from it are removed. Coverage for all four prompts drops to 3 of 4.",
+    );
+    expect(
+      await screen.findByText("3 documents · 12 pages total"),
+    ).toBeInTheDocument();
+    expect(body).toEqual({
+      document_id: "d0000000-0000-4000-8000-000000000004",
+    });
+    expect(onRemoved).toHaveBeenCalledWith(
+      "d0000000-0000-4000-8000-000000000004",
+      [
+        "d0000000-0000-4000-8000-000000000001",
+        "d0000000-0000-4000-8000-000000000002",
+        "d0000000-0000-4000-8000-000000000003",
+      ],
+    );
+  });
+
+  it("removes nothing when the user cancels", async () => {
+    serveList(promptDocumentFixtures.list);
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const removed = vi.fn();
+    mockApi(http.delete(FILE, removed));
+    const { user } = renderPanel();
+    await user.click(
+      await screen.findByRole("button", { name: "Remove amex_jan_2026.pdf" }),
+    );
+    expect(removed).not.toHaveBeenCalled();
+  });
+});
+
+it("renders the container's footer actions", async () => {
+  serveList([]);
+  renderPanel({ footerActions: <button type="button">Done</button> });
+  expect(
+    await screen.findByRole("button", { name: "Done" }),
+  ).toBeInTheDocument();
+});
