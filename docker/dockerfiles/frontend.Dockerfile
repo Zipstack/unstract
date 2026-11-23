@@ -61,7 +61,9 @@ COPY ${BUILD_CONTEXT_PATH}/ .
 # VITE_DISTRIBUTION: oss (default when empty), cloud or onprem. It picks the
 # v1 plugins the build offers (P0-T07) and the pages the v1 route registry
 # keeps; the cloud workflows set it. See frontend/src/v1/README.md.
-ARG VITE_V1_DEV_ROUTES=""
+# TEMP (UN-4346): for dev testing only. Removed before merging; never merge this.
+# On by default so the dev image (whose workflow passes no value) has /v1-demo.
+ARG VITE_V1_DEV_ROUTES="true"
 ARG VITE_DISTRIBUTION=""
 
 # Build with Vite
