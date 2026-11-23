@@ -51,11 +51,13 @@ export interface ScrollRun {
  */
 export function scrollThrough(list: Locator, step = 400): Promise<ScrollRun> {
   return list.evaluate(
-    (root, { px, MAX_FRAMES }) =>
+    (root, { px, MAX_FRAMES, STALL_FRAMES }) =>
       new Promise<ScrollRun>((resolve) => {
         const frames: number[] = [];
         let maxCanvases = 0;
         let last = performance.now();
+        let previous = -1;
+        let stalled = 0;
         root.scrollTop = 0;
         const tick = (now: number) => {
           frames.push(now - last);
@@ -65,9 +67,15 @@ export function scrollThrough(list: Locator, step = 400): Promise<ScrollRun> {
             root.querySelectorAll("canvas").length,
           );
           const end = root.scrollHeight - root.clientHeight;
-          // A list that stops growing or scrolling ends the run rather than
-          // spinning until the test times out; the page checks then fail.
-          if (root.scrollTop >= end - 1 || frames.length > MAX_FRAMES) {
+          // A list that stops scrolling ends the run rather than spinning
+          // until the test times out, so the page checks report it.
+          stalled = root.scrollTop === previous ? stalled + 1 : 0;
+          previous = root.scrollTop;
+          if (
+            root.scrollTop >= end - 1 ||
+            stalled > STALL_FRAMES ||
+            frames.length > MAX_FRAMES
+          ) {
             resolve({
               frames: frames.slice(1),
               maxCanvases,
@@ -83,7 +91,7 @@ export function scrollThrough(list: Locator, step = 400): Promise<ScrollRun> {
           requestAnimationFrame(tick);
         });
       }),
-    { px: step, MAX_FRAMES: 5000 },
+    { px: step, MAX_FRAMES: 3000, STALL_FRAMES: 30 },
   );
 }
 
@@ -104,6 +112,13 @@ export interface TargetProbe {
   box: { x: number; y: number; w: number; h: number };
   /** The page's size in CSS px, to turn fractions into pixels. */
   page: { width: number; height: number };
+  /**
+   * Canvas pixels per CSS px, and what a canvas painted at this zoom has.
+   * While a page repaints after a zoom it shows its old bitmap stretched,
+   * whose marks still sit at the same fractions; this tells the two apart.
+   */
+  scale: number;
+  expectedScale: number;
   /** Canvas colour at points inside the highlight. */
   inside: Rgb[];
   /** Canvas colour just outside each edge of the highlight. */
@@ -150,6 +165,10 @@ export function probeTarget(highlight: Locator, gap = 4): Promise<TargetProbe> {
         h: own.height / page.height,
       },
       page: { width: page.width, height: page.height },
+      scale: canvas.width / paint.width,
+      // The viewer's cap (MAX_PIXEL_RATIO); these pages stay under the
+      // canvas size limit, which would lower it further.
+      expectedScale: Math.min(window.devicePixelRatio || 1, 2),
       inside: [
         at(midX, midY),
         at(inner(0.2, own.width, own.left), inner(0.25, own.height, own.top)),
@@ -184,6 +203,10 @@ function near(
  */
 export function expectOnTarget(probe: TargetProbe, target: ViewerTarget): void {
   const { width, height } = probe.page;
+  expect(
+    Math.abs(probe.scale - probe.expectedScale),
+    "the page is painted at this zoom",
+  ).toBeLessThanOrEqual(0.02 * probe.expectedScale);
   expect(Math.abs(probe.box.x - target.x) * width).toBeLessThanOrEqual(1);
   expect(Math.abs(probe.box.y - target.y) * height).toBeLessThanOrEqual(1);
   expect(Math.abs(probe.box.w - target.w) * width).toBeLessThanOrEqual(1);

@@ -42,6 +42,8 @@ import {
 const MEDIAN_FRAME_MS = 34;
 const P95_FRAME_MS = 67;
 const MAX_CANVASES = 12;
+/** 200 letter pages are ~210,000 px tall: ~500 frames at 400 px a frame. */
+const MIN_FRAMES = 200;
 
 test.describe("P1-T21 document viewer", { tag: DIST.all }, () => {
   test.beforeEach(async ({ page, app }) => {
@@ -50,6 +52,8 @@ test.describe("P1-T21 document viewer", { tag: DIST.all }, () => {
   });
 
   test("a 200-page PDF opens and scrolls smoothly", async ({ page }) => {
+    // Scrolling 200 pages a frame at a time takes ~15 s on its own.
+    test.setTimeout(120_000);
     const section = page.getByTestId(
       `${VIEWER_GALLERY_TEST_ID_PREFIX}${GALLERY_IDS.long}`,
     );
@@ -64,6 +68,8 @@ test.describe("P1-T21 document viewer", { tag: DIST.all }, () => {
     });
 
     expect(run.figures).toBe(LONG_PDF_PAGES);
+    // Too few frames means the list never scrolled, and empty timings pass.
+    expect(run.frames.length).toBeGreaterThanOrEqual(MIN_FRAMES);
     expect(run.maxCanvases).toBeLessThanOrEqual(MAX_CANVASES);
     expect(percentile(run.frames, 0.5)).toBeLessThanOrEqual(MEDIAN_FRAME_MS);
     expect(percentile(run.frames, 0.95)).toBeLessThanOrEqual(P95_FRAME_MS);
