@@ -29,7 +29,7 @@ export type OverlayHeaderProps = Readonly<{
   className?: string;
 }>;
 
-/** Title, description and a "Close" button for a Radix Dialog (drawer or dialog). */
+/** Title, description and a "Close" button inside a Radix Dialog; it throws inside an AlertDialog, so a confirm is a Dialog with role="alertdialog". */
 export function OverlayHeader({
   leading,
   busy,

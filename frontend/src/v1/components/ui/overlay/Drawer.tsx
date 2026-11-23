@@ -1,7 +1,13 @@
 import { cn } from "@v1/lib/cn";
 import { getPortalContainer } from "@v1/lib/portal";
 import { Dialog as RadixDialog } from "radix-ui";
-import type { ComponentProps, JSX, ReactElement, ReactNode } from "react";
+import {
+  type ComponentProps,
+  type JSX,
+  type ReactElement,
+  type ReactNode,
+  useState,
+} from "react";
 import {
   dismissGuards,
   OVERLAY_SCRIM,
@@ -55,13 +61,18 @@ export function Drawer({
   trigger,
   ...panel
 }: DrawerProps): JSX.Element {
-  // Uncontrolled, it opens from its trigger, where Radix returns focus.
-  const onCloseAutoFocus = useReturnFocus(open === true);
+  const [shown, setShown] = useState(defaultOpen === true);
+  // Radix returns focus to an uncontrolled drawer's own trigger.
+  const onCloseAutoFocus = useReturnFocus(open ?? (!trigger && shown));
+  const handleOpenChange = (next: boolean) => {
+    setShown(next);
+    onOpenChange?.(next);
+  };
   return (
     <RadixDialog.Root
       open={open}
       defaultOpen={defaultOpen}
-      onOpenChange={onOpenChange}
+      onOpenChange={handleOpenChange}
     >
       {trigger ? (
         <RadixDialog.Trigger asChild>{trigger}</RadixDialog.Trigger>

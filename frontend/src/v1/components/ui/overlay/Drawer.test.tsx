@@ -56,6 +56,21 @@ function MountedWhileOpen() {
   );
 }
 
+/** An uncontrolled drawer without a trigger, rendered only while a row is selected. */
+function SelectedRow() {
+  const [selected, setSelected] = useState(false);
+  return (
+    <>
+      <Button onClick={() => setSelected(true)}>Open row</Button>
+      {selected ? (
+        <Drawer defaultOpen onOpenChange={setSelected} title="Row detail">
+          <p>Detail</p>
+        </Drawer>
+      ) : null}
+    </>
+  );
+}
+
 /** A drawer opened while focus is on nothing, as after a click on a plain row. */
 function RowDetail({ open }: Readonly<{ open: boolean }>) {
   return (
@@ -237,6 +252,31 @@ describe("Drawer", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => expect(row).toHaveFocus());
+  });
+
+  it("returns focus to its opener when uncontrolled and without a trigger", async () => {
+    const { user } = renderV1(<SelectedRow />);
+    const row = screen.getByRole("button", { name: "Open row" });
+    await user.click(row);
+    expect(screen.getByRole("dialog", { name: "Row detail" })).toBeVisible();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(row).toHaveFocus());
+  });
+
+  it("forgets an opener once it has returned focus there", async () => {
+    const { user, rerender } = renderV1(<RowDetail open={false} />);
+    const search = screen.getByRole("textbox", { name: "Search" });
+    await user.click(search);
+    rerender(<RowDetail open />);
+    rerender(<RowDetail open={false} />);
+    await waitFor(() => expect(search).toHaveFocus());
+    // Opened again from a plain row: focus does not jump back to the search.
+    await user.click(screen.getByText("Row text"));
+    rerender(<RowDetail open />);
+    rerender(<RowDetail open={false} />);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(search).not.toHaveFocus();
   });
 
   it("does not send focus to a page control the user left for a plain row", async () => {

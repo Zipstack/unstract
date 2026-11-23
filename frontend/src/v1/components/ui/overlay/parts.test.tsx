@@ -191,7 +191,7 @@ function OpenedFromControlledPopover() {
   );
 }
 
-/** A Radix alert dialog (role=alertdialog, as confirms use) wired to the hook. */
+/** A Radix alert dialog wired to the hook; a confirm has the same role on a Dialog. */
 function Confirm({
   open,
   title,
@@ -303,7 +303,7 @@ describe("dismissGuards", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("runs the caller's handlers first, which may keep it open", async () => {
+  it("lets the caller's handlers keep it open", async () => {
     const onEscapeKeyDown = vi.fn((event: KeyboardEvent) =>
       event.preventDefault(),
     );
@@ -311,6 +311,19 @@ describe("dismissGuards", () => {
     await user.keyboard("{Escape}");
     expect(onEscapeKeyDown).toHaveBeenCalledOnce();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("runs the caller's handlers before its own guards", async () => {
+    const prevented: boolean[] = [];
+    const record = (event: Event) => {
+      prevented.push(event.defaultPrevented);
+    };
+    const own = { onEscapeKeyDown: record, onInteractOutside: record };
+    const { user } = renderV1(<OpenedByButton busy own={own} />, OUTSIDE);
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByTestId("scrim"));
+    expect(prevented.length).toBeGreaterThan(1);
+    expect(prevented).not.toContain(true);
   });
 });
 

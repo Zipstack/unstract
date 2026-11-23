@@ -47,8 +47,9 @@ put Retry or Undo in the drawer (an `InlineAlert`), not only on a toast.
 - `actions`: buttons for the bar at the bottom, primary first. The header and
   the bar stay put; the body scrolls.
 - `trigger` is the opener itself (`asChild`); `defaultOpen` opens it at
-  first render. Leave `trigger` out and use `open` and `onOpenChange` when
-  another control opens the drawer; rendering it only while open is fine.
+  first render. Leave `trigger` out when another control opens the drawer:
+  pass `open` and `onOpenChange`, or render it only while open (with `open`
+  or `defaultOpen`).
   Focus then goes back to that control. When the control sat in a menu,
   submenu or popover that has closed, focus goes to the control that opened
   that, and failing that to the page control that last had focus (a command
@@ -108,8 +109,10 @@ For overlays built on a Radix Dialog, the dialogs included; a popover uses
 - `OverlayHeader`: `title` (text), description, `leading`, `badge`,
   `className`, `titleSize` (`page` 20, the default, or `section` 16 for a
   confirm) and a close button
-  named "Close" (disabled while `busy`). Inside a Radix Dialog only. Without a
-  description, pass `aria-describedby={undefined}` to the Content.
+  named "Close" (disabled while `busy`). Inside a Radix Dialog only: it
+  throws inside an `AlertDialog`, so a confirm is a `Dialog` with
+  `role="alertdialog"`. Without a description, pass
+  `aria-describedby={undefined}` to the Content.
 - `OverlayFooter`: the action bar; `align` `end` (default) or `start`.
 - `dismissGuards(busy, own)`: spread onto the Content. Escape first clears a
   filled `SearchField`; while `busy`, neither Escape nor a click outside

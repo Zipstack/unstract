@@ -55,6 +55,20 @@ describe("HoverCard", () => {
     expect(link).toHaveFocus();
   });
 
+  it("closes only after the close delay once focus leaves", () => {
+    vi.useRealTimers();
+    vi.useFakeTimers();
+    setup();
+    const link = screen.getByRole("link", { name: "gpt-4o" });
+    act(() => link.focus());
+    act(() => vi.advanceTimersByTime(500));
+    act(() => link.blur());
+    act(() => vi.advanceTimersByTime(299));
+    expect(screen.getByText("OpenAI · 128k context")).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByText("OpenAI · 128k context")).toBeNull();
+  });
+
   it("opens on hover after the delay", async () => {
     const { user } = setup();
     await user.hover(screen.getByRole("link", { name: "gpt-4o" }));
