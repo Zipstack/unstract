@@ -320,7 +320,7 @@ class TestTheMarkerItself(_Rows):
 
 
 class TestDeleteEndToEnd(_Rows):
-    """`DELETE /agent-kv/{job_id}` against real rows."""
+    """`DELETE /api/v1/agentic-extract/{job_id}` against real rows."""
 
     def _delete(self, job):
         from agent_kv.execution_views import JobStatusView

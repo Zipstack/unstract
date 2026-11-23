@@ -539,7 +539,7 @@ def _set_states(rows, now):
         row["enabled"] = sorted(row["targets"])
         # No enabled target (cut, nothing built yet) is stabilizing: every line builds cloud by default.
         # The line's first GA, for any target, ends its auto-picks: a target with no GA yet then counts as stabilized,
-        # so it takes backport/rc fixes only by a named Backport. Its own state stays stabilizing: it keeps its target
+        # so a fix reaches it only by a confirmed Backport. Its own state stays stabilizing: it keeps its target
         # supported and blocks that target's Promote on newer lines; Retire needs force for it only when it is late.
         any_ga = any(tt["ga"] for tt in row["targets"].values())
         row["state"] = _line_state(
@@ -643,6 +643,29 @@ def retire_line_held(state, branch):
         for t, tt in sorted(_branch_row(state, branch)["targets"].items())
         if tt["state"] == "stabilized" or (tt["late"] and not tt["ga"])
     ]
+
+
+# Release-line environments, indexed by minor parity (even, odd), so nothing is stored. Each repo maps the
+# label to its own deployment; nothing here names one.
+LINE_ENVS = ("staging", "integration")
+RC_CAP = len(LINE_ENVS)  # lines in RC (stabilizing) at once, one per environment
+
+
+def line_env(line):
+    """The environment a release line's RCs deploy to; line is X.Y or release/X.Y."""
+    return LINE_ENVS[int(rm.line(line).split(".")[1]) % 2]
+
+
+def cut_refusal(state, line):
+    """Why Cut refuses a new line now, or None: the RC cap is reached, or the line's environment is held."""
+    rc = state["backport_targets"]["rc"]
+    if len(rc) >= RC_CAP:
+        return f"{len(rc)} lines already in RC ({', '.join(rc)}); the cap is {RC_CAP}"
+    env = line_env(line)
+    held = [b for b in rc if line_env(b) == env]
+    if held:
+        return f"its environment {env} is held by {held[0]}, still in RC"
+    return None
 
 
 def _branch_row(state, branch):

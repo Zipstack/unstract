@@ -41,6 +41,7 @@ it("fails loudly in development when the registry is invalid", async () => {
         toV0: {},
         toV1: {},
         toggle: false,
+        access: "authenticated",
         distributions: ["oss"],
         registeredBy: "P3-T01",
       },

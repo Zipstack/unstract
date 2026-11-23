@@ -60,6 +60,25 @@ it.each([
   expect(() => pluginRegistry([manifest], "cloud")).toThrow(why);
 });
 
+it("logs a route gate's failure without a notification: the gate shows its own alert", async () => {
+  vi.resetModules();
+  const { reportPluginError } = await import("@v1/plugins");
+  const { setNotifier } = await import("@v1/lib/notify");
+  const shown: unknown[] = [];
+  const unregister = setNotifier({
+    show: (input) => {
+      shown.push(input);
+      return input.id ?? "";
+    },
+    dismiss: () => undefined,
+  });
+  const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  reportPluginError("entitlements", "route.entitlement", new Error("chunk"));
+  unregister();
+  expect(logged).toHaveBeenCalledTimes(1);
+  expect(shown).toEqual([]);
+});
+
 it("logs a plugin failure and raises one error notification per slot", async () => {
   vi.resetModules();
   const { reportPluginError } = await import("@v1/plugins");

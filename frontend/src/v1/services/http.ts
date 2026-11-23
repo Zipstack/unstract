@@ -78,8 +78,15 @@ function addHeaders(
   return config;
 }
 
+export type HttpClientOptions = Readonly<{
+  /** False for a call whose 401 means "signed out" rather than an expired session. Default true. */
+  expiresSession?: boolean;
+}>;
+
 /** A client with its own session-expiry latch; services use `http`. */
-export function createHttpClient(): AxiosInstance {
+export function createHttpClient({
+  expiresSession = true,
+}: HttpClientOptions = {}): AxiosInstance {
   const client = axios.create();
   let expired = false;
   client.interceptors.request.use(addHeaders);
@@ -89,7 +96,7 @@ export function createHttpClient(): AxiosInstance {
     }
     const apiError = toApiError(error);
     // Once per page load, so concurrent 401s redirect once; the handler leaves the page.
-    if (apiError.kind === "unauthenticated" && !expired) {
+    if (expiresSession && apiError.kind === "unauthenticated" && !expired) {
       expired = true;
       expireSession();
     }

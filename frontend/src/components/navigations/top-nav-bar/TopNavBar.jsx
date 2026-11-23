@@ -188,6 +188,9 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const isAPIHub = effectiveProduct === "verticals";
   const isStaff = sessionDetails?.isStaff || sessionDetails?.is_staff;
   const isOpenSource = orgName === "mock_org";
+  const currentOrgName = isOpenSource
+    ? null
+    : allOrganization?.find((org) => org?.id === orgId)?.display_name;
 
   // `.topNav` is `--card`: white in light mode, near-black under `.dark`.
   // `sessionDetails.currentTheme` is the app's single source of truth for the
@@ -462,6 +465,15 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
                 className="top-navbar-avatar-menu"
                 data-testid="top-navbar-avatar-menu"
               >
+                {currentOrgName && (
+                  <Typography.Text
+                    className="top-navbar-org-name"
+                    data-testid="top-navbar-org-name"
+                    title={currentOrgName}
+                  >
+                    {currentOrgName}
+                  </Typography.Text>
+                )}
                 <div className="top-navbar-dp">
                   {sessionDetails?.picture ? (
                     <Image
