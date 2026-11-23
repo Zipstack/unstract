@@ -22,7 +22,7 @@ import {
   RETRIEVAL_STRATEGIES,
   updateProfile,
 } from "@v1/services/promptProfiles";
-import { type JSX, useState } from "react";
+import { type JSX, useEffect, useId, useState } from "react";
 import { get, useFormState, useWatch } from "react-hook-form";
 import { AdapterPicker, type AdapterPickerProps } from "./AdapterPicker";
 import {
@@ -87,6 +87,7 @@ export type ProfileFormProps = Readonly<{
   takenNames: readonly string[];
   onSaved: (profile: LlmProfile) => void;
   onCancel: () => void;
+  onDirtyChange: (dirty: boolean) => void;
 }>;
 
 /** Add New LLM Profile / Edit LLM Profile (frame D10, with v0's other fields). */
@@ -96,11 +97,14 @@ export function ProfileForm({
   takenNames,
   onSaved,
   onCancel,
+  onDirtyChange,
 }: ProfileFormProps): JSX.Element {
   const form = useAppForm<ProfileFormValues, ProfileFormOutput>({
     schema: profileFormSchema(takenNames),
     defaultValues: profile ? profileValues(profile) : NEW_PROFILE,
   });
+  const dirty = form.formState.isDirty;
+  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
   const save = useMutation({
     mutationFn: (values: ProfileFormOutput) => {
       const body = toProfileBody(values, toolId);
@@ -152,12 +156,7 @@ export function ProfileForm({
       ))}
       <div className="ui:grid ui:grid-cols-2 ui:gap-4">
         <ChunkSizeField form={form} />
-        <FormField
-          form={form}
-          name="chunk_overlap"
-          label="Chunk overlap"
-          helperText="Characters shared by neighbouring chunks."
-        >
+        <FormField form={form} name="chunk_overlap" label="Chunk overlap">
           {(field) => <Input {...field} inputMode="numeric" />}
         </FormField>
       </div>
@@ -198,10 +197,11 @@ export function ProfileForm({
       </Collapsible>
       {formError ? <ErrorText>{formError}</ErrorText> : null}
       <div className="ui:flex ui:justify-end ui:gap-2">
-        <Button variant="outline" onClick={onCancel}>
+        <Button size="lg" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
         <Button
+          size="lg"
           type="submit"
           loading={isSubmitting}
           data-testid="ps-profile-save"
@@ -242,13 +242,30 @@ function ChunkSizeField({ form }: Readonly<{ form: Form }>): JSX.Element {
   );
 }
 
+/** Frame D10's row: label and help on the left, the switch on the right. */
 function ReindexSwitch({ form }: Readonly<{ form: Form }>): JSX.Element {
   const on = useWatch({ control: form.control, name: "reindex" });
+  const id = useId();
   return (
-    <div className="ui:rounded-lg ui:border ui:p-4">
+    <div className="ui:flex ui:items-start ui:justify-between ui:gap-4 ui:rounded-lg ui:border ui:bg-card ui:px-4 ui:py-3.5">
+      <div className="ui:grid ui:gap-0.5">
+        <p
+          id={`${id}-label`}
+          className="ui:text-body-small ui:font-semibold ui:text-foreground"
+        >
+          Reindex on save
+        </p>
+        <p
+          id={`${id}-help`}
+          className="ui:text-caption ui:text-muted-foreground"
+        >
+          Deployed runs index each document again instead of reusing its stored
+          index. Slower; use it after changing chunk size.
+        </p>
+      </div>
       <Switch
-        label="Reindex on save"
-        description="Deployed runs index each document again instead of reusing its stored index. Slower; use it after changing chunk size."
+        aria-labelledby={`${id}-label`}
+        aria-describedby={`${id}-help`}
         checked={on}
         onCheckedChange={(checked) =>
           form.setValue("reindex", checked, { shouldDirty: true })

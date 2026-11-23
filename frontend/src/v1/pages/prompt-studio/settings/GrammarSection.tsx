@@ -42,7 +42,7 @@ export function GrammarSection({
     >
       <form noValidate onSubmit={onSubmit} className="ui:grid ui:gap-3">
         {rows.fields.length > 0 ? (
-          <ul className="ui:grid ui:divide-y ui:rounded-lg ui:border">
+          <ul className="ui:grid ui:divide-y ui:rounded-lg ui:border ui:bg-card">
             {rows.fields.map((row, index) => (
               <li
                 key={row.id}
@@ -54,11 +54,16 @@ export function GrammarSection({
                   label={<span className="ui:sr-only">Word {index + 1}</span>}
                   readOnly={readOnly}
                 >
-                  {(field) => <Input {...field} className="ui:font-mono" />}
+                  {(field) => (
+                    <Input
+                      {...field}
+                      controlClassName="ui:font-mono ui:text-caption"
+                    />
+                  )}
                 </FormField>
                 <ChevronRight
                   aria-hidden
-                  className="ui:mt-2 ui:size-4 ui:text-muted-foreground"
+                  className="ui:mt-2 ui:size-3.5 ui:text-muted-foreground"
                 />
                 <FormField
                   form={form}
@@ -70,17 +75,20 @@ export function GrammarSection({
                   }
                   readOnly={readOnly}
                 >
+                  {/* ponytail: comma-separated text until P1-T04's MultiSelect takes typed values as chips (frame D14). */}
                   {(field) => (
                     <Input
                       {...field}
+                      controlClassName="ui:text-caption"
                       placeholder="Comma-separated equivalents"
                     />
                   )}
                 </FormField>
                 {readOnly ? null : (
                   <IconButton
+                    size="sm"
                     icon={ACTION_ICONS.delete}
-                    aria-label={`Remove ${row.word || "this word"}`}
+                    aria-label={`Remove word ${index + 1}`}
                     className="ui:text-destructive"
                     onClick={() => rows.remove(index)}
                   />
@@ -96,6 +104,7 @@ export function GrammarSection({
         {readOnly ? null : (
           <Button
             variant="outline"
+            size="lg"
             leadingIcon={ACTION_ICONS.add}
             className="ui:justify-self-end"
             disabled={full}

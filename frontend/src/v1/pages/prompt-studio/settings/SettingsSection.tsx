@@ -20,19 +20,17 @@ export function SettingsSection({
       aria-labelledby={headingId}
       className="ui:grid ui:scroll-mt-4 ui:gap-4"
     >
-      <div className="ui:grid ui:gap-1.5">
-        <h2
-          id={headingId}
-          className="ui:text-section-title ui:font-semibold ui:text-foreground"
-        >
-          {title}
-        </h2>
-        {description ? (
-          <p className="ui:text-body-small ui:text-muted-foreground">
-            {description}
-          </p>
-        ) : null}
-      </div>
+      <h2
+        id={headingId}
+        className="ui:text-section-title ui:font-semibold ui:text-foreground"
+      >
+        {title}
+      </h2>
+      {description ? (
+        <p className="ui:text-body-small ui:text-muted-foreground">
+          {description}
+        </p>
+      ) : null}
       {children}
     </section>
   );

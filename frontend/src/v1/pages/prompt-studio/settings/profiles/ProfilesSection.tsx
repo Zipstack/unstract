@@ -6,10 +6,7 @@ import { SkeletonTableRows } from "@v1/components/ui/feedback";
 import { Radio, RadioGroup } from "@v1/components/ui/toggles";
 import { ACTION_ICONS } from "@v1/lib/icons";
 import { SettingsSection } from "@v1/pages/prompt-studio/settings/SettingsSection";
-import {
-  confirmDestructive,
-  ProfileDialog,
-} from "@v1/pages/prompt-studio/settings/standins";
+import { confirmDestructive } from "@v1/pages/prompt-studio/settings/standins";
 import {
   deleteProfile,
   type LlmProfile,
@@ -25,7 +22,7 @@ import { ProfileForm } from "./ProfileForm";
 export type ProfilesSectionProps = Readonly<{
   toolId: string;
   readOnly: boolean;
-  /** True while the add or edit form is open, for the tab's leave guard. */
+  /** True while the add or edit form has changes, for the tab's leave guard. */
   onDirtyChange: (dirty: boolean) => void;
 }>;
 
@@ -48,10 +45,15 @@ export function ProfilesSection({
 }: ProfilesSectionProps): JSX.Element {
   const query = useQuery(promptProfileQueries.list(toolId));
   const [editing, setEditing] = useState<Editing>(null);
-  useEffect(() => onDirtyChange(editing !== null), [editing, onDirtyChange]);
+  // Closing the form drops its changes, so a closed form is never unsaved.
+  useEffect(() => {
+    if (editing === null) {
+      onDirtyChange(false);
+    }
+  }, [editing, onDirtyChange]);
 
   return (
-    <SettingsSection id="llm-profiles" title="LLM Profile Settings">
+    <SettingsSection id="llm-profiles" title={sectionTitle(editing)}>
       <QueryView query={query} loading={<SkeletonTableRows rows={3} />}>
         {(profiles) =>
           editing === null ? (
@@ -67,6 +69,7 @@ export function ProfilesSection({
               toolId={toolId}
               profiles={profiles}
               editing={editing}
+              onDirtyChange={onDirtyChange}
               onClose={() => setEditing(null)}
             />
           )
@@ -76,15 +79,25 @@ export function ProfilesSection({
   );
 }
 
+function sectionTitle(editing: Editing): string {
+  if (editing === null) {
+    return "LLM Profile Settings";
+  }
+  return editing === "new" ? "Add New LLM Profile" : "Edit LLM Profile";
+}
+
+/** The add or edit form, drawn in place of the list (frame D10). */
 function ProfileEditor({
   toolId,
   profiles,
   editing,
+  onDirtyChange,
   onClose,
 }: Readonly<{
   toolId: string;
   profiles: readonly LlmProfile[];
   editing: "new" | LlmProfile;
+  onDirtyChange: (dirty: boolean) => void;
   onClose: () => void;
 }>): JSX.Element {
   const queryClient = useQueryClient();
@@ -92,27 +105,23 @@ function ProfileEditor({
   const profile = editing === "new" ? undefined : editing;
   const others = profiles.filter((p) => p.profile_id !== profile?.profile_id);
   return (
-    <ProfileDialog
-      title={profile ? "Edit LLM Profile" : "Add New LLM Profile"}
-      onClose={onClose}
-    >
-      <ProfileForm
-        toolId={toolId}
-        profile={profile}
-        takenNames={others.map((p) => p.profile_name)}
-        onCancel={onClose}
-        onSaved={(saved) => {
-          // A project's first profile becomes its default, as in v0.
-          if (profiles.length === 0) {
-            makeDefault.mutate(saved.profile_id);
-          }
-          void queryClient.invalidateQueries({
-            queryKey: promptProfileKeys.list(toolId),
-          });
-          onClose();
-        }}
-      />
-    </ProfileDialog>
+    <ProfileForm
+      toolId={toolId}
+      profile={profile}
+      takenNames={others.map((p) => p.profile_name)}
+      onCancel={onClose}
+      onDirtyChange={onDirtyChange}
+      onSaved={(saved) => {
+        // A project's first profile becomes its default, as in v0.
+        if (profiles.length === 0) {
+          makeDefault.mutate(saved.profile_id);
+        }
+        void queryClient.invalidateQueries({
+          queryKey: promptProfileKeys.list(toolId),
+        });
+        onClose();
+      }}
+    />
   );
 }
 
@@ -184,29 +193,29 @@ function ProfileList({
           value={defaultId}
           disabled={readOnly || makeDefault.isPending}
           onValueChange={(id) => makeDefault.mutate(id)}
-          className="ui:overflow-x-auto ui:rounded-lg ui:border"
+          className="ui:overflow-x-auto ui:rounded-lg ui:border ui:bg-card"
         >
-          <table className="ui:w-full ui:text-body-small">
-            <thead className="ui:bg-muted ui:text-caption ui:uppercase ui:text-muted-foreground">
+          <table className="ui:w-full ui:text-caption">
+            <thead className="ui:bg-muted ui:text-overline ui:uppercase ui:text-muted-foreground">
               <tr>
                 {COLUMNS.map((c) => (
                   <th
                     key={c}
                     scope="col"
-                    className="ui:px-4 ui:py-3 ui:text-left ui:font-medium"
+                    className="ui:px-4 ui:py-3 ui:text-left ui:font-semibold"
                   >
                     {c}
                   </th>
                 ))}
                 <th
                   scope="col"
-                  className="ui:px-4 ui:py-3 ui:text-left ui:font-medium"
+                  className="ui:px-4 ui:py-3 ui:text-left ui:font-semibold"
                 >
                   Actions
                 </th>
                 <th
                   scope="col"
-                  className="ui:px-4 ui:py-3 ui:text-left ui:font-medium"
+                  className="ui:px-4 ui:py-3 ui:text-left ui:font-semibold"
                 >
                   Default
                 </th>
@@ -214,23 +223,22 @@ function ProfileList({
             </thead>
             <tbody className="ui:divide-y">
               {profiles.map((p) => (
-                <tr key={p.profile_id} className="ui:text-foreground">
-                  <td className="ui:px-4 ui:py-3">{p.profile_name}</td>
-                  <td className="ui:px-4 ui:py-3 ui:text-muted-foreground">
-                    {p.llm}
-                  </td>
-                  <td className="ui:px-4 ui:py-3 ui:text-muted-foreground">
+                <tr key={p.profile_id} className="ui:h-12 ui:text-foreground">
+                  <td className="ui:px-4 ui:font-medium">{p.profile_name}</td>
+                  <td className="ui:px-4 ui:text-muted-foreground">{p.llm}</td>
+                  <td className="ui:px-4 ui:text-muted-foreground">
                     {p.embedding_model}
                   </td>
-                  <td className="ui:px-4 ui:py-3 ui:text-muted-foreground">
+                  <td className="ui:px-4 ui:text-muted-foreground">
                     {p.vector_store}
                   </td>
-                  <td className="ui:px-4 ui:py-3 ui:text-muted-foreground">
+                  <td className="ui:px-4 ui:text-muted-foreground">
                     {p.x2text}
                   </td>
-                  <td className="ui:px-4 ui:py-2">
+                  <td className="ui:px-4">
                     <div className="ui:flex ui:items-center ui:gap-1">
                       <CopyButton
+                        data-testid={`ps-llm-profile-copy-id-${p.profile_id}`}
                         text={p.profile_id}
                         label={`Copy the profile ID of ${p.profile_name}`}
                         copiedMessage="Profile ID copied to clipboard"
@@ -266,7 +274,7 @@ function ProfileList({
                       )}
                     </div>
                   </td>
-                  <td className="ui:px-4 ui:py-2">
+                  <td className="ui:px-4">
                     <Radio
                       value={p.profile_id}
                       aria-label={`Make ${p.profile_name} the default`}
@@ -287,6 +295,7 @@ function ProfileList({
             </span>
           ) : null}
           <Button
+            size="lg"
             leadingIcon={ACTION_ICONS.add}
             disabled={atCap}
             data-testid="ps-llm-profile-add"

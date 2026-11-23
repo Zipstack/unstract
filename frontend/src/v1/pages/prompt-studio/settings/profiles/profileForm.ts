@@ -25,14 +25,15 @@ const required = (message: string) => z.string().trim().min(1, message);
 
 /**
  * The rules. `takenNames` are the other profiles' names in this project;
- * the backend refuses a duplicate too, but only after the round trip.
+ * the backend refuses a duplicate too (case-sensitive, as checked here),
+ * but only after the round trip.
  */
 export function profileFormSchema(takenNames: readonly string[]) {
-  const taken = new Set(takenNames.map((n) => n.trim().toLowerCase()));
+  const taken = new Set(takenNames.map((n) => n.trim()));
   return z
     .object({
       profile_name: required("Enter a name").refine(
-        (name) => !taken.has(name.toLowerCase()),
+        (name) => !taken.has(name),
         "A profile with this name already exists",
       ),
       llm: required("Select an LLM"),

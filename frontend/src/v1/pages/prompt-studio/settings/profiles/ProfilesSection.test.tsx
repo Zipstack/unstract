@@ -192,8 +192,9 @@ it("adds a profile, checking chunk overlap against chunk size first", async () =
   expect(
     screen.getByRole("region", { name: "Add New LLM Profile" }),
   ).toBeVisible();
-  expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+  expect(onDirtyChange).toHaveBeenLastCalledWith(false);
   await fillNewProfile(user);
+  expect(onDirtyChange).toHaveBeenLastCalledWith(true);
   const size = screen.getByLabelText("Chunk size");
   const overlap = screen.getByLabelText("Chunk overlap");
   await user.clear(size);
@@ -259,7 +260,7 @@ it("refuses a name another profile of the project has", async () => {
   await user.click(
     await screen.findByRole("button", { name: "Add New LLM Profile" }),
   );
-  await fillNewProfile(user, "TEST4");
+  await fillNewProfile(user, "test4");
   await user.click(screen.getByRole("button", { name: "Save profile" }));
   expect(
     await screen.findByText("A profile with this name already exists"),

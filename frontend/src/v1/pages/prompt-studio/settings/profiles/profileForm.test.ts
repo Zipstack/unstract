@@ -55,9 +55,11 @@ describe("profileFormSchema", () => {
   });
 
   it("rejects a name another profile of the project uses", () => {
-    expect(errorsOf({ ...valid, profile_name: " Prod " }, ["prod"])).toEqual({
+    expect(errorsOf({ ...valid, profile_name: " prod " }, ["prod"])).toEqual({
       profile_name: "A profile with this name already exists",
     });
+    // The backend's unique constraint is case-sensitive, so this one is too.
+    expect(errorsOf({ ...valid, profile_name: "Prod" }, ["prod"])).toEqual({});
   });
 
   it("takes whole numbers of 0 or more for the chunk fields", () => {

@@ -44,15 +44,13 @@ export function CustomDataSection({
         <>
           Key-value pairs sent with every prompt in this project. Use them for
           values the document does not contain — a client code, a region, a
-          fiscal year. Prompts read a value as{" "}
-          <InlineCode variant="plain">{"{{custom_data.key}}"}</InlineCode>; a
-          value that starts with {"{"} or [ is JSON and can nest.
+          fiscal year.
         </>
       }
     >
       <form noValidate onSubmit={onSubmit} className="ui:grid ui:gap-3">
         {rows.fields.length > 0 ? (
-          <ul className="ui:grid ui:divide-y ui:rounded-lg ui:border">
+          <ul className="ui:grid ui:divide-y ui:rounded-lg ui:border ui:bg-card">
             {rows.fields.map((row, index) => (
               <li
                 key={row.id}
@@ -64,7 +62,12 @@ export function CustomDataSection({
                   label={<span className="ui:sr-only">Key {index + 1}</span>}
                   readOnly={readOnly}
                 >
-                  {(field) => <Input {...field} className="ui:font-mono" />}
+                  {(field) => (
+                    <Input
+                      {...field}
+                      controlClassName="ui:font-mono ui:text-caption"
+                    />
+                  )}
                 </FormField>
                 <FormField
                   form={form}
@@ -72,12 +75,19 @@ export function CustomDataSection({
                   label={<span className="ui:sr-only">Value {index + 1}</span>}
                   readOnly={readOnly}
                 >
-                  {(field) => <Input {...field} className="ui:font-mono" />}
+                  {(field) => (
+                    <Input
+                      {...field}
+                      controlClassName="ui:font-mono ui:text-caption"
+                      placeholder="Text, or JSON starting with { or ["
+                    />
+                  )}
                 </FormField>
                 {readOnly ? null : (
                   <IconButton
+                    size="sm"
                     icon={ACTION_ICONS.delete}
-                    aria-label={`Remove ${row.key || "this pair"}`}
+                    aria-label={`Remove pair ${index + 1}`}
                     className="ui:text-destructive"
                     onClick={() => rows.remove(index)}
                   />
@@ -93,6 +103,7 @@ export function CustomDataSection({
         {readOnly ? null : (
           <Button
             variant="outline"
+            size="lg"
             leadingIcon={ACTION_ICONS.add}
             className="ui:justify-self-end"
             onClick={() => rows.append({ key: "", value: "", json: false })}
@@ -121,7 +132,13 @@ function ReferencedVariables({
   const rows = useWatch({ control, name: "rows" });
   const paths = referencedVariables(prompts);
   if (paths.length === 0) {
-    return null;
+    return (
+      <p className="ui:text-body-small ui:text-muted-foreground">
+        No active prompt uses custom data yet. Add a variable such as{" "}
+        <InlineCode variant="plain">{"{{custom_data.your_key}}"}</InlineCode> to
+        a prompt to use a pair.
+      </p>
+    );
   }
   const data = previewData(rows);
   const missing = paths.filter((p) => !isDefined(data, p)).length;

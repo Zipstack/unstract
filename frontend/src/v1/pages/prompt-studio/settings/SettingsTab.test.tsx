@@ -216,13 +216,24 @@ describe("project settings sections", () => {
     ).toBeNull();
   });
 
+  it("says how to use custom data when no active prompt does", async () => {
+    serve(makeToolSettings({ prompts: [] }));
+    renderTab();
+    await loaded();
+    expect(
+      within(section("Custom Data")).getByText(
+        /No active prompt uses custom data yet/,
+      ),
+    ).toBeVisible();
+  });
+
   it("removes a grammar word and saves the rest", async () => {
     const patches = serve();
     const { user } = renderTab();
     await loaded();
     const grammar = section("Grammar");
     await user.click(
-      within(grammar).getByRole("button", { name: "Remove BoA" }),
+      within(grammar).getByRole("button", { name: "Remove word 1" }),
     );
     await user.click(
       within(grammar).getByRole("button", { name: "Save changes" }),
@@ -292,6 +303,28 @@ describe("project settings sections", () => {
     renderTab();
     expect(await screen.findByRole("button", { name: "Retry" })).toBeVisible();
   });
+});
+
+it("shows the no-permission state when the project is forbidden", async () => {
+  mockApi(
+    ...settingsHandlers(S).slice(1),
+    http.get(TOOL, () =>
+      HttpResponse.json(
+        {
+          type: "client_error",
+          errors: [{ code: "permission_denied", detail: "No.", attr: null }],
+        },
+        { status: 403 },
+      ),
+    ),
+  );
+  renderTab();
+  expect(
+    await screen.findByRole("heading", {
+      name: "You don't have access to this page",
+    }),
+  ).toBeVisible();
+  expect(screen.queryByRole("navigation")).toBeNull();
 });
 
 describe("leave guard", () => {

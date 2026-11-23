@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLeaveGuard } from "@v1/components/patterns/form";
+import { NoPermission } from "@v1/components/patterns/NoPermission";
 import { QueryView } from "@v1/components/patterns/QueryView";
 import { cn } from "@v1/lib/cn";
 import { Slot } from "@v1/lib/plugins";
 import { registry } from "@v1/plugins";
+import { toApiError } from "@v1/services/errors";
 import { promptStudioToolQueries } from "@v1/services/promptStudioTool";
 import { type JSX, useEffect, useMemo, useState } from "react";
 import { AmbleSection } from "./AmbleSection";
@@ -101,6 +103,11 @@ export function SettingsTab({
     ) : null;
   };
 
+  // The project read answers 403 when the user may not open it at all.
+  if (settings.isError && toApiError(settings.error).kind === "forbidden") {
+    return <NoPermission />;
+  }
+
   return (
     <div className="ui:grid ui:min-h-0 ui:grid-cols-[auto_1fr] ui:gap-6">
       <SectionList sections={sections} />
@@ -144,21 +151,33 @@ function SectionList({
 }: Readonly<{ sections: readonly SettingsSection[] }>): JSX.Element {
   const [current, setCurrent] = useState(sections[0]?.id);
   return (
-    <nav aria-label="Settings sections" className="ui:w-56 ui:border-r ui:pr-3">
-      <ul className="ui:grid ui:gap-1">
-        {sections.map((s) => (
-          <li key={s.id}>
+    <nav
+      aria-label="Settings sections"
+      className="ui:w-60 ui:border-r ui:bg-card ui:px-2.5 ui:py-3"
+    >
+      <ul className="ui:grid ui:gap-0.5">
+        {sections.map(({ id, label, icon: Icon }) => (
+          <li key={id}>
             <a
-              href={`#${anchorId(s.id)}`}
-              aria-current={current === s.id ? "location" : undefined}
-              onClick={() => setCurrent(s.id)}
+              href={`#${anchorId(id)}`}
+              aria-current={current === id ? "location" : undefined}
+              onClick={() => setCurrent(id)}
               className={cn(
-                "ui:flex ui:h-9 ui:items-center ui:rounded-md ui:px-3 ui:text-body ui:text-foreground ui:no-underline ui:outline-none ui:hover:bg-accent ui:focus-visible:focus-ring",
-                current === s.id &&
-                  "ui:bg-accent ui:font-medium ui:text-primary",
+                "ui:group ui:flex ui:h-9 ui:items-center ui:gap-2.5 ui:rounded-md ui:px-2.5 ui:text-body-small ui:font-medium ui:text-foreground ui:no-underline ui:outline-none ui:hover:bg-accent ui:focus-visible:focus-ring",
+                current === id &&
+                  "ui:bg-primary-muted ui:font-semibold ui:text-primary ui:hover:bg-primary-muted",
               )}
             >
-              {s.label}
+              <Icon
+                aria-hidden
+                className={cn(
+                  "ui:size-4 ui:shrink-0",
+                  current === id
+                    ? "ui:text-primary"
+                    : "ui:text-muted-foreground",
+                )}
+              />
+              {label}
             </a>
           </li>
         ))}

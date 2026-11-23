@@ -4,7 +4,7 @@
  */
 import { fieldFrameVariants, useFieldControl } from "@v1/components/ui/form";
 import { cn } from "@v1/lib/cn";
-import type { ComponentProps, JSX, ReactNode } from "react";
+import type { ComponentProps, JSX } from "react";
 
 export type SelectOption = Readonly<{
   value: string;
@@ -58,34 +58,6 @@ export function SelectField({
         </option>
       ))}
     </select>
-  );
-}
-
-/**
- * The Add/Edit LLM Profile surface (frame D10 draws a dialog).
- * ponytail: an in-place panel until P1-T07's Dialog lands; swap this for
- * `Dialog` with the same title, open and onClose.
- */
-export function ProfileDialog({
-  title,
-  children,
-}: Readonly<{
-  title: string;
-  /** The Dialog closes on Escape and the close button; the panel has neither. */
-  onClose: () => void;
-  children: ReactNode;
-}>): JSX.Element {
-  return (
-    <section
-      aria-label={title}
-      data-slot="profile-dialog"
-      className="ui:grid ui:gap-4"
-    >
-      <h3 className="ui:text-section-title ui:font-semibold ui:text-foreground">
-        {title}
-      </h3>
-      {children}
-    </section>
   );
 }
 
