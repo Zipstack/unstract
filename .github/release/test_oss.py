@@ -319,13 +319,13 @@ class Lines(unittest.TestCase):
         self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
         st = state()
         self.assertEqual(
-            (st["branches"][0]["state"], st["backport_targets"]["fix"]),
+            (st["branches"][0]["state"], st["backport_targets"]["rc"]),
             ("stabilizing", ["release/1.7"]),
         )
         self.assertEqual(oss.promote(self.cloud, self.oss, "v1.7.0-rc.1"), "ee-v1.7.0")
         st = state()
         self.assertEqual(
-            (st["branches"][0]["state"], st["backport_targets"]["fix"]),
+            (st["branches"][0]["state"], st["backport_targets"]["rc"]),
             ("stabilized", []),
         )
         self.assertEqual(st["branches"][0]["targets"]["oss"]["ga"]["tag"], "ee-v1.7.0")
@@ -632,7 +632,7 @@ class Gate(unittest.TestCase):
             g("branch", "release/1.6")
             g("branch", "release/1.7")
             with open(os.path.join(d, "f.txt"), "w") as fh:
-                fh.write("fix")
+                fh.write("rc")
             g("add", "f.txt")
             g("commit", "-q", "-m", "F: oss fix (#7)")
             f = g("rev-parse", "HEAD")
@@ -813,6 +813,13 @@ def dispatch_inputs(workflow):
     return inputs
 
 
+def cloud_apps():
+    """take-rc-build's environment -> ArgoCD app map, read from the workflow so no app is named here."""
+    with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
+        m = re.search(r"APP: \$\{\{ fromJSON\('(\{.*?\})'\)", fh.read())
+    return json.loads(m.group(1))
+
+
 def step(workflow, name, exprs=()):
     """Each ${{ }} expression is replaced from exprs, "" when absent."""
     with open(os.path.join(HERE, "..", "workflows", workflow)) as fh:
@@ -893,6 +900,8 @@ urllib.request.urlopen = _urlopen
         with open(os.path.join(bin_, "gh"), "w") as fh:
             fh.write(f"""#!/bin/sh
 case "$*" in
+  "pr list -R "*"--state merged"*) echo "$GH_TOKEN $*" >> {d}/gh.log; [ -e {d}/mergedfail ] && exit 1
+    cat "{d}/merged-$(echo "$4" | tr / _).json" 2>/dev/null || echo "[]";;
   "pr list -R "*) echo "$GH_TOKEN $*" >> {d}/gh.log; [ -e {d}/prfail ] && exit 1
     cat "{d}/$(echo "$4" | tr / _).json" 2>/dev/null || echo "[]";;
   *"/pulls"*) echo "$GH_TOKEN $*" >> {d}/gh.log; [ -e {d}/pullsfail ] && exit 1
@@ -933,6 +942,7 @@ true
             "PYTHONPATH": self.site,
             "FORCE": "false",
             "REASON": "",
+            "ENVIRONMENT": "none",
             "OSS_REPO": self.repos["oss"][1],
             "OSS_TOKEN": "oss-token",
             "GH_TOKEN": "cloud-token",
@@ -1653,6 +1663,17 @@ class SyncArgocdParameters(unittest.TestCase):
         self.assertNotIn("global.unstract.image.tag", got)
         self.assertNotIn("runner.configMap.TOOL_SIDECAR_IMAGE_TAG", got)
 
+    def test_an_rc_revision_drops_a_pinned_tag(self):
+        # an app pinned to a dev tag; an RC deploys the images its chart names
+        pinned = {"name": "global.unstract.image.tag", "value": "snapshot.1018"}
+        got = self.merged([self.OTHER, pinned], cloud_rc=self.REG, revision="v1.1.0-rc.2")
+        self.assertNotIn("global.unstract.image.tag", got)
+        self.assertEqual(got["backend.image.registry"], self.REG)
+        self.assertNotIn("runner.configMap.TOOL_SIDECAR_IMAGE_TAG", got)
+        # a branch revision keeps it
+        got = self.merged([self.OTHER, pinned], cloud_rc=self.REG, revision="main")
+        self.assertEqual(got["global.unstract.image.tag"], "snapshot.1018")
+
     def test_an_rc_tag_without_cloud_rc_fails(self):
         tag = {"name": "global.unstract.image.tag", "value": "v2.0.0-rc.1"}
         for current, kwargs in (
@@ -1909,7 +1930,66 @@ esac
                 "returned no .spec.source", r.stdout, body
             )  # named, not a traceback
             self.assertIsNone(params, body)
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(os.path.join(self.d, "out"))
         r, params = self.sync(self.APP, code=403)
+        self.assertEqual((r.returncode, params), (1, None))
+        with (
+            contextlib.suppress(FileNotFoundError),
+            open(os.path.join(self.d, "out")) as fh,
+        ):
+            self.assertNotIn("previous=", fh.read())  # set only once the update lands
+
+    def test_sync_reports_what_the_app_ran_before(self):
+        pinned = {
+            "spec": {
+                "source": {
+                    "targetRevision": "main",
+                    "helm": {
+                        "parameters": [
+                            {
+                                "name": "global.unstract.image.tag",
+                                "value": "snapshot.1018",
+                            }
+                        ]
+                    },
+                }
+            }
+        }
+        for app, before in (
+            (pinned, "snapshot.1018"),
+            ({"spec": {"source": {"targetRevision": "v1.7.0-rc.2"}}}, "v1.7.0-rc.2"),
+            (  # an empty tag parameter is no tag
+                {
+                    "spec": {
+                        "source": {
+                            "targetRevision": "v1.7.0-rc.2",
+                            "helm": {
+                                "parameters": [
+                                    {"name": "global.unstract.image.tag", "value": ""}
+                                ]
+                            },
+                        }
+                    }
+                },
+                "v1.7.0-rc.2",
+            ),
+        ):
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(os.path.join(self.d, "out"))
+            r, params = self.sync(
+                app,
+                APP_NAME=cloud_apps()["integration"],
+                TARGET_REVISION="v1.7.1-rc.1",
+                CLOUD_RC=RC,
+            )
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertNotIn("global.unstract.image.tag", params)
+            with open(os.path.join(self.d, "out")) as fh:
+                self.assertEqual(fh.read(), f"previous={before}\n")
+        # A near miss of a real app name, so a loosened allowlist fails here.
+        near_miss = cloud_apps()["staging"].replace("staging", "prod")
+        r, params = self.sync(pinned, APP_NAME=near_miss)
         self.assertEqual((r.returncode, params), (1, None))
 
     def test_sync_of_an_app_with_no_parameters(self):
@@ -2753,7 +2833,7 @@ class PendingPicksWorkflow(Workflow):
 
     def test_promote_fails_a_product_with_no_rc_build(self):
         self.line("1.7", "v1.7.0-rc.1")
-        dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "fix")
+        dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "rc")
         dev_git(self.cloud, "tag", "v1.7.0-rc.2")
         dev_git(
             self.cloud,
@@ -2927,7 +3007,7 @@ class PendingPicksWorkflow(Workflow):
                     {
                         "number": 5,
                         "title": "[FIX] y",
-                        "labels": [{"name": "fix/needs-backport"}],
+                        "labels": [{"name": "backport/rc"}],
                     }
                 ]
             ),
@@ -2974,17 +3054,17 @@ class PendingPicksWorkflow(Workflow):
         self.write(
             "pulls.json",
             json.dumps(
-                [{"number": 9, "title": "[FIX] x", "labels": [{"name": "fix/security"}]}]
+                [{"number": 9, "title": "[FIX] x", "labels": [{"name": "backport/ga"}]}]
             ),
         )
         r = self.promote("v1.7.0-rc.1")
         self.blocked(r, "::error::pending picks")
         self.assertRegex(
             r.stdout,
-            rf"::error::[0-9a-f]{{7}} \(security, PR {re.escape(oss.OSS)}#9\) held for release/1\.7",
+            rf"::error::[0-9a-f]{{7}} \(ga, PR {re.escape(oss.OSS)}#9\) held for release/1\.7",
         )
         self.assertNotRegex(
-            r.stdout, r"\(security, PR #9\)"
+            r.stdout, r"\(ga, PR #9\)"
         )  # the cloud line is still stabilizing: not checked
 
     def test_promote_held_fixes(self):
@@ -3012,13 +3092,13 @@ class PendingPicksWorkflow(Workflow):
         self.write(
             "pulls.json",
             json.dumps(
-                [{"number": 9, "title": "[FIX] x", "labels": [{"name": "fix/security"}]}]
+                [{"number": 9, "title": "[FIX] x", "labels": [{"name": "backport/ga"}]}]
             ),
         )
         r = self.promote("v1.7.1-rc.1")
         self.blocked(r, "::error::pending picks")
         self.assertRegex(
-            r.stdout, r"::error::[0-9a-f]{7} \(security, PR #9\) held for release/1\.7"
+            r.stdout, r"::error::[0-9a-f]{7} \(ga, PR #9\) held for release/1\.7"
         )
         self.assertNotIn(
             f"oss-token api repos/{oss.OSS}/", self.read("gh.log")
@@ -3040,7 +3120,7 @@ class PendingPicksWorkflow(Workflow):
         self.assertEqual(
             len(
                 re.findall(
-                    r"::error::[0-9a-f]{7} \(security, PR #9\) held for release/1\.7",
+                    r"::error::[0-9a-f]{7} \(ga, PR #9\) held for release/1\.7",
                     r.stdout,
                 )
             ),
@@ -3048,14 +3128,14 @@ class PendingPicksWorkflow(Workflow):
         )
         self.assertRegex(
             r.stdout,
-            rf"::error::[0-9a-f]{{7}} \(security, PR {re.escape(oss.OSS)}#9\) held for release/1\.7",
+            rf"::error::[0-9a-f]{{7}} \(ga, PR {re.escape(oss.OSS)}#9\) held for release/1\.7",
         )
         take = self.run_step(
             inline("take-rc-build.yaml", "Plan checks"),
             BRANCH="release/1.7",
             TARGETS="cloud",
         )  # Take RC lists the OSS-held fix too, and never blocks on it
-        held = f"Held for the RM on {oss.OSS} [`release/1.7`](https://github.com/{oss.OSS}/tree/release/1.7)"
+        held = f"Held for confirmation on {oss.OSS} [`release/1.7`](https://github.com/{oss.OSS}/tree/release/1.7)"
         self.assertIn(held, self.read("notes.md"), take.stdout + take.stderr)
         self.assertIn(held, self.read("summary"))
         self.assertIn(f"backport.yaml -R {oss.OSS} -f commits=#9", self.read("summary"))
@@ -3074,7 +3154,7 @@ class PendingPicksWorkflow(Workflow):
         )
         self.blocked(
             self.promote("v1.7.1-rc.1", FORCE="true", REASON="x"),
-            "::error::cannot list held security/critical fixes",
+            "::error::cannot list held backport/ga fixes",
         )
         self.assertIn("rerun Promote once GitHub answers", self.read("summary"))
 
@@ -3128,6 +3208,80 @@ class PendingPicksWorkflow(Workflow):
             r.stdout,
         )
 
+    def test_take_rc_blocks_on_prem_on_a_declared_fix_unless_forced(self):
+        self.line("1.7")
+        rows = {}
+        for name, slug, n in (
+            ("cloud", "Zipstack/unstract-cloud", 11),
+            ("oss", oss.OSS, 12),
+        ):
+            work = self.repos[name][1]
+            dev_git(work, "pull", "-q", "origin", "main")
+            dev_git(work, "commit", "-q", "--allow-empty", "-m", f"[FIX] declared (#{n})")
+            dev_git(work, "push", "-q", "origin", "main")
+            dev_git(work, "fetch", "-q", "origin")
+            sha = rm.git(work, "rev-parse", "HEAD")
+            rows[slug] = [
+                {
+                    "number": n,
+                    "title": "[FIX] declared",
+                    "body": "Backport-also: 1.7\r\n",
+                    "mergeCommit": {"oid": sha},
+                }
+            ]
+            self.write(f"merged-{slug.replace('/', '_')}.json", json.dumps(rows[slug]))
+        dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
+        script = inline("take-rc-build.yaml", "Plan checks")
+        r = self.run_step(script, BRANCH="release/1.7", TARGETS="cloud")
+        self.assertEqual(
+            r.returncode, 0, r.stdout + r.stderr
+        )  # a declaration holds on-prem builds only
+        r = self.run_step(script, BRANCH="release/1.7", TARGETS="cloud,on-prem")
+        self.blocked(r, "::error::declared fixes not yet on release/1.7")
+        summary = self.read("summary")
+        for slug, n in (("Zipstack/unstract-cloud", 11), (oss.OSS, 12)):
+            self.assertIn(
+                f"- {slug}#{n} [FIX] declared: pick it with `gh workflow run backport.yaml -R {slug} "
+                f"-f commits={n} -f lines=1.7 -f patch_released_lines=true`, or remove the "
+                f"`Backport-also: 1.7` line from PR #{n} if the fix is no longer needed",
+                summary,
+            )
+        self.assertIn(
+            "**Next:** pick each fix or remove its declaration, then run Take RC build again",
+            summary,
+        )
+        self.assertIn(
+            "oss-token pr list -R Zipstack/unstract --state merged", self.read("gh.log")
+        )
+        r = self.run_step(
+            script,
+            BRANCH="release/1.7",
+            TARGETS="on-prem",
+            FORCE="true",
+            REASON="customer ask",
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        notes = self.read("notes.md")
+        self.assertIn("Zipstack/unstract-cloud#11 [FIX] declared", notes)
+        self.assertIn("Forced: customer ask", notes)
+        self.write("mergedfail", "")
+        r = self.run_step(script, BRANCH="release/1.7", TARGETS="on-prem")
+        self.blocked(r, "::error::cannot list declared fixes")
+        self.assertIn(
+            "**Next:** retry Take RC build once GitHub answers", self.read("summary")
+        )
+        r = self.run_step(
+            script,
+            BRANCH="release/1.7",
+            TARGETS="on-prem",
+            FORCE="true",
+            REASON="gh down",
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(
+            "::warning::\n⚠ Declared fixes: unchecked, the listing failed", r.stdout
+        )
+
     def test_take_rc_passes_a_line_without_conflict_prs(self):
         self.line("1.7")
         dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
@@ -3160,7 +3314,7 @@ class LateTargetWorkflow(Workflow):
                     {
                         "number": 5,
                         "title": "[FIX] y",
-                        "labels": [{"name": "fix/needs-backport"}],
+                        "labels": [{"name": "backport/rc"}],
                     }
                 ]
             ),
@@ -3205,7 +3359,7 @@ class LateTargetWorkflow(Workflow):
     def test_unchanged_tip_reuses_its_rc_and_promotes_onto_the_cloud_ga(self):
         notes, out = self.take_rc()
         self.assertIn(
-            "| [#5](https://github.com/Zipstack/unstract-cloud/pull/5) | [FIX] y | fix |",
+            "| [#5](https://github.com/Zipstack/unstract-cloud/pull/5) | [FIX] y | rc |",
             notes,
         )  # owed, shown
         self.assertIn(
@@ -3214,12 +3368,12 @@ class LateTargetWorkflow(Workflow):
         )
         self.assertEqual(
             out,
-            "tag=v1.7.0-rc.3\nbump=false\ntargets=on-prem\nwant=on-prem\nnewest=release/1.7\nchart=true\n",
+            "tag=v1.7.0-rc.3\nbump=false\ntargets=on-prem\nwant=on-prem\nchart=true\n",
         )
         self.built("v1.7.0-rc.3")
         st = self.state()
         self.assertEqual(st["branches"][0]["state"], "stabilized")
-        self.assertEqual(st["backport_targets"]["fix"], [])
+        self.assertEqual(st["backport_targets"]["rc"], [])
         r = self.run_step(
             inline("promote.yaml", "Plan"),
             RC="v1.7.0-rc.3",
@@ -3298,7 +3452,7 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.0-rc.2\nbump=true\ntargets=cloud\nwant=cloud\nnewest=release/1.7\nchart=false\n",
+            "tag=v1.7.0-rc.2\nbump=true\ntargets=cloud\nwant=cloud\nchart=false\n",
         )
 
     def test_allocates_past_a_kept_rc_chart(self):
@@ -3319,20 +3473,8 @@ class TakeRcVersion(Workflow):
         self.assertIn("tag=v1.7.0-rc.2\n", self.read("output"))
         self.assertIn("\nchart=true\n", self.read("output"))
 
-    def test_plan_names_the_newest_line(self):
-        self.line("1.7", "v1.7.0")
-        self.line("1.8")
-        dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
-        r = self.run_step(
-            inline("take-rc-build.yaml", "Plan version and targets"),
-            BRANCH="release/1.7",
-            TARGETS="cloud",
-        )
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("\nnewest=release/1.8\n", self.read("output"))
-
     def test_a_failed_rc_chart_fails_the_summary(self):
-        def summary(chart):
+        def summary(chart, version="v1.7.1-rc.1"):
             out = os.path.join(self.d, "summary")
             with contextlib.suppress(FileNotFoundError):
                 os.remove(out)
@@ -3345,8 +3487,8 @@ class TakeRcVersion(Workflow):
                     "BUILD": "on-prem",
                     "RESULT": "success",
                     "CHART": chart,
+                    "CHART_VERSION": version,
                     "BRANCH": "release/1.7",
-                    "NEWEST": "release/1.7",
                     "GITHUB_STEP_SUMMARY": out,
                 },
                 capture_output=True,
@@ -3358,13 +3500,17 @@ class TakeRcVersion(Workflow):
         self.assertEqual(code, 0)
         self.assertIn("On-prem RC chart `unstract-platform:v1.7.1-rc.1`: success", text)
         self.assertIn("QA tests", text)
+        # A chart bumped before the v came back is reported under the version it was pushed as.
+        self.assertIn(
+            "unstract-platform:1.7.1-rc.1`: success", summary("success", "1.7.1-rc.1")[1]
+        )
         code, text = summary("failure")
         self.assertEqual(code, 1)
         self.assertNotIn("QA tests", text)
         self.assertEqual(summary("skipped")[0], 0)
 
-    def test_staging_is_left_alone_for_an_older_line(self):
-        def summary(build, newest, **env):
+    def test_summary_says_where_the_rc_deployed(self):
+        def summary(build, env, deployed_from, **extra):
             out = os.path.join(self.d, "summary")
             with contextlib.suppress(FileNotFoundError):
                 os.remove(out)
@@ -3377,48 +3523,148 @@ class TakeRcVersion(Workflow):
                     "BUILD": build,
                     "RESULT": "success",
                     "BRANCH": "release/1.7",
-                    "NEWEST": newest,
+                    "ENVIRONMENT": env,
+                    "DEPLOYED_FROM": deployed_from,
+                    "APP": apps.get(env, ""),
+                    "ARGOCD_APPS": "https://argo/applications",
+                    "GITHUB_SERVER_URL": "",
                     "GITHUB_STEP_SUMMARY": out,
-                    **env,
+                    **extra,
                 },
                 capture_output=True,
                 text=True,
             )
-            self.assertEqual(r.returncode, 0, r.stderr)
+            ok = extra.get("RESULT", "success") == "success"
+            self.assertEqual(r.returncode, 0 if ok else 1, r.stderr)
             return self.read("summary")
 
+        apps = cloud_apps()
+        stg, intg = apps["staging"], apps["integration"]
+        text = summary("cloud", "integration", "v1.7.0-rc.3")
+        self.assertIn(
+            "Deployed to: integration (v1.7.0-rc.3 → v1.7.1-rc.1), "
+            f"[{intg}](https://argo/applications/{intg})\n",
+            text,
+        )
+        self.assertNotIn("sync-argocd.yaml", text)
+        text = summary("cloud on-prem", "none", "")
+        self.assertIn("Deployed to: none", text)
+        self.assertIn(
+            f"Apps: [{stg}](https://argo/applications/{stg}), "
+            f"[{intg}](https://argo/applications/{intg})\n",
+            text,
+        )
+        self.assertIn(
+            f"gh workflow run sync-argocd.yaml -f app_name={stg} -f target_revision=v1.7.1-rc.1",
+            text,
+        )
+        self.assertNotIn("sync-argocd.yaml", summary("on-prem", "none", ""))
+        self.assertNotIn("Apps:", summary("on-prem", "none", ""))
+        self.assertIn(
+            "Deployed to: none (the integration deploy did not complete)",
+            summary("cloud", "integration", ""),
+        )
+        self.assertIn(  # the app was updated but its sync failed
+            "Deployed to: integration updated (v1.7.0-rc.3 → v1.7.1-rc.1), but the build ended failure; check "
+            f"its sync in [{intg}](https://argo/applications/{intg})",
+            summary("cloud", "integration", "v1.7.0-rc.3", RESULT="failure"),
+        )
+        self.assertIn(  # a rerun that rebuilt only on-prem leaves the cloud RC where it is
+            "Deployed to: not redeployed (this run built no cloud images)",
+            summary("on-prem", "staging", ""),
+        )
         with open(os.path.join(HERE, "..", "workflows", "build-push.yaml")) as fh:
-            (staging,) = set(
-                re.findall(r"\n +app_name: (\S+)\n", fh.read())
-            )  # the app the build deploys
-        note = f"gh workflow run sync-argocd.yaml -f app_name={staging} -f target_revision=v1.7.1-rc.1"
-        self.assertIn(
-            "Staging not updated: it runs the newest line, `release/1.8`",
-            summary("cloud", "release/1.8", GITHUB_SERVER_URL=""),
-        )
-        self.assertIn(note, summary("cloud on-prem", "release/1.8"))
-        web = "https://github.com/Zipstack/unstract-cloud"
-        self.assertIn(
-            f"newest line, [`release/1.8`]({web}/tree/release/1.8). To deploy "
-            f"[`v1.7.1-rc.1`]({web}/releases/tag/v1.7.1-rc.1) there anyway:",
-            summary("cloud", "release/1.8", GITHUB_SERVER_URL="https://github.com"),
-        )
-        self.assertIn(
-            note, summary("cloud", "release/1.8", GITHUB_SERVER_URL="https://github.com")
-        )
-        self.assertNotIn(note, summary("cloud", "release/1.7"))
-        self.assertNotIn(note, summary("on-prem", "release/1.8"))
+            build_push = fh.read()
+        maps = re.findall(r"fromJSON\('(\{.*?\})'\)\[inputs\.environment\]", build_push)
+        self.assertEqual(len(maps), 3)
+        with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
+            maps += re.findall(
+                r"fromJSON\('(\{.*?\})'\)\[needs\.take-rc\.outputs\.environment\]",
+                fh.read(),
+            )
+        self.assertEqual(len(maps), 4)
+        for m in maps:  # every map keys the environments relstate names, to the same apps
+            self.assertEqual(json.loads(m), apps)
+        self.assertEqual(set(apps), set(rs.LINE_ENVS))
         with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
             text = fh.read()
         for wire in (
-            "\n      newest: ${{ steps.plan.outputs.newest }}\n",  # the job output both of these read
-            "\n      skip_argocd_deployment: ${{ inputs.skip_argocd_deployment || "
-            "needs.take-rc.outputs.newest != needs.take-rc.outputs.branch }}\n",
-            "\n      NEWEST: ${{ needs.take-rc.outputs.newest }}\n",
-            "\n      branch: ${{ needs.line.outputs.branch }}\n",  # release/X.Y, as newest is
-            "\n      BRANCH: ${{ needs.take-rc.outputs.branch }}\n",
+            "\n      environment: ${{ steps.checks.outputs.environment }}\n",
+            "\n      skip_argocd_deployment: ${{ needs.take-rc.outputs.environment == 'none' }}\n",
+            "\n      ENVIRONMENT: ${{ needs.take-rc.outputs.environment }}\n",
+            "\n      DEPLOYED_FROM: ${{ needs.build.outputs.deployed-from }}\n",
         ):
             self.assertIn(wire, text)
+        self.assertRegex(text, r"\n      ARGOCD_APPS: https://[^\s/]+/applications\n")
+
+    def test_environment_of_a_stabilizing_line(self):
+        self.line("1.7")
+        own = rs.line_env("1.7")
+        other = "staging" if own == "integration" else "integration"
+        r = self.checks(TARGETS="cloud", ENVIRONMENT="auto")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(f"environment={own}\n", self.read("output"))
+        for env in (own, "none"):
+            r = self.checks(TARGETS="cloud", ENVIRONMENT=env)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn(f"environment={env}\n", self.read("output"))
+        r = self.checks(TARGETS="cloud", ENVIRONMENT=other)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn(
+            f"::error::release/1.7 deploys to {own}; to deploy it to {other}, rerun with force",
+            r.stdout,
+        )
+        r = self.checks(TARGETS="cloud", ENVIRONMENT=other, FORCE="true", REASON="soak")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(f"environment={other}\n", self.read("output"))
+        self.assertIn(f"Forced deploy to {other}", self.read("notes.md"))
+        r = self.checks(TARGETS="cloud", ENVIRONMENT="prod")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("::error::unknown environment 'prod'", r.stdout)
+
+    def test_environment_shared_by_two_lines_in_rc(self):
+        self.line("1.7")
+        self.line("1.9")  # same parity, so the same own environment
+        own = rs.line_env("1.7")
+        r = self.checks(TARGETS="cloud", ENVIRONMENT="auto")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn(
+            f"::error::{own} is held by release/1.9, still in RC; to deploy it to {own}, rerun with force",
+            r.stdout,
+        )
+        r = self.checks(TARGETS="cloud", ENVIRONMENT="auto", FORCE="true", REASON="soak")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(f"environment={own}\n", self.read("output"))
+
+    def test_environment_of_a_patch_rc(self):
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
+        r = self.checks(TARGETS="cloud", ENVIRONMENT="auto")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn(
+            "::error::release/1.7 is stabilized: a patch RC has no environment of its own",
+            r.stdout,
+        )
+        for env in ("staging", "integration", "none"):  # free environments need no force
+            r = self.checks(TARGETS="cloud", ENVIRONMENT=env)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn(f"environment={env}\n", self.read("output"))
+        self.line("1.8")  # in RC on its own environment
+        held = rs.line_env("1.8")
+        r = self.checks(TARGETS="cloud", ENVIRONMENT=held)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn(
+            f"::error::{held} is held by release/1.8, still in RC; to deploy it to {held}, rerun with force",
+            r.stdout,
+        )
+        r = self.checks(TARGETS="cloud", ENVIRONMENT=held, FORCE="true", REASON="hotfix")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(f"Forced deploy to {held}", self.read("notes.md"))
+        # An on-prem-only RC deploys nothing, so auto passes.
+        r = self.checks(
+            TARGETS="on-prem", ENVIRONMENT="auto", FORCE="true", REASON="late"
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("environment=none\n", self.read("output"))
 
     def test_patch_rc_on_a_ga_line(self):
         self.line("1.7", "v1.7.0")
@@ -3431,7 +3677,7 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.1-rc.1\nbump=true\ntargets=cloud\nwant=cloud\nnewest=release/1.7\nchart=false\n",
+            "tag=v1.7.1-rc.1\nbump=true\ntargets=cloud\nwant=cloud\nchart=false\n",
         )
 
     def test_rerun_on_a_tagged_tip_builds_only_the_missing_target(self):
@@ -3462,7 +3708,7 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.1-rc.1\nbump=false\ntargets=cloud\nwant=cloud on-prem\nnewest=release/1.7\nchart=true\n",  # on-prem built earlier: still push its chart
+            "tag=v1.7.1-rc.1\nbump=false\ntargets=cloud\nwant=cloud on-prem\nchart=true\n",  # on-prem built earlier: still push its chart
         )
 
 
@@ -3631,9 +3877,8 @@ class InputSteps(unittest.TestCase):
                 run_name(wf, **{**ctx, "inputs.force": True}), want + " (forced)"
             )
             form = dispatch_inputs(wf)
-            self.assertTrue(
-                form["force"][0].startswith('description: "Force: overrides '), wf
-            )
+            # Short on purpose: each refusal says when force applies.
+            self.assertTrue(form["force"][0].startswith('description: "Force'), wf)
             self.assertEqual(
                 form["reason"][0], 'description: "Reason (required with Force)"', wf
             )
@@ -3688,7 +3933,11 @@ class InputSteps(unittest.TestCase):
 class CutPickLine(unittest.TestCase):
     """Cut's line input: X.Y or release/X.Y; empty takes relstate's next minor."""
 
-    def pick(self, line):
+    def pick(
+        self,
+        line,
+        state='{"branches": [], "next_minor": "1.8", "backport_targets": {"rc": []}}',
+    ):
         with tempfile.TemporaryDirectory() as d:
             work, bin_ = os.path.join(d, "work"), os.path.join(d, "bin")
             rm.git(d, "init", "-q", "--bare", os.path.join(d, "origin.git"))
@@ -3703,7 +3952,7 @@ class CutPickLine(unittest.TestCase):
                 fh.write(
                     "#!/bin/sh\n"
                     'case "$1$2" in\n'
-                    """.github/release/relstate.py) echo '{"branches": [], "next_minor": "1.8"}' ;;\n"""
+                    f".github/release/relstate.py) echo '{state}' ;;\n"
                     "*used_tags*) echo ;;\n"
                     f'*) exec {sys.executable} "$@" ;;\n'
                     "esac\n"
@@ -3724,7 +3973,8 @@ class CutPickLine(unittest.TestCase):
             )
             with open(out, "a+") as fh:
                 fh.seek(0)
-                return r.returncode, fh.read(), r.stderr
+                # ::error:: lines go to stdout
+                return r.returncode, fh.read(), r.stderr + r.stdout
 
     def test_line(self):
         self.assertEqual(self.pick("")[:2], (0, "line=1.8\n"))
@@ -3733,6 +3983,28 @@ class CutPickLine(unittest.TestCase):
         code, out, err = self.pick("1.9.0")
         self.assertEqual((code, out), (1, ""))
         self.assertIn("::error::not a release line X.Y", err)
+
+    def test_rc_cap_and_environment(self):
+        def state(*rc):
+            return json.dumps({"branches": [], "backport_targets": {"rc": list(rc)}})
+
+        self.assertEqual(
+            self.pick("0.189", state("release/0.188"))[:2], (0, "line=0.189\n")
+        )
+        code, out, err = self.pick("0.190", state("release/0.188"))
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn(
+            "::error::cannot cut 0.190: its environment staging is held by release/0.188, still in RC",
+            err,
+        )
+        code, out, err = self.pick("0.189", state("release/0.187"))
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("its environment integration is held by release/0.187", err)
+        code, out, err = self.pick("0.189", state("release/0.188", "release/0.187"))
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn(
+            "2 lines already in RC (release/0.188, release/0.187); the cap is 2", err
+        )
 
 
 class TakeRcBump(Workflow):
@@ -3872,12 +4144,13 @@ class PublishWorkflow(Workflow):
                 )
         dev_git(self.cloud, "push", "-q", "--tags", "origin", "main")
 
-    def plan(self):
+    def plan(self, **env):
         r = self.run_step(
             inline("publish.yaml", "Plan"),
             VERSION="v1.7.0",
             TARGET="cloud",
             OWNER_REPO="Zipstack/unstract-cloud",
+            **env,
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         return r.stdout, dict(
@@ -3904,6 +4177,36 @@ class PublishWorkflow(Workflow):
         self.release(None, "v1.7.0-rc.1", "v1.7.0")
         out, o = self.plan()
         self.assertEqual((o["prev"], o["exclude"]), ("v1.6.0", "5"), out)
+
+    def plan_after_oss_pick(self, **env):
+        # OSS fix #41 merged on main and was picked into ee-v1.6.0, the pin of v1.6.0; v1.7.0's OSS notes drop #41.
+        work = self.repos["oss"][1]
+        base = dev_git(work, "rev-parse", "HEAD")
+        with open(os.path.join(work, "z.txt"), "w") as fh:
+            fh.write("z")
+        dev_git(work, "add", "z.txt")
+        dev_git(work, "commit", "-q", "-m", "[FIX] z (#41)")
+        fix = dev_git(work, "rev-parse", "HEAD")
+        dev_git(work, "tag", "ee-v1.7.0-rc.1")
+        dev_git(work, "checkout", "-q", "-b", "release/1.6", base)
+        dev_git(work, "cherry-pick", "-x", fix)
+        dev_git(work, "tag", "ee-v1.6.0")
+        dev_git(work, "checkout", "-q", "main")
+        dev_git(work, "push", "-q", "--tags", "origin", "main", "release/1.6")
+        self.release("ee-v1.6.0", "v1.6.0")
+        self.release("ee-v1.7.0-rc.1", "v1.7.0-rc.1", "v1.7.0")
+        return self.plan(**env)
+
+    def test_exclude_oss_is_what_the_previous_oss_pin_shipped(self):
+        out, o = self.plan_after_oss_pick()
+        self.assertEqual(o["exclude_oss"], "41", out)
+
+    def test_without_the_oss_clone_nothing_is_excluded_from_oss(self):
+        out, o = self.plan_after_oss_pick(OSS_REPO="")
+        self.assertEqual(o["exclude_oss"], "", out)
+        self.assertIn(
+            "::warning::OSS shipped-PR scan failed, excluding nothing: no OSS clone", out
+        )
 
     def test_oss_range_is_the_two_pins(self):
         self.release("ee-v1.6.0", "v1.6.0")
@@ -3971,11 +4274,13 @@ def main():
             OSS="ee-v1.7.0-rc.1",
             PREV_OSS="ee-v1.6.0",
             EXCLUDE="12,14",
+            EXCLUDE_OSS="41",
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn(
             "argv ['--release-version', 'v1.7.0', '--rc-tag', 'v1.7.0-rc.1', '--previous-stable', 'v1.6.0', "
-            "'--current-oss', 'ee-v1.7.0-rc.1', '--previous-oss', 'ee-v1.6.0', '--exclude-prs', '12,14']",
+            "'--current-oss', 'ee-v1.7.0-rc.1', '--previous-oss', 'ee-v1.6.0', '--exclude-prs', '12,14', "
+            "'--exclude-oss-prs', '41']",
             r.stdout,
         )
         self.assertEqual(
@@ -4066,7 +4371,7 @@ sys.exit(int(codes[os.environ["BUILD"].split().index(t)] if len(codes) > 1 else 
         r = self.gate(2)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn(
-            "::error::convergence gate: MISSING picks; a release manager may override this with force and a reason",
+            "::error::convergence gate: MISSING picks; to override, rerun with force and a reason",
             r.stdout,
         )
         summary = self.read("summary")
@@ -4142,7 +4447,6 @@ sys.exit(int(codes[os.environ["BUILD"].split().index(t)] if len(codes) > 1 else 
                     "RESULT": "success",
                     "CHART": "skipped",
                     "BRANCH": "release/1.7",
-                    "NEWEST": "release/1.7",
                     "FORCE": force,
                     "GITHUB_SERVER_URL": "",
                     "GITHUB_STEP_SUMMARY": os.path.join(self.d, "summary"),
@@ -4159,11 +4463,11 @@ sys.exit(int(codes[os.environ["BUILD"].split().index(t)] if len(codes) > 1 else 
             job = fh.read().split("\n  summary:\n", 1)[1].split("\n    steps:\n", 1)[0]
         self.assertIn("\n      FORCE: ${{ inputs.force }}\n", job)
         self.assertEqual(
-            next_line("false"), "**Next:** QA tests `v1.7.1-rc.1`, then RM runs Promote."
+            next_line("false"), "**Next:** QA tests `v1.7.1-rc.1`, then run Promote."
         )
         self.assertEqual(
             next_line("true"),
-            "**Next:** QA tests `v1.7.1-rc.1`, then RM runs Promote. A gate forced here blocks Promote "
+            "**Next:** QA tests `v1.7.1-rc.1`, then run Promote. A gate forced here blocks Promote "
             "again unless forced there too; see the RC notes.",
         )
 
@@ -4206,6 +4510,136 @@ sys.exit(int(codes[os.environ["BUILD"].split().index(t)] if len(codes) > 1 else 
         self.assertEqual(pin("true", 1), 1)
         self.assertIn(
             f"--force --reason known gap --notes {self.d}/notes.md", self.read("args")
+        )
+
+
+@unittest.skipUnless(
+    os.path.exists(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")),
+    "the cloud repo's workflows",
+)
+class TakeRcShipped(Workflow):
+    """The RC prerelease leaves out PRs the previous stable shipped, as Publish leaves them out of stable notes."""
+
+    GH = """#!/usr/bin/env python3
+import base64, os, shutil, subprocess, sys
+a, cwd = sys.argv[1:], os.getcwd()
+if a[:2] == ["release", "view"]:
+    sys.exit("release not found")
+if a[:2] == ["release", "create"]:
+    shutil.copy(a[a.index("--notes-file") + 1], os.path.join(os.environ["RUNNER_TEMP"], "sent"))
+elif "/git/matching-refs/tags/" in a[1]:
+    print(subprocess.run(["git", "tag", "-l", "v*"], capture_output=True, text=True).stdout, end="")
+elif "/contents/pyproject.toml" in a[1]:
+    toml = subprocess.run(["git", "show", a[1].split("ref=")[1] + ":pyproject.toml"], capture_output=True).stdout
+    print(base64.b64encode(toml).decode())
+elif a[1].endswith("/releases/generate-notes"):
+    print("## What's Changed")
+    for n in (5, 6):  # both repos number PRs 5 and 6
+        print(f"* [FIX] fix {n} by @dev in https://github.com/{a[1].split('/')[1]}/{a[1].split('/')[2]}/pull/{n}")
+"""  # a commit's PR lookup prints nothing: no PR
+
+    def pick(self, work, subject, tag, stable):
+        # Fix `subject` merged on main, tagged `tag`, and was picked into `stable`.
+        base = dev_git(work, "rev-parse", "HEAD")
+        with open(os.path.join(work, "y.txt"), "w") as fh:
+            fh.write("y")
+        dev_git(work, "add", "y.txt")
+        dev_git(work, "commit", "-q", "-m", subject)
+        fix = dev_git(work, "rev-parse", "HEAD")
+        dev_git(work, "tag", tag)
+        dev_git(work, "checkout", "-q", "-b", "release/1.6", base)
+        dev_git(work, "cherry-pick", "-x", fix)
+        dev_git(work, "tag", stable)
+        dev_git(work, "checkout", "-q", "main")
+        dev_git(work, "push", "-q", "--tags", "origin", "main", "release/1.6")
+        return fix
+
+    def prerelease(self, subject, oss_subject=None, oss_clone=True):
+        # Fix `subject` merged on main and was picked into v1.6.0; v1.7.0-rc.1 comes from main after it.
+        # With `oss_subject`, an OSS fix did the same between ee-v1.6.0 and ee-v1.7.0-rc.1.
+        c = self.cloud
+        with open(os.path.join(c, "pyproject.toml"), "w") as fh:
+            fh.write('unstract-platform-version = "ee-v1.6.0"\n')
+        dev_git(c, "add", "pyproject.toml")
+        dev_git(c, "commit", "-q", "-m", "pin")
+        fix = self.pick(c, subject, "v1.7.0-rc.1", "v1.6.0")
+        if oss_subject:
+            self.pick(self.repos["oss"][1], oss_subject, "ee-v1.7.0-rc.1", "ee-v1.6.0")
+        env = {"OSS_REPO": self.repos["oss"][1]} if oss_clone else {}
+        os.makedirs(os.path.join(c, ".github"))
+        os.symlink(HERE, os.path.join(c, ".github", "release"))
+        bin_ = os.path.join(self.d, "bin-shipped")
+        os.mkdir(bin_)
+        with open(os.path.join(bin_, "gh"), "w") as fh:
+            fh.write(self.GH)
+        os.chmod(os.path.join(bin_, "gh"), 0o755)
+        r = subprocess.run(
+            ["bash", "-e", "-c", step("take-rc-build.yaml", "Create the RC prerelease")],
+            cwd=c,
+            env={
+                **os.environ,
+                "PATH": f"{bin_}:{self.path}",
+                "TAG": "v1.7.0-rc.1",
+                "SHA": fix,
+                **env,
+                "OSS": "ee-v1.7.0-rc.1" if oss_subject else "ee-v1.6.0",
+                "BRANCH": "release/1.7",
+                "TARGETS": "cloud",
+                "RC_NOTES": "",
+                "RUNNER_TEMP": self.d,
+                "GITHUB_REPOSITORY": "Zipstack/unstract-cloud",
+                "GITHUB_SERVER_URL": "https://github.com",
+                "GITHUB_RUN_ID": "42",
+                "GITHUB_STEP_SUMMARY": os.path.join(self.d, "summary"),
+            },
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return self.read("sent"), r.stderr
+
+    def sections(self, sent):
+        cloud, oss = sent.split("## Platform OSS changes")
+        return cloud, oss
+
+    def test_each_section_leaves_out_its_own_repos_shipped_prs(self):
+        # Cloud shipped #5 and OSS shipped #6: the numbers overlap, the lists must not.
+        cloud, oss = self.sections(self.prerelease("[FIX] y (#5)", "[FIX] y (#6)")[0])
+        self.assertNotIn("unstract-cloud/pull/5\n", cloud)
+        self.assertIn("unstract-cloud/pull/6\n", cloud)
+        self.assertIn("Zipstack/unstract/pull/5\n", oss)
+        self.assertNotIn("Zipstack/unstract/pull/6\n", oss)
+        self.assertIn("Leaves out 1 PRs already shipped in `ee-v1.6.0`.", oss)
+
+    def test_a_failed_oss_scan_keeps_every_oss_pr_and_says_so(self):
+        cloud, oss = self.sections(self.prerelease("[FIX] y (#5)", "[FIX] y")[0])
+        self.assertNotIn("unstract-cloud/pull/5\n", cloud)
+        self.assertIn("Zipstack/unstract/pull/5\n", oss)
+        self.assertIn("Zipstack/unstract/pull/6\n", oss)
+        self.assertIn("Could not list the PRs `ee-v1.6.0` already shipped", oss)
+
+    def test_without_the_oss_clone_the_oss_notes_keep_every_pr(self):
+        cloud, oss = self.sections(
+            self.prerelease("[FIX] y (#5)", "[FIX] y (#6)", oss_clone=False)[0]
+        )
+        self.assertNotIn("unstract-cloud/pull/5\n", cloud)
+        self.assertIn("Zipstack/unstract/pull/6\n", oss)
+        self.assertIn("Could not list the PRs `ee-v1.6.0` already shipped", oss)
+
+    def test_shipped_prs_are_left_out(self):
+        sent, _ = self.prerelease("[FIX] y (#5)")
+        self.assertNotIn("/pull/5\n", sent)
+        self.assertIn("/pull/6\n", sent)
+        self.assertIn("Leaves out 1 PRs already shipped in `v1.6.0`.", sent)
+
+    def test_a_failed_scan_keeps_every_pr_and_says_so(self):
+        sent, err = self.prerelease("[FIX] y")  # no (#n), and the lookup finds no PR
+        self.assertIn("/pull/5\n", sent)
+        self.assertIn("/pull/6\n", sent)
+        self.assertIn("Could not list the PRs `v1.6.0` already shipped", sent)
+        self.assertIn(
+            "::warning::Zipstack/unstract-cloud: could not list the PRs v1.6.0 shipped",
+            err,
         )
 
 
@@ -4348,15 +4782,33 @@ elif a[:2] in (["release", "edit"], ["release", "create"]):
 class LintPrStep(unittest.TestCase):
     """The Classify PR step judges each PR against its own base."""
 
-    def classify(self, title, labels, base, gh_exit=0):
-        """labels: what the API returns now; the event payload's labels are a stale decoy."""
+    def classify(self, title, labels, base, gh_exit=0, body="", files=(), files_exit=0):
+        """labels: what the API returns now; the event payload's labels are a stale decoy. files: the PR's files,
+        in the pulls files API's shape; the advice reads them and the PR itself.
+        """
         with tempfile.TemporaryDirectory() as d:
-            with open(
-                os.path.join(d, "gh"), "w"
-            ) as fh:  # fake gh: the issue labels API, jq already applied
-                fh.write(
-                    f'#!/bin/sh\necho "$*" >> "{d}/calls"\necho \'{json.dumps(labels)}\'\nexit {gh_exit}\n'
-                )
+            pr = {
+                "base": {"ref": base},
+                "head": {"ref": "dev"},
+                "title": title,
+                "labels": [{"name": n} for n in labels],
+            }
+            for name, data in (("labels", labels), ("pr", pr), ("files", [list(files)])):
+                with open(os.path.join(d, name), "w") as fh:
+                    json.dump(data, fh)
+            with open(os.path.join(d, "gh"), "w") as fh:  # fake gh, jq already applied
+                fh.write(f"""#!/bin/sh
+echo "$*" >> "{d}/calls"
+case "$*" in
+  *"/issues/7/labels"*) cat "{d}/labels"; exit {gh_exit};;
+  *"/pulls/7/files"*) cat "{d}/files"; exit {files_exit};;
+  *"/pulls/7/commits"*) echo '[[{{"commit": {{"message": "x"}}}}]]';;
+  *"/pulls/7") cat "{d}/pr";;
+  *"/branches?per_page=100 --jq .[].name") echo release/0.186;;
+  *"/git/trees/release/0.186?recursive=1") echo '{{"truncated": false, "tree": [{{"path": "backend/x.py"}}]}}';;
+  *) exit 1;;
+esac
+""")
             os.chmod(os.path.join(d, "gh"), 0o755)
             r = subprocess.run(
                 ["bash", "-e", "-c", step("lint-pr.yaml", "Classify PR")],
@@ -4365,10 +4817,11 @@ class LintPrStep(unittest.TestCase):
                     **os.environ,
                     "PATH": f"{d}:{os.environ['PATH']}",
                     "TITLE": title,
-                    "LABELS": json.dumps(["main-only", "fix/needs-backport"]),
-                    "GITHUB_REPOSITORY": "o/r",
+                    "LABELS": json.dumps(["main-only", "backport/rc"]),
+                    "GITHUB_REPOSITORY": "Zipstack/unstract-cloud",
                     "PR": "7",
                     "BASE": base,
+                    "BODY": body,
                     "GITHUB_STEP_SUMMARY": os.path.join(d, "summary"),
                     "GITHUB_OUTPUT": os.path.join(d, "output"),
                 },
@@ -4377,10 +4830,59 @@ class LintPrStep(unittest.TestCase):
             )
             with open(os.path.join(d, "calls")) as fh:
                 self.assertEqual(
-                    fh.read(),
-                    "api repos/o/r/issues/7/labels?per_page=100 --jq [.[].name]\n",
+                    fh.readline(),
+                    "api repos/Zipstack/unstract-cloud/issues/7/labels?per_page=100 --jq [.[].name]\n",
                 )
             return r.returncode, r.stdout
+
+    def test_a_decided_label_differing_warns_only(self):
+        docs = [{"filename": "docs/x.md"}, {"filename": ".github/workflows/y.yaml"}]
+        rc, out = self.classify("UN-1 [FIX] x", ["backport/rc"], "main", files=docs)
+        self.assertEqual(rc, 0, out)
+        self.assertIn(
+            "::warning title=Lint PR::the advice is `main-only` (only docs, tests or repo tooling change; "
+            "none ships); this PR has backport/rc",
+            out,
+        )
+
+    def test_a_suggestion_is_never_checked(self):
+        # The code is on release/0.186, so the advice only suggests backport/rc: main-only is the author's call.
+        rc, out = self.classify(
+            "UN-1 [FIX] x", ["main-only"], "main", files=[{"filename": "backend/x.py"}]
+        )
+        self.assertEqual((rc, out), (0, "class=none\n"))
+
+    def test_a_failed_advice_lookup_neither_fails_nor_warns(self):
+        rc, out = self.classify("UN-1 [FIX] x", ["main-only"], "main", files_exit=1)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("::notice title=Lint PR::label advice unavailable", out)
+        self.assertNotIn("::warning", out)
+
+    def test_a_malformed_declaration_fails(self):
+        rc, out = self.classify(
+            "UN-1 [FIX] x",
+            ["main-only"],
+            "main",
+            body="x\r\nBackport-also: release/0.186\r\n",
+        )
+        self.assertEqual(rc, 1, out)
+        self.assertIn(
+            "::error title=Lint PR::malformed `Backport-also: release/0.186`: write exactly "
+            "`Backport-also: X.Y`",
+            out,
+        )
+        rc, out = self.classify(
+            "UN-1 [FIX] x", ["backport/rc"], "main", body="Backport-also: 0.186\r\n"
+        )
+        self.assertEqual(rc, 0, out)
+        # Backport never picks a main-only PR, so a declaration there could never be met.
+        rc, out = self.classify(
+            "UN-1 [FIX] x", ["main-only"], "main", body="Backport-also: 0.186\r\n"
+        )
+        self.assertEqual(rc, 1, out)
+        self.assertIn(
+            "::error title=Lint PR::`main-only` with a `Backport-also` line", out
+        )
 
     def test_the_newest_event_run_reports(self):
         with open(os.path.join(HERE, "..", "workflows", "lint-pr.yaml")) as fh:
@@ -4401,7 +4903,7 @@ class LintPrStep(unittest.TestCase):
         rc, out = self.classify("fix: x", [], "release/0.186")
         self.assertEqual(rc, 1, out)
         self.assertIn("no recognised '[TYPE]'", out)
-        self.assertNotIn("A PR into main needs one backport label", out)
+        self.assertNotIn("A PR into main needs", out)
         self.assertIn("Title: `[TYPE] text`", out)
 
     def test_a_main_pr_needs_a_backport_label(self):
@@ -4425,9 +4927,9 @@ class LintPrStep(unittest.TestCase):
         )
 
     def test_a_release_pr_needs_none_and_refuses_main_only(self):
-        self.assertEqual(
-            self.classify("UN-1 [FIX] x", [], "release/0.186"), (0, "class=none\n")
-        )
+        rc, out = self.classify("UN-1 [FIX] x", [], "release/0.186")
+        self.assertEqual(rc, 0, out)  # the label advice only warns
+        self.assertTrue(out.startswith("class=none\n"), out)
         rc, out = self.classify("UN-1 [FIX] x", ["main-only"], "release/0.186")
         self.assertEqual(rc, 1, out)
         self.assertIn("label `main-only` is for PRs into main", out)

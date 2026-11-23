@@ -66,10 +66,7 @@ export async function setOldVersionPreference(
  * signed-in user: the v0 session reached the version switch, which writes it
  * (stores/oldVersion). Nothing in the harness writes this key.
  *
- * The root, because the session loads only on v0 routes (PersistentLogin sits
- * inside the v0 tree). A browser whose first page is a v1 URL never records
- * the user, so the preference cannot apply there until the v1 tree loads the
- * session itself (P0-T06).
+ * The root, a v0 route, where PersistentLogin loads the v0 session.
  */
 export async function expectAppKnowsUser(
   page: Page,

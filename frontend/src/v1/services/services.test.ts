@@ -1,0 +1,334 @@
+import {
+  AxiosError,
+  type AxiosRequestConfig,
+  CanceledError,
+  type InternalAxiosRequestConfig,
+} from "axios";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  type MockInstance,
+  test,
+  vi,
+} from "vitest";
+import { ApiError, REQUEST_ID_HEADER } from "./errors";
+import { http } from "./http";
+import { signOutWhenSignedOutElsewhere } from "./logout";
+import {
+  listOrganizations,
+  OrganizationError,
+  organizationLoginUrl,
+  switchOrganization,
+} from "./organizations";
+import { SIGN_OUT_TIMEOUT_MS, signOut, signOutAndLeave } from "./session";
+
+const reset = vi.fn();
+vi.mock("posthog-js", () => ({ default: { reset: () => reset() } }));
+
+const sent: AxiosRequestConfig[] = [];
+let reply: { status: number; data: unknown };
+
+beforeEach(() => {
+  sent.length = 0;
+  reset.mockReset();
+  reply = { status: 200, data: {} };
+  http.defaults.adapter = async (config: InternalAxiosRequestConfig) => {
+    sent.push(config);
+    const response = { ...reply, statusText: "", headers: {}, config };
+    if (reply.status >= 400) {
+      throw new AxiosError(
+        `HTTP ${reply.status}`,
+        undefined,
+        config,
+        undefined,
+        response,
+      );
+    }
+    return response;
+  };
+  // biome-ignore lint/suspicious/noDocumentCookie: the client reads this cookie
+  document.cookie = "csrftoken=tok123";
+});
+
+afterEach(() => {
+  // biome-ignore lint/suspicious/noDocumentCookie: clears the cookie set above
+  document.cookie = "csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+});
+
+const sentRequestId = () => sent[0].headers?.[REQUEST_ID_HEADER];
+
+describe("organizations", () => {
+  test("lists the user's organisations", async () => {
+    reply.data = {
+      organizations: [
+        {
+          id: "org_1",
+          name: "zipstack",
+          display_name: "Zipstack",
+          role: "admin",
+        },
+      ],
+    };
+    await expect(listOrganizations()).resolves.toEqual([
+      {
+        id: "org_1",
+        name: "zipstack",
+        display_name: "Zipstack",
+        role: "admin",
+      },
+    ]);
+    expect(sent[0]).toMatchObject({
+      method: "get",
+      url: "/api/v1/organization",
+    });
+    expect(sent[0].headers?.["X-CSRFToken"]).toBeUndefined();
+  });
+
+  test("switching posts to the organisation's set endpoint with the CSRF token", async () => {
+    await switchOrganization("org/1");
+    expect(sent[0]).toMatchObject({
+      method: "post",
+      url: "/api/v1/organization/org%2F1/set",
+    });
+    expect(sent[0].headers?.["X-CSRFToken"]).toBe("tok123");
+  });
+
+  test("the login URL names the organisation and asks for no prompt", () => {
+    expect(organizationLoginUrl("org/1")).toBe(
+      "/api/v1/login?organization=org%2F1&prompt=none",
+    );
+  });
+
+  test("a failed request rejects instead of resolving empty", async () => {
+    reply = { status: 500, data: {} };
+    await expect(listOrganizations()).rejects.toMatchObject({
+      kind: "server",
+      status: 500,
+    });
+  });
+
+  test.each([
+    {},
+    { organizations: null },
+    "<html>",
+  ])("a 200 without an organizations array rejects: %j", async (body) => {
+    reply.data = body;
+    await expect(listOrganizations()).rejects.toThrow(
+      "Organization list reply carried no organizations",
+    );
+  });
+
+  test("a 412 on the list is a session-ended error carrying the body", async () => {
+    reply = { status: 412, data: { code: "INS" } };
+    const error = await listOrganizations().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(OrganizationError);
+    expect(error).toMatchObject({
+      kind: "session-ended",
+      body: { code: "INS" },
+      cause: { kind: "client", status: 412 },
+      requestId: sentRequestId(),
+    });
+    expect((error as Error).cause).toBeInstanceOf(ApiError);
+  });
+
+  test("a 403 on the list is not given a meaning", async () => {
+    reply = { status: 403, data: {} };
+    const error = await listOrganizations().catch((e: unknown) => e);
+    expect(error).not.toBeInstanceOf(OrganizationError);
+  });
+
+  test("a 403 on set is an access-removed error", async () => {
+    reply = { status: 403, data: {} };
+    const error = await switchOrganization("org_1").catch((e: unknown) => e);
+    expect(error).toMatchObject({
+      kind: "access-removed",
+      cause: { kind: "forbidden", status: 403 },
+      requestId: sentRequestId(),
+    });
+  });
+
+  test.each([412, 500])("a %i on set is thrown as is", async (status) => {
+    reply = { status, data: {} };
+    const error = await switchOrganization("org_1").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status });
+  });
+});
+
+test.each([
+  ["listOrganizations", (signal: AbortSignal) => listOrganizations({ signal })],
+  [
+    "switchOrganization",
+    (signal: AbortSignal) => switchOrganization("org_1", { signal }),
+  ],
+  ["signOut", (signal: AbortSignal) => signOut({ signal })],
+])("%s passes its signal to the client", async (_, call) => {
+  reply.data = { organizations: [], redirect_url: "/landing" };
+  const { signal } = new AbortController();
+  await call(signal);
+  expect(sent[0].signal).toBe(signal);
+});
+
+describe("http CSRF cookie", () => {
+  test("a malformed cookie sends no header instead of throwing", async () => {
+    // biome-ignore lint/suspicious/noDocumentCookie: sets a cookie that cannot be decoded
+    document.cookie = "csrftoken=%E0%A4%A";
+    await expect(switchOrganization("org_1")).resolves.toBeUndefined();
+    expect(sent[0].headers?.["X-CSRFToken"]).toBeUndefined();
+  });
+
+  test("a missing cookie sends no header", async () => {
+    // biome-ignore lint/suspicious/noDocumentCookie: clears the cookie set in beforeEach
+    document.cookie = "csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    await switchOrganization("org_1");
+    expect(sent[0].headers?.["X-CSRFToken"]).toBeUndefined();
+  });
+});
+
+describe("signOut", () => {
+  test("posts to logout with the CSRF token and returns where to go", async () => {
+    reply.data = { redirect_url: "https://id.example.com/v2/logout" };
+    await expect(signOut()).resolves.toBe("https://id.example.com/v2/logout");
+    expect(sent[0]).toMatchObject({ method: "post", url: "/api/v1/logout" });
+    expect(sent[0].headers?.["X-CSRFToken"]).toBe("tok123");
+  });
+
+  test("a reply without a redirect URL is an error, not /undefined", async () => {
+    reply.data = {};
+    await expect(signOut()).rejects.toThrow();
+    reply.data = { redirect_url: "" };
+    await expect(signOut()).rejects.toThrow();
+  });
+
+  test("only an http(s) redirect is followed; a relative one resolves on this origin", async () => {
+    reply.data = { redirect_url: "javascript:alert(1)" };
+    await expect(signOut()).rejects.toThrow();
+    reply.data = { redirect_url: "/landing" };
+    await expect(signOut()).resolves.toBe(`${window.location.origin}/landing`);
+  });
+});
+
+describe("signOutAndLeave", () => {
+  let assign: MockInstance<Location["assign"]>;
+  beforeEach(() => {
+    assign = vi
+      .spyOn(window.location, "assign")
+      .mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    assign.mockRestore();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+
+  /** Records how many keys each storage held when the page was left. */
+  function storageAtLeave(): number[] {
+    const counts: number[] = [];
+    assign.mockImplementation(() => {
+      counts.push(window.localStorage.length, window.sessionStorage.length);
+    });
+    return counts;
+  }
+
+  test("resets analytics and opens the returned URL", async () => {
+    reply.data = { redirect_url: "https://id.example.com/v2/logout" };
+    await signOutAndLeave();
+    expect(sent[0].headers?.["X-CSRFToken"]).toBe("tok123");
+    expect(reset).toHaveBeenCalledTimes(1);
+    expect(assign).toHaveBeenCalledWith("https://id.example.com/v2/logout");
+  });
+
+  // CASA 6.6.1: the user's data must not outlive the session in the browser.
+  test("clears browser storage before leaving, keeping UI preferences", async () => {
+    reply.data = { redirect_url: "https://id.example.com/v2/logout" };
+    window.localStorage.setItem("dashboard_metrics_overview", '{"data":{}}');
+    window.localStorage.setItem("unstract.v1.theme", "dark");
+    window.sessionStorage.setItem("oauth-current-connector", "google_drive");
+    const atLeave = storageAtLeave();
+    await signOutAndLeave();
+    expect(
+      window.localStorage.getItem("dashboard_metrics_overview"),
+    ).toBeNull();
+    expect(window.localStorage.getItem("unstract.v1.theme")).toBe("dark");
+    expect(atLeave).toEqual([1, 0]);
+  });
+
+  test("a failed POST resets analytics, logs, and falls back to the GET logout", async () => {
+    const logged = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    reply = { status: 403, data: {} };
+    await signOutAndLeave();
+    expect(reset).toHaveBeenCalledTimes(1);
+    expect(assign).toHaveBeenCalledWith("/api/v1/logout");
+    expect(logged).toHaveBeenCalledTimes(1);
+    logged.mockRestore();
+  });
+
+  // The fallback is a sign-out path too: storage must go even when the POST
+  // fails, and before the page is left.
+  test("a failed POST still clears browser storage before leaving", async () => {
+    const logged = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    reply = { status: 403, data: {} };
+    window.localStorage.setItem("oauth-cachekey-google_drive", "cache-key");
+    window.sessionStorage.setItem("oauth-current-connector", "google_drive");
+    const atLeave = storageAtLeave();
+
+    await signOutAndLeave();
+
+    expect(assign).toHaveBeenCalledWith("/api/v1/logout");
+    expect(atLeave).toEqual([0, 0]);
+    logged.mockRestore();
+  });
+
+  test("a POST that never answers falls back to the GET logout after the timeout", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    // Answers only by rejecting when the request is aborted.
+    http.defaults.adapter = (config: InternalAxiosRequestConfig) =>
+      new Promise((_, reject) => {
+        (config.signal as AbortSignal).addEventListener("abort", () =>
+          reject(new CanceledError()),
+        );
+      });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const leaving = signOutAndLeave();
+      await vi.advanceTimersByTimeAsync(SIGN_OUT_TIMEOUT_MS - 1);
+      expect(assign).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await leaving;
+      expect(assign).toHaveBeenCalledWith("/api/v1/logout");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a reply without a redirect URL falls back to the GET logout", async () => {
+    reply.data = {};
+    await signOutAndLeave();
+    expect(reset).toHaveBeenCalledTimes(1);
+    expect(assign).toHaveBeenCalledWith("/api/v1/logout");
+    expect(assign).not.toHaveBeenCalledWith(undefined);
+  });
+});
+
+describe("signOutWhenSignedOutElsewhere", () => {
+  test("a sign-out in another tab signs this tab out through the GET logout", async () => {
+    const assign = vi
+      .spyOn(window.location, "assign")
+      .mockImplementation(() => undefined);
+    const stop = signOutWhenSignedOutElsewhere();
+    const otherTab = new BroadcastChannel("unstract.session");
+    otherTab.postMessage({ type: "signed-out", sentAt: Date.now() });
+    await vi.waitFor(() =>
+      expect(assign).toHaveBeenCalledWith("/api/v1/logout"),
+    );
+    otherTab.close();
+    stop();
+    assign.mockRestore();
+  });
+});

@@ -1,5 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { screen } from "@testing-library/react";
+import { useSession } from "@v1/lib/session";
+import { currentOrganizationId } from "@v1/services/context";
 import {
   apiPath,
   axeViolations,
@@ -70,19 +72,52 @@ describe("renderV1", () => {
     expect(screen.getByText("42 at /workflows/42")).toBeInTheDocument();
   });
 
-  it("refuses session and distribution, which no provider reads yet", () => {
-    // @ts-expect-error: not a render option until a slot consumes it.
-    expect(() => renderV1(<p>x</p>, { session: null })).toThrow(
-      /renderV1: session is not supported yet; no v1 provider reads it/,
-    );
+  it("refuses distribution, which no provider reads yet", () => {
     // @ts-expect-error: not a render option until a slot consumes it.
     expect(() => renderV1(<p>x</p>, { distribution: "cloud" })).toThrow(
+      /renderV1: distribution is not supported yet; no v1 provider reads it/,
+    );
+    const options = { distribution: "onprem" };
+    expect(() => renderHookV1(() => 1, options as object)).toThrow(
       /renderV1: distribution is not supported yet/,
     );
-    const both = { session: DEFAULT_SESSION, distribution: "onprem" };
-    expect(() => renderHookV1(() => 1, both as object)).toThrow(
-      /session and distribution are not supported yet; no v1 provider reads them/,
+  });
+
+  it("provides the session, and the organisation services call", () => {
+    function Who() {
+      const { user, organization } = useSession();
+      return (
+        <p>
+          {user.name} in {organization.displayName}, org{" "}
+          {currentOrganizationId()}
+        </p>
+      );
+    }
+    const other = makeSession({
+      user: { displayName: "Grace" },
+      organization: { id: "org-9", name: "Other Org" },
+    });
+    const { unmount } = renderV1(<Who />);
+    expect(
+      screen.getByText("Ada in Example Org, org org-1"),
+    ).toBeInTheDocument();
+    unmount();
+    renderV1(<Who />, { session: other });
+    expect(
+      screen.getByText("Grace in Other Org, org org-9"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders as a guest with session null: no session, no organisation", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    function Who() {
+      useSession();
+      return null;
+    }
+    expect(() => renderV1(<Who />, { session: null })).toThrow(
+      /useSession\(\) needs a signed-in page/,
     );
+    expect(() => currentOrganizationId()).toThrow(/No organisation is set/);
   });
 
   it("changes what renders for each option it accepts", () => {

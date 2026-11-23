@@ -60,18 +60,25 @@ await user.click(screen.getByRole("button", { name: "Add" }));
 - `user`: a `userEvent.setup()` instance. Pass `userEventOptions`, for example
   `{ advanceTimers: vi.advanceTimersByTime }` with fake timers.
 - `queryClient`: a fresh client per render, with no retries, no refetch on
-  focus and no garbage collection mid-test. Pass `queryClient` to share one.
+  focus and no garbage collection mid-test. Pass `queryClient` to share one,
+  or `createQueryClient()` from `@v1/test` for the app's retry policy.
 - `portal`: the `#v1-portal` container, themed like the root.
 - `theme`: what the test rendered with.
 
 `renderHookV1(hook, { initialProps, ...sameOptions })` does the same for hooks.
 
-**No `session` or `distribution` option yet.** No v1 code reads either, so an
-option that set one would reach nothing, and a test of an admin-only or
-cloud-only branch would pass without exercising it. `renderV1` throws if
-either is passed. Each comes back with the slot that reads it, when the
-session store or plugin registry lands (see the table below). `TestSession` /
-`makeSession` exist only as fixture data for network mocks (`apiPath`).
+**`session`** (default `DEFAULT_SESSION`; `makeSession()` builds others) is
+what `useSession()` gives, and its organisation is the one services call.
+`null` renders as a guest: `useSession()` throws and no organisation is set.
+Route with the organisation's `urlName`, which differs from its id;
+`toV1Session()` gives the session a fixture renders as. `test/fixtures/session.ts` answers the session
+load itself (`sessionHandlers(session, options)`, `guestHandlers()`), for
+tests of `RouteGate` and the pages it guards.
+
+**No `distribution` option yet.** No provider reads one, so an option that
+set it would reach nothing, and a test of a cloud-only branch would pass
+without exercising it. `renderV1` throws if it is passed. It comes back with
+the slot that reads it (see the table below).
 
 ### Providers, and swapping in the real ones
 
@@ -80,10 +87,10 @@ the app's own provider once its task has landed, and a stand-in until then:
 
 | Slot | Today | Replace with, when it lands |
 | --- | --- | --- |
-| query | stand-in: `QueryClientProvider` over `createTestQueryClient()` | the data layer's provider (P0-T05, UN-4313) |
+| query | **real**: the app's `createQueryClient()` (P0-T05, UN-4313) with test defaults, so failures are reported as in the app | — |
 | router | stand-in: `MemoryRouter` (+ `Routes` when `path` is set) | the app router in memory mode, with the route registry (P0-T03, UN-4271) |
 | theme | **real**: `app/theme/ThemeProvider` (P0-T04, #2399) | — |
-| session | none: no v1 code reads a session | the session store or provider, when it lands. Add `session` to `ProviderContext` and `RenderV1Options` with it |
+| session | **real**: `lib/session`'s `SessionProvider`, and `setOrganizationId()` | — |
 | distribution | none: no v1 code reads a distribution | the v1 plugin registry's distribution (UN-4285 / UN-4286). Add `distribution` the same way |
 
 To swap one, change its component in `PROVIDER_SLOTS`. It receives the
@@ -106,7 +113,7 @@ import { apiPath, DEFAULT_SESSION, HttpResponse, http, mockApi } from "@v1/test"
 
 mockApi(
   http.get<never, never, Adapter[]>(apiPath(DEFAULT_SESSION, "/adapter/"), () =>
-    HttpResponse.json(adapterFixtures.list),
+    HttpResponse.json(adapterFixtures.llm),
   ),
 );
 ```
@@ -133,23 +140,10 @@ arguments. A test that leaves fake timers on gets real timers back after it.
 
 Each service module in `services/` exports its request and response types.
 Its fixtures live in `test/fixtures/<service>.ts`, typed against those types
-so a contract change breaks the fixture at typecheck:
-
-```ts
-// test/fixtures/adapters.ts
-import type { Adapter } from "@v1/services/adapters";
-import { apiPath, HttpResponse, http, type TestSession } from "@v1/test";
-
-export const adapterFixtures = {
-  list: [{ id: "a1", adapter_name: "OpenAI", adapter_type: "LLM" }],
-} satisfies Record<string, Adapter[]>;
-
-export const adapterHandlers = (session: TestSession) => [
-  http.get<never, never, Adapter[]>(apiPath(session, "/adapter/"), () =>
-    HttpResponse.json(adapterFixtures.list),
-  ),
-];
-```
+with `satisfies`, so a contract change breaks the fixture at typecheck. See
+`test/fixtures/adapters.ts`: `adapterFixtures` holds the rows and
+`adapterHandlers(session, rows, seen)` answers `GET adapter/` with those
+rows, paged when the request asks for a page (it doesn't filter).
 
 ## Accessibility
 
@@ -164,6 +158,14 @@ help`, with the rule's URL. `color-contrast` is off (tests load no CSS) and so
 is `region` (a component rendered alone is outside a page's landmarks). Pass
 `{ rules: { region: { enabled: true } } }` for a whole-page test. Always
 `await` the matcher.
+
+A gallery (`{ name, element }[]`) whose entries each render one inline root
+with no React ids gets both checks from `galleryMarkup(title, entries)`, one
+Markdown document of every entry's markup for `toMatchFileSnapshot`, and
+`expectGalleryAccessible(entries)`, which runs axe on each entry and starts a
+failure with the entry's name. Both read only the render container, so an
+entry that opens a portal (a menu, popover or dialog) or renders `useId` ids
+keeps its own markup test.
 
 ## Browser APIs happy-dom does not drive
 

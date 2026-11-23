@@ -24,6 +24,12 @@ COPY ${BUILD_CONTEXT_PATH}/ /app/
 COPY ${BUILD_CONTEXT_PATH}/generate-runtime-config.sh /app/generate-runtime-config.sh
 RUN chmod +x /app/generate-runtime-config.sh
 
+# VITE_DISTRIBUTION: as in the builder stage below. The dev server reads it
+# from the environment when it starts, so the dev-live image of a cloud or
+# on-prem overlay needs it here too.
+ARG VITE_DISTRIBUTION=""
+ENV VITE_DISTRIBUTION=${VITE_DISTRIBUTION}
+
 # Set dev server to run on port 80 to match production nginx
 ENV PORT=80
 EXPOSE 80
@@ -52,10 +58,9 @@ COPY ${BUILD_CONTEXT_PATH}/ .
 # VITE_V1_DEV_ROUTES: "true" only for the E2E image (ci-test.yaml); registers
 # the v1 demo pages that prove the version switch and honours the v1 preview
 # override. Release builds leave it empty.
-# VITE_DISTRIBUTION: oss (default when empty), cloud or onprem; the
-# v1 route registry ignores pages the distribution lacks. The same name as
-# P0-T07's plugin manifest (UN-4286). The cloud and on-prem builds do not set
-# it yet, so every image builds as oss until P0-T07 wires them.
+# VITE_DISTRIBUTION: oss (default when empty), cloud or onprem. It picks the
+# v1 plugins the build offers (P0-T07) and the pages the v1 route registry
+# keeps; the cloud workflows set it. See frontend/src/v1/README.md.
 ARG VITE_V1_DEV_ROUTES=""
 ARG VITE_DISTRIBUTION=""
 

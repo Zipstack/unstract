@@ -512,7 +512,7 @@ class Summary(unittest.TestCase):
                     "**Backport PR** #246 on `release/0.189`: **skipped**: its head has no commit past the base, "
                     "so nothing was declined",
                     "Next: delete the head by hand to have the fix picked again; to decline it, keep the head "
-                    "until the release manager's decline commit is on the base (the PR comment says how).",
+                    "until the decline commit is on the base (the PR comment says how).",
                 ],
             )
             self.assertEqual(

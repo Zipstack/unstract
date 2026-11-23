@@ -498,6 +498,14 @@ class InternalAPIClient(CachedAPIClientMixin):
             response_dict = response
         return WorkflowExecutionResponse.from_api_response(response_dict)
 
+    def get_workflow_execution_status(
+        self, execution_id: str | uuid.UUID, organization_id: str | None = None
+    ) -> str | None:
+        """Current execution status, without the execution context. Raises on failure."""
+        return self.execution_client.get_workflow_execution_status(
+            execution_id, organization_id
+        )
+
     @with_cache(
         CacheType.WORKFLOW,
         lambda self, workflow_id, organization_id=None: str(workflow_id),
@@ -1630,9 +1638,13 @@ class InternalAPIClient(CachedAPIClientMixin):
                 URL — mirrors ``StageReportView``/``FinalizeView``).
             success: Whether the executor run succeeded. Must be a real bool —
                 the endpoint 400s on a non-bool value.
-            result: Engine result to persist as the job's output (success only).
+            result: Engine result to persist as the job's output. On the failure
+                path this is the salvaged extraction, if the executor sent one
+                (see ``agent_kv_complete``); omitted when empty.
             error: Failure reason to persist (failure only).
-            usage_summary: Optional usage/cost summary to persist (success only).
+            usage_summary: Optional usage/cost summary to persist (success only --
+                neither executor path that salvages an extraction has computed
+                one yet, so a salvaged FAILED job carries no usage figures).
 
         Returns:
             Backend response: ``{"finalized": bool, "webhook_url": str,
@@ -1650,6 +1662,15 @@ class InternalAPIClient(CachedAPIClientMixin):
                 payload["usage_summary"] = usage_summary
         else:
             payload["error"] = error
+            # A FAILED job may still carry an extraction. The `kv` engine fails
+            # the job when a `calculations` run fails -- the caller asked for
+            # calculations and did not get them -- while the extraction itself
+            # succeeded and was already billed, so the executor hands it over
+            # on that path rather than destroying it. Sent only when there is
+            # something to send: an ordinary failure has `data={}` and this key
+            # stays absent, keeping that request byte-identical to before.
+            if result:
+                payload["result"] = result
         return self.post(
             f"v1/agent-kv/jobs/{job_id}/finalize/",
             data=payload,

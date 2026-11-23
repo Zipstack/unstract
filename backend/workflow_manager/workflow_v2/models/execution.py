@@ -435,7 +435,7 @@ class WorkflowExecution(BaseModel):
             # self.queue_message_id — unless the caller passes row_locked=True, i.e.
             # this instance was itself read under the lock (see the docstring): a PG row snapshotted before dispatch recorded its
             # handle, mis-routed to an unlocked legacy full save(), would write NULL
-            # back into queue_message_id and permanently disable every guard. Under
+            # back into queue_message_id and permanently drop the COMPLETED guard. Under
             # this lock a concurrent _record_dispatch_handle serializes after us.
             #
             # no_key=True takes FOR NO KEY UPDATE rather than FOR UPDATE. Status
@@ -460,7 +460,11 @@ class WorkflowExecution(BaseModel):
                 )
             if locked is None:
                 return
-            if locked["queue_message_id"] is None:
+            # A stopped row takes the guarded write too, so nothing replaces the stop.
+            if (
+                locked["queue_message_id"] is None
+                and locked["status"] != ExecutionStatus.STOPPED.value
+            ):
                 should_release_rate_limit = self._apply_legacy_update(
                     status, error, increment_attempt
                 )
@@ -492,8 +496,9 @@ class WorkflowExecution(BaseModel):
         error: str | None,
         increment_attempt: bool,
     ) -> bool:
-        """Celery-path (queue_message_id NULL) — unchanged full save(); runs inside the
-        caller's locked transaction. Returns whether to release the rate-limit slot.
+        """Celery-path (queue_message_id NULL, not STOPPED) — unchanged full save();
+        runs inside the caller's locked transaction. Returns whether to release the
+        rate-limit slot.
         """
         should_release = False
         if status is not None:
@@ -520,12 +525,13 @@ class WorkflowExecution(BaseModel):
         error: str | None,
         increment_attempt: bool,
     ) -> bool:
-        """PG-path terminal-one-way guarded write, inside the caller's row lock. Refuses
-        a revert of a protected-terminal (COMPLETED/STOPPED) status — ERROR stays
-        correctable — while still applying error / increment_attempt. Field-scoped
-        (``update_fields``) so a stale object can never clobber counters or the marker,
-        and the post-save cache publishes the status actually persisted. Returns whether
-        to release the rate-limit slot.
+        """Terminal-one-way guarded write for PG and STOPPED rows, inside the caller's
+        row lock. Refuses a revert of a protected-terminal (COMPLETED/STOPPED) status
+        — ERROR stays correctable — while still applying error / increment_attempt
+        (a STOPPED row keeps its error text).
+        Field-scoped (``update_fields``) so a stale object can never clobber counters or
+        the marker, and the post-save cache publishes the status actually persisted.
+        Returns whether to release the rate-limit slot.
         """
         committed = locked["status"]
         should_release = False
@@ -535,7 +541,7 @@ class WorkflowExecution(BaseModel):
                 ExecutionStatus(status), committed, error, increment_attempt
             )
             update_fields.extend(status_fields)
-        if error:
+        if error and self._saves_error(committed):
             self.error_message = error[:EXECUTION_ERROR_LENGTH]
             update_fields.append("error_message")
         if increment_attempt:
@@ -546,6 +552,11 @@ class WorkflowExecution(BaseModel):
             update_fields.append("modified_at")
             self.save(update_fields=update_fields)
         return should_release
+
+    @staticmethod
+    def _saves_error(committed: str) -> bool:
+        """A stopped run keeps the abort's message."""
+        return bool(committed != ExecutionStatus.STOPPED.value)
 
     def _apply_guarded_status(
         self,
@@ -558,7 +569,7 @@ class WorkflowExecution(BaseModel):
 
         Returns ``(update_fields, should_release_rate_limit)``. On a refused revert of
         a protected-terminal (COMPLETED/STOPPED) row, keeps ``self.status == committed``
-        and returns ``([], False)`` — the caller still applies error / increment.
+        and returns ``([], False)``.
         """
         if (
             committed in ExecutionStatus.protected_terminal_values()
@@ -566,12 +577,12 @@ class WorkflowExecution(BaseModel):
         ):
             logger.warning(
                 "update_execution: refusing to revert protected status '%s' with "
-                "'%s' for execution %s (stale-writer guard); error=%s "
-                "increment_attempt=%s still applied",
+                "'%s' for execution %s (stale-writer guard); error_saved=%s "
+                "increment_attempt=%s",
                 committed,
                 status.value,
                 self.id,
-                bool(error),
+                bool(error) and self._saves_error(committed),
                 increment_attempt,
             )
             self.status = committed  # keep self + post-save cache consistent with DB

@@ -539,7 +539,7 @@ def _set_states(rows, now):
         row["enabled"] = sorted(row["targets"])
         # No enabled target (cut, nothing built yet) is stabilizing: every line builds cloud by default.
         # The line's first GA, for any target, ends its auto-picks: a target with no GA yet then counts as stabilized,
-        # so it takes plain fixes only by a named Backport. Its own state stays stabilizing: it keeps its target
+        # so it takes backport/rc fixes only by a named Backport. Its own state stays stabilizing: it keeps its target
         # supported and blocks that target's Promote on newer lines; Retire needs force for it only when it is late.
         any_ga = any(tt["ga"] for tt in row["targets"].values())
         row["state"] = _line_state(
@@ -561,8 +561,8 @@ def _sets(ordered):
             for t in TARGETS
         },
         "backport_targets": {
-            "fix": [r["branch"] for r in ordered if r["state"] == "stabilizing"],
-            "security_critical": [
+            "rc": [r["branch"] for r in ordered if r["state"] == "stabilizing"],
+            "ga": [
                 {
                     "branch": r["branch"],
                     "needs_rm_confirmation": r["state"] == "stabilized",
@@ -632,7 +632,7 @@ def retire_line_refusal(state, branch, force=False):
     if row["targets"].get("cloud", {}).get("state") == "stabilized":
         return "cloud is production (newest cloud GA); it retires once a newer line is promoted"
     if held and not force:
-        return f"{', '.join(held)} still supported (stabilized, or late with no GA yet); a release manager may retire it inside the window with force"
+        return f"{', '.join(held)} still supported (stabilized, or late with no GA yet); to retire it inside the window, rerun with force"
     return None
 
 
@@ -643,6 +643,29 @@ def retire_line_held(state, branch):
         for t, tt in sorted(_branch_row(state, branch)["targets"].items())
         if tt["state"] == "stabilized" or (tt["late"] and not tt["ga"])
     ]
+
+
+# Release-line environments, indexed by minor parity (even, odd), so nothing is stored. Each repo maps the
+# label to its own deployment; nothing here names one.
+LINE_ENVS = ("staging", "integration")
+RC_CAP = len(LINE_ENVS)  # lines in RC (stabilizing) at once, one per environment
+
+
+def line_env(line):
+    """The environment a release line's RCs deploy to; line is X.Y or release/X.Y."""
+    return LINE_ENVS[int(rm.line(line).split(".")[1]) % 2]
+
+
+def cut_refusal(state, line):
+    """Why Cut refuses a new line now, or None: the RC cap is reached, or the line's environment is held."""
+    rc = state["backport_targets"]["rc"]
+    if len(rc) >= RC_CAP:
+        return f"{len(rc)} lines already in RC ({', '.join(rc)}); the cap is {RC_CAP}"
+    env = line_env(line)
+    held = [b for b in rc if line_env(b) == env]
+    if held:
+        return f"its environment {env} is held by {held[0]}, still in RC"
+    return None
 
 
 def _branch_row(state, branch):
@@ -743,7 +766,7 @@ def promote_blockers(state, branch, target):
         return []
     line = _key(branch.split("/", 1)[1])
     return [
-        f"{b['branch']} is not GA for {target} yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); a release manager may override this with force and a reason"
+        f"{b['branch']} is not GA for {target} yet: promote and publish it first, or retire it (Retire one shipped line now; Abandon a line that never shipped when it has no GA); to override, rerun with force and a reason"
         for b in state["branches"]
         if _key(b["line"]) < line
         and target in b["targets"]
@@ -800,7 +823,7 @@ def summary(state):
                 "",
                 "- supported: "
                 + "; ".join(f"{t} {v}" for t, v in state["supported"].items()),
-                f"- backport_targets.fix: {state['backport_targets']['fix']}",
+                f"- backport_targets.rc: {state['backport_targets']['rc']}",
                 f"- retire: {state['retire']}",
                 f"- next_minor: {state['next_minor']}",
                 f"- anomalies: {len(state['anomalies'])}",

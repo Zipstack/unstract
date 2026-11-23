@@ -1240,20 +1240,28 @@ class TestAgenticTableParamsAndResults:
         name: str = "rent_roll",
         extraction_priority: str | None = "accuracy",
         enable_raw_extraction: bool = True,
+        extraction_engine: str | None = None,
     ) -> dict:
-        """Single agentic_table output entry for tool_metadata["outputs"]."""
+        """Single agentic_table output entry for tool_metadata["outputs"].
+
+        ``extraction_engine`` is left out of the settings when None, as in a
+        tool exported before the setting existed.
+        """
+        settings = {
+            "target_table": "invoice_lines",
+            "json_structure": {"line": "int", "amount": "float"},
+            "instructions": "Extract all rows",
+            "lite_llm_adapter_instance_id": "llm-lite",
+            "extraction_priority": extraction_priority,
+            "enable_raw_extraction": enable_raw_extraction,
+        }
+        if extraction_engine is not None:
+            settings["extraction_engine"] = extraction_engine
         return {
             "name": name,
             "type": "agentic_table",
             "llm": "llm-agentic",
-            "agentic_table_settings": {
-                "target_table": "invoice_lines",
-                "json_structure": {"line": "int", "amount": "float"},
-                "instructions": "Extract all rows",
-                "lite_llm_adapter_instance_id": "llm-lite",
-                "extraction_priority": extraction_priority,
-                "enable_raw_extraction": enable_raw_extraction,
-            },
+            "agentic_table_settings": settings,
         }
 
     @staticmethod
@@ -1436,6 +1444,50 @@ class TestAgenticTableParamsAndResults:
         ep = dispatcher_instance.dispatch.call_args[0][0].executor_params
         assert ep["extraction_priority"] is None
         assert ep["enable_raw_extraction"] is False
+
+    # -- extraction_engine forwarding --
+
+    @pytest.mark.parametrize(
+        ("engine", "expected"),
+        [("rentroll_v2", "rentroll_v2"), ("default", "default"), (None, None)],
+    )
+    @patch(_PATCH_SHIM)
+    @patch(_PATCH_FILE_STORAGE)
+    @patch(_PATCH_PLATFORM_HELPER)
+    @patch(_PATCH_DISPATCHER)
+    def test_extraction_engine_forwarded(
+        self,
+        mock_get_executor_dispatcher,
+        mock_create_ph,
+        mock_get_fs,
+        mock_shim_cls,
+        engine,
+        expected,
+        base_params,
+        mock_fs,
+        mock_platform_helper,
+    ):
+        """extraction_engine passes through; absent (older exports) gives None."""
+        from file_processing.structure_tool_task import (
+            _execute_structure_tool_impl as execute_structure_tool,
+        )
+
+        mock_get_fs.return_value = mock_fs
+        mock_create_ph.return_value = mock_platform_helper
+
+        at_out = self._agentic_output(extraction_engine=engine)
+        mock_platform_helper.get_prompt_studio_tool.return_value = {
+            "tool_metadata": self._tool_metadata_agentic_only([at_out]),
+        }
+
+        dispatcher_instance = create_autospec(PgExecutionDispatcher, instance=True)
+        mock_get_executor_dispatcher.return_value = dispatcher_instance
+        dispatcher_instance.dispatch.return_value = self._make_agentic_result()
+
+        execute_structure_tool(base_params)
+
+        ep = dispatcher_instance.dispatch.call_args[0][0].executor_params
+        assert ep["extraction_engine"] == expected
 
     # -- All-agentic result assembly --
 

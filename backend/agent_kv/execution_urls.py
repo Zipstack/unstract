@@ -1,11 +1,19 @@
 """Public Agent-KV execution routes.
 
-``ValidateView`` is **deliberately not routed here.** It compiles a `kv` keys
-schema through ``unstract.agent_kv_schema.compile_schema`` and does nothing
-else; the `table` extractor's ``keys`` is ``{"target_table": ...}``, validated
-by ``TableKeysSerializer`` at submit. Publishing an endpoint that validates
-schemas for an extractor this deployment refuses with a 400 would be an
-incoherent public contract.
+``ValidateView`` is **deliberately not routed here**, and this is the full
+rationale -- ``ValidateView``'s own docstring points at this file for it.
+
+It compiles a `kv` keys schema through
+``unstract.agent_kv_schema.compile_schema`` and does nothing else; the `table`
+extractor's ``keys`` is ``{"target_table": ...}``, validated by
+``TableKeysSerializer`` at submit.
+
+The original reason was that `kv` was refused at submit, so advertising schema
+validation for it would have been an incoherent contract. That reason is spent:
+`kv` is routable now. What keeps the view unrouted is a different and narrower
+decision -- publishing it adds a new public, rate-limited, key-authenticated
+surface, which is a choice to make on its own merits rather than one that rides
+along with enabling an extractor.
 
 The view class and the schema package both stay in the tree. Deleting them
 would force a content merge in the files the branch carrying the KV engine

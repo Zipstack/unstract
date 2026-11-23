@@ -19,6 +19,7 @@ vi.mock("./entries", async (importOriginal) => {
         toV0: { "/:orgName/flows": "/:orgName/workflows" },
         toV1: { "/:orgName/workflows": "/:orgName/flows" },
         toggle: false,
+        access: "authenticated",
         distributions: ["cloud"],
         registeredBy: "P3-T01",
       },

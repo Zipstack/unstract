@@ -80,6 +80,8 @@ Results are always newest first; an `ordering` parameter is ignored.
 - `actor.type` is `user`, `api_key` or `system`. For `api_key`, `key_id` and
   `key_name` name the platform API key that made the call, `email` is its
   service account and `name` is the key name.
+- `request_id` is the caller's `X-Request-ID` when it sent a UUID, else one
+  the server made. It finds the request's log lines; it is not unique.
 - `actor.id` is `null` once the user is deleted; `email` and `name` are copied
   onto the event and survive.
 - `changes` holds only what changed. Either side may be absent: a create has
@@ -197,7 +199,7 @@ Expected emitters outside this PR:
 | Task | Action | Notes |
 |---|---|---|
 | PB-T05 (UN-4360) | `key.expiry_set` | target per key type; cloud review keys may register their own `review_key.*` actions |
-| PB-T08 (UN-4318) | `execution.aborted` | target `execution`; actor is the owner or admin who aborted |
+| PB-T08 (UN-4318) | `execution.aborted` | target `execution` |
 
 ## Action vocabulary
 

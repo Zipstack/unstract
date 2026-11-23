@@ -57,10 +57,21 @@ class JobExtractor(models.TextChoices):
     stringly-typed field without them -- so nothing but a reader's memory
     connected the column to `EXTRACTOR_ROUTES`.
 
-    KV is listed even though this deployment refuses it: the column records
-    which extractor RAN, and rows written before the carve-out legitimately
-    say `kv`. Routability is `EXTRACTOR_ROUTES`' job, and these two sets are
-    deliberately not the same thing -- see `test_table_extractor_routing.py`.
+    The column records which extractor RAN. Two other sets decide different
+    questions and should not be read off this enum:
+
+    * `EXTRACTOR_ROUTES` decides ROUTABILITY -- which executor and operation a
+      name dispatches to. It and this enum are currently the same set,
+      `{kv, table}`.
+    * `enabled_extractors()` decides ACCEPTANCE at submit, per deployment, from
+      the settings flags in `_EXTRACTOR_ENABLE_FLAGS`. That is the only one of
+      the three that varies by environment.
+
+    An earlier version of this paragraph said KV was listed here "even though
+    this deployment refuses it" and that routing and this enum were
+    "deliberately not the same thing". Both halves stopped being true when this
+    branch routed `kv`: the sets are now identical, and refusal moved to
+    `enabled_extractors()`. See `test_table_extractor_routing.py`.
     """
 
     KV = V1_EXTRACTOR_NAME
@@ -118,9 +129,10 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
     #: joining `usage_v2` on `run_id`, which the API cannot do and a customer
     #: cannot see at all.
     #:
-    #: Empty for an env-configured extractor (`kv`), which is why it is a dict
-    #: with a `{}` default rather than three nullable columns: the two
-    #: credential models coexist, one per extractor.
+    #: A dict with a `{}` default rather than three nullable columns. The
+    #: original reason -- `kv` was env-credentialed and stored nothing here --
+    #: is gone: both extractors now require all three roles, so `{}` means a
+    #: row predating the field, not an extractor that needs no adapters.
     #:
     #: Ids only. Deliberately never `adapter_metadata` -- that is where the
     #: provider credentials live, and this column is returned to the caller.
@@ -140,7 +152,7 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
     # other. See run_ttl_cleanup.
     cleanup_failed_at = models.DateTimeField(null=True, blank=True)
     # Set once this job's stored files have been destroyed on purpose: by an
-    # explicit `DELETE /agent-kv/{job_id}` or by the TTL sweep. One-way, and
+    # explicit `DELETE /api/v1/agentic-extract/{job_id}` or by the TTL sweep. One-way, and
     # written UNCONDITIONALLY by both of those paths -- before the deletes are
     # attempted, and regardless of whether any individual delete succeeded.
     #
