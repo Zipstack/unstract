@@ -16,6 +16,7 @@ import { useOldVersionStore } from "@v1/stores/oldVersion";
 import { selectThemeMode, useThemeStore } from "@v1/stores/theme";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
+import { DataTablePlayground } from "./DataTablePlayground";
 
 function LlmAdapters(): JSX.Element {
   const adapters = useQuery(adapterQueries.list({ adapterType: "LLM" }));
@@ -58,6 +59,7 @@ function DataTablePreview(): JSX.Element {
           </button>
         ))}
       </div>
+      <DataTablePlayground />
       {DATA_TABLE_GALLERY.map(({ name, element }) => (
         <div key={name} className="ui:flex ui:flex-col ui:gap-2">
           <h3 className="ui:m-0 ui:text-body ui:font-semibold ui:text-foreground">
