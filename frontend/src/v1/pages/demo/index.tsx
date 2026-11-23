@@ -59,6 +59,15 @@ function DataTablePreview(): JSX.Element {
           </button>
         ))}
       </div>
+      {/* TEMP (UN-4346): for dev testing only. Removed before merging; never merge this. */}
+      <p className="ui:m-0 ui:max-w-3xl ui:text-body-small ui:text-muted-foreground">
+        Focus-ring check: click the page background, press Tab until a table row
+        is focused, then use Up/Down/Home/End. The ring is a 3px band around the
+        row. Look at the first and last rows at the card&apos;s rounded edges,
+        in a page-scroll table (&quot;rest, sorted by name&quot;, &quot;expanded
+        row, row click and actions&quot;) and in the container-scroll 1,000-row
+        table.
+      </p>
       <DataTablePlayground />
       {DATA_TABLE_GALLERY.map(({ name, element }) => (
         <div key={name} className="ui:flex ui:flex-col ui:gap-2">
