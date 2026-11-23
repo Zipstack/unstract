@@ -158,3 +158,10 @@ volumes:
   redis_data:
   prompt_studio_data:
   rabbitmq_data:
+
+networks:
+  default:
+    # NOTE:
+    # Must match the network in docker-compose.yaml and the proxy's
+    # --providers.docker.network flag.
+    name: unstract-network
