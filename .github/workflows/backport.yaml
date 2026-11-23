@@ -5,8 +5,8 @@ run-name: >-
       && format('record #{0}', github.event.pull_request.number)
       || format('picks {0}', inputs.commits || github.sha) }}
 
-# Fixes reach stabilized lines only with patch_released_lines; a backport/rc fix also needs lines. Closing a pick PR
-# declines it; the close comment is the reason. pull_request_target because GitHub runs no pull_request workflow
+# A released line gets a fix only with patch_released_lines; Lines narrows which. Closing a pick PR declines it;
+# the close comment is the reason. pull_request_target because GitHub runs no pull_request workflow
 # on a PR that conflicts with its base; it runs the base line's copy of this file, checks out main and never runs
 # head code.
 on:
@@ -22,7 +22,7 @@ on:
         type: string
         required: false
       patch_released_lines:
-        description: "Also pick onto released (stabilized) lines; a backport/rc fix needs Lines"
+        description: "Also pick onto released lines the fix's label covers (backport/X.Y and newer); a line older than the label is never picked: relabel the PR instead"
         type: boolean
         default: false
       lines:

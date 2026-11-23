@@ -18,8 +18,12 @@ export type PluginErrorReporter = (
 export interface SlotComponentProps<K extends SlotId> {
   id: K;
   props: SlotProps[K];
-  /** Shown when no plugin fills the slot, while it loads, and if it fails. */
+  /** Shown when no plugin fills the slot; also while it loads or after it fails, unless `loading` or `failed` is set. */
   fallback: ReactNode;
+  /** Shown while the filler loads, when the fallback must not flash first (a gate). */
+  loading?: ReactNode;
+  /** Shown when the filler fails to load or render; default the fallback. A gate passes one so it never fails open. */
+  failed?: ReactNode;
 }
 
 interface BoundaryProps {
@@ -65,7 +69,7 @@ class SlotBoundary extends Component<BoundaryProps, BoundaryState> {
 
 /**
  * How long a slot whose filler failed to load waits before fetching it again.
- * Until then every render and mount shows the fallback without a request, so
+ * Until then every render and mount shows the failed state without a request, so
  * a chunk that is gone for good (a tab left open across a deploy) is not
  * fetched on every re-render of its host.
  */
@@ -74,7 +78,8 @@ export const SLOT_RETRY_MS = 30_000;
 /**
  * The `<Slot>` component for one registry. Each slot gets its own error
  * boundary, so a plugin that fails to load or render shows that slot's
- * fallback and is reported, and every other slot keeps working. A failed
+ * failed state (its fallback unless given) and is reported, and every other
+ * slot keeps working. A failed
  * load is reported once until a load of that slot succeeds; a render error
  * is reported each time a boundary catches one.
  */
@@ -131,6 +136,8 @@ export function makeSlot(
     id,
     props,
     fallback,
+    loading = fallback,
+    failed = fallback,
   }: SlotComponentProps<K>): ReactNode {
     const Filler = filler(id);
     if (!Filler) {
@@ -140,11 +147,12 @@ export function makeSlot(
     return (
       <SlotBoundary
         resetKey={Filler}
-        fallback={fallback}
+        fallback={failed}
         onError={(e) => onError(owner, id, e)}
       >
-        <Suspense fallback={fallback}>
-          <Filler {...props} />
+        <Suspense fallback={loading}>
+          {/* SlotProps[K] is a conditional type tsc cannot spread generically. */}
+          <Filler {...(props as SlotProps[K] & object)} />
         </Suspense>
       </SlotBoundary>
     );

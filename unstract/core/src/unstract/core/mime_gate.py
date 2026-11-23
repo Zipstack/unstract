@@ -17,6 +17,14 @@ import magic
 RECOGNISED_WRAPPERS = frozenset({"application/zip", "application/x-ole-storage"})
 INCONCLUSIVE_MIME_TYPES = RECOGNISED_WRAPPERS | {"application/octet-stream"}
 
+# libmagic's answers from a whole file that are worth opening as a zip. Besides
+# a plain zip, an OOXML package whose main part is not among its first few
+# members (docProps/ and customXml/ written ahead of xl/, say) reads as
+# "Microsoft OOXML", which has no MIME, so libmagic reports octet-stream. Only
+# looked inside: `identify_zip_container` still decides, and a file that is not
+# a zip just keeps libmagic's answer.
+ZIP_CANDIDATE_MIME_TYPES = frozenset({"application/zip", "application/octet-stream"})
+
 # libmagic matches the PDF header only at offset 0, while extractors tolerate
 # bytes before it, so a wrapped PDF needs the header looked for.
 PDF_HEADER_SCAN_BYTES = 1024

@@ -590,6 +590,9 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             "group_key": at_settings.get("group_key", ""),
             "enable_header_mapping": at_settings.get("enable_header_mapping", False),
             "extraction_priority": at_settings.get("extraction_priority"),
+            # Which engine runs the extraction ("default" or "rentroll_v2"); absent on
+            # tools exported before the setting existed, which keeps the default engine.
+            "extraction_engine": at_settings.get("extraction_engine"),
             "enable_raw_extraction": at_settings.get("enable_raw_extraction", False),
             # Set on the output at export by prompt_studio_registry_helper.py
             # when a lookup is assigned; None otherwise.

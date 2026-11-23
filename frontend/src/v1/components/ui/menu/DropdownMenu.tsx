@@ -23,8 +23,8 @@ export type DropdownMenuTriggerProps = ComponentProps<
 >;
 
 /**
- * The control that opens the menu. Pass `asChild` with your own button (for
- * now `MenuButton` or `MenuIconButton`; the v1 `Button` once P1-T02 lands).
+ * The control that opens the menu. Pass `asChild` with a v1 button
+ * (`MenuButton`, `MenuIconButton`, `Button` or `IconButton`).
  */
 export function DropdownMenuTrigger(
   props: DropdownMenuTriggerProps,

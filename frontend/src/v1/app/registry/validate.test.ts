@@ -1,4 +1,5 @@
 import { PAGE_COMPONENTS } from "@v1/app/pages";
+import { CHOOSE_ORGANIZATION_PATH, SIGN_IN_PATH } from "@v1/lib/organizations";
 import { describe, expect, it } from "vitest";
 import { DEMO_PAGES, PAGES, REGISTERED_PAGES } from "./entries";
 import { patternProblem, patternsOverlap } from "./patterns";
@@ -22,6 +23,17 @@ describe("the app's registry", () => {
       declared.filter((p) => !PAGE_COMPONENTS[p.page]).map((p) => p.page),
     ).toEqual([]);
   });
+
+  // The guard sends users to these v0 pages; a v1 page there would redirect to itself.
+  it("leaves the sign-in and organisation picker pages to v0", () => {
+    const targets = [SIGN_IN_PATH, CHOOSE_ORGANIZATION_PATH];
+    const taken = declared.flatMap(({ page, v1Routes, replaces }) =>
+      [...v1Routes, ...replaces]
+        .filter((route) => targets.some((t) => patternsOverlap(route, t)))
+        .map((route) => `${page} ${route}`),
+    );
+    expect(taken).toEqual([]);
+  });
 });
 
 const base: RegistryEntry = {
@@ -31,6 +43,7 @@ const base: RegistryEntry = {
   toV0: { "/:orgName/workflows": "/:orgName/old-workflows" },
   toV1: { "/:orgName/old-workflows": "/:orgName/workflows" },
   toggle: false,
+  access: "authenticated",
   distributions: ["oss"],
   registeredBy: "P3-T01",
 };
@@ -177,7 +190,17 @@ describe("registryProblems", () => {
     }
   });
 
-  it("rejects duplicates, empty routes or distributions, and malformed patterns", () => {
+  it("rejects an admin page that ships to OSS, as v0 hides admin pages there", () => {
+    const admin: RegistryEntry = { ...base, access: "admin" };
+    expect(
+      problemsOf({ ...admin, distributions: ["oss", "cloud", "onprem"] }),
+    ).toEqual(["UN05: an admin page cannot ship to oss"]);
+    expect(
+      problemsOf({ ...admin, distributions: ["cloud", "onprem"] }),
+    ).toEqual([]);
+  });
+
+  it("rejects duplicates, empty routes or distributions, unknown access, and malformed patterns", () => {
     expect(problemsOf(base, base)).toContain("UN05: declared twice");
     expect(
       problemsOf({
@@ -189,6 +212,10 @@ describe("registryProblems", () => {
         distributions: [],
       }),
     ).toEqual(["UN05: has no v1 routes", "UN05: ships in no distribution"]);
+    const unguarded = { ...base, access: "anyone" } as unknown as RegistryEntry;
+    expect(problemsOf(unguarded)).toEqual([
+      "UN05: access must be one of guest, authenticated, admin, platform-admin",
+    ]);
     expect(
       problemsOf(v1Only("UN05", ["workflows", "/:orgName/:id?", "/a/*/b"])),
     ).toEqual(

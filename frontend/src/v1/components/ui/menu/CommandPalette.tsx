@@ -1,3 +1,4 @@
+import { Kbd } from "@v1/components/ui/button";
 import { cn } from "@v1/lib/cn";
 import { getPortalContainer } from "@v1/lib/portal";
 import { Dialog as RadixDialog } from "radix-ui";
@@ -52,12 +53,7 @@ function Hint({
   return (
     <div className="ui:flex ui:items-center ui:gap-1">
       {keys.map((key) => (
-        <kbd
-          key={key}
-          className="ui:rounded-sm ui:border ui:border-border ui:bg-muted ui:px-1 ui:font-sans ui:text-caption ui:text-muted-foreground"
-        >
-          {key}
-        </kbd>
+        <Kbd key={key}>{key}</Kbd>
       ))}
       <div>{children}</div>
     </div>
