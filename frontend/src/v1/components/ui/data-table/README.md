@@ -52,7 +52,7 @@ const columns: DataTableColumn<Deployment>[] = [
 
 | Prop | Type | Default | |
 | --- | --- | --- | --- |
-| `label` | `string` | required | names the table ("API deployments") and its loading status |
+| `label` | `string` | required | names the table ("API deployments"), its loading status, its bulk bar ("Bulk actions for API deployments") and its pagination ("API deployments pages"); unique on the page, or two landmarks share a name |
 | `columns` | `DataTableColumn<TRow>[]` | required | memoise it: a new array rebuilds the column model |
 | `rows` | `TRow[]` | required | |
 | `getRowId` | `(row) => string` | required | selection and expansion are keyed by it |

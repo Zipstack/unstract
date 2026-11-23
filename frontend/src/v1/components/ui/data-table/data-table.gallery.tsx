@@ -8,6 +8,8 @@ import type { DataTableColumn, DataTableRowAction } from "./types";
  * Light, Dark and Unstract). Until then markup.test.tsx renders each one,
  * snapshots its markup and runs the accessibility scan on it in all three
  * modes. The last entry is the 1,000-row table the spec's acceptance names.
+ * Each table has its own label: the gallery shows them on one page, and the
+ * label names each table's bulk bar and pagination.
  */
 
 export type GalleryEntry = Readonly<{ name: string; element: ReactElement }>;
@@ -145,6 +147,7 @@ export const DATA_TABLE_GALLERY: readonly GalleryEntry[] = [
     element: (
       <DataTable
         {...common}
+        label={`API deployments (rest, sorted by name)`}
         rows={FEW}
         defaultSort={{ columnId: "name", direction: "asc" }}
       />
@@ -155,6 +158,7 @@ export const DATA_TABLE_GALLERY: readonly GalleryEntry[] = [
     element: (
       <DataTable
         {...common}
+        label={`API deployments (sorted descending, failure tint)`}
         rows={FEW}
         getRowTone={rowTone}
         defaultSort={{ columnId: "totalRuns", direction: "desc" }}
@@ -163,18 +167,40 @@ export const DATA_TABLE_GALLERY: readonly GalleryEntry[] = [
   },
   {
     name: "loading",
-    element: <DataTable {...common} rows={[]} loading selectable />,
+    element: (
+      <DataTable
+        {...common}
+        label={`API deployments (loading)`}
+        rows={[]}
+        loading
+        selectable
+      />
+    ),
   },
-  { name: "empty", element: <DataTable {...common} rows={[]} /> },
+  {
+    name: "empty",
+    element: (
+      <DataTable {...common} label={`API deployments (empty)`} rows={[]} />
+    ),
+  },
   {
     name: "no results",
-    element: <DataTable {...common} rows={[]} filtered toolbar="Search: zz" />,
+    element: (
+      <DataTable
+        {...common}
+        label={`API deployments (no results)`}
+        rows={[]}
+        filtered
+        toolbar="Search: zz"
+      />
+    ),
   },
   {
     name: "error with rows",
     element: (
       <DataTable
         {...common}
+        label={`API deployments (error with rows)`}
         rows={FEW}
         error={{
           title: "Could not refresh deployments",
@@ -189,6 +215,7 @@ export const DATA_TABLE_GALLERY: readonly GalleryEntry[] = [
     element: (
       <DataTable
         {...common}
+        label={`API deployments (partial selection with bulk bar)`}
         rows={FEW}
         selectable
         defaultSelectedIds={["dep-2", "dep-3"]}
@@ -205,6 +232,7 @@ export const DATA_TABLE_GALLERY: readonly GalleryEntry[] = [
     element: (
       <DataTable
         {...common}
+        label={`API deployments (all selected)`}
         rows={FEW}
         selectable
         defaultSelectedIds={FEW.map(rowId)}
@@ -216,6 +244,7 @@ export const DATA_TABLE_GALLERY: readonly GalleryEntry[] = [
     element: (
       <DataTable
         {...common}
+        label={`API deployments (expanded row, row click and actions)`}
         rows={FEW}
         renderExpanded={detail}
         defaultExpandedIds={["dep-1"]}
@@ -229,6 +258,7 @@ export const DATA_TABLE_GALLERY: readonly GalleryEntry[] = [
     element: (
       <DataTable
         {...common}
+        label={`API deployments (client pagination with footer)`}
         rows={galleryRows(30)}
         pagination={{ mode: "client", pageSize: 10 }}
         footer="Updated 2 min ago"
@@ -240,6 +270,7 @@ export const DATA_TABLE_GALLERY: readonly GalleryEntry[] = [
     element: (
       <DataTable
         {...common}
+        label={`API deployments (server pagination)`}
         rows={FEW}
         pagination={{
           mode: "server",
@@ -256,6 +287,7 @@ export const DATA_TABLE_GALLERY: readonly GalleryEntry[] = [
     element: (
       <DataTable
         {...common}
+        label={`API deployments (1,000 rows, every feature, container scroll)`}
         rows={THOUSAND}
         scroll="container"
         className="ui:h-160"
