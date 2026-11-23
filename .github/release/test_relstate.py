@@ -1638,17 +1638,18 @@ class PrFixClass(unittest.TestCase):
 
     def test_pr_fix_class(self):
         c = rm.pr_fix_class
-        rc = ["backport/rc"]
-        self.assertEqual(c("UN-1 [MISC] x", rc), "rc")
-        self.assertEqual(c("UN-1 [FIX] x", rc), "rc")
+        self.assertEqual(c("UN-1 [MISC] x", ["backport/0.187"]), "0.187")
+        self.assertEqual(c("UN-1 [FIX] x", ["backport/0.10"]), "0.10")
         self.assertIsNone(c("UN-1 [FIX] x", ["main-only"]))
         self.assertIsNone(c("UN-1 [MISC] x", ["main-only", "bug"]))
-        self.assertEqual(c("UN-1 [FEAT] x", ["backport/ga", "bug"]), "ga")
+        self.assertEqual(c("UN-1 [FEAT] x", ["backport/0.186", "bug"]), "0.186")
         for labels in (
             ["backport/x"],
-            ["Backport/ga"],
-            ["backport-ga"],
-            ["backports/rc"],
+            ["Backport/0.187"],
+            ["backport-0.187"],
+            ["backports/0.187"],
+            ["backport/0.187.1"],
+            ["backport/v0.187"],
             ["fix/typo"],
             ["fix-class/security"],
             ["Fix/security"],
@@ -1656,18 +1657,102 @@ class PrFixClass(unittest.TestCase):
         ):
             with self.assertRaisesRegex(ValueError, "unknown label", msg=labels) as e:
                 c("UN-1 [FIX] x", labels)
-            self.assertIn("`backport/rc`, `backport/ga` or `main-only`", str(e.exception))
-        with self.assertRaisesRegex(ValueError, "conflicting labels .*: keep one"):
-            c("UN-1 [FIX] x", ["backport/rc", "backport/ga"])
+            self.assertIn("use `backport/X.Y` or `main-only`", str(e.exception))
+        with self.assertRaisesRegex(
+            ValueError, "more than one backport label .*: keep only the oldest"
+        ):
+            c("UN-1 [FIX] x", ["backport/0.187", "backport/0.186"])
         # Backport's own status labels must not read as a near-miss.
         for x in ("backport-conflict", "backport-merged", "backport-declined"):
             self.assertIsNone(c("UN-1 [FIX] x", ["main-only", x]))
 
-    def test_old_label_names_are_unknown(self):
-        for old in ("fix/needs-backport", "fix/security", "fix/critical"):
-            for labels in ([old], [old, "backport/rc"], [old, "main-only"]):
-                with self.assertRaisesRegex(ValueError, "unknown label", msg=labels):
-                    rm.main_fix_class("UN-1 [FIX] x", labels)
+    def test_retired_class_labels_refused(self):
+        for old in ("backport/rc", "backport/ga"):
+            for labels in ([old], [old, "main-only"], [old, "backport/0.187"]):
+                with self.assertRaisesRegex(
+                    ValueError, f"`{old}` is no longer used", msg=labels
+                ) as e:
+                    rm.pr_fix_class("UN-1 [FIX] x", labels)
+                self.assertNotIn("active:", str(e.exception))
+        with self.assertRaises(ValueError) as e:
+            rm.pr_fix_class("UN-1 [FIX] x", ["backport/rc"], ["0.188", "0.187"])
+        self.assertIn("(active: `backport/0.188`, `backport/0.187`)", str(e.exception))
+
+    def test_active_lines_gate_new_labels(self):
+        c = rm.pr_fix_class
+        active = [
+            "0.188",
+            "0.187",
+            "0.186",
+        ]  # the OSS repo's live lines when line labels started
+        self.assertEqual(c("UN-1 [FIX] x", ["backport/0.186"], active), "0.186")
+        with self.assertRaisesRegex(
+            ValueError,
+            r"`backport/0.185` names no active release line: use one of `backport/0.188`, `backport/0.187`, "
+            r"`backport/0.186`, or `main-only`",
+        ):
+            c("UN-1 [FIX] x", ["backport/0.185"], active)
+        with self.assertRaisesRegex(
+            ValueError, r"unknown label.*\(active: `backport/0.188`"
+        ):
+            c("UN-1 [FIX] x", ["backport/latest"], active)
+        # Without active lines (Backport reading a merged PR) a since-retired line still classes.
+        self.assertEqual(c("UN-1 [FIX] x", ["backport/0.185"]), "0.185")
+
+    def test_active_lines_from_release_heads(self):
+        heads = "\n".join(
+            f"refs/heads/release/{n}"
+            for n in ("0.186", "v0.148.1001", "0.188", "v0.181.1001", "0.187", "0.2")
+        )
+        calls = []
+        gh = lambda *a: calls.append(a) or heads
+        self.assertEqual(rm.active_lines("o/r", gh), ["0.188", "0.187", "0.186", "0.2"])
+        self.assertIn("repos/o/r/git/matching-refs/heads/release/", calls[0])
+        for out in ("", "refs/heads/release/v0.148.1001"):
+            with self.assertRaisesRegex(
+                RuntimeError, "no release/X.Y branch found in o/r"
+            ):
+                rm.active_lines("o/r", lambda *a, out=out: out)
+
+    def test_owes(self):
+        self.assertTrue(rm.owes("0.187", "release/0.187"))
+        self.assertTrue(rm.owes("0.187", "release/0.188"))
+        self.assertTrue(rm.owes("0.9", "release/0.10"))  # numeric, not string, order
+        self.assertFalse(rm.owes("0.188", "release/0.187"))
+        self.assertFalse(rm.owes(None, "release/0.188"))
+
+    def test_line_label_upkeep(self):
+        calls = []
+        ok = lambda *a: calls.append(a) or ""
+        self.assertEqual(
+            rm.line_label("o/r", "0.189", ok), "label `backport/0.189` created in o/r"
+        )
+        self.assertIn("name=backport/0.189", calls[-1])
+        self.assertEqual(
+            rm.line_label("o/r", "0.186", ok, retired="past end of support"),
+            "label `backport/0.186` marked retired in o/r",
+        )
+        self.assertEqual(
+            calls[-1][:4], ("api", "-X", "PATCH", "repos/o/r/labels/backport%2F0.186")
+        )
+        self.assertNotIn("DELETE", [x for c in calls for x in c])
+
+        def exists(*a):
+            raise RuntimeError('{"errors":[{"code":"already_exists"}]}')
+
+        self.assertIn("already exists", rm.line_label("o/r", "0.189", exists))
+
+        def denied(*a):
+            raise RuntimeError("HTTP 403: Resource not accessible by integration")
+
+        for kw, cmd in (
+            ({}, "gh label create 'backport/0.189' -R o/r"),
+            ({"retired": "x"}, "gh label edit 'backport/0.189' -R o/r"),
+        ):
+            with self.assertRaises(RuntimeError) as e:
+                rm.line_label("o/r", "0.189", denied, **kw)
+            self.assertIn(cmd, str(e.exception))
+            self.assertIn("HTTP 403", str(e.exception))
 
     def test_main_needs_one_routing_label(self):
         c = rm.main_fix_class
@@ -1675,17 +1760,16 @@ class PrFixClass(unittest.TestCase):
             for labels in ([], ["bug"]):
                 with self.assertRaisesRegex(
                     ValueError,
-                    "no backport label: add `backport/rc`, `backport/ga` or `main-only`",
+                    r"no backport label: add `backport/X.Y` \(the oldest release line that needs the fix\) or `main-only`",
                 ):
                     c(title, labels)
                 self.assertIsNone(rm.pr_fix_class(title, labels))
             self.assertIsNone(c(title, ["main-only"]))
-            self.assertEqual(c(title, ["backport/rc"]), "rc")
-        for fix in ("backport/rc", "backport/ga"):
-            with self.assertRaisesRegex(
-                ValueError, f"conflicting labels `main-only`, `{fix}`: keep one"
-            ):
-                c("UN-1 [MISC] x", ["main-only", fix])
+            self.assertEqual(c(title, ["backport/0.187"]), "0.187")
+        with self.assertRaisesRegex(
+            ValueError, "conflicting labels `main-only`, `backport/0.187`: keep one"
+        ):
+            c("UN-1 [MISC] x", ["main-only", "backport/0.187"])
         with self.assertRaisesRegex(ValueError, "no recognised"):
             c("no prefix", [])  # the title error wins over the missing label
 
@@ -1697,15 +1781,16 @@ class PrFixClass(unittest.TestCase):
             self.assertIsNone(rm.pr_fix_class("UN-1 [FIX] x", labels))
         self.assertIn("no backport label", f("main", []))
         self.assertIn("no backport label", f("main", ["bug"]))
-        for label in ("main-only", "backport/rc", "backport/ga"):
+        # A retired label passes here so pr_fix_class names it, rather than "no backport label".
+        for label in ("main-only", "backport/0.187", "backport/rc", "backport/ga"):
             self.assertIsNone(f("main", [label]), label)
 
     def test_revert_validates_the_inner_title(self):
         c = rm.pr_fix_class
-        nb = ["backport/rc"]
-        self.assertEqual(c('Revert "UN-1 [FIX] x"', nb), "rc")
+        nb = ["backport/0.187"]
+        self.assertEqual(c('Revert "UN-1 [FIX] x"', nb), "0.187")
         self.assertIsNone(c('Revert "UN-1 [FIX] x"', ["main-only"]))
-        self.assertEqual(c('Revert "Revert "UN-1 [FIX] x""', nb), "rc")
+        self.assertEqual(c('Revert "Revert "UN-1 [FIX] x""', nb), "0.187")
         with self.assertRaisesRegex(ValueError, "no backport label"):
             rm.main_fix_class('Revert "UN-1 [FIX] x"')  # GitHub's revert PR is unlabelled
         for title in ('Revert "fix x"', "Revert UN-1 [FIX] x", 'revert "UN-1 [FIX] x"'):
@@ -1714,16 +1799,15 @@ class PrFixClass(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no recognised"):
             c("no prefix", ["main-only"])
         # A backport label does not excuse a bad title.
-        for labels in (nb, ["backport/ga"]):
-            with self.assertRaisesRegex(ValueError, "no recognised", msg=labels):
-                c("no prefix", labels)
+        with self.assertRaisesRegex(ValueError, "no recognised"):
+            c("no prefix", nb)
         self.assertIsNone(c("[MISC] x", ["main-only"]))
 
     def test_ticketless_title_validated(self):
         c = rm.pr_fix_class
-        self.assertEqual(c("[HOT-FIX] x", ["backport/rc"]), "rc")
+        self.assertEqual(c("[HOT-FIX] x", ["backport/0.186"]), "0.186")
         self.assertIsNone(c("[MISC] x", ["main-only"]))
-        self.assertEqual(c("[FEAT] x", ["backport/ga"]), "ga")
+        self.assertEqual(c("[FEAT] x", ["backport/0.188"]), "0.188")
         self.assertIsNone(c('Revert "[FIX] x"', ["main-only"]))
         self.assertIsNone(
             c(" UN-1 [FIX] x", ["main-only"])
@@ -1740,7 +1824,7 @@ class PrFixClass(unittest.TestCase):
             "for PRs into a release/X.Y branch", f("main", ["release-branch-only"])
         )
         self.assertIsNone(f("release/0.192", ["release-branch-only"]))
-        self.assertIsNone(f("main", ["backport/ga"]))
+        self.assertIsNone(f("main", ["backport/0.186"]))
 
     def test_main_only_label_refused_on_release(self):
         f = rm.release_only_refusal
@@ -1749,7 +1833,7 @@ class PrFixClass(unittest.TestCase):
             "label `main-only` is for PRs into main; remove it here",
         )
         self.assertIsNone(f("main", ["main-only"]))
-        self.assertIsNone(f("release/0.192", ["backport/rc"]))
+        self.assertIsNone(f("release/0.192", ["backport/0.192"]))
 
     def test_rbo_key_ticket_else_pr(self):
         self.assertEqual(rm.rbo_key("UN-1 [FIX] x", "45"), "UN-1")

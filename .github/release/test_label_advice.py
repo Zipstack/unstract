@@ -1,4 +1,4 @@
-"""Tests for label_advice, the Backport-also declaration rule and backport.declared(). Run: python test_label_advice.py"""
+"""Tests for label_advice. Run: python test_label_advice.py"""
 
 import contextlib
 import io
@@ -18,36 +18,6 @@ import relmgr as rm
 
 def dev_git(repo, *a):
     return rm.git(repo, "-c", "user.name=Dev", "-c", "user.email=dev@example.com", *a)
-
-
-class Declaration(unittest.TestCase):
-    def test_well_formed_lines_only(self):
-        body = "Fixes the parser.\r\n\r\nBackport-also: 0.186\r\nBackport-also: 0.188  \nBackport-also: 0.19x\n"
-        self.assertEqual(rm.declared_lines(body), {"0.186", "0.188"})
-        self.assertEqual(rm.declared_lines(None), set())
-
-    def test_malformed_lines_are_errors(self):
-        body = (
-            "Backport-also: 0.186\n"
-            "Backport-also: release/0.188\n"
-            "1. Backport-also 0.188\n"
-            "+ Backport-also: 0.186\n"
-            "We could backport also later.\n"  # prose is not an attempt
-        )
-        self.assertEqual(
-            rm.declaration_errors(body),
-            [
-                "Backport-also: release/0.188",
-                "1. Backport-also 0.188",
-                "+ Backport-also: 0.186",
-            ],
-        )
-
-    def test_a_main_only_pr_cannot_declare(self):
-        body = "x\n\nBackport-also: 0.186\n"
-        [err] = rm.body_errors(body, ["main-only"])
-        self.assertIn("Backport never picks a main-only PR", err)
-        self.assertEqual(rm.body_errors(body, ["backport/rc"]), [])
 
 
 class Repo(unittest.TestCase):
@@ -81,115 +51,13 @@ class Repo(unittest.TestCase):
         )
 
 
-class Declared(Repo):
-    """Real git; the gh PR listing is mocked with `gh pr list --json number,title,body,mergeCommit` rows."""
-
-    def declared(self, fail=False):
-        dev_git(self.repo, "push", "-q", "origin", "main")
-        dev_git(self.repo, "fetch", "-q", "origin")
-        gh = mock.Mock(
-            side_effect=RuntimeError("gh pr list (exit 1): HTTP 502") if fail else None,
-            return_value=json.dumps(self.prs),
-        )
-        with mock.patch.object(bp, "gh", gh):
-            return bp.declared("o/r", self.repo, "release/1.7", token="t"), gh
-
-    def test_only_owed_well_formed_declarations_for_this_line(self):
-        owed = self.commit("[FIX] owed (#11)")
-        self.pr(11, owed, "x\r\n\r\nBackport-also: 1.7\r\n")
-        picked = self.commit("[FIX] picked (#12)")
-        self.pr(12, picked, "Backport-also: 1.7")
-        self.pr(13, self.commit("[FIX] other line (#13)"), "Backport-also: 1.9")
-        self.pr(14, self.commit("[FIX] declined (#14)"), "Declaration removed.")
-        self.pr(16, None, "Backport-also: 1.7")  # no merge commit: never merged
-        self.pr(
-            17, self.before, "Backport-also: 1.7"
-        )  # merged before the cut: already on the line
-        by_sha = self.commit("[FIX] reverted by sha (#19)")
-        self.pr(19, by_sha, "Backport-also: 1.7")
-        self.commit(
-            f'Revert "[FIX] reverted by sha" (#20)\n\n* Revert\n\nThis reverts commit {by_sha}.'
-        )
-        self.pr(
-            21,
-            self.commit("[FIX] reverted by title (#21)"),
-            "Backport-also: 1.7",
-            "[FIX] reverted by title",
-        )
-        self.commit(
-            'Revert "[FIX] reverted by title" (#22)\n\nReverts Zipstack/unstract-cloud#21'
-        )
-        dev_git(self.repo, "push", "-q", "origin", "main")
-        line = os.path.join(os.path.dirname(self.repo), "line")
-        rm.git(
-            os.path.dirname(self.repo),
-            "clone",
-            "-q",
-            "-b",
-            "release/1.7",
-            os.path.join(os.path.dirname(self.repo), "o.git"),
-            line,
-        )
-        dev_git(line, "cherry-pick", "-x", "--allow-empty", picked)
-        dev_git(line, "push", "-q", "origin", "release/1.7")
-        got, _ = self.declared()
-        self.assertEqual(got, [(11, "[FIX] fix 11")])
-
-    def test_a_revert_counts_unless_itself_reverted(self):
-        relanded = self.commit("[FIX] flaky (#11)")
-        self.pr(11, relanded, "Backport-also: 1.7", "[FIX] flaky")
-        self.commit('Revert "[FIX] flaky" (#12)')
-        again = self.commit("[FIX] flaky (#13)")  # re-landed under the same title
-        self.pr(13, again, "Backport-also: 1.7", "[FIX] flaky")
-        back = self.commit("[FIX] back (#14)")
-        self.pr(14, back, "Backport-also: 1.7", "[FIX] back")
-        rev = self.commit(f'Revert "[FIX] back" (#15)\n\nThis reverts commit {back}.')
-        self.commit(f'Revert "Revert "[FIX] back"" (#16)\n\nThis reverts commit {rev}.')
-        twice = self.commit("[FIX] twice (#18)")
-        self.pr(18, twice, "Backport-also: 1.7", "[FIX] twice")
-        rev = self.commit(f'Revert "[FIX] twice" (#19)\n\nThis reverts commit {twice}.')
-        self.commit(f'Revert "Revert "[FIX] twice"" (#20)\n\nThis reverts commit {rev}.')
-        self.commit(f'Revert "[FIX] twice" (#21)\n\nThis reverts commit {twice}.')
-        same = self.commit("[FIX] same title (#22)")
-        self.pr(22, same, "Backport-also: 1.7", "[FIX] same title")
-        other = self.commit("[FIX] same title (#23)")
-        self.commit(f'Revert "[FIX] same title" (#24)\n\nThis reverts commit {other}.')
-        # A revert that reaches main off its first-parent line (a merge-back) does not undo a main fix.
-        side = self.commit("[FIX] kept (#17)")
-        self.pr(17, side, "Backport-also: 1.7", "[FIX] kept")
-        dev_git(self.repo, "checkout", "-q", "-b", "side", side)
-        # Dated later, so only --first-parent, not log order, keeps it out.
-        with mock.patch.dict(os.environ, GIT_COMMITTER_DATE="2099-01-01T00:00:00Z"):
-            self.commit(f'Revert "[FIX] kept"\n\nThis reverts commit {side}.')
-        dev_git(self.repo, "checkout", "-q", "main")
-        dev_git(self.repo, "merge", "-q", "--no-ff", "-m", "merge back", "side")
-        got, _ = self.declared()
-        self.assertEqual(
-            got,
-            [
-                (13, "[FIX] flaky"),
-                (14, "[FIX] back"),
-                (22, "[FIX] same title"),
-                (17, "[FIX] kept"),
-            ],
-        )
-
-    def test_a_commit_missing_from_the_fetched_main_fails_closed(self):
-        self.pr(11, "f" * 40, "Backport-also: 1.7")
-        with self.assertRaisesRegex(RuntimeError, "not in the fetched main"):
-            self.declared()
-
+class SearchSince(Repo):
     def test_search_starts_a_day_before_the_cut(self):
         """GitHub reads `merged:>=D` as UTC; a cut at 02:49 +0530 is the previous UTC day."""
         with mock.patch.dict(os.environ, GIT_COMMITTER_DATE="2026-10-31T02:49:30+05:30"):
             self.commit("cut")
         cut = rm.git(self.repo, "rev-parse", "HEAD")
         self.assertEqual(bp.search_since(self.repo, cut), "2026-10-30")
-
-    def test_listing_failure_raises(self):
-        self.pr(11, self.commit("[FIX] owed (#11)"), "Backport-also: 1.7")
-        with self.assertRaises(RuntimeError):
-            self.declared(fail=True)
 
 
 class Owed(Repo):
@@ -201,8 +69,9 @@ class Owed(Repo):
                 "held: 26 main commit(s) since the cut of release/1.7, 1 fix_class lookup(s)"
             )
             return [
-                ("a" * 40, "fix", "#11", "mine"),
-                ("b" * 40, "fix", "#99", "theirs"),
+                ("a" * 40, "1.7", "#11", "mine"),
+                ("b" * 40, "1.7", "#99", "theirs"),
+                ("c" * 40, bp.UNCLASSIFIABLE, "#12", "mine, unlabelled"),
             ]
 
         held = mock.Mock(side_effect=run_log or default_log)
@@ -213,11 +82,6 @@ class Owed(Repo):
             with (
                 mock.patch.object(bp, "held", held),
                 mock.patch.object(bp, "pr_classes", return_value={"c": 1}),
-                mock.patch.object(
-                    bp,
-                    "declared",
-                    return_value=[(11, "mine"), (12, "declared"), (98, "theirs")],
-                ),
                 mock.patch.object(la, "_gh", return_value=mine) as gh,
             ):
                 return la.owed("o/r", "dev"), held, gh
@@ -231,19 +95,21 @@ class Owed(Repo):
         rows, held, _ = self.owed()
         self.assertEqual(
             [(r["pr"], r["why"]) for r in rows],
-            [("#11", "label class fix"), ("#12", "Backport-also: 1.7")],
+            [("#11", "label backport/1.7"), ("#12", bp.UNCLASSIFIABLE)],
         )
         self.assertEqual(
-            rows[1]["command"],
-            "gh workflow run backport.yaml -R o/r -f commits=12 -f lines=1.7 -f patch_released_lines=true",
+            rows[0]["command"],
+            "gh workflow run backport.yaml -R o/r -f commits=11 -f lines=1.7 -f patch_released_lines=true",
         )
-        self.assertEqual(held.call_args.kwargs["accept"], bp.OWED)
+        held.assert_called_once()
+        self.assertEqual(held.call_args.args[2], "release/1.7")
+        self.assertEqual(held.call_args.kwargs, {"cache": {"c": 1}})
+        # Released or not, the line owes what its label covers: held() alone decides.
         dev_git(self.repo, "tag", "v1.7.0", "origin/release/1.7")
         dev_git(self.repo, "push", "-q", "origin", "v1.7.0")
-        _, held, _ = self.owed()
-        self.assertEqual(
-            held.call_args.kwargs["accept"], bp.HELD
-        )  # released: only held fixes are owed
+        rows2, held, _ = self.owed()
+        self.assertEqual(rows2, rows)
+        self.assertEqual(held.call_args.kwargs, {"cache": {"c": 1}})
 
     def test_backports_run_log_shows_only_under_actions(self):
         for env, shown in (({}, False), ({"GITHUB_ACTIONS": "true"}, True)):
@@ -273,7 +139,6 @@ class Owed(Repo):
                 ),
                 mock.patch.object(bp, "held", held),
                 mock.patch.object(bp, "pr_classes", return_value={}),
-                mock.patch.object(bp, "declared", return_value=[]),
                 mock.patch.object(la, "_gh", return_value=json.dumps([{"number": 11}])),
                 mock.patch("sys.stdout"),
             ):
@@ -301,8 +166,8 @@ class Owed(Repo):
         self.assertIn("second line of gh's stderr", err.getvalue())
 
 
-def line(v, present=True, ga=False, onprem_ga=False):
-    return {"line": v, "present": present, "ga": ga, "onprem_ga": onprem_ga}
+def line(v, present=True, ga=False):
+    return {"line": v, "present": present, "ga": ga}
 
 
 class Advise(unittest.TestCase):
@@ -318,7 +183,7 @@ class Advise(unittest.TestCase):
         ):
             commits = json.dumps([[{"commit": {"message": msg}}]])
             with mock.patch.object(la, "_gh", return_value=commits):
-                a = la.advise_pr("o/r", 7, pr=pr, paths=["backend/x.py"])
+                a = la.advise_pr("o/r", 7, pr=pr, patches={"backend/x.py": "@@ -1 +1 @@"})
             self.assertEqual((a["result"], a["label"]), (result, "release-branch-only"))
 
     def test_release_base_is_release_branch_only(self):
@@ -362,22 +227,22 @@ class Advise(unittest.TestCase):
         )
         self.assertEqual((a["result"], a["label"]), ("decided", "main-only"))
 
-    def test_code_on_a_line_awaiting_ga_suggests_rc(self):
+    def test_code_on_a_line_awaiting_ga_suggests_its_line(self):
         a = la.advise(
             "main",
             ["backend/x.py"],
             [line("0.188"), line("0.186", present=False)],
         )
         self.assertEqual(
-            (a["result"], a["label"], a["info"]), ("suggest", "backport/rc", [])
+            (a["result"], a["label"], a["info"]), ("suggest", "backport/0.188", [])
         )
 
     def test_released_line_asks_the_hotfix_question(self):
-        lines = [line("0.188"), line("0.186", ga=True, onprem_ga=True)]
+        lines = [line("0.188"), line("0.186", ga=True)]
         a = la.advise("main", ["backend/x.py"], lines, pr=7)
         self.assertEqual(a["result"], "ask")
         self.assertEqual(
-            a["question"]["answers"], {"yes": "backport/ga", "no": "backport/rc"}
+            a["question"]["answers"], {"yes": "backport/0.186", "no": "backport/0.188"}
         )
         # One runnable command per answer: no `yes|no` for a shell to read as a pipe.
         self.assertEqual(
@@ -389,27 +254,117 @@ class Advise(unittest.TestCase):
         )
         self.assertEqual(
             la.advise("main", ["backend/x.py"], lines, hotfix=True)["label"],
-            "backport/ga",
+            "backport/0.186",
         )
 
-    def test_mixed_line_is_one_note_never_a_question(self):
-        for onprem in (False, None):  # not GA for on-prem, or unknown
-            lines = [line("0.186", ga=True, onprem_ga=onprem)]
-            a = la.advise("main", ["backend/x.py"], lines, pr=7, hotfix=False)
-            self.assertEqual(a["result"], "suggest")
-            self.assertEqual(a["info"][0]["command"], f"{la.SELF} --declare 0.186 --pr 7")
-            # Backport never picks main-only: the note routes through backport/rc.
-            self.assertIn("label it `backport/rc` and declare it", a["info"][0]["text"])
-            self.assertEqual("unknown" in a["info"][0]["text"], onprem is None, onprem)
+    def test_not_a_hotfix_on_released_lines_only_is_main_only(self):
+        a = la.advise(
+            "main", ["backend/x.py"], [line("0.186", ga=True)], pr=7, hotfix=False
+        )
+        self.assertEqual((a["result"], a["label"]), ("suggest", "main-only"))
+        self.assertEqual(a["info"], [])
+
+    def test_cannot_tell_asks_for_the_line(self):
+        lines = [line("0.188", None), line("0.187", True), line("0.186", False)]
+        a = la.advise(
+            "main", ["backend/x.py"], lines, pr=7, how="by file path: blame failed (x)"
+        )
+        self.assertEqual(a["result"], "ask")
+        q = a["question"]
+        self.assertEqual(q["key"], "line")
+        self.assertEqual(
+            list(q["answers"]),
+            ["backport/0.188", "backport/0.187", "backport/0.186", "main-only"],
+        )
+        self.assertIn(
+            "cannot tell whether the changed code is on release/0.188", a["reason"]
+        )
+        self.assertTrue(a["next"]["backport/0.187"].endswith("--answer line=0.187"))
+        self.assertTrue(a["next"]["main-only"].endswith("--answer line=main-only"))
+        for ans, label in (("0.186", "backport/0.186"), ("main-only", "main-only")):
+            b = la.advise("main", ["backend/x.py"], lines, pr=7, line=ans)
+            self.assertEqual((b["result"], b["label"]), ("suggest", label))
+        self.assertIn(
+            "main-only: main-only, then:", la.render({**a, "pr": 7, "info": []})
+        )
+
+    def test_oldest_line_with_the_code_in_the_oss_state(self):
+        """The OSS repo when line labels started: 0.188 and 0.187 in RC, 0.186 released."""
+
+        def lines(*present):
+            return [
+                line("0.188", "0.188" in present),
+                line("0.187", "0.187" in present),
+                line("0.186", "0.186" in present, ga="0.186" in present),
+            ]
+
+        how = "blame: 2 commit(s) behind the changed lines"
+        a = la.advise("main", ["backend/x.py"], lines("0.188"), pr=7, how=how)
+        self.assertEqual((a["result"], a["label"]), ("suggest", "backport/0.188"))
+        self.assertIn(how, a["reason"])
+        a = la.advise("main", ["backend/x.py"], lines("0.188", "0.187"), pr=7, how=how)
+        self.assertEqual((a["result"], a["label"]), ("suggest", "backport/0.187"))
+        self.assertIn("release/0.187", a["reason"])
+        self.assertIn(how, a["reason"])
+        every = lines("0.188", "0.187", "0.186")
+        a = la.advise("main", ["backend/x.py"], every, pr=7, how=how)
+        self.assertEqual(a["result"], "ask")
+        self.assertEqual(
+            a["question"]["answers"], {"yes": "backport/0.186", "no": "backport/0.187"}
+        )
+        self.assertIn(how, a["reason"])
+        for hotfix, want in ((True, "backport/0.186"), (False, "backport/0.187")):
+            a = la.advise("main", ["backend/x.py"], every, hotfix=hotfix, how=how)
+            self.assertEqual((a["result"], a["label"]), ("suggest", want), hotfix)
+            self.assertIn(how, a["reason"])
+        a = la.advise("main", ["backend/x.py"], lines(), how=how)
+        self.assertEqual(a["label"], "main-only")
+        # Two released lines with the code: a hotfix names the older one.
+        two = [
+            line("0.188", True),
+            line("0.187", True, ga=True),
+            line("0.186", True, ga=True),
+        ]
+        b = la.advise("main", ["backend/x.py"], two, pr=7)
+        self.assertEqual(
+            b["question"]["answers"], {"yes": "backport/0.186", "no": "backport/0.188"}
+        )
+        self.assertIn(how, a["reason"])
+
+
+class OldRanges(unittest.TestCase):
+    def test_old_side_ranges(self):
+        self.assertEqual(la.old_ranges("@@ -5,3 +5,4 @@ def f():\n-a\n+b"), [(5, 7)])
+        self.assertEqual(la.old_ranges("@@ -5 +5 @@\n-a\n+b"), [(5, 5)])
+        self.assertEqual(
+            la.old_ranges("@@ -1,2 +1,2 @@\n x\n@@ -40,0 +41,3 @@\n+new"), [(1, 2)]
+        )
+        self.assertEqual(la.old_ranges("@@ -0,0 +1,9 @@\n+new file"), [])  # pure addition
+        self.assertEqual(la.old_ranges(None), [])  # GitHub omits the patch of a binary
 
 
 class LineFacts(unittest.TestCase):
     """The facts advise() is fed, from mocked GitHub answers."""
 
     def gh(self, *args):
-        url = next(a for a in args if a.startswith("repos/") or a == "list")
-        if "branches?" in url:
-            return "release/0.188\nrelease/0.186\nrelease/0.185\nmain"
+        url = next(a for a in args if a.startswith("repos/") or a == "graphql")
+        if url == "graphql":
+            self.blamed.append(next(a for a in args if a.startswith("path=")))
+            if self.blame_fails:
+                raise RuntimeError("gh api graphql (exit 1): HTTP 502")
+            rows = [
+                {"startingLine": 1, "endingLine": 9, "commit": {"oid": "old"}},
+                {"startingLine": 10, "endingLine": 20, "commit": {"oid": "new"}},
+            ]
+            return json.dumps(
+                {"data": {"repository": {"object": {"blame": {"ranges": rows}}}}}
+            )
+        if "matching-refs/heads/release/" in url:
+            return "refs/heads/release/0.188\nrefs/heads/release/0.186\nrefs/heads/release/0.185\nrefs/heads/release/v0.148.1001"
+        if "/compare/" in url:
+            # "old" is on every line, "new" only on 0.188.
+            on = "/compare/release/0.188..." in url or url.endswith("...old")
+            return json.dumps({"status": "behind" if on else "diverged"})
         if "trees/release/0.188" in url:
             return json.dumps({"truncated": True, "tree": []})
         if "trees/" in url:
@@ -422,77 +377,61 @@ class LineFacts(unittest.TestCase):
             return json.dumps([{"ref": "refs/tags/v0.185.0"}])
         if "tags/" in url:
             return json.dumps([{"ref": "refs/tags/v0.188.0-rc.3"}])
-        if self.runs is None:
-            raise RuntimeError("gh run (exit 1): HTTP 403")
-        return json.dumps([{"displayTitle": t} for t in self.runs])
+        raise AssertionError(args)
 
-    def facts(self, runs):
-        self.runs = runs
-        with mock.patch.object(la, "_gh", side_effect=self.gh), mock.patch("sys.stderr"):
-            return {f["line"]: f for f in la.line_facts("o/r", ["backend/x.py"])}
+    def facts(self, patches, blame_fails=False):
+        self.blamed, self.blame_fails = [], blame_fails
+        with mock.patch.object(la, "_gh", side_effect=self.gh):
+            lines, how = la.line_facts("o/r", "b" * 40, patches)
+        return {f["line"]: f for f in lines}, how
 
-    def test_present_ga_and_onprem_ga(self):
-        f = self.facts(
-            [
-                "Promote 0.186.0-rc.2 · cloud, on-prem (by dev)",  # dispatched without the v
-                "Promote v0.185.0-rc.1 · cloud (by dev)",
-            ]
+    def test_blame_decides_presence(self):
+        f, how = self.facts(
+            {"backend/x.py": "@@ -12,2 +12,2 @@", "docs/a.md": "@@ -1 +1 @@"}
         )
-        self.assertTrue(f["0.188"]["present"])  # a truncated tree reads as present
+        self.assertEqual(
+            self.blamed, ["path=backend/x.py"]
+        )  # only shipped code is blamed
+        self.assertEqual(how, "blame: 1 commit(s) behind the changed lines")
+        self.assertEqual(
+            {l: (x["present"], x["ga"]) for l, x in f.items()},
+            {"0.188": (True, False), "0.186": (False, False), "0.185": (False, False)},
+        )
+        f, how = self.facts({"backend/x.py": "@@ -5,6 +5,6 @@"})  # both commits
+        self.assertEqual(how, "blame: 2 commit(s) behind the changed lines")
+        self.assertTrue(f["0.186"]["present"])
+        self.assertTrue(f["0.186"]["ga"])  # stable tag
         self.assertFalse(f["0.188"]["ga"])  # an RC tag is not GA
-        self.assertEqual((f["0.186"]["ga"], f["0.186"]["onprem_ga"]), (True, True))
-        self.assertEqual((f["0.185"]["ga"], f["0.185"]["onprem_ga"]), (True, False))
-        f = self.facts(None)  # Promote runs unreadable
-        self.assertIsNone(f["0.186"]["onprem_ga"])
 
-
-class Declare(unittest.TestCase):
-    """--declare: the one command that writes to GitHub."""
-
-    def run_(self, body, labels=(), branch=None, after=None):
-        self.patches = []
-
-        def gh(*args):
-            if "branches/release/1.7" in args[-1]:
-                if branch:
-                    raise RuntimeError(branch)
-                return "{}"
-            if "PATCH" in args:
-                self.patches.append(args[-1])
-                return "{}"
-            reads = len(self.patches)
-            b = (
-                body
-                if not reads
-                else (after if after is not None else self.patches[-1][5:])
-            )
-            return json.dumps({"body": b, "labels": [{"name": l} for l in labels]})
-
-        with (
-            mock.patch.object(
-                la, "slug_from_origin", return_value="Zipstack/unstract-cloud"
-            ),
-            mock.patch.object(la, "_gh", side_effect=gh),
-            mock.patch("sys.stdout"),
-            mock.patch("sys.stderr"),
-        ):
-            return la.main(["--declare", "1.7", "--pr", "5"])
-
-    def test_appends_the_line_once(self):
-        self.assertEqual(self.run_("Fixes x.\n\n"), 0)
-        self.assertEqual(self.patches, ["body=Fixes x.\n\nBackport-also: 1.7\n"])
-        self.assertEqual(self.run_("Fixes x.\n\nBackport-also: 1.7\n"), 0)
-        self.assertEqual(self.patches, [])  # already declared: no write
-
-    def test_refusals_and_failures(self):
-        self.assertEqual(self.run_("x", labels=["main-only"]), 2)
-        self.assertEqual(self.patches, [])
+    def test_path_fallback_says_why(self):
+        f, how = self.facts({"backend/x.py": "@@ -0,0 +1,3 @@"})
         self.assertEqual(
-            self.run_("x", branch="gh api (exit 1): gh: Not Found (HTTP 404)"), 2
+            how, "by file path: the change only adds lines, so blame cannot tell"
         )
+        self.assertEqual(self.blamed, [])
+        self.assertIsNone(f["0.188"]["present"])  # a truncated tree cannot tell
+        self.assertTrue(f["0.186"]["present"])  # the file exists there
+        self.assertEqual((f["0.186"]["ga"], f["0.185"]["ga"]), (True, True))
+        f, _ = self.facts({"backend/new.py": "@@ -0,0 +1,3 @@"})
+        self.assertFalse(f["0.186"]["present"])
+        self.assertFalse(f["0.186"]["ga"])  # GA is looked up only where the code is
+
+        many = {f"backend/m{i}.py": "@@ -1 +1 @@" for i in range(la.BLAME_MAX + 1)}
+        _, how = self.facts(many)
         self.assertEqual(
-            self.run_("x", after="someone else's edit"), 1
-        )  # the write was lost
+            how,
+            f"by file path: {la.BLAME_MAX + 1} files is past the blame limit of {la.BLAME_MAX}",
+        )
+        self.assertEqual(self.blamed, [])
+        _, how = self.facts(
+            {f"backend/m{i}.py": "@@ -1 +1 @@" for i in range(la.BLAME_MAX)}
+        )
+        self.assertTrue(how.startswith("blame: "))  # at the limit, still blamed
+
+        f, how = self.facts({"backend/x.py": "@@ -12 +12 @@"}, blame_fails=True)
+        self.assertTrue(how.startswith("by file path: blame failed ("), how)
+        self.assertIn("HTTP 502", how)
+        self.assertTrue(f["0.186"]["present"])
 
 
 class Cli(unittest.TestCase):

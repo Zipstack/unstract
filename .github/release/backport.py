@@ -4,7 +4,7 @@ Usage: backport.py --state state.json (--commits SHA|PR[,...] | --rescan) [--pat
 
 --rescan (every push to main): pick every main commit since each target's cut that no trailer there names
 (ga only on stabilized targets, held without --patch-released-lines). --commits (dispatch): only these;
-with --patch-released-lines an rc fix also goes onto the stabilized lines --lines names.
+a fix reaches a stabilized line its label covers only with --patch-released-lines; --lines narrows which.
 
 Run from a full clone whose `origin` pushes with the bot token, with GH_TOKEN set to the bot token and
 RELEASE_BOT_APP_SLUG set to the release App's slug.
@@ -215,7 +215,7 @@ def held_warnings(awaiting):
     # Held for confirmation is a known state, not a missed pick: Promote blocks on it.
     counts = collections.Counter(b for _, b, *_ in awaiting)
     return [
-        f"::warning::{b}: {n} held backport/ga fix{'es' if n > 1 else ''}, confirm with Backport and patch_released_lines"
+        f"::warning::{b}: {n} held fix{'es' if n > 1 else ''}, confirm with Backport and patch_released_lines"
         for b, n in counts.items()
     ]
 
@@ -275,7 +275,7 @@ def next_step(conflicts, held_n, tag, unbuilt):
     if conflicts:
         return f"resolve {rm.pr_link(conflicts[0])}"
     if held_n:
-        return f"confirm {held_n} held backport/ga fix" + ("es" if held_n > 1 else "")
+        return f"confirm {held_n} held fix" + ("es" if held_n > 1 else "")
     driver = "cloud " if rs.PREFIX else ""  # OSS lines are built by the cloud workflows
     if unbuilt:
         return f"{driver}Take RC"
@@ -389,19 +389,17 @@ def push_summary(head, table, done, pending):
     return out + pending
 
 
-HELD = {"ga"}
-OWED = {"rc", "ga"}
 UNCLASSIFIABLE = (
     "UNCLASSIFIABLE"  # no PR found, or a PR main_fix_class rejects: shown, never dropped
 )
 
 
-def held_filter(commits, classes, trailers, accept=HELD):
-    """Pure core of held(); trailers may be abbreviated."""
+def held_filter(commits, classes, trailers, branch):
+    """Pure core of held(); trailers may be abbreviated. A class is the label's line X.Y: owed on X.Y and newer."""
     return [
         (s, *classes[s])
         for s in commits
-        if classes[s][0] in accept | {UNCLASSIFIABLE}
+        if (classes[s][0] == UNCLASSIFIABLE or rm.owes(classes[s][0], branch))
         and not any(s.startswith(t) for t in trailers)
     ]
 
@@ -443,8 +441,8 @@ def pr_classes(slug, since):
     return classes_from_listing(json.loads(out))
 
 
-def held(slug, repo, branch, accept=HELD, cache=None, token=None):
-    """Main commits since branch's cut whose class is in accept (or UNCLASSIFIABLE), neither picked nor declined.
+def held(slug, repo, branch, cache=None, token=None):
+    """Main commits since branch's cut owed to it (or UNCLASSIFIABLE), neither picked nor declined.
     cache is shared across calls, so a commit is looked up on its own at most once per run.
     """
     remote = f"origin/{branch}"
@@ -482,7 +480,7 @@ def held(slug, repo, branch, accept=HELD, cache=None, token=None):
     print(
         f"held: {len(commits)} main commit(s) since the cut of {branch}, {looked} fix_class lookup(s)"
     )
-    return held_filter(commits, classes, _trailers(repo, base, remote), accept)
+    return held_filter(commits, classes, _trailers(repo, base, remote), branch)
 
 
 def _trailers(repo, base, remote):
@@ -501,78 +499,40 @@ def _trailers(repo, base, remote):
     }
 
 
-REVERTS_ANY_RE = re.compile(r"^(?:\* )?This reverts commit ([0-9a-f]{7,40})", re.M)
-PR_SUFFIX_RE = re.compile(r" \(#\d+\)$")
-
-
-def declared(slug, repo, branch, token=None):
-    """[(number, title)] of merged main PRs whose body declares `Backport-also: X.Y` for this line and whose merge
-    commit, first-parent on main since the cut, is neither picked nor declined there, nor reverted on main.
-    A failed listing raises: it never reads as nothing declared.
+def under_backported(repo, branch, classes):
+    """Main fixes since branch's cut whose label names a newer line, neither picked nor declined here, though a
+    file they change exists at branch's tip: maybe owed here too. A file's presence is a hint, not proof.
     """
-    line = branch.removeprefix("release/")
     remote = f"origin/{branch}"
     base = rm.git(repo, "merge-base", MAIN, remote)
-    since = search_since(repo, base)
-    # Known limit: search stops at 1000 results; a PR past it is missed (no block), never wrongly blocked.
-    prs = json.loads(
-        gh(
-            "pr",
-            "list",
-            "-R",
-            slug,
-            "--state",
-            "merged",
-            "--base",
-            "main",
-            "--search",
-            f"merged:>={since}",
-            "--limit",
-            "1000",
-            "--json",
-            "number,title,body,mergeCommit",
-            token=token,
-        )
-    )
-    mine = [
-        p for p in prs if p.get("mergeCommit") and line in rm.declared_lines(p["body"])
-    ]
-    if not mine:
-        return []
-    order = [
-        c.split("\x1f")
-        for c in rm.git(
-            repo,
-            "log",
-            "--first-parent",
-            "--reverse",
-            "--format=%H%x1f%s%x1f%B%x1e",
-            f"{base}..{MAIN}",
-        ).split("\x1e")
-        if c.strip()
-    ]
-    order = [(h.strip(), subj, body) for h, subj, body in order]
-    at = {h: i for i, (h, _, _) in enumerate(order)}
     done = _trailers(repo, base, remote)
-    for p in mine:
-        c = p["mergeCommit"]["oid"]
-        if (
-            c not in at
-            and rm.git(
-                repo, "merge-base", "--is-ancestor", c, base, check=False
-            ).returncode
+    rows = []
+    for sha in rm.git(
+        repo,
+        "log",
+        "--first-parent",
+        "--no-merges",
+        "--format=%H",
+        f"{base}..origin/main",
+    ).split():
+        cls, pr, title = classes.get(sha, (None, None, None))
+        if cls in (None, UNCLASSIFIABLE) or rm.owes(cls, branch) or sha in done:
+            continue
+        paths = rm.git(
+            repo, "diff-tree", "--no-commit-id", "--name-only", "-r", sha
+        ).split("\n")
+        if any(
+            p
+            and rm.git(repo, "cat-file", "-e", f"{remote}:{p}", check=False).returncode
+            == 0
+            for p in paths
         ):
-            # Merged after the fetch (or not yet fetched): fail closed rather than skip it.
-            raise RuntimeError(
-                f"#{p['number']}'s merge commit {c[:9]} is not in the fetched main; retry"
-            )
-    return [
-        (p["number"], p["title"])
-        for p in mine
-        if (c := p["mergeCommit"]["oid"]) in at
-        and not any(c.startswith(t) for t in done)
-        and not _undone(order, at[c], p["title"])
-    ]
+            rows.append((sha, cls, pr, title))
+    return rows
+
+
+REVERTS_ANY_RE = re.compile(r"^(?:\* )?This reverts commit ([0-9a-f]{7,40})", re.M)
+PR_SUFFIX_RE = re.compile(r" \(#\d+\)$")
 
 
 def _undone(order, i, title):
@@ -626,7 +586,7 @@ def unsettled(targets, held_by_branch, rows, heads):
         for b, owed in held_by_branch.items()
         for sha, cls, pr, _ in owed
         if (sha, b) not in answered
-        and not (b in stabilized and cls in HELD)
+        and not (b in stabilized and cls != UNCLASSIFIABLE)
         and backport_head(b, sha) not in heads
     ]
 
@@ -657,7 +617,7 @@ def owed_now(slug, targets):
     for b in scan:
         fetch_branch(b)
     cache = _rescan_classes(slug, scan)
-    return {b: held(slug, REPO, b, accept=a, cache=cache) for b, a in scan.items()}
+    return {b: held(slug, REPO, b, cache=cache) for b in scan}
 
 
 def overdue(sha, now):
@@ -669,11 +629,12 @@ def state_check(state, others=(), slug=None, now=None):
     """Daily State run: 1 when a pick is overdue, a commit cannot be classed, or a conflict PR is stale."""
     slug = slug or os.environ["GITHUB_REPOSITORY"]
     now = now or datetime.datetime.now(datetime.UTC)
-    lines = {
-        r["branch"]: OWED if r["state"] == "stabilizing" else HELD
+    lines = [
+        r["branch"]
         for r in state["branches"]
         if r["state"] in ("stabilizing", "stabilized")
-    }
+    ]
+    stabilized = {r["branch"] for r in state["branches"] if r["state"] == "stabilized"}
     errors = []
     prs = [
         (repo, p) for repo in dict.fromkeys([slug, *others]) for p in conflict_prs(repo)
@@ -686,13 +647,13 @@ def state_check(state, others=(), slug=None, now=None):
             )
     in_pr = {p["headRefName"] for repo, p in prs if repo == slug}
     cache = _rescan_classes(slug, lines)
-    for b, accept in lines.items():
-        for sha, cls, pr, title in held(slug, REPO, b, accept=accept, cache=cache):
+    for b in lines:
+        for sha, cls, pr, title in held(slug, REPO, b, cache=cache):
             if cls == UNCLASSIFIABLE:
                 errors.append(
                     f"{sha[:7]} ({pr}, {title}) cannot be classed for {b}: fix its PR title or labels, or record a decline"
                 )
-            elif accept is HELD:  # listed, not failed: it waits for a confirm
+            elif b in stabilized:  # listed, not failed: it waits for a confirm
                 print(held_line(sha, cls, pr, b, "notice"))
             elif backport_head(b, sha) in in_pr:
                 continue  # the conflict PR's own age decides
@@ -701,13 +662,18 @@ def state_check(state, others=(), slug=None, now=None):
                     f"{sha[:7]} ({cls}, PR {pr}) owed on stabilizing {b} and not picked: "
                     f"dispatch Backport with commits={sha[:12]}, or record a decline"
                 )
+        for sha, cls, pr, title in under_backported(REPO, b, cache):  # information only
+            print(
+                f"::notice::{sha[:7]} ({pr}, {title}) is labelled backport/{cls}, but a file it changes is also on "
+                f"{b}: if {b} needs the fix, relabel the PR backport/{rm.line(b)}"
+            )
     for e in errors:
         print(f"::error::{e}")
     return 1 if errors else 0
 
 
 def owed_summary(rows, branch):
-    """Information only: a stabilized line takes an rc fix only when a Backport dispatch names the line."""
+    """Information only: a stabilized line takes an owed fix only when a Backport dispatch confirms it."""
     out = [
         f"**Owed picks** for {rm.branch_link(branch)}: main fixes since the cut, neither picked nor declined",
         "",
@@ -737,6 +703,27 @@ def warn_held(slug, repo, branch, annotate="warning", token=None):
     for s, cls, pr, title in rows:
         print(held_line(s, cls, pr, branch, annotate, other, title))
     return held_note(rows, branch, other)
+
+
+def onprem_rc_blockers(sources, branch):
+    """(lines, failures) for an on-prem RC of a stabilized branch: each fix owed there, in any of sources
+    [(slug, repo, gh kwargs)], blocks until picked or declined.
+    """
+    out, failed = [], []
+    line = rm.line(branch)
+    for slug, repo, kw in sources:
+        try:
+            rows = held(slug, repo, branch, **kw)
+        except RuntimeError as e:
+            failed.append(f"{slug}: {e}")
+            continue
+        out += [
+            f"- {slug}{pr} {title}: pick it with `gh workflow run backport.yaml -R {slug} -f commits={_commit_arg(s, pr)} "
+            f"-f lines={line} -f patch_released_lines=true`, or decline it on {branch}"
+            for s, cls, pr, title in rows
+            if cls != UNCLASSIFIABLE
+        ]
+    return out, failed
 
 
 def held_note(rows, branch, slug=None):
@@ -790,7 +777,7 @@ def patch_lines(state, slug=None):
 def _owed_cell(slug, branch, cache):
     """Owed main fixes on branch as Backport `commits`. A gh or git failure on one line must not fail the State run."""
     try:
-        rows = held(slug, REPO, branch, accept=OWED, cache=cache)
+        rows = held(slug, REPO, branch, cache=cache)
     # Safe as a warning: State's check step repeats the lookup and fails the run.
     except RuntimeError as e:
         print(f"::warning::{branch}: patch list unavailable: {e}")
@@ -844,12 +831,8 @@ def missed_picks(state, others=(), slug=None):
 
 
 def rescan_targets(targets, listed):
-    """Stabilizing targets owe rc and ga fixes (OWED); stabilized ones only ga (HELD)."""
-    scan = dict.fromkeys(targets["rc"], OWED)
-    for t in targets["ga"]:
-        scan.setdefault(t["branch"], HELD)
-    kept, others = only_listed(list(scan), listed)
-    return {b: scan[b] for b in kept}, others
+    """Every supported line; held() decides which fixes each is owed by their labels."""
+    return only_listed([t["branch"] for t in targets["ga"]], listed)
 
 
 def rescan_plan(targets, held_by_branch, confirm):
@@ -930,9 +913,7 @@ def rescan(slug, targets, confirm, listed):
         rows.append(("-" * 7, "-", "-", b, "failed: not a target", "-"))
     classes = _rescan_classes(slug, scan)
     listed_n = len(classes)
-    held_by_branch = {
-        b: held(slug, REPO, b, accept=accept, cache=classes) for b, accept in scan.items()
-    }
+    held_by_branch = {b: held(slug, REPO, b, cache=classes) for b in scan}
     print(f"rescan: {listed_n} PRs listed, {len(classes) - listed_n} fallback lookup(s)")
     plan, awaiting, unclassifiable = rescan_plan(targets, held_by_branch, confirm)
     # Fails every push until the commit is picked or declined: a skip here is never seen.
@@ -1021,7 +1002,7 @@ def fix_labels(slug, src):
     names = gh("api", f"repos/{slug}/pulls/{src[1:]}", "--jq", ".labels[].name").split(
         "\n"
     )
-    return [x for x in names if x in rm.BACKPORT_LABELS]
+    return [x for x in names if rm.LINE_LABEL_RE.fullmatch(x)]
 
 
 def _closed_pr(slug, branch, head):
@@ -1427,20 +1408,12 @@ def dispatch(slug, targets, commits, confirm, listed):
 
 
 def _dispatch_targets(targets, sha, cls, pr, confirm, listed):
-    if cls == "rc":
-        # An rc fix reaches a stabilized line only when a dispatch names it: patch_released_lines and lines.
-        named = [
-            t["branch"]
-            for t in targets["ga"]
-            if t["needs_rm_confirmation"] and confirm and t["branch"] in listed
-        ]
-        return targets["rc"] + named, []
-    branches = [
-        t["branch"] for t in targets["ga"] if confirm or not t["needs_rm_confirmation"]
-    ]
+    """The supported lines cls's label covers; a stabilized one only with confirm, else it is held."""
+    owed = [t for t in targets["ga"] if rm.owes(cls, t["branch"])]
+    branches = [t["branch"] for t in owed if confirm or not t["needs_rm_confirmation"]]
     return branches, [
         (sha, t["branch"], cls, pr)
-        for t in targets["ga"]
+        for t in owed
         if t["needs_rm_confirmation"]
         and not confirm
         and (not listed or t["branch"] in listed)
@@ -1462,39 +1435,23 @@ def _dispatch_commit(slug, targets, sha, confirm, listed, awaiting, named_pr=Non
         print(f"::error::{sha[:7]}: no PR found, so it cannot be classed")
         return [(sha, pr, "error", "-", "failed: no PR found", "-")]
     if cls is None:
-        route = f"swap {pr}'s main-only label for a backport label and rerun"
+        route = f"swap {pr}'s main-only label for a backport/X.Y label and rerun"
         return [(sha, pr, "none", "-", f"skipped: not a fix; {route}", "-")]
     branches, held_picks = _dispatch_targets(targets, sha, cls, pr, confirm, listed)
     awaiting += held_picks
     rows = []
     branches, others = only_listed(branches, listed)
     others = [b for b in others if (sha, b, cls, pr) not in awaiting]
-    stabilized = {t["branch"] for t in targets["ga"] if t["needs_rm_confirmation"]}
+    supported = {t["branch"] for t in targets["ga"]}
     for b in others:
-        if cls == "rc" and b in stabilized:  # named, but patch_released_lines is off
+        if b in supported and not rm.owes(cls, b):
             print(
-                f"::error::{sha[:7]} (rc, PR {pr}): {b} is stabilized, needs patch_released_lines"
+                f"::error::{sha[:7]} (backport/{cls}, PR {pr}): {b} is older than its label; relabel the PR to pick it"
             )
-            rows.append(
-                (sha, pr, cls, b, "failed: stabilized; needs patch_released_lines", "-")
-            )
+            rows.append((sha, pr, cls, b, f"failed: older than backport/{cls}", "-"))
             continue
         print(f"::error::{sha[:7]} ({cls}, PR {pr}): {b} is not a target, not picked")
         rows.append((sha, pr, cls, b, "failed: not a target", "-"))
-    if cls == "rc" and confirm and not listed:
-        for t in targets["ga"]:
-            if t["needs_rm_confirmation"]:
-                print(f"::error::{sha[:7]} (rc, PR {pr}): {t['branch']} needs lines")
-                rows.append(
-                    (
-                        sha,
-                        pr,
-                        cls,
-                        t["branch"],
-                        "failed: stabilized; a backport/rc fix needs lines",
-                        "-",
-                    )
-                )
     if not branches and not others and not rows:
         rows.append((sha, pr, cls, "-", "skipped: no target branch", "-"))
     rows += [pick_row(slug, sha, b, cls, pr, title) for b in branches]

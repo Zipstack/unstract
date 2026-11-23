@@ -1,9 +1,8 @@
 """Which backport label a PR into main needs, decided by the script where it can be and asked where it cannot.
 
 Usage (from a clone of this repo, with gh logged in):
-  label_advice.py --pr N [--answer hotfix=yes|no] [--json]
+  label_advice.py --pr N [--answer hotfix=yes|no | --answer line=X.Y|main-only] [--json]
   label_advice.py --branch REF [--answer hotfix=yes|no] [--json]   a local branch with no PR yet
-  label_advice.py --declare X.Y --pr N                               add `Backport-also: X.Y` to the PR body
   label_advice.py --owed [--author LOGIN] [--json]                   what your merged PRs still owe release lines
 
 Results: `decided` (no judgement left; Lint PR warns on a different label; `label` is null for a Backport pick
@@ -24,29 +23,31 @@ import backport as bp
 import relmgr as rm
 import relstate as rs
 
-RC, GA, RBO = "backport/rc", "backport/ga", "release-branch-only"
+RBO = "release-branch-only"
 MAIN_ONLY = rm.MAIN_ONLY
 SELF = "python3 .github/release/label_advice.py"
-CLOUD = "Zipstack/unstract-cloud"  # on-prem is promoted there, for both repos' lines
 # Paths that never ship in a release image: docs, tests and repo tooling. A PR touching only these
 # is decided main-only by design, though a release line may want a test or CI fix: the developer
-# labels it backport/rc instead, which Lint PR only warns on. Below the root, .md/.mdx/.rst other
+# labels it backport/X.Y instead, which Lint PR only warns on. Below the root, .md/.mdx/.rst other
 # than README.md can be a runtime prompt, so it counts as shipping.
 NONCODE = re.compile(
     r"^[^/]*\.(md|mdx|rst)$|(^|/)README\.md$|^docs/|(^|/)tests?/|(^|/)test_[^/]*\.py$|_test\.py$|\.(test|spec)\.[jt]sx?$"
     r"|(^|/)__tests__/|(^|/)unittests/|^\.github/|^\.claude(-plugin)?/|^\.pre-commit-config\.yaml$"
 )
-PROMOTE_RE = re.compile(r"Promote v?(\d+\.\d+)\.\d+-rc\.\d+ · ([^(]*)")
+HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? ", re.M)
+BLAME_MAX = 20  # files blamed per PR; past it, presence is judged by path
 
 
 class Usage(Exception):
     pass
 
 
-def advise(base, paths, lines, hotfix=None, pr=None, head="", picks=False):
-    """Pure core. lines: [{"line", "present", "ga", "onprem_ga"}] for the live release lines; present = some
-    changed code path exists at the line's tip; ga = the line has a stable tag; onprem_ga = on-prem confirmed GA
-    (None: unknown). picks: a commit of a PR into a release line carries a `cherry picked from` trailer.
+def advise(
+    base, paths, lines, hotfix=None, pr=None, head="", picks=False, how="", line=None
+):
+    """Pure core. lines: [{"line", "present", "ga"}] for the live release lines, newest first; present = the changed
+    code is on the line; ga = the line has a stable tag. picks: a commit of a PR into a release line carries a
+    `cherry picked from` trailer. how: the evidence behind present, quoted in the reason.
     """
     out = {
         "result": "decided",
@@ -74,27 +75,54 @@ def advise(base, paths, lines, hotfix=None, pr=None, head="", picks=False):
             "label": MAIN_ONLY,
             "reason": "only docs, tests or repo tooling change; none ships",
         }
+    why = f" ({how})" if how else ""
+    if line:  # the developer's answer to the line question
+        label = MAIN_ONLY if line == MAIN_ONLY else f"backport/{line}"
+        return {
+            **out,
+            "result": "suggest",
+            "label": label,
+            "reason": "your answer to the line question",
+        }
+    unknown = [l["line"] for l in lines if l["present"] is None]
+    if unknown:
+        options = [*(f"backport/{l['line']}" for l in lines), MAIN_ONLY]
+        return {
+            **out,
+            "result": "ask",
+            "reason": f"cannot tell whether the changed code is on {_rel(unknown)}{why}",
+            "question": {
+                "key": "line",
+                "text": "Which is the oldest release line that needs this fix?",
+                "answers": {o: o for o in options},
+            },
+            "next": {
+                o: f"{SELF} {_target(pr)} --answer line={o.removeprefix('backport/')}"
+                for o in options
+            },
+        }
     live = [l for l in lines if l["present"]]
     if not live:
         return {
             **out,
             "label": MAIN_ONLY,
-            "reason": "the changed code is on no live release line",
+            "reason": f"the changed code is on no live release line{why}",
         }
-    rc = [f"release/{l['line']}" for l in live if not l["ga"]]
-    ga = [f"release/{l['line']}" for l in live if l["ga"]]
-    no = RC if rc else MAIN_ONLY
+    rc = [l["line"] for l in live if not l["ga"]]
+    ga = [l["line"] for l in live if l["ga"]]
+    # Fixes flow forward, so the label names the oldest line; lines come newest first.
+    no = f"backport/{rc[-1]}" if rc else MAIN_ONLY
+    yes = f"backport/{ga[-1]}" if ga else None
     if ga and hotfix is None:
         return {
             **out,
             "result": "ask",
-            "reason": f"the changed code is on released line(s) {', '.join(ga)}",
+            "reason": f"the changed code is on released line(s) {_rel(ga)}{why}",
             "question": {
                 "key": "hotfix",
-                "text": f"Is this a hotfix or vulnerability fix that {', '.join(ga)} must get as a patch release?",
-                "answers": {"yes": GA, "no": no},
+                "text": f"Is this a hotfix or vulnerability fix that {_rel(ga)} must get as a patch release?",
+                "answers": {"yes": yes, "no": no},
             },
-            "info": _info(live, pr),
             "next": {
                 a: f"{SELF} {_target(pr)} --answer hotfix={a}" for a in ("yes", "no")
             },
@@ -103,21 +131,19 @@ def advise(base, paths, lines, hotfix=None, pr=None, head="", picks=False):
         return {
             **out,
             "result": "suggest",
-            "label": GA,
-            "reason": f"a hotfix for released line(s) {', '.join(ga)}; each pick there is confirmed before Promote",
+            "label": yes,
+            "reason": f"a hotfix for released line(s) {_rel(ga)}; each pick there is confirmed before Promote{why}",
         }
     reason = (
-        f"the changed code is on {', '.join(rc)}, still awaiting GA"
+        f"the changed code is on {_rel(rc)}, still awaiting GA; the oldest is release/{rc[-1]}{why}"
         if rc
-        else "not a hotfix, and every line with the code is released"
+        else f"not a hotfix, and every line with the code is released{why}"
     )
-    return {
-        **out,
-        "result": "suggest",
-        "label": no,
-        "reason": reason,
-        "info": _info(live, pr),
-    }
+    return {**out, "result": "suggest", "label": no, "reason": reason}
+
+
+def _rel(lines):
+    return ", ".join(f"release/{l}" for l in lines)
 
 
 def code(paths):
@@ -126,30 +152,6 @@ def code(paths):
 
 def _target(pr):
     return f"--pr {pr}" if isinstance(pr, int) else f"--branch {pr}"
-
-
-def _info(live, pr):
-    """A line GA for cloud and not yet for on-prem: the label cannot route a fix to on-prem alone, a declaration can.
-    It needs backport/rc (or backport/ga): Backport never picks a main-only PR.
-    """
-    return [
-        {
-            "line": l["line"],
-            "text": f"release/{l['line']} is GA, but "
-            + (
-                "on-prem GA is unknown (Promote runs unreadable)"
-                if l["onprem_ga"] is None
-                else "not confirmed GA for on-prem"
-            )
-            + f": if on-prem needs this fix there, label it `{RC}` and declare it (adds `Backport-also: "
-            f"{l['line']}` to the PR body; the line's on-prem RC builds wait for it)",
-            "command": f"{SELF} --declare {l['line']} {_target(pr)}"
-            if isinstance(pr, int)
-            else None,
-        }
-        for l in live
-        if l["ga"] and l["onprem_ga"] is not True
-    ]
 
 
 def _gh(*args):
@@ -165,18 +167,7 @@ def slug_from_origin():
 
 
 def live_lines(slug):
-    names = _gh(
-        "api", "--paginate", f"repos/{slug}/branches?per_page=100", "--jq", ".[].name"
-    ).split()
-    return sorted(
-        (
-            n.removeprefix("release/")
-            for n in names
-            if re.fullmatch(r"release/\d+\.\d+", n)
-        ),
-        key=lambda v: tuple(map(int, v.split("."))),
-        reverse=True,
-    )
+    return rm.active_lines(slug, _gh)
 
 
 def tree(slug, line):
@@ -195,58 +186,94 @@ def has_ga(slug, line):
     )
 
 
-def onprem_ga_lines():
-    """Lines with a successful on-prem Promote; None when the runs cannot be read (the note then says unknown)."""
-    try:
-        runs = json.loads(
-            _gh(
-                "run",
-                "list",
-                "-R",
-                CLOUD,
-                "-w",
-                "promote.yaml",
-                "-s",
-                "success",
-                "-L",
-                "200",
-                "--json",
-                "displayTitle",
-            )
+def old_ranges(patch):
+    """Line ranges a unified diff changes or deletes on the old side; pure additions give none."""
+    return [
+        (int(m[1]), int(m[1]) + int(m[2] or 1) - 1)
+        for m in HUNK_RE.finditer(patch or "")
+        if (m[2] or "1") != "0"
+    ]
+
+
+BLAME_Q = """query($owner: String!, $name: String!, $oid: GitObjectID!, $path: String!) {
+  repository(owner: $owner, name: $name) { object(oid: $oid) { ... on Commit { blame(path: $path) {
+    ranges { startingLine endingLine commit { oid } } } } } } }"""
+
+
+def blame(slug, base, path, ranges):
+    """Commits behind the old-side lines ranges of path at base."""
+    owner, name = slug.split("/")
+    data = json.loads(
+        _gh(
+            "api",
+            "graphql",
+            "-f",
+            f"query={BLAME_Q}",
+            "-F",
+            f"owner={owner}",
+            "-F",
+            f"name={name}",
+            "-F",
+            f"oid={base}",
+            "-F",
+            f"path={path}",
         )
-    except RuntimeError as e:
-        print(
-            f"note: could not read {CLOUD} Promote runs ({e}); on-prem GA unknown",
-            file=sys.stderr,
-        )
-        return None
+    )
+    rows = data["data"]["repository"]["object"]["blame"]["ranges"]
     return {
-        m[1]
-        for r in runs
-        if (m := PROMOTE_RE.match(r["displayTitle"])) and "on-prem" in m[2]
+        r["commit"]["oid"]
+        for r in rows
+        for a, b in ranges
+        if r["startingLine"] <= b and a <= r["endingLine"]
     }
 
 
-def line_facts(slug, paths, need_ga=True):
-    onprem, read = None, False
+def on_line(slug, sha, line):
+    cmp = json.loads(
+        _gh("api", f"repos/{slug}/compare/release/{line}...{sha}", "--jq", "{status}")
+    )
+    return cmp["status"] in ("behind", "identical")
+
+
+def line_facts(slug, base, patches, need_ga=True):
+    """(lines, how). Blame the lines a change touches at its base and test whether those commits are on each line;
+    when it cannot, fall back to whether a changed file exists there, and say so.
+    """
+    changed = {p: old_ranges(t) for p, t in patches.items() if p in code(patches)}
+    touched = {p: r for p, r in changed.items() if r}
+    commits, how = None, ""
+    if not touched:
+        how = "by file path: the change only adds lines, so blame cannot tell"
+    elif len(touched) > BLAME_MAX:
+        how = f"by file path: {len(touched)} files is past the blame limit of {BLAME_MAX}"
+    else:
+        try:
+            commits = set().union(*(blame(slug, base, p, r) for p, r in touched.items()))
+            how = f"blame: {len(commits)} commit(s) behind the changed lines"
+        except (
+            RuntimeError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as e:  # ValueError: unreadable JSON
+            how = f"by file path: blame failed ({e})"
     out = []
     for line in live_lines(slug):
-        files = tree(slug, line)
-        present = files is None or any(
-            p in files for p in code(paths)
-        )  # truncated: assume present
-        ga = present and need_ga and has_ga(slug, line)
-        if ga and not read:
-            onprem, read = onprem_ga_lines(), True
+        if commits is not None:
+            present = any(on_line(slug, c, line) for c in commits)
+        else:
+            files = tree(slug, line)
+            present = (
+                None if files is None else any(p in files for p in changed)
+            )  # truncated: cannot tell
         out.append(
             {
                 "line": line,
                 "present": present,
-                "ga": ga,
-                "onprem_ga": ga and (None if onprem is None else line in onprem),
+                "ga": present and need_ga and has_ga(slug, line),
             }
         )
-    return out
+    return out, how
 
 
 def pr_facts(slug, n):
@@ -254,28 +281,31 @@ def pr_facts(slug, n):
     files = json.loads(
         _gh("api", "--paginate", "--slurp", f"repos/{slug}/pulls/{n}/files?per_page=100")
     )
-    paths = sorted(
-        {
-            p
-            for page in files
-            for f in page
-            for p in (f["filename"], f.get("previous_filename"))
-            if p
-        }
-    )
-    return pr, paths
+    patches = {}
+    for page in files:
+        for f in page:
+            patches[f["filename"]] = f.get("patch")
+            if f.get("previous_filename"):
+                patches.setdefault(f["previous_filename"], f.get("patch"))
+    return pr, patches
 
 
-def advise_pr(slug, n, hotfix=None, pr=None, paths=None, need_ga=True):
+def advise_pr(slug, n, hotfix=None, pr=None, patches=None, need_ga=True, line=None):
     """Advice for PR n. Lint PR passes need_ga=False on its success path: only the decided results matter there."""
     if pr is None:
-        pr, paths = pr_facts(slug, n)
+        pr, patches = pr_facts(slug, n)
     base = pr["base"]["ref"]
-    lines = (
-        line_facts(slug, paths, need_ga)
-        if code(paths) and not base.startswith("release/")
-        else []
-    )
+    lines, how = [], ""
+    if code(patches) and not base.startswith("release/"):
+        # The PR's patch line numbers are relative to its merge base.
+        mb = _gh(
+            "api",
+            f"repos/{slug}/compare/{pr['base']['sha']}...{pr['head']['sha']}",
+            "--jq",
+            ".merge_base_commit.sha",
+        ).strip()
+        lines, how = line_facts(slug, mb, patches, need_ga)
+    paths = sorted(patches)
     picks = base.startswith("release/") and any(
         "(cherry picked from commit " in c["commit"]["message"]
         for page in json.loads(
@@ -288,10 +318,14 @@ def advise_pr(slug, n, hotfix=None, pr=None, paths=None, need_ga=True):
         )
         for c in page
     )
-    adv = advise(base, paths, lines, hotfix, n, pr["head"]["ref"], picks)
+    adv = advise(base, paths, lines, hotfix, n, pr["head"]["ref"], picks, how, line)
     have = {l["name"] for l in pr.get("labels", [])}
     if adv["label"] and adv["result"] != "ask" and adv["label"] not in have:
-        others = sorted(have & {MAIN_ONLY, RBO, *rm.BACKPORT_LABELS})
+        others = sorted(
+            l
+            for l in have
+            if l in (MAIN_ONLY, RBO, *rm.RETIRED_LABELS) or rm.LINE_LABEL_RE.fullmatch(l)
+        )
         cmds = [
             f"gh api -X DELETE repos/{slug}/issues/{n}/labels/{urllib.parse.quote(o, safe='')}"
             for o in others
@@ -302,50 +336,20 @@ def advise_pr(slug, n, hotfix=None, pr=None, paths=None, need_ga=True):
     return {"repo": slug, "pr": n, **adv}
 
 
-def advise_branch(slug, ref, hotfix=None):
+def advise_branch(slug, ref, hotfix=None, line=None):
     base = rm.git(".", "merge-base", "origin/main", ref)
-    paths = sorted(
-        set(rm.git(".", "diff", "--name-only", "--no-renames", base, ref).split("\n"))
-        - {""}
-    )
-    lines = line_facts(slug, paths) if code(paths) else []
-    return {"repo": slug, "pr": None, **advise("main", paths, lines, hotfix, ref)}
-
-
-def declare(slug, n, value):
-    line = rm.line(value)
-    try:
-        _gh("api", f"repos/{slug}/branches/release/{line}")
-    except RuntimeError as e:
-        if "HTTP 404" not in str(e):
-            raise
-        raise Usage(f"release/{line} does not exist on {slug}")
-    pr = json.loads(_gh("api", f"repos/{slug}/pulls/{n}"))
-    body = pr["body"] or ""
-    if line in rm.declared_lines(body):
-        return f"#{n} already declares `Backport-also: {line}`"
-    if MAIN_ONLY in {l["name"] for l in pr.get("labels", [])}:
-        raise Usage(
-            f"#{n} is {MAIN_ONLY}, which Backport never picks: label it `{RC}` first, then declare"
-        )
-    _gh(
-        "api",
-        "-X",
-        "PATCH",
-        f"repos/{slug}/pulls/{n}",
-        "-f",
-        f"body={body.rstrip()}\n\nBackport-also: {line}\n",
-    )
-    # GitHub has no conditional write: a concurrent body edit can drop the line, so check it landed.
-    after = json.loads(_gh("api", f"repos/{slug}/pulls/{n}"))["body"] or ""
-    if line not in rm.declared_lines(after):
-        raise RuntimeError(
-            f"#{n}'s body changed meanwhile and lost the declaration; run --declare again"
-        )
-    return (
-        f"#{n} now declares `Backport-also: {line}`. Pick it: gh workflow run backport.yaml -R {slug} "
-        f"-f commits={n} -f lines={line} -f patch_released_lines=true"
-    )
+    patches = {}
+    for chunk in rm.git(".", "diff", "-U0", "--no-renames", base, ref).split(
+        "diff --git "
+    )[1:]:
+        path = chunk.split("\n", 1)[0].split(" b/", 1)[-1]
+        patches[path] = chunk
+    lines, how = line_facts(slug, base, patches) if code(patches) else ([], "")
+    return {
+        "repo": slug,
+        "pr": None,
+        **advise("main", sorted(patches), lines, hotfix, ref, how=how, line=line),
+    }
 
 
 def owed(slug, author):
@@ -383,19 +387,12 @@ def owed(slug, author):
         }
         if not mine:
             continue
-        released = any(
-            rs.ver_re(rs.PREFIX).fullmatch(t)[4] is None for t in rs.line_tags(".", line)
-        )
-        accept = bp.HELD if released else bp.OWED  # what Backport picks there on its own
         cmd = f"gh workflow run backport.yaml -R {slug} -f commits={{}} -f lines={line} -f patch_released_lines=true"
         # Backport's `held:` count: a developer reading the answer cannot act on it, but can on a warning.
         log = sys.stderr if os.environ.get("GITHUB_ACTIONS") else io.StringIO()
         try:
             with contextlib.redirect_stdout(log):
-                held = bp.held(
-                    slug, ".", branch, accept=accept, cache=bp.pr_classes(slug, since)
-                )
-                decl = bp.declared(slug, ".", branch)
+                held = bp.held(slug, ".", branch, cache=bp.pr_classes(slug, since))
         finally:
             if log is not sys.stderr:
                 sys.stderr.writelines(
@@ -410,20 +407,10 @@ def owed(slug, author):
                         "line": line,
                         "pr": pr,
                         "title": title,
-                        "why": f"label class {cls}",
+                        "why": f"label backport/{cls}"
+                        if cls != bp.UNCLASSIFIABLE
+                        else cls,
                         "command": cmd.format(pr[1:]),
-                    }
-                )
-        listed = {r["pr"] for r in rows if r["line"] == line}
-        for n, title in decl:
-            if f"#{n}" in mine and f"#{n}" not in listed:  # one row per PR: same command
-                rows.append(
-                    {
-                        "line": line,
-                        "pr": f"#{n}",
-                        "title": title,
-                        "why": f"Backport-also: {line}",
-                        "command": cmd.format(n),
                     }
                 )
     return rows
@@ -433,10 +420,8 @@ def render(adv):
     where = f"#{adv['pr']}" if adv["pr"] else "this branch"
     if adv["result"] == "ask":
         q = adv["question"]
-        text = (
-            f"{where}: one question — {q['text']}\n  ({adv['reason']})\n"
-            f"  yes: {q['answers']['yes']}, then: {adv['next']['yes']}\n"
-            f"  no: {q['answers']['no']}, then: {adv['next']['no']}"
+        text = f"{where}: one question — {q['text']}\n  ({adv['reason']})" + "".join(
+            f"\n  {k}: {v}, then: {adv['next'][k]}" for k, v in q["answers"].items()
         )
     elif adv["label"] is None:
         text = f"{where}: no label — {adv['reason']}"
@@ -458,7 +443,6 @@ def main(argv=None):
     ap.add_argument("--pr", type=int)
     ap.add_argument("--branch")
     ap.add_argument("--owed", action="store_true")
-    ap.add_argument("--declare", metavar="X.Y")
     ap.add_argument("--answer", action="append", default=[], metavar="hotfix=yes|no")
     ap.add_argument("--author")
     ap.add_argument("--json", action="store_true")
@@ -467,32 +451,33 @@ def main(argv=None):
         modes = [
             m
             for m, on in (
-                ("--pr", a.pr is not None and not a.declare),
+                ("--pr", a.pr is not None),
                 ("--branch", a.branch),
                 ("--owed", a.owed),
-                ("--declare", a.declare),
             )
             if on
         ]
-        if len(modes) != 1 or (a.declare and a.pr is None):
-            raise Usage(
-                "use one of --pr N, --branch REF, --owed, or --declare X.Y --pr N"
-            )
+        if len(modes) != 1:
+            raise Usage("use one of --pr N, --branch REF, --owed")
         answers = dict(x.split("=", 1) for x in a.answer if "=" in x)
         if (
             len(answers) != len(a.answer)
-            or set(answers) - {"hotfix"}
-            or set(answers.values()) - {"yes", "no"}
+            or set(answers) - {"hotfix", "line"}
+            or answers.get("hotfix", "yes") not in ("yes", "no")
+            or not (
+                answers.get("line", MAIN_ONLY) == MAIN_ONLY
+                or rm.LINE_RE.fullmatch(answers["line"])
+            )
         ):
-            raise Usage(f"--answer takes hotfix=yes or hotfix=no, got {a.answer}")
+            raise Usage(
+                f"--answer takes hotfix=yes|no or line=X.Y|main-only, got {a.answer}"
+            )
         hotfix = None if "hotfix" not in answers else answers["hotfix"] == "yes"
+        line = answers.get("line")
         slug = slug_from_origin()
         rs.use(slug.split("/")[1].lower())
-        if a.declare:
-            print(declare(slug, a.pr, a.declare))
-            return 0
         if a.pr is not None:
-            adv = advise_pr(slug, a.pr, hotfix)
+            adv = advise_pr(slug, a.pr, hotfix, line=line)
             print(json.dumps(adv, indent=2) if a.json else render(adv))
             return 0
         rm.git(
@@ -506,7 +491,7 @@ def main(argv=None):
             "--tags",
         )
         if a.branch:
-            adv = advise_branch(slug, a.branch, hotfix)
+            adv = advise_branch(slug, a.branch, hotfix, line)
             print(json.dumps(adv, indent=2) if a.json else render(adv))
             return 0
         rows = owed(slug, a.author)

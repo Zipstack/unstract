@@ -13,11 +13,11 @@ labels decide what it copies, so set them when you open the PR.
   check fails on any other form, whatever the labels. The type feeds the changelog; it
   does not decide what Backport copies.
 - **A PR into `main` needs exactly one backport label.** `lint-pr` fails without one:
-  - **`backport/rc`:** Backport copies it to the release lines still awaiting
-    their first release.
+  - **`backport/X.Y`** (for example `backport/0.188`): Backport also copies it to
+    `release/X.Y` and to every newer active line. Name the oldest line that needs the
+    fix. Lines still in RC get it automatically; a released line gets it only when a
+    Backport run confirms it.
   - **`main-only`:** it stays on `main`. Never with a `backport/` label.
-  - **`backport/ga`:** the fix must also reach released lines, once whoever runs
-    the release confirms.
   - **A revert** takes the backport label of the PR it reverts. GitHub's Revert
     button opens it with no label.
   - **Choose by whether a release line needs the change, never from the title type:**
