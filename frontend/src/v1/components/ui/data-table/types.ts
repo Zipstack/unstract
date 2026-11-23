@@ -1,3 +1,4 @@
+import type { MenuAction } from "@v1/components/ui/menu";
 import type { ReactNode } from "react";
 
 /*
@@ -86,15 +87,13 @@ export type DataTableBulkContext<TRow> = Readonly<{
   clearSelection: () => void;
 }>;
 
-/** One entry in a row's action menu (the kebab at the row's end). */
-export type DataTableRowAction = Readonly<{
-  id: string;
-  label: string;
-  onSelect: () => void;
-  disabled?: boolean;
-  /** Drawn in the destructive colour, last, after a separator. */
-  destructive?: boolean;
-}>;
+/**
+ * One entry in a row's action menu (the kebab at the row's end): P1-T09's
+ * `MenuAction` (`id`, `label`, `onSelect`, and optionally `disabled`,
+ * `destructive`, `icon`, `shortcut`, `description`, `loading`, `group`).
+ * Destructive actions go last, after a separator.
+ */
+export type DataTableRowAction = MenuAction;
 
 export type DataTableError = Readonly<{
   title: string;

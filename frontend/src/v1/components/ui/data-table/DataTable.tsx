@@ -13,6 +13,7 @@ import {
   SkeletonBlock,
 } from "@v1/components/ui/feedback";
 import { DEFAULT_PAGE_SIZES, Pagination } from "@v1/components/ui/navigation";
+import { Checkbox } from "@v1/components/ui/toggles";
 import { cn } from "@v1/lib/cn";
 import { ArrowDown, ArrowUp, ChevronRight, ChevronsUpDown } from "lucide-react";
 import {
@@ -30,7 +31,6 @@ import {
 } from "react";
 import { selectionAnnouncement, sortAnnouncement } from "./announce";
 import { BulkBar } from "./BulkBar";
-import { SelectCheckbox } from "./checkbox";
 import {
   ALIGN_CLASS,
   columnShows,
@@ -161,9 +161,10 @@ export function DataTable<TRow>({
   const [ownSelected, setOwnSelected] =
     useState<readonly string[]>(defaultSelectedIds);
   const heldSelection = selectedProp ?? ownSelected;
-  // Without server pagination the table holds every row, so a selected id
-  // that is not in `rows` (filtered out, deleted) is dropped: the bulk bar
-  // must never act on rows the user cannot see. Server pages keep ids from
+  // Without server pagination the table holds every row, so a held id that
+  // is not in `rows` (a filter hides it) is kept but not shown: the count,
+  // the header box and the bulk bar see only rows the user can see, and the
+  // row is selected again when the filter clears. Server pages show ids from
   // other pages on purpose.
   const rowIds = useMemo(
     () => (server ? null : new Set(rows.map(getRowId))),
@@ -239,6 +240,10 @@ export function DataTable<TRow>({
   // rather than one empty render before Pagination corrects it.
   const lastPageIndex = Math.max(0, Math.ceil(rows.length / ownPageSize) - 1);
   const shownPageIndex = Math.min(pageIndex, lastPageIndex);
+  if (shownPageIndex !== pageIndex) {
+    // Stored, so growing rows again do not jump back to the old page.
+    setPageIndex(shownPageIndex);
+  }
   const paginationState = useMemo(
     () => ({ pageIndex: shownPageIndex, pageSize: ownPageSize }),
     [shownPageIndex, ownPageSize],
@@ -295,11 +300,16 @@ export function DataTable<TRow>({
     announce(text);
   };
 
+  // Changes apply to the held selection, so rows a filter hides keep their
+  // state; the count and the announcement are of the rows the table holds.
+  const visibleCount = (ids: readonly string[]): number =>
+    rowIds === null ? ids.length : ids.filter((id) => rowIds.has(id)).length;
+
   const toggleRow = (id: string): void => {
-    const next = selected.has(id)
-      ? selectedList.filter((item) => item !== id)
-      : [...selectedList, id];
-    commitSelection(next, selectionAnnouncement(next.length, null));
+    const next = heldSelection.includes(id)
+      ? heldSelection.filter((item) => item !== id)
+      : [...heldSelection, id];
+    commitSelection(next, selectionAnnouncement(visibleCount(next), null));
   };
 
   const pageIds = pageRows.map((row) => row.id);
@@ -310,11 +320,14 @@ export function DataTable<TRow>({
   const togglePage = (): void => {
     if (allOnPage) {
       const onPage = new Set(pageIds);
-      const next = selectedList.filter((id) => !onPage.has(id));
-      commitSelection(next, selectionAnnouncement(next.length, null));
+      const next = heldSelection.filter((id) => !onPage.has(id));
+      commitSelection(next, selectionAnnouncement(visibleCount(next), null));
     } else {
-      const next = [...new Set([...selectedList, ...pageIds])];
-      commitSelection(next, selectionAnnouncement(next.length, pageIds.length));
+      const next = [...new Set([...heldSelection, ...pageIds])];
+      commitSelection(
+        next,
+        selectionAnnouncement(visibleCount(next), pageIds.length),
+      );
     }
   };
 
@@ -498,7 +511,7 @@ export function DataTable<TRow>({
         className: UTILITY_CELL,
         content: (
           <span className="ui:inline-flex ui:items-center ui:justify-center">
-            <SelectCheckbox
+            <Checkbox
               checked={isSelected}
               onCheckedChange={() => toggleRow(row.id)}
               aria-label={`Select ${rowLabel}`}
@@ -676,7 +689,7 @@ export function DataTable<TRow>({
       if (item.start > end) {
         parts.push(
           <Spacer
-            key={`gap-${item.key}`}
+            key={`spacer:${item.key}`}
             height={item.start - end}
             columns={columnCount}
           />,
@@ -684,7 +697,7 @@ export function DataTable<TRow>({
       }
       parts.push(
         <tbody
-          key={item.key}
+          key={`row:${item.key}`}
           data-index={item.index}
           ref={virtualizer.measureElement}
         >
@@ -695,7 +708,9 @@ export function DataTable<TRow>({
     }
     const rest = virtualizer.getTotalSize() - end;
     if (rest > 0) {
-      parts.push(<Spacer key="rest" height={rest} columns={columnCount} />);
+      parts.push(
+        <Spacer key="spacer:end" height={rest} columns={columnCount} />,
+      );
     }
     body = parts;
   } else {
@@ -709,7 +724,7 @@ export function DataTable<TRow>({
         {selectable && (
           <th scope="col" className={cn(HEAD_CELL, UTILITY_CELL)}>
             <span className="ui:inline-flex ui:items-center ui:justify-center">
-              <SelectCheckbox
+              <Checkbox
                 checked={someOnPage ? "indeterminate" : allOnPage}
                 onCheckedChange={togglePage}
                 aria-label="Select all rows on this page"

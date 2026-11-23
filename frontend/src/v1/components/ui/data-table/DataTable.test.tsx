@@ -936,4 +936,121 @@ describe("review fixes", () => {
     expect(fireEvent.keyDown(row, { key: "ArrowRight" })).toBe(true);
     expect(fireEvent.keyDown(row, { key: "ArrowDown" })).toBe(false);
   });
+
+  it("keeps a filtered-out row selected through changes and shows it when the filter clears", async () => {
+    const onSelectionChange = vi.fn();
+    const bulk = vi.fn(() => null);
+    const props = {
+      label: "API deployments",
+      columns: GALLERY_COLUMNS,
+      getRowId: rowId,
+      getRowLabel: rowLabel,
+      selectable: true,
+      onSelectionChange,
+      bulkActions: bulk,
+    };
+    const { user, rerender } = renderV1(<DataTable {...props} rows={FIVE} />);
+    await user.click(
+      screen.getByRole("checkbox", { name: "Select health-monitoring API" }),
+    );
+    await user.click(screen.getByRole("checkbox", { name: "Select masa_cms" }));
+
+    // A filter hides health-monitoring API.
+    rerender(<DataTable {...props} rows={FIVE.slice(1)} filtered />);
+    expect(
+      screen.getByRole("region", { name: "Bulk actions" }).textContent,
+    ).toContain("1 selected");
+
+    // Changes while filtered keep the hidden row in the held selection...
+    await user.click(
+      screen.getByRole("checkbox", { name: "Select masa_eob_extraction" }),
+    );
+    expect(status()).toBe("2 rows selected");
+    expect(onSelectionChange).toHaveBeenLastCalledWith([
+      "dep-1",
+      "dep-3",
+      "dep-4",
+    ]);
+    // ...but the bulk bar only ever sees rows on screen.
+    expect(bulk).toHaveBeenLastCalledWith(
+      expect.objectContaining({ selectedIds: ["dep-3", "dep-4"] }),
+    );
+    await user.click(
+      screen.getByRole("checkbox", { name: "Select all rows on this page" }),
+    );
+    expect(status()).toBe("All 4 rows on this page selected, 4 in total");
+    await user.click(
+      screen.getByRole("checkbox", { name: "Select all rows on this page" }),
+    );
+    expect(status()).toBe("Selection cleared");
+    expect(onSelectionChange).toHaveBeenLastCalledWith(["dep-1"]);
+
+    // Clearing the filter shows it selected again.
+    rerender(<DataTable {...props} rows={FIVE} />);
+    expect(
+      screen
+        .getByRole("checkbox", { name: "Select health-monitoring API" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(
+      screen.getByRole("region", { name: "Bulk actions" }).textContent,
+    ).toContain("1 selected");
+
+    // "Clear selection" clears the hidden rows too.
+    rerender(<DataTable {...props} rows={FIVE.slice(1)} filtered />);
+    await user.click(screen.getByRole("checkbox", { name: "Select masa_cms" }));
+    await user.click(screen.getByRole("button", { name: "Clear selection" }));
+    expect(onSelectionChange).toHaveBeenLastCalledWith([]);
+    rerender(<DataTable {...props} rows={FIVE} />);
+    expect(screen.queryByRole("region", { name: "Bulk actions" })).toBeNull();
+  });
+
+  it("stores the clamped page, so rows growing back do not jump pages", async () => {
+    const props = {
+      label: "API deployments",
+      columns: GALLERY_COLUMNS,
+      getRowId: rowId,
+      getRowLabel: rowLabel,
+      pagination: { mode: "client", pageSize: 10 } as const,
+    };
+    const { user, rerender } = renderV1(
+      <DataTable {...props} rows={galleryRows(30)} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    rerender(<DataTable {...props} rows={galleryRows(12)} />);
+    expect(screen.getByText("Showing 11 to 12 of 12 entries")).toBeTruthy();
+    rerender(<DataTable {...props} rows={galleryRows(30)} />);
+    expect(screen.getByText("Showing 11 to 20 of 30 entries")).toBeTruthy();
+  });
+
+  it("keeps row and spacer keys apart, whatever the row ids", () => {
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(560);
+    const errors = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    // Ids shaped like spacer keys under any naive scheme.
+    const SHAPED = ["rest", "spacer:end", "gap-dep-5", "spacer:dep-6", "end"];
+    const rows = galleryRows(200).map((row, i) => ({
+      ...row,
+      id: SHAPED[i] ?? row.id,
+    }));
+    renderV1(
+      <DataTable
+        label="API deployments"
+        columns={GALLERY_COLUMNS}
+        rows={rows}
+        getRowId={rowId}
+        getRowLabel={rowLabel}
+        scroll="container"
+        onRowClick={vi.fn()}
+      />,
+    );
+    expect(
+      document.querySelectorAll("[data-slot=data-table-spacer]").length,
+    ).toBeGreaterThan(0);
+    expect(
+      errors.mock.calls.some((call) => String(call[0]).includes("same key")),
+    ).toBe(false);
+  });
 });

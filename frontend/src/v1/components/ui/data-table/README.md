@@ -60,13 +60,13 @@ const columns: DataTableColumn<Deployment>[] = [
 | `sort` / `defaultSort` / `onSortChange` | `DataTableSort \| null` | `null` | controlled with `sort`, else the table holds it |
 | `pagination` | `DataTablePagination` | none | `{ mode: "client", pageSize? }` or `{ mode: "server", page, pageSize, total, onPageChange, onPageSizeChange? }`; both take `pageSizeOptions` |
 | `selectable` | `boolean` | `false` | the checkbox column and the bulk bar |
-| `selectedIds` / `defaultSelectedIds` / `onSelectionChange` | `string[]` | `[]` | controlled with `selectedIds`, else the table holds it |
+| `selectedIds` / `defaultSelectedIds` / `onSelectionChange` | `string[]` | `[]` | controlled with `selectedIds`, else the table holds it; see Selection for filtered rows |
 | `bulkActions` | `({ selectedIds, selectedRows, clearSelection }) => ReactNode` | | the bulk bar's actions |
 | `renderExpanded` | `(row) => ReactNode` | | detail shown in place under the row; adds the expand column |
 | `canExpand` | `(row) => boolean` | every row | |
 | `defaultExpandedIds` | `string[]` | `[]` | |
 | `onRowClick` | `(row) => void` | | the row click target: a click anywhere on the row, or Enter on it |
-| `rowActions` | `(row) => DataTableRowAction[]` | | the kebab at the row's end; `{ id, label, onSelect, disabled?, destructive? }` |
+| `rowActions` | `(row) => DataTableRowAction[]` | | the kebab at the row's end; P1-T09's `MenuAction`: `{ id, label, onSelect, disabled?, destructive?, icon?, … }` |
 | `getRowTone` | `(row) => "default" \| "failure"` | `default` | the failure tint |
 | `loading` | `boolean` | `false` | skeleton rows instead of the body |
 | `loadingRows` | `number` | page size, at most 10 | |
@@ -99,9 +99,14 @@ const columns: DataTableColumn<Deployment>[] = [
   the search when a new search should start on page 1. Client `pageSize` is
   the starting size.
 - **Selection** is keyed by row id. With server pagination it survives page
-  changes; otherwise only ids present in `rows` count, so a row filtered out
-  is not in the bulk bar's count or `selectedIds` (it comes back selected if
-  the filter clears). The header box
+  changes, and the count includes rows on other pages. Otherwise a row a
+  filter hides stays selected but is not shown: the count, the header box,
+  the announcements and the bulk bar's `selectedIds` and `selectedRows` cover
+  only the rows in `rows`, so a bulk action never touches a row the user
+  cannot see. Selecting or clearing other rows while filtered keeps it, and
+  it shows as selected again when the filter clears. `onSelectionChange`
+  reports the whole held selection, hidden rows included; "Clear selection"
+  clears all of it. The header box
   selects or clears the rows on the current page; it shows mixed
   (`aria-checked="mixed"`) when some are selected. The bulk bar (count,
   "Clear selection", then `bulkActions`) sits between the toolbar and the
@@ -150,15 +155,15 @@ const columns: DataTableColumn<Deployment>[] = [
   keep their height. The active row always renders, so Tab still reaches the
   body after the user scrolls away from it.
 
-## Seams
+## Built from
 
-Two private files stand in for components that are not on main yet. Each has
-the real component's props, so swapping it is that file alone:
-
-| File | Stands in for | Swap when |
-| --- | --- | --- |
-| `checkbox.tsx` | `Checkbox` from `@v1/components/ui/toggles` (P1-T05) | #2462 merges |
-| `row-actions.tsx` | `DropdownMenu` + `MenuIconButton` from `@v1/components/ui/menu` (P1-T09) | #2486 merges |
+- `Checkbox` from `@v1/components/ui/toggles` (P1-T05) for the row and header
+  boxes.
+- The menu parts from `@v1/components/ui/menu` (P1-T09) for the row menu:
+  `row-actions.tsx` is `RowActionMenu` plus a `tabIndex` on the kebab, which
+  the roving focus needs. `DataTableRowAction` is the menu's `MenuAction`.
+- `Pagination` from `navigation`, and `Skeleton*` and `InlineAlert` from
+  `feedback`.
 
 ## Gallery and tests
 

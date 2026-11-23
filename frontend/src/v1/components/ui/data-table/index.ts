@@ -1,6 +1,6 @@
 /*
- * The public API of the data table: import from here. The seams
- * (`./checkbox`, `./row-actions`) and the gallery stay private.
+ * The public API of the data table: import from here. `./row-actions` and
+ * the gallery stay private.
  */
 export { selectionAnnouncement, sortAnnouncement } from "./announce";
 export { PRIORITY_MIN_WIDTH, priorityForWidth } from "./columns";
