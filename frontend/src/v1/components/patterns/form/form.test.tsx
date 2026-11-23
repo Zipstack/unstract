@@ -684,15 +684,23 @@ describe("FormFooter", () => {
 
   it("shows Saving while the save runs, then No changes", async () => {
     let finish: () => void = () => undefined;
-    const onSave = () =>
-      new Promise<undefined>((resolve) => {
-        finish = () => resolve(undefined);
-      });
+    const onSave = vi.fn(
+      () =>
+        new Promise<undefined>((resolve) => {
+          finish = () => resolve(undefined);
+        }),
+    );
     render(<Sample onSave={onSave} />);
     await userEvent.type(screen.getByLabelText("Name"), "b");
     await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await screen.findByText("Saving");
-    expect(saveButton().disabled).toBe(true);
+    // A loading Save keeps keyboard focus and ignores a second activation.
+    expect(saveButton().disabled).toBe(false);
+    expect(saveButton().getAttribute("aria-busy")).toBe("true");
+    expect(document.activeElement).toBe(saveButton());
+    await userEvent.click(saveButton());
+    await userEvent.keyboard("{Enter}");
+    expect(onSave).toHaveBeenCalledTimes(1);
     expect(discardButton().disabled).toBe(true);
     await act(async () => finish());
     await screen.findByText("No changes");

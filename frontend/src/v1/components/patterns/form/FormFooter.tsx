@@ -1,3 +1,4 @@
+import { Button } from "@v1/components/ui/button";
 import { ErrorText } from "@v1/components/ui/form";
 import type { JSX } from "react";
 import {
@@ -37,9 +38,6 @@ function status(
   }
   return `${dirty} unsaved change${dirty === 1 ? "" : "s"}`;
 }
-
-const button =
-  "ui:h-8 ui:cursor-pointer ui:rounded-md ui:px-3 ui:text-body ui:disabled:pointer-events-none ui:disabled:opacity-50 ui:focus-visible:focus-ring";
 
 /**
  * The save bar: what changed, Save changes (submits the form) and Discard
@@ -84,23 +82,22 @@ export function FormFooter<T extends FieldValues>({
           <ErrorText>{formLevel.join(" ")}</ErrorText>
         ) : null}
       </div>
-      <button
-        type="button"
-        className={`${button} ui:border ui:bg-transparent`}
+      <Button
+        variant="outline"
         data-testid="form-footer-discard"
         disabled={dirty === 0 || isSubmitting}
         onClick={() => form.reset()}
       >
         Discard
-      </button>
-      <button
+      </Button>
+      <Button
         type="submit"
-        className={`${button} ui:border-0 ui:bg-primary ui:text-primary-foreground`}
         data-testid="form-footer-save"
-        disabled={dirty === 0 || isSubmitting || hasFieldErrors}
+        loading={isSubmitting}
+        disabled={!isSubmitting && (dirty === 0 || hasFieldErrors)}
       >
         Save changes
-      </button>
+      </Button>
     </div>
   );
 }
