@@ -260,7 +260,7 @@ export const DATA_TABLE_GALLERY: readonly GalleryEntry[] = [
         {...common}
         label={`API deployments (client pagination with footer)`}
         rows={galleryRows(30)}
-        pagination={{ mode: "client", pageSize: 10 }}
+        pagination={{ mode: "client", defaultPageSize: 10 }}
         footer="Updated 2 min ago"
       />
     ),

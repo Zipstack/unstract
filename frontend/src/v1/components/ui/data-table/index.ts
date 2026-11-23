@@ -1,15 +1,9 @@
 /*
- * The public API of the data table: import from here. `./row-actions` and
- * the gallery stay private.
+ * The public API of the data table: the component and its types. Everything
+ * else here (helpers, hooks, constants, the gallery) is private, so it can
+ * change without touching the contract.
  */
-export { selectionAnnouncement, sortAnnouncement } from "./announce";
-export { PRIORITY_MIN_WIDTH, priorityForWidth } from "./columns";
-export {
-  DataTable,
-  DEFAULT_PAGE_SIZE,
-  ROW_HEIGHT,
-  VIRTUALIZE_ABOVE,
-} from "./DataTable";
+export { DataTable } from "./DataTable";
 export type {
   DataTableAlign,
   DataTableBulkContext,
@@ -24,5 +18,6 @@ export type {
   DataTableRowTone,
   DataTableSort,
   DataTableSortDirection,
+  DataTableSortField,
   DataTableSortValue,
 } from "./types";

@@ -335,6 +335,21 @@ describe("groupActions", () => {
 });
 
 describe("RowActionMenu", () => {
+  it("puts the given tab index on the kebab", () => {
+    render(
+      <RowActionMenu
+        label="Actions for A"
+        tabIndex={-1}
+        actions={[{ id: "e", label: "Edit", onSelect: () => undefined }]}
+      />,
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Actions for A" })
+        .getAttribute("tabindex"),
+    ).toBe("-1");
+  });
+
   it("names the kebab, lists actions with destructive last after a separator, and runs one", async () => {
     const edit = action("Edit");
     const user = userEvent.setup();

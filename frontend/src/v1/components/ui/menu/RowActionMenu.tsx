@@ -104,6 +104,11 @@ export type RowActionMenuProps = Readonly<{
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   className?: string;
+  /**
+   * The kebab's tab index. A table with roving focus passes -1 for every row
+   * but the active one, so a long table is not a long Tab.
+   */
+  tabIndex?: number;
 }>;
 
 /** A row's kebab and its action menu. */
@@ -115,6 +120,7 @@ export function RowActionMenu({
   open,
   onOpenChange,
   className,
+  tabIndex,
 }: RowActionMenuProps): JSX.Element {
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
@@ -123,6 +129,7 @@ export function RowActionMenu({
           aria-label={label}
           disabled={disabled || actions.length === 0}
           className={className}
+          tabIndex={tabIndex}
         />
       </DropdownMenuTrigger>
       <DropdownMenuContent align={align}>

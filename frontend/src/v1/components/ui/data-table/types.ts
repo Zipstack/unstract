@@ -10,6 +10,14 @@ import type { ReactNode } from "react";
 /** What a client-side sort compares. `null` and `undefined` sort last both ways. */
 export type DataTableSortValue = string | number | boolean | Date | null;
 
+/** The row fields a client sort can compare directly. */
+export type DataTableSortField<TRow> = {
+  [K in keyof TRow]-?: TRow[K] extends DataTableSortValue | undefined
+    ? K
+    : never;
+}[keyof TRow] &
+  string;
+
 export type DataTableAlign = "start" | "center" | "end";
 
 /**
@@ -49,10 +57,12 @@ export type DataTableColumn<TRow> = Readonly<{
   cell: (row: TRow, context: DataTableCellContext) => ReactNode;
   /**
    * Makes the column sortable. With client sorting, the table compares this
-   * field of the row, or what the function returns. With server pagination
-   * the table only reports the sort (`onSortChange`) and the page refetches.
+   * field of the row (one holding a `DataTableSortValue`), or what the
+   * function returns; `NaN` and an invalid date count as missing. With
+   * server pagination the table only reports the sort through
+   * `onSortChange`, which is then required, and the page refetches.
    */
-  sortKey?: (keyof TRow & string) | ((row: TRow) => DataTableSortValue);
+  sortKey?: DataTableSortField<TRow> | ((row: TRow) => DataTableSortValue);
   /** Default 1 (always shown). */
   priority?: DataTableColumnPriority;
   /** Default "start". Numbers go "end". */
@@ -73,14 +83,21 @@ export type DataTableRowTone = "default" | "failure";
 /**
  * Pagination, chosen per table. `client` pages the rows it was given; `server`
  * shows the page the parent loaded, and the parent loads another on
- * `onPageChange`. Without pagination every row renders (virtualised when
- * `scroll="container"`).
+ * `onPageChange`. Without pagination every row renders (virtualised past
+ * 50 rows when `scroll="container"`). Either way a sort change goes back to
+ * page 1.
  */
 export type DataTablePagination =
   | Readonly<{
       mode: "client";
-      /** Default 25. */
-      pageSize?: number;
+      /** The starting page size; default 25. The user can change it. */
+      defaultPageSize?: number;
+      /**
+       * Back to page 1 whenever this changes: pass the search text or the
+       * filters. The page also resets when `filtered` flips.
+       */
+      resetKey?: string | number;
+      /** Default 10, 25, 50 and 100. */
       pageSizeOptions?: readonly number[];
     }>
   | Readonly<{
@@ -135,7 +152,12 @@ export type DataTableProps<TRow> = Readonly<{
    */
   getRowLabel: (row: TRow) => string;
 
-  /** Sorting: controlled with `sort`, else `defaultSort` starts it. */
+  /**
+   * Sorting: controlled with `sort` (`null` for no sort), else `defaultSort`
+   * starts it. With server pagination, headers sort only when
+   * `onSortChange` is given. The sort is announced once it shows, so a
+   * parent that ignores a change announces nothing.
+   */
   sort?: DataTableSort | null;
   defaultSort?: DataTableSort | null;
   onSortChange?: (sort: DataTableSort | null) => void;
@@ -144,7 +166,10 @@ export type DataTableProps<TRow> = Readonly<{
 
   /** Adds the checkbox column and the bulk bar. */
   selectable?: boolean;
-  /** Controlled selection; leave out to let the table hold it. */
+  /**
+   * Controlled selection; leave out to let the table hold it. Ignored unless
+   * `selectable`.
+   */
   selectedIds?: readonly string[];
   /** Uncontrolled selection's starting rows. */
   defaultSelectedIds?: readonly string[];
@@ -161,12 +186,16 @@ export type DataTableProps<TRow> = Readonly<{
 
   /** The row click target: a click anywhere on the row, or Enter on it. */
   onRowClick?: (row: TRow) => void;
+  /** The kebab at the row's end; the same list opens on right-click. */
   rowActions?: (row: TRow) => readonly DataTableRowAction[];
   getRowTone?: (row: TRow) => DataTableRowTone;
 
   /** Skeleton rows instead of the body. */
   loading?: boolean;
-  /** Skeleton rows while loading; default the page size, at most 10. */
+  /**
+   * Skeleton rows while loading: default the page size with pagination,
+   * else 5; at most 10 either way.
+   */
   loadingRows?: number;
   /** Shown above the table; rows already loaded stay. */
   error?: DataTableError | null;

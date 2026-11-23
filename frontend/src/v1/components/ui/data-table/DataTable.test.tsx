@@ -256,8 +256,8 @@ describe("selection and the bulk bar", () => {
         selectedRows: [FIVE[2]],
       }),
     );
-    expect(bodyRows()[2].getAttribute("data-state")).toBe("selected");
-    expect(bodyRows()[0].hasAttribute("data-state")).toBe(false);
+    expect(bodyRows()[2].hasAttribute("data-selected")).toBe(true);
+    expect(bodyRows()[0].hasAttribute("data-selected")).toBe(false);
 
     await user.click(checkbox("Select masa_eob_extraction"));
     expect(status()).toBe("2 rows selected");
@@ -316,15 +316,15 @@ describe("selection and the bulk bar", () => {
     ).toBe("false");
     await user.keyboard(" ");
 
-    // Back out of the table: row → sort buttons → header box → bulk bar.
-    for (
-      let i = 0;
-      i < 12 &&
-      !screen
-        .getByRole("region", { name: "Bulk actions for API deployments" })
-        .contains(document.activeElement);
-      i++
-    ) {
+    // Back out of the table: row, then the three sort buttons and the
+    // header box, then the bulk bar: five presses, no wrapping round.
+    const bar = screen.getByRole("region", {
+      name: "Bulk actions for API deployments",
+    });
+    expect(
+      bar.compareDocumentPosition(table()) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    for (let i = 0; i < 5; i++) {
       await user.tab({ shift: true });
     }
     expect(document.activeElement).toBe(
@@ -354,7 +354,7 @@ describe("selection and the bulk bar", () => {
     const { user } = setup({
       rows: galleryRows(12),
       selectable: true,
-      pagination: { mode: "client", pageSize: 5 },
+      pagination: { mode: "client", defaultPageSize: 5 },
     });
     await user.click(all());
     expect(status()).toBe("All 5 rows on this page selected, 5 in total");
@@ -582,7 +582,10 @@ describe("states", () => {
   });
 
   it("matches the skeleton to the page size, at most ten rows", () => {
-    setup({ loading: true, pagination: { mode: "client", pageSize: 25 } });
+    setup({
+      loading: true,
+      pagination: { mode: "client", defaultPageSize: 25 },
+    });
     expect(
       document.querySelectorAll("[data-slot=data-table-skeleton] tr"),
     ).toHaveLength(10);
@@ -669,7 +672,7 @@ describe("pagination", () => {
     setup({
       rows: galleryRows(30),
       columns: [{ id: "name", header: "Name", sortKey: "name", cell }],
-      pagination: { mode: "client", pageSize: 10 },
+      pagination: { mode: "client", defaultPageSize: 10 },
     });
     const settle = () =>
       act(async () => {
@@ -690,7 +693,7 @@ describe("pagination", () => {
   it("pages the rows on the client, and a sort goes back to page 1", async () => {
     const { user } = setup({
       rows: galleryRows(30),
-      pagination: { mode: "client", pageSize: 10 },
+      pagination: { mode: "client", defaultPageSize: 10 },
     });
     expect(bodyRows()).toHaveLength(10);
     expect(screen.getByText("Showing 1 to 10 of 30 entries")).toBeTruthy();
@@ -704,10 +707,10 @@ describe("pagination", () => {
   it("changes the client page size", async () => {
     const { user } = setup({
       rows: galleryRows(30),
-      pagination: { mode: "client", pageSize: 10 },
+      pagination: { mode: "client", defaultPageSize: 10 },
     });
-    await user.selectOptions(screen.getByLabelText("Rows per page"), "20");
-    expect(bodyRows()).toHaveLength(20);
+    await user.selectOptions(screen.getByLabelText("Rows per page"), "25");
+    expect(bodyRows()).toHaveLength(25);
   });
 
   it("asks the parent for another page with server pagination", async () => {
@@ -886,7 +889,7 @@ describe("review fixes", () => {
       columns: GALLERY_COLUMNS,
       getRowId: rowId,
       getRowLabel: rowLabel,
-      pagination: { mode: "client", pageSize: 10 } as const,
+      pagination: { mode: "client", defaultPageSize: 10 } as const,
       // Rendered only if a render ever shows an empty page.
       empty: <EmptyProbe />,
     };
@@ -1036,7 +1039,7 @@ describe("review fixes", () => {
       columns: GALLERY_COLUMNS,
       getRowId: rowId,
       getRowLabel: rowLabel,
-      pagination: { mode: "client", pageSize: 10 } as const,
+      pagination: { mode: "client", defaultPageSize: 10 } as const,
     };
     const { user, rerender } = renderV1(
       <DataTable {...props} rows={galleryRows(30)} />,
@@ -1104,7 +1107,7 @@ describe("review fixes", () => {
       columns: GALLERY_COLUMNS,
       getRowId: rowId,
       getRowLabel: rowLabel,
-      pagination: { mode: "client", pageSize: 10 } as const,
+      pagination: { mode: "client", defaultPageSize: 10 } as const,
     };
     const { user, rerender } = renderV1(
       <DataTable {...props} rows={galleryRows(30)} />,
@@ -1192,7 +1195,7 @@ describe("review fixes", () => {
         getRowLabel={rowLabel}
         selectable
         defaultSelectedIds={["dep-1"]}
-        pagination={{ mode: "client", pageSize: 5 }}
+        pagination={{ mode: "client", defaultPageSize: 5 }}
       />
     );
     const { container } = renderV1(
@@ -1214,5 +1217,320 @@ describe("review fixes", () => {
       screen.getByRole("navigation", { name: "ETL pipelines pages" }),
     ).toBeTruthy();
     await expectNoA11yViolations(container);
+  });
+});
+
+describe("second review round", () => {
+  const props = {
+    label: "API deployments",
+    columns: GALLERY_COLUMNS,
+    getRowId: rowId,
+    getRowLabel: rowLabel,
+  };
+
+  it("goes back to page 1 when the resetKey changes or filtered flips, keeping the toolbar mounted", async () => {
+    const search = <input aria-label="Search" />;
+    const { user, rerender } = renderV1(
+      <DataTable
+        {...props}
+        rows={galleryRows(60)}
+        toolbar={search}
+        pagination={{ mode: "client", defaultPageSize: 10, resetKey: "" }}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Showing 21 to 30 of 60 entries")).toBeTruthy();
+    const input = screen.getByRole("textbox", { name: "Search" });
+    input.focus();
+    rerender(
+      <DataTable
+        {...props}
+        rows={galleryRows(40)}
+        toolbar={search}
+        filtered
+        pagination={{ mode: "client", defaultPageSize: 10, resetKey: "m" }}
+      />,
+    );
+    expect(screen.getByText("Showing 1 to 10 of 40 entries")).toBeTruthy();
+    // Same element, still focused: nothing was remounted.
+    expect(screen.getByRole("textbox", { name: "Search" })).toBe(input);
+    expect(document.activeElement).toBe(input);
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    rerender(
+      <DataTable
+        {...props}
+        rows={galleryRows(30)}
+        toolbar={search}
+        filtered
+        pagination={{ mode: "client", defaultPageSize: 10, resetKey: "ma" }}
+      />,
+    );
+    expect(screen.getByText("Showing 1 to 10 of 30 entries")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    rerender(
+      <DataTable
+        {...props}
+        rows={galleryRows(60)}
+        toolbar={search}
+        pagination={{ mode: "client", defaultPageSize: 10, resetKey: "ma" }}
+      />,
+    );
+    expect(screen.getByText("Showing 1 to 10 of 60 entries")).toBeTruthy();
+  });
+
+  it("moves focus to the active row when the focused control goes away", async () => {
+    const { user } = setup({ selectable: true, defaultSelectedIds: ["dep-1"] });
+    await user.click(screen.getByRole("button", { name: "Clear selection" }));
+    expect(screen.queryByRole("region", { name: /Bulk actions/ })).toBeNull();
+    expect(document.activeElement).toBe(bodyRows()[0]);
+  });
+
+  it("moves focus to the header when Retry clears an error over an empty table", async () => {
+    const onRetry = vi.fn();
+    const { user, rerender } = setup({
+      rows: [],
+      selectable: true,
+      error: { title: "Could not load", onRetry },
+    });
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    rerender(
+      <DataTable {...props} rows={[]} selectable loading error={null} />,
+    );
+    expect(document.activeElement).toBe(sortButton("Name"));
+  });
+
+  it("leaves focus alone once the user has moved out of the table", async () => {
+    const { user, rerender } = setup({
+      selectable: true,
+      defaultSelectedIds: ["dep-1"],
+      toolbar: <input aria-label="Search" />,
+    });
+    screen.getByRole("button", { name: "Clear selection" }).focus();
+    await user.click(document.body);
+    rerender(
+      <DataTable
+        {...props}
+        rows={FIVE}
+        selectable
+        selectedIds={[]}
+        toolbar={<input aria-label="Search" />}
+      />,
+    );
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it("keeps the last sort and selection when a parent stops controlling them", async () => {
+    const { user, rerender } = renderV1(
+      <DataTable
+        {...props}
+        rows={FIVE}
+        selectable
+        sort={null}
+        selectedIds={[]}
+      />,
+    );
+    await user.click(sortButton("Name"));
+    await user.click(screen.getByRole("checkbox", { name: "Select masa_cms" }));
+    // Still the parent's.
+    expect(header("Name").hasAttribute("aria-sort")).toBe(false);
+    rerender(<DataTable {...props} rows={FIVE} selectable />);
+    expect(header("Name").getAttribute("aria-sort")).toBe("ascending");
+    expect(
+      screen
+        .getByRole("checkbox", { name: "Select masa_cms" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
+  it("announces only what shows: an ignored controlled change says nothing", async () => {
+    const onSortChange = vi.fn();
+    const { user, rerender } = renderV1(
+      <DataTable
+        {...props}
+        rows={FIVE}
+        sort={null}
+        onSortChange={onSortChange}
+      />,
+    );
+    await user.click(sortButton("Name"));
+    expect(onSortChange).toHaveBeenCalled();
+    expect(header("Name").hasAttribute("aria-sort")).toBe(false);
+    expect(status()).toBe("");
+    // A later sort from elsewhere (not the user's click) is not announced
+    // as the click's.
+    rerender(
+      <DataTable
+        {...props}
+        rows={FIVE}
+        sort={{ columnId: "owner", direction: "desc" }}
+        onSortChange={onSortChange}
+      />,
+    );
+    expect(status()).toBe("");
+    // A change the parent does take is announced once it shows.
+    await user.click(sortButton("Owner"));
+    rerender(
+      <DataTable
+        {...props}
+        rows={FIVE}
+        sort={null}
+        onSortChange={onSortChange}
+      />,
+    );
+    expect(onSortChange).toHaveBeenLastCalledWith(null);
+    expect(status()).toBe("Sort cleared");
+  });
+
+  it("sorts on the server only with onSortChange, and a new sort asks for page 1", async () => {
+    const onPageChange = vi.fn();
+    const pagination = {
+      mode: "server" as const,
+      page: 3,
+      pageSize: 5,
+      total: 50,
+      onPageChange,
+    };
+    const { user, rerender } = renderV1(
+      <DataTable {...props} rows={FIVE} pagination={pagination} />,
+    );
+    expect(within(header("Name")).queryByRole("button")).toBeNull();
+    rerender(
+      <DataTable
+        {...props}
+        rows={FIVE}
+        pagination={pagination}
+        onSortChange={vi.fn()}
+      />,
+    );
+    await user.click(sortButton("Name"));
+    expect(onPageChange).toHaveBeenCalledWith(1);
+  });
+
+  it("ignores selectedIds without selectable", () => {
+    setup({ selectedIds: ["dep-1"] });
+    expect(bodyRows().some((row) => row.hasAttribute("data-selected"))).toBe(
+      false,
+    );
+    expect(screen.queryByRole("region", { name: /Bulk actions/ })).toBeNull();
+  });
+
+  it.each([
+    0,
+    Number.NaN,
+    -3,
+  ])("falls back to 25 rows for a page size of %s", (size) => {
+    setup({
+      rows: galleryRows(40),
+      pagination: { mode: "client", defaultPageSize: size },
+      loadingRows: size,
+    });
+    expect(bodyRows()).toHaveLength(25);
+  });
+
+  it("offers 25 in the page sizes, so the default can be chosen again", async () => {
+    const { user } = setup({
+      rows: galleryRows(60),
+      pagination: { mode: "client" },
+    });
+    await user.selectOptions(screen.getByLabelText("Rows per page"), "50");
+    await user.selectOptions(screen.getByLabelText("Rows per page"), "25");
+    expect(bodyRows()).toHaveLength(25);
+  });
+
+  it("opens a container table's new page and new order at the top", async () => {
+    const { user } = setup({
+      rows: galleryRows(40),
+      scroll: "container",
+      pagination: { mode: "client", defaultPageSize: 10 },
+    });
+    const frame = document.querySelector<HTMLElement>(
+      "[data-slot=data-table-frame]",
+    ) as HTMLElement;
+    frame.scrollTop = 300;
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(frame.scrollTop).toBe(0);
+    frame.scrollTop = 300;
+    await user.click(sortButton("Owner"));
+    expect(frame.scrollTop).toBe(0);
+  });
+
+  it("does not claim a row count while a long table loads", () => {
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(560);
+    setup({ rows: galleryRows(1000), scroll: "container", loading: true });
+    expect(table().hasAttribute("aria-rowcount")).toBe(false);
+  });
+
+  it("opens the kebab's menu on Enter without firing the row click", async () => {
+    const onRowClick = vi.fn();
+    const { user } = setup({ onRowClick, rowActions });
+    bodyRows()[0].focus();
+    await user.tab();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Actions for health-monitoring API" }),
+    );
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("menu")).toBeTruthy();
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it("opens the row's actions on right-click", async () => {
+    const { user } = setup({ rowActions });
+    await user.pointer({ keys: "[MouseRight]", target: bodyRows()[2] });
+    const menu = await screen.findByRole("menu");
+    expect(
+      within(menu).getByRole("menuitem", { name: "Manage keys" }),
+    ).toBeTruthy();
+  });
+
+  it("keeps exactly one row in the tab order after a page change", async () => {
+    const { user } = setup({
+      rows: galleryRows(30),
+      onRowClick: vi.fn(),
+      pagination: { mode: "client", defaultPageSize: 10 },
+    });
+    bodyRows()[4].focus();
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    const tabbable = bodyRows().filter((row) => row.tabIndex === 0);
+    expect(tabbable).toEqual([bodyRows()[0]]);
+  });
+
+  it("does not pull focus back after End once the user types elsewhere", async () => {
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(560);
+    const { user, rerender } = setup({
+      rows: galleryRows(1000),
+      scroll: "container",
+      onRowClick: vi.fn(),
+      toolbar: <input aria-label="Search" />,
+    });
+    bodyRows()[0].focus();
+    await user.keyboard("{End}");
+    const input = screen.getByRole("textbox", { name: "Search" });
+    await user.click(input);
+    await user.keyboard("ab");
+    rerender(
+      <DataTable
+        {...props}
+        rows={galleryRows(1000)}
+        scroll="container"
+        onRowClick={vi.fn()}
+        toolbar={<input aria-label="Search" />}
+      />,
+    );
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("repeats Right and Left safely, and Enter prefers the row click over expansion", async () => {
+    const onRowClick = vi.fn();
+    const detail = (row: GalleryDeployment) => <p>Detail of {row.name}</p>;
+    const { user } = setup({ renderExpanded: detail, onRowClick });
+    bodyRows()[0].focus();
+    await user.keyboard("{ArrowRight}{ArrowRight}");
+    expect(screen.getByText("Detail of health-monitoring API")).toBeTruthy();
+    await user.keyboard("{ArrowLeft}{ArrowLeft}");
+    expect(screen.queryByText("Detail of health-monitoring API")).toBeNull();
+    await user.keyboard("{Enter}");
+    expect(onRowClick).toHaveBeenCalledWith(FIVE[0]);
+    expect(screen.queryByText("Detail of health-monitoring API")).toBeNull();
   });
 });

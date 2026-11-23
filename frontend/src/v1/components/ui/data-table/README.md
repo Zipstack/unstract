@@ -57,8 +57,8 @@ const columns: DataTableColumn<Deployment>[] = [
 | `rows` | `TRow[]` | required | |
 | `getRowId` | `(row) => string` | required | selection and expansion are keyed by it |
 | `getRowLabel` | `(row) => string` | required | read in the row controls' names: "Select invoice-parser", "Actions for invoice-parser", "Details for invoice-parser" |
-| `sort` / `defaultSort` / `onSortChange` | `DataTableSort \| null` | `null` | controlled with `sort`, else the table holds it |
-| `pagination` | `DataTablePagination` | none | `{ mode: "client", pageSize? }` or `{ mode: "server", page, pageSize, total, onPageChange, onPageSizeChange? }`; both take `pageSizeOptions` |
+| `sort` / `defaultSort` / `onSortChange` | `DataTableSort \| null` | `null` | controlled with `sort` (`null` is no sort), else the table holds it; server-paged headers sort only with `onSortChange` |
+| `pagination` | `DataTablePagination` | none | `{ mode: "client", defaultPageSize?, resetKey? }` or `{ mode: "server", page, pageSize, total, onPageChange, onPageSizeChange? }`; both take `pageSizeOptions` |
 | `selectable` | `boolean` | `false` | the checkbox column and the bulk bar |
 | `selectedIds` / `defaultSelectedIds` / `onSelectionChange` | `string[]` | `[]` | controlled with `selectedIds`, else the table holds it; see Selection for filtered rows |
 | `bulkActions` | `({ selectedIds, selectedRows, clearSelection }) => ReactNode` | | the bulk bar's actions |
@@ -69,7 +69,7 @@ const columns: DataTableColumn<Deployment>[] = [
 | `rowActions` | `(row) => DataTableRowAction[]` | | the kebab at the row's end; P1-T09's `MenuAction`: `{ id, label, onSelect, disabled?, destructive?, icon?, … }` |
 | `getRowTone` | `(row) => "default" \| "failure"` | `default` | the failure tint |
 | `loading` | `boolean` | `false` | skeleton rows instead of the body |
-| `loadingRows` | `number` | page size, at most 10 | |
+| `loadingRows` | `number` | the page size with pagination, else 5 | at most 10 either way |
 | `error` | `{ title, message?, onRetry? } \| null` | | an inline error above the table; loaded rows stay |
 | `filtered` | `boolean` | `false` | a search or filter is narrowing the rows, so no rows means no results |
 | `toolbar`, `empty`, `noResults`, `footer` | `ReactNode` | | the slots |
@@ -88,17 +88,23 @@ const columns: DataTableColumn<Deployment>[] = [
   `aria-sort`. Client sorting compares the `sortKey` values: numbers and
   dates by value, text case-blind and numeric-aware ("run 2" before
   "run 10"), and missing values (`null`, `undefined`) last in both
-  directions. With `pagination.mode: "server"` the table does not reorder
-  rows: it reports the sort through `onSortChange` and the page refetches.
-  A new sort goes back to page 1 with client pagination.
+  directions; `NaN` and an invalid date count as missing. A string `sortKey`
+  must name a field holding one of those types (checked by TypeScript).
+  With `pagination.mode: "server"` the table does not reorder rows: it
+  reports the sort through `onSortChange` (headers sort only when it is
+  given) and the page refetches. A new sort goes back to page 1 in both
+  modes (server: `onPageChange(1)`), and a `container` table scrolls back
+  to the top on a new sort or page.
 - **Pagination** uses `Pagination` from `navigation`. `client` pages the
   rows given; `server` shows the rows given as page `page` of `total`.
   Without `pagination` every row renders. A client page past the end (the
   rows shrank) shows the last page, and stays there; a refetch that empties
-  the rows meanwhile comes back on the same page. New rows do not go back to
-  page 1 by themselves, so give the table a `key` that changes with the
-  search when a new search should start on page 1. Client `pageSize` is
-  the starting size.
+  the rows meanwhile comes back on the same page. A client table goes back
+  to page 1 when the sort changes, when `filtered` flips and when
+  `pagination.resetKey` changes: pass the search text there. Client
+  `defaultPageSize` is the starting size (the user can change it); a size
+  that is not a whole number above 0 falls back to 25. The sizes offered
+  default to 10, 25, 50 and 100.
 - **Selection** is keyed by row id. With server pagination it survives page
   changes, and the count includes rows on other pages. Otherwise the count,
   the header box, the announcements and the bulk bar's `selectedIds` and
@@ -135,10 +141,19 @@ const columns: DataTableColumn<Deployment>[] = [
 - On a focused row: Enter runs `onRowClick` (or toggles the detail when there
   is none), Space toggles its selection, Right and Left open and close its
   detail.
-- The bulk bar is before the table: Shift+Tab from a row reaches it.
-- One polite status region announces what the user did: "Sorted by Name,
-  ascending", "Sort cleared", "3 rows selected", "All 25 rows on this page
-  selected, 40 in total", "Selection cleared".
+- The bulk bar is before the table: Shift+Tab from a row goes back through
+  the sort buttons and the header box to it.
+- If the focused control goes away (Clear selection, Retry, a row deleted
+  from its own menu, the skeleton replacing the body), focus moves to the
+  active row, or to the header when there are no rows, rather than
+  dropping to the page. Once the user has moved out of the table, it is
+  left alone.
+- One polite status region announces what the user did, once it shows:
+  "Sorted by Name, ascending", "Sort cleared", "3 rows selected", "All 25
+  rows on this page selected, 40 in total", "Selection cleared". A
+  controlled parent that ignores a change announces nothing.
+- `rowActions` open from the kebab and on right-click anywhere on the row
+  (`RowContextMenu`); the kebab stays, so right-click is only a shortcut.
 - A cell renderer gets `{ tabIndex, active }`: `tabIndex` is -1 in every
   row but the active one. Put it on any link or button the cell renders, or
   that control stays a tab stop in every row.
@@ -154,8 +169,7 @@ const columns: DataTableColumn<Deployment>[] = [
   sticks to whatever scrolls the page (the content region). Columns drop by
   priority instead of scrolling sideways.
 - `container`: the table scrolls inside its own frame. Give the root a height
-  (`className="ui:h-160"`, or fill a flex parent). Past 50 rows
-  (`VIRTUALIZE_ABOVE`) only the rows in view render (TanStack Virtual), with
+  (`className="ui:h-160"`, or fill a flex parent). Past 50 rows only the rows in view render (TanStack Virtual), with
   `aria-rowcount` and `aria-rowindex` so screen readers still hear the full
   count (open detail rows included). Rows are measured, so expanded rows
   keep their height. The active row always renders, so Tab still reaches the
@@ -165,9 +179,11 @@ const columns: DataTableColumn<Deployment>[] = [
 
 - `Checkbox` from `@v1/components/ui/toggles` (P1-T05) for the row and header
   boxes.
-- The menu parts from `@v1/components/ui/menu` (P1-T09) for the row menu:
-  `row-actions.tsx` is `RowActionMenu` plus a `tabIndex` on the kebab, which
-  the roving focus needs. `DataTableRowAction` is the menu's `MenuAction`.
+- `RowActionMenu` and `RowContextMenu` from `@v1/components/ui/menu`
+  (P1-T09) for the row's actions; the kebab takes the roving `tabIndex`.
+  `DataTableRowAction` is the menu's `MenuAction`.
+- `IconButton` and `Button` from `button` for the expand toggle and "Clear
+  selection".
 - `Pagination` from `navigation`, and `Skeleton*` and `InlineAlert` from
   `feedback`.
 

@@ -70,11 +70,21 @@ export function sortValue<TRow>(
   if (sortKey === undefined) {
     return undefined;
   }
-  const value =
-    typeof sortKey === "function" ? sortKey(row) : (row[sortKey] as unknown);
-  return value === null || value === undefined
-    ? undefined
-    : (value as DataTableSortValue);
+  const value: DataTableSortValue | undefined =
+    typeof sortKey === "function"
+      ? sortKey(row)
+      : (row[sortKey] as DataTableSortValue | undefined);
+  // NaN and an invalid date compare as NaN, which would leave the whole
+  // column out of order; they sort as missing instead.
+  if (
+    value === null ||
+    value === undefined ||
+    (typeof value === "number" && Number.isNaN(value)) ||
+    (value instanceof Date && Number.isNaN(value.getTime()))
+  ) {
+    return undefined;
+  }
+  return value;
 }
 
 const collator = new Intl.Collator(undefined, {
