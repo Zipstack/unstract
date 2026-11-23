@@ -92,13 +92,17 @@ test.describe("P1-T21 document viewer", { tag: DIST.all }, () => {
     ] as const) {
       test.info().annotations.push({
         type: `scroll-${name}`,
-        description: `${run.frames.length} frames, median ${percentile(run.frames, 0.5).toFixed(1)} ms, p95 ${percentile(run.frames, 0.95).toFixed(1)} ms, max ${Math.max(...run.frames).toFixed(1)} ms, at most ${run.maxCanvases} canvases, ${run.renderedPages} pages painted`,
+        description: `${run.frames.length} frames, median ${percentile(run.frames, 0.5).toFixed(1)} ms, p95 ${percentile(run.frames, 0.95).toFixed(1)} ms, max ${Math.max(...run.frames).toFixed(1)} ms, at most ${run.maxCanvases} canvases, ${run.renderedPages.length} pages painted`,
       });
     }
 
     expect(drag.figures).toBe(LONG_PDF_PAGES);
     // Every page passed at reading speed painted while the frames were timed.
-    expect(read.renderedPages).toBeGreaterThanOrEqual(READ_PAGES);
+    // Listed, not counted: the pages painted before the scroll starts and
+    // those just past where it stops would make up a count.
+    expect(read.renderedPages).toEqual(
+      expect.arrayContaining(Array.from({ length: READ_PAGES }, (_, i) => i)),
+    );
     expect(
       read.frames.filter((frame) => frame >= LONG_FRAME_MS).length,
     ).toBeLessThanOrEqual(MAX_LONG_READ_FRAMES);

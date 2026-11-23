@@ -42,8 +42,8 @@ export interface ScrollRun {
   maxCanvases: number;
   /** Pages with a figure in the list. */
   figures: number;
-  /** Distinct pages seen painted at some frame during the run. */
-  renderedPages: number;
+  /** 0-based pages seen painted at some frame during the run, ascending. */
+  renderedPages: number[];
 }
 
 export interface ScrollOptions {
@@ -67,7 +67,7 @@ export function scrollThrough(
     (root, { px, stopPage, MAX_FRAMES, STALL_FRAMES }) =>
       new Promise<ScrollRun>((resolve) => {
         const frames: number[] = [];
-        const rendered = new Set<string>();
+        const rendered = new Set<number>();
         let maxCanvases = 0;
         let last = performance.now();
         let previous = -1;
@@ -89,7 +89,7 @@ export function scrollThrough(
           for (const figure of root.querySelectorAll<HTMLElement>(
             'figure[data-render-state="rendered"]',
           )) {
-            rendered.add(figure.dataset.pageIndex ?? "");
+            rendered.add(Number(figure.dataset.pageIndex));
           }
           const end = Math.min(stopAt, root.scrollHeight - root.clientHeight);
           // A list that stops scrolling ends the run rather than spinning
@@ -105,7 +105,7 @@ export function scrollThrough(
               frames: frames.slice(1),
               maxCanvases,
               figures: root.querySelectorAll("figure[data-page-index]").length,
-              renderedPages: rendered.size,
+              renderedPages: [...rendered].sort((a, b) => a - b),
             });
             return;
           }
