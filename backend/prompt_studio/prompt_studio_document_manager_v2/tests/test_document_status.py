@@ -558,6 +558,21 @@ class IndexErrorInternalApiTests(_ToolWithDocument):
         lookup.assert_not_called()
         self.assertEqual(self._status(self.default)["status"], "failed")
 
+    def test_an_unexpected_error_is_a_generic_500(self) -> None:
+        request = RequestFactory().post(
+            "/internal/index-error/",
+            json.dumps(self._body()),
+            content_type="application/json",
+        )
+        with patch.object(
+            PromptStudioIndexHelper,
+            "mark_index_failed",
+            side_effect=RuntimeError("password=hunter2"),
+        ):
+            response = internal_views.index_error(request)
+        self.assertEqual(response.status_code, 500)
+        self.assertNotIn(b"hunter2", response.content)
+
     def test_missing_field_is_400(self) -> None:
         self.assertEqual(self._post(self._body(error="")), 400)
 

@@ -740,9 +740,9 @@ def index_error(request):
             case unhandled:
                 raise AssertionError(f"Unhandled ExtractionStatusResult: {unhandled!r}")
 
-    except Exception as e:
+    except Exception:
         logger.exception("index_error internal API failed")
         return JsonResponse(
-            {"success": False, "error": str(e)},
+            {"success": False, "error": _ERR_INDEX_FAILURE_NOT_RECORDED},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
