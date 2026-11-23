@@ -2377,7 +2377,7 @@ class StateCheck(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(
             out,
-            "::notice::ccccccc (#8, UN-2 [FIX] z) is labelled backport/0.191, but a file it changes is also on "
+            "::notice::ccccccc (#8, UN-2 [FIX] z) is labelled backport/0.191, but code it changes is also on "
             "release/0.190: if release/0.190 needs the fix, relabel the PR backport/0.190\n",
         )
 
@@ -2410,62 +2410,88 @@ class OnpremRcBlockers(unittest.TestCase):
             lines,
             [
                 "- o/r#5 UN-5 [FIX] x: pick it with `gh workflow run backport.yaml -R o/r -f commits=#5 "
-                "-f lines=0.186 -f patch_released_lines=true`, or decline it on release/0.186"
+                "-f lines=0.186 -f patch_released_lines=true`, or decline it on release/0.186",
+                f"- o/r uuuuuuu (no PR) U: {bp.UNCLASSIFIABLE}, so it may be owed here; fix its PR's labels, "
+                "or decline it on release/0.186",
             ],
         )
         self.assertEqual(failed, ["o/down: gh pr list (exit 1): HTTP 502"])
 
 
 class UnderBackported(unittest.TestCase):
-    """A fix labelled for a newer line that changes a file the older line also has."""
+    """A fix labelled for a newer line that changes code the older line also has."""
 
-    def test_listed_only_when_a_changed_file_is_on_the_line(self):
+    def test_listed_only_when_the_changed_code_is_on_the_line(self):
         with tempfile.TemporaryDirectory() as repo:
             git = lambda *a: dev_git(repo, *a)
+            path = os.path.join(repo, "shared.py")
+
+            def commit(msg, edit=None, fname=None):
+                if fname:
+                    with open(os.path.join(repo, fname), "w") as f:
+                        f.write("n\n")
+                    git("add", fname)
+                else:
+                    with open(path) as f:
+                        rows = f.read().splitlines()
+                    edit(rows)
+                    with open(path, "w") as f:
+                        f.write("".join(r + "\n" for r in rows))
+                    git("add", "shared.py")
+                git("commit", "-q", "-m", msg)
+                return git("rev-parse", "HEAD")
+
             git("init", "-q", "-b", "main")
-            with open(os.path.join(repo, "shared.py"), "w") as f:
-                f.write("x\n")
+            with open(path, "w") as f:
+                f.write("a\nb\nc\n")
             git("add", "shared.py")
             git("commit", "-q", "-m", "cut")
             git("update-ref", "refs/remotes/origin/release/0.187", "HEAD")
-            shas = {}
-            for name, path in (
-                ("shared", "shared.py"),
-                ("new", "new.py"),
-                ("picked", "shared.py"),
-                ("owed", "shared.py"),
-                ("misc", "shared.py"),
-            ):
-                with open(os.path.join(repo, path), "a") as f:
-                    f.write(f"{name}\n")
-                git("add", path)
-                git("commit", "-q", "-m", name)
-                shas[name] = git("rev-parse", "HEAD")
+
+            def sub(old, new):
+                return lambda rows: rows.__setitem__(rows.index(old), new)
+
+            shas = {
+                "shared": commit("shared", sub("a", "a2")),  # cut code
+                "new": commit("new", fname="new.py"),  # a new file
+                "added": commit("added", lambda rows: rows.append("p")),  # adds only
+                "picked": commit("picked", sub("b", "b2")),  # itself picked onto the line
+                "owed": commit("owed", sub("c", "c2")),  # its label covers the line
+                "misc": commit("misc", sub("a2", "a3")),
+                "grow": commit(
+                    "grow", lambda rows: rows.append("q")
+                ),  # adds only: nothing to blame
+            }
+            shas["fix_pick"] = commit(
+                "fix_pick", sub("p", "p2")
+            )  # "added" reached the line by a pick
             git("update-ref", "refs/remotes/origin/main", "HEAD")
-            # The line's pick of "picked", carrying the trailer a pick or a decline leaves.
             git("checkout", "-q", "-b", "rel", "refs/remotes/origin/release/0.187")
-            git(
-                "commit",
-                "-q",
-                "--allow-empty",
-                "-m",
-                f"picked\n\n(cherry picked from commit {shas['picked']})",
-            )
+            for name, ref in (
+                ("picked", shas["picked"]),
+                ("added", shas["added"][:12]),
+            ):  # abbreviated
+                git(
+                    "commit",
+                    "-q",
+                    "--allow-empty",
+                    "-m",
+                    f"{name}\n\n(cherry picked from commit {ref})",
+                )
             git("update-ref", "refs/remotes/origin/release/0.187", "HEAD")
+            fix = lambda n: ("0.188", f"#{n}", f"UN-{n} [FIX] x")
             classes = {
-                shas["shared"]: ("0.188", "#1", "UN-1 [FIX] a"),
-                shas["new"]: ("0.188", "#2", "UN-2 [FIX] b"),  # new.py is not on 0.187
-                shas["picked"]: ("0.188", "#3", "UN-3 [FIX] c"),
-                shas["owed"]: (
-                    "0.187",
-                    "#4",
-                    "UN-4 [FIX] d",
-                ),  # owed, so held() reports it
+                shas["shared"]: fix(1),
+                shas["new"]: fix(2),
+                shas["picked"]: fix(3),
+                shas["owed"]: ("0.187", "#4", "UN-4 [FIX] x"),
                 shas["misc"]: (None, "#5", "UN-5 [MISC] e"),
+                shas["fix_pick"]: fix(6),
+                shas["grow"]: fix(7),
             }
             self.assertEqual(
                 bp.under_backported(repo, "release/0.187", classes),
-                [(shas["shared"], "0.188", "#1", "UN-1 [FIX] a")],
+                [(shas["fix_pick"], *fix(6)), (shas["shared"], *fix(1))],  # newest first
             )
 
 

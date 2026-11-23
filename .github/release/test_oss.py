@@ -906,6 +906,7 @@ case "$*" in
     cat "{d}/$(echo "$4" | tr / _).json" 2>/dev/null || echo "[]";;
   *"/pulls"*) echo "$GH_TOKEN $*" >> {d}/gh.log; [ -e {d}/pullsfail ] && exit 1
     cat {d}/pulls.json 2>/dev/null || echo "[]";;
+  *"/labels/"*) echo "$GH_TOKEN $*" >> {d}/gh.log; [ -e {d}/labelsfail ] && echo "gh: Forbidden (HTTP 403)" >&2 && exit 1;;
   *"/actions/workflows/"*) echo "$GH_TOKEN $*" >> {d}/gh.log; [ -e {d}/runsfail ] && exit 1
     wf=${{2#*/actions/workflows/}}; cat "{d}/runs-${{wf%%/*}}" 2>/dev/null;;
 esac
@@ -996,6 +997,36 @@ class RetireWorkflow(Workflow):
         self.line("1.7")
         self.retire(ACTION=ABANDON, LINE="1.7", REASON="cut by mistake")
         self.assert_gone("1.7")
+        for slug in ("Zipstack/unstract-cloud", oss.OSS):  # re-described, never deleted
+            self.assertIn(
+                f"oss-token api -X PATCH repos/{slug}/labels/backport%2F1.7 -f description=Retired line release/1.7 "
+                "(abandoned); kept so old PRs keep their label\n",
+                self.read("gh.log"),
+            )
+        self.assertNotIn("DELETE", self.read("gh.log"))
+
+    def test_a_label_failure_fails_the_run_after_the_branch_is_gone(self):
+        self.line("1.7")
+        self.write("labelsfail", "")
+        r = self.run_step(
+            inline("retire.yaml", "Derive and retire"),
+            ACTION=ABANDON,
+            LINE="1.7",
+            REASON="cut by mistake",
+            DRY_RUN="false",
+        )
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assert_gone("1.7")
+        self.assertIn(
+            "::error::cannot edit label `backport/1.7` in Zipstack/unstract-cloud",
+            r.stdout,
+        )
+        self.assertIn(
+            "- ⚠ cannot edit label `backport/1.7` in Zipstack/unstract (", r.stdout
+        )
+        self.assertIn(
+            "By hand: gh label edit 'backport/1.7' -R Zipstack/unstract-cloud", r.stdout
+        )
 
     def test_abandon_deletes_one_rc_and_keeps_the_last(self):
         self.line("1.7", "v1.7.0-rc.1", "v1.7.0-rc.2")
@@ -3464,6 +3495,21 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertNotIn("Forced late target", r.stdout)
 
+    def test_a_stabilizing_line_never_waits_on_held_fixes(self):
+        # Backport picks onto a line in RC by itself, so an unpicked fix is not held there.
+        self.line("1.7", "v1.7.0-rc.1")
+        dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "[FIX] y (#5)")
+        dev_git(self.cloud, "push", "-q", "origin", "main")
+        self.write(
+            "pulls.json",
+            json.dumps(
+                [{"number": 5, "title": "[FIX] y", "labels": [{"name": "backport/1.7"}]}]
+            ),
+        )
+        r = self.checks(TARGETS="on-prem")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("held fixes", r.stdout)
+
     def test_allocates_past_a_registry_rc(self):
         # An earlier run pushed the cloud artifact of v1.7.0-rc.1, then its tag push failed and the tip moved.
         self.line("1.7")
@@ -3952,6 +3998,57 @@ class InputSteps(unittest.TestCase):
                 self.run_step("publish.yaml", "Version", VERSION=v),
                 (0, "version=v1.7.0\n", ""),
             )
+
+
+@unittest.skipUnless(
+    os.path.exists(os.path.join(HERE, "..", "workflows", "cut.yaml")),
+    "the cloud repo's workflows",
+)
+class CutLabels(unittest.TestCase):
+    """Cut's label step: creates backport/X.Y in both repos, or stops the cut with the command to run by hand."""
+
+    def run_labels(self, gh_body):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "gh"), "w") as fh:
+                fh.write(f'#!/bin/sh\necho "$*" >> {d}/calls\n{gh_body}\n')
+            os.chmod(os.path.join(d, "gh"), 0o755)
+            r = subprocess.run(
+                [sys.executable, "-"],
+                input=inline("cut.yaml", "Backport labels"),
+                cwd=os.path.join(HERE, "..", ".."),
+                env={
+                    **os.environ,
+                    "PATH": f"{d}:{os.environ['PATH']}",
+                    "LINE": "1.9",
+                    "GITHUB_REPOSITORY": "Zipstack/unstract-cloud",
+                },
+                capture_output=True,
+                text=True,
+            )
+            with open(os.path.join(d, "calls")) as fh:
+                return r, fh.read()
+
+    def test_creates_a_missing_label_in_both_repos(self):
+        r, calls = self.run_labels(
+            'case "$*" in *"-X PATCH"*) echo "gh: Not Found (HTTP 404)" >&2; exit 1;; esac'
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for slug in ("Zipstack/unstract-cloud", oss.OSS):
+            self.assertIn(
+                f"api repos/{slug}/labels -f name=backport/1.9 -f color=0e8a16", calls
+            )
+            self.assertIn(f"- label `backport/1.9` created in {slug}", r.stdout)
+
+    def test_a_denied_token_fails_the_step(self):
+        r, calls = self.run_labels(
+            'echo "gh: Resource not accessible by integration (HTTP 403)" >&2; exit 1'
+        )
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertNotIn("-f name=", calls)
+        self.assertIn("::error::", r.stderr)
+        self.assertIn(
+            "By hand: gh label create 'backport/1.9' -R Zipstack/unstract-cloud", r.stderr
+        )
 
 
 @unittest.skipUnless(
@@ -4923,6 +5020,12 @@ esac
         rc, out = self.classify("UN-1 [FIX] x", ["backport/0.187"], "main", heads=heads)
         self.assertEqual(rc, 0, out)
         self.assertTrue(out.startswith("class=0.187\n"), out)
+        # Backport's pick PR into a release line carries its source PR's label, which may name a retired line.
+        rc, out = self.classify(
+            "UN-1 [FIX] x", ["backport/0.186"], "release/0.187", heads=heads
+        )
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn("::error", out)
 
     def test_unlisted_active_lines_fail_and_ask_for_a_rerun(self):
         for kw in ({"heads_exit": 1}, {"heads": ()}):

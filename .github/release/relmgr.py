@@ -373,17 +373,17 @@ def line_label(slug, x_y, gh, retired=None):
         if retired
         else f"Also copy to release/{x_y} and every newer active line"
     )[:100]  # GitHub's limit
+    url = f"repos/{slug}/labels/{name.replace('/', '%2F')}"
     try:
-        if retired:
-            gh(
-                "api",
-                "-X",
-                "PATCH",
-                f"repos/{slug}/labels/{name.replace('/', '%2F')}",
-                "-f",
-                f"description={desc}",
-            )
-        else:
+        # PATCH first: an existing label (a re-cut minor, one made by hand) gets the right description back.
+        # gh puts a 422's error code on stdout, which callers' errors do not carry, so POST only after a 404.
+        try:
+            gh("api", "-X", "PATCH", url, "-f", f"description={desc}")
+        except RuntimeError as e:
+            if "(HTTP 404)" not in str(e):
+                raise
+            if retired:
+                return f"no label `{name}` in {slug} to mark retired"
             gh(
                 "api",
                 f"repos/{slug}/labels",
@@ -394,15 +394,14 @@ def line_label(slug, x_y, gh, retired=None):
                 "-f",
                 f"description={desc}",
             )
+            return f"label `{name}` created in {slug}"
     except RuntimeError as e:
-        if "already_exists" in str(e):
-            return f"label `{name}` already exists in {slug}"
         verb = "edit" if retired else "create"
         raise RuntimeError(
             f"cannot {verb} label `{name}` in {slug} ({e}). The release bot's token may lack the Issues or Pull "
             f"requests write permission. By hand: gh label {verb} '{name}' -R {slug} --description '{desc}'"
         ) from e
-    return f"label `{name}` {'marked retired' if retired else 'created'} in {slug}"
+    return f"label `{name}` {'marked retired' if retired else 'updated'} in {slug}"
 
 
 def pr_fix_class(title, labels=(), active=None):

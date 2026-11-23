@@ -3,7 +3,7 @@
 Usage: backport.py --state state.json (--commits SHA|PR[,...] | --rescan) [--patch-released-lines] [--lines X.Y[,...]]
 
 --rescan (every push to main): pick every main commit since each target's cut that no trailer there names
-(ga only on stabilized targets, held without --patch-released-lines). --commits (dispatch): only these;
+(on a stabilized target, a fix is held without --patch-released-lines). --commits (dispatch): only these;
 a fix reaches a stabilized line its label covers only with --patch-released-lines; --lines narrows which.
 
 Run from a full clone whose `origin` pushes with the bot token, with GH_TOKEN set to the bot token and
@@ -499,9 +499,38 @@ def _trailers(repo, base, remote):
     }
 
 
+HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? ", re.M)
+
+
+def _blamed(repo, sha):
+    """Commits behind the lines sha changes or removes, blamed at its parent."""
+    out = set()
+    diff = rm.git(repo, "diff", "-U0", "--no-color", "--no-renames", f"{sha}^", sha)
+    for part in diff.split("\ndiff --git "):
+        path = re.search(r"^--- a/(.+)$", part, re.M)
+        if not path:
+            continue  # an added file has no old lines
+        for start, n in HUNK_RE.findall(part):
+            n = 1 if n == "" else int(n)
+            if not n:
+                continue  # a pure addition
+            blame = rm.git(
+                repo,
+                "blame",
+                "--porcelain",
+                "-L",
+                f"{start},+{n}",
+                f"{sha}^",
+                "--",
+                path.group(1),
+            )
+            out |= set(re.findall(r"^([0-9a-f]{40}) \d+ \d+", blame, re.M))
+    return out
+
+
 def under_backported(repo, branch, classes):
-    """Main fixes since branch's cut whose label names a newer line, neither picked nor declined here, though a
-    file they change exists at branch's tip: maybe owed here too. A file's presence is a hint, not proof.
+    """Main fixes since branch's cut whose label names a newer line, not picked here, though code they change
+    reached branch (before its cut, or by a pick): maybe owed here too.
     """
     remote = f"origin/{branch}"
     base = rm.git(repo, "merge-base", MAIN, remote)
@@ -518,41 +547,16 @@ def under_backported(repo, branch, classes):
         cls, pr, title = classes.get(sha, (None, None, None))
         if cls in (None, UNCLASSIFIABLE) or rm.owes(cls, branch) or sha in done:
             continue
-        paths = rm.git(
-            repo, "diff-tree", "--no-commit-id", "--name-only", "-r", sha
-        ).split("\n")
         if any(
-            p
-            and rm.git(repo, "cat-file", "-e", f"{remote}:{p}", check=False).returncode
+            c in done  # picked_from resolves short SHAs
+            or rm.git(
+                repo, "merge-base", "--is-ancestor", c, base, check=False
+            ).returncode
             == 0
-            for p in paths
+            for c in _blamed(repo, sha)
         ):
             rows.append((sha, cls, pr, title))
     return rows
-
-
-REVERTS_ANY_RE = re.compile(r"^(?:\* )?This reverts commit ([0-9a-f]{7,40})", re.M)
-PR_SUFFIX_RE = re.compile(r" \(#\d+\)$")
-
-
-def _undone(order, i, title):
-    """Whether main's first-parent commit i is reverted by a later one that is not itself reverted, so a revert
-    of the revert keeps the fix. A revert names the commit (a squash lists it under "* "); only one that names
-    none is matched by GitHub's revert PR title, since two PRs can share a title.
-    """
-    sha = order[i][0]
-    for j in range(i + 1, len(order)):
-        _, subj, body = order[j]
-        named = REVERTS_ANY_RE.findall(body)
-        m = rm.REVERT_RE.match(subj)
-        hit = (
-            any(sha.startswith(t) for t in named)
-            if named
-            else m and m[1].strip() == title.strip()
-        )
-        if hit and not _undone(order, j, PR_SUFFIX_RE.sub("", subj)):
-            return True
-    return False
 
 
 def search_since(repo, base):
@@ -664,7 +668,7 @@ def state_check(state, others=(), slug=None, now=None):
                 )
         for sha, cls, pr, title in under_backported(REPO, b, cache):  # information only
             print(
-                f"::notice::{sha[:7]} ({pr}, {title}) is labelled backport/{cls}, but a file it changes is also on "
+                f"::notice::{sha[:7]} ({pr}, {title}) is labelled backport/{cls}, but code it changes is also on "
                 f"{b}: if {b} needs the fix, relabel the PR backport/{rm.line(b)}"
             )
     for e in errors:
@@ -707,7 +711,8 @@ def warn_held(slug, repo, branch, annotate="warning", token=None):
 
 def onprem_rc_blockers(sources, branch):
     """(lines, failures) for an on-prem RC of a stabilized branch: each fix owed there, in any of sources
-    [(slug, repo, gh kwargs)], blocks until picked or declined.
+    [(slug, repo, gh kwargs)], blocks until picked or declined; so does a commit whose labels cannot tell, and a fix
+    main later reverted (decline it).
     """
     out, failed = [], []
     line = rm.line(branch)
@@ -718,10 +723,14 @@ def onprem_rc_blockers(sources, branch):
             failed.append(f"{slug}: {e}")
             continue
         out += [
-            f"- {slug}{pr} {title}: pick it with `gh workflow run backport.yaml -R {slug} -f commits={_commit_arg(s, pr)} "
-            f"-f lines={line} -f patch_released_lines=true`, or decline it on {branch}"
+            (
+                f"- {slug} {s[:7]} ({pr}) {title}: {UNCLASSIFIABLE}, so it may be owed here; fix its PR's labels, "
+                f"or decline it on {branch}"
+                if cls == UNCLASSIFIABLE
+                else f"- {slug}{pr} {title}: pick it with `gh workflow run backport.yaml -R {slug} "
+                f"-f commits={_commit_arg(s, pr)} -f lines={line} -f patch_released_lines=true`, or decline it on {branch}"
+            )
             for s, cls, pr, title in rows
-            if cls != UNCLASSIFIABLE
         ]
     return out, failed
 

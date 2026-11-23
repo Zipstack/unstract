@@ -2,7 +2,7 @@
 
 Usage (from a clone of this repo, with gh logged in):
   label_advice.py --pr N [--answer hotfix=yes|no | --answer line=X.Y|main-only] [--json]
-  label_advice.py --branch REF [--answer hotfix=yes|no] [--json]   a local branch with no PR yet
+  label_advice.py --branch REF [--answer hotfix=yes|no | --answer line=X.Y|main-only] [--json]   no PR yet
   label_advice.py --owed [--author LOGIN] [--json]                   what your merged PRs still owe release lines
 
 Results: `decided` (no judgement left; Lint PR warns on a different label; `label` is null for a Backport pick
@@ -209,13 +209,13 @@ def blame(slug, base, path, ranges):
             "graphql",
             "-f",
             f"query={BLAME_Q}",
-            "-F",
+            "-f",
             f"owner={owner}",
-            "-F",
+            "-f",
             f"name={name}",
-            "-F",
+            "-f",
             f"oid={base}",
-            "-F",
+            "-f",
             f"path={path}",
         )
     )
@@ -235,14 +235,29 @@ def on_line(slug, sha, line):
     return cmp["status"] in ("behind", "identical")
 
 
+def picks(slug, line):
+    """SHAs that Backport picked onto release/X.Y since its cut: a picked commit has a new SHA, so ancestry misses it."""
+    out = _gh(
+        "api",
+        "--paginate",
+        f"repos/{slug}/compare/main...release/{line}",
+        "--jq",
+        ".commits[].commit.message",
+    )
+    return set(rm.PICK_RE.findall(out))
+
+
 def line_facts(slug, base, patches, need_ga=True):
     """(lines, how). Blame the lines a change touches at its base and test whether those commits are on each line;
     when it cannot, fall back to whether a changed file exists there, and say so.
     """
-    changed = {p: old_ranges(t) for p, t in patches.items() if p in code(patches)}
-    touched = {p: r for p, r in changed.items() if r}
+    changed = {p: t for p, t in patches.items() if p in code(patches)}
+    touched = {p: r for p, t in changed.items() if (r := old_ranges(t))}
     commits, how = None, ""
-    if not touched:
+    # GitHub sends no patch for a large or binary file, so blame cannot see what it changes.
+    if nodiff := sorted(p for p, t in changed.items() if t is None):
+        how = f"by file path: GitHub sends no diff for {nodiff[0]}"
+    elif not touched:
         how = "by file path: the change only adds lines, so blame cannot tell"
     elif len(touched) > BLAME_MAX:
         how = f"by file path: {len(touched)} files is past the blame limit of {BLAME_MAX}"
@@ -260,7 +275,10 @@ def line_facts(slug, base, patches, need_ga=True):
     out = []
     for line in live_lines(slug):
         if commits is not None:
-            present = any(on_line(slug, c, line) for c in commits)
+            # ponytail: one compare per (commit, line) where the code is absent; cap commits if Lint's API budget bites.
+            present = bool(commits & picks(slug, line)) or any(
+                on_line(slug, c, line) for c in commits
+            )
         else:
             files = tree(slug, line)
             present = (
@@ -284,9 +302,11 @@ def pr_facts(slug, n):
     patches = {}
     for page in files:
         for f in page:
-            patches[f["filename"]] = f.get("patch")
-            if f.get("previous_filename"):
-                patches.setdefault(f["previous_filename"], f.get("patch"))
+            prev = f.get("previous_filename")
+            # A renamed file's patch is blamed at its old path: the new one is not at the base.
+            patches[f["filename"]] = "" if prev else f.get("patch")
+            if prev:
+                patches.setdefault(prev, f.get("patch"))
     return pr, patches
 
 
@@ -443,7 +463,12 @@ def main(argv=None):
     ap.add_argument("--pr", type=int)
     ap.add_argument("--branch")
     ap.add_argument("--owed", action="store_true")
-    ap.add_argument("--answer", action="append", default=[], metavar="hotfix=yes|no")
+    ap.add_argument(
+        "--answer",
+        action="append",
+        default=[],
+        metavar="hotfix=yes|no|line=X.Y|main-only",
+    )
     ap.add_argument("--author")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)

@@ -172,8 +172,8 @@ class Scenario(unittest.TestCase):
         )
 
     def test_cloud_ga_stabilizes_a_line_with_onprem_pending(self):
-        # The live case: on-prem RCs from before cloud GA, no on-prem GA. The first GA ends auto-picks; security and
-        # backport/ga fixes wait for confirmation (Promote's block on them: test_oss.test_promote_held_fixes).
+        # The live case: on-prem RCs from before cloud GA, no on-prem GA. The first GA ends auto-picks; security fixes
+        # and fixes labelled for this line or an older one wait for confirmation (Promote's block on them: test_oss.test_promote_held_fixes).
         self.onprem_rc()
         st = self.state()
         self.assertEqual(
@@ -1722,25 +1722,43 @@ class PrFixClass(unittest.TestCase):
         self.assertFalse(rm.owes(None, "release/0.188"))
 
     def test_line_label_upkeep(self):
+        # Errors as backport.run raises them: gh's stderr only (a real 404 on a missing label).
+        missing = "gh api -X (exit 1): gh: Not Found (HTTP 404)"
+        labels = {}
+
+        def gh(*a):
+            calls.append(a)
+            if a[:3] == ("api", "-X", "PATCH"):
+                if a[3] not in labels:
+                    raise RuntimeError(missing)
+                labels[a[3]] = a[-1]
+            else:
+                labels["repos/o/r/labels/" + a[3][5:].replace("/", "%2F")] = a[-1]
+            return ""
+
         calls = []
-        ok = lambda *a: calls.append(a) or ""
         self.assertEqual(
-            rm.line_label("o/r", "0.189", ok), "label `backport/0.189` created in o/r"
+            rm.line_label("o/r", "0.189", gh), "label `backport/0.189` created in o/r"
         )
         self.assertIn("name=backport/0.189", calls[-1])
+        # Retire keeps the label; a re-cut of the same minor finds it and makes it active again.
         self.assertEqual(
-            rm.line_label("o/r", "0.186", ok, retired="past end of support"),
-            "label `backport/0.186` marked retired in o/r",
+            rm.line_label("o/r", "0.189", gh, retired="abandoned"),
+            "label `backport/0.189` marked retired in o/r",
         )
         self.assertEqual(
-            calls[-1][:4], ("api", "-X", "PATCH", "repos/o/r/labels/backport%2F0.186")
+            calls[-1][:4], ("api", "-X", "PATCH", "repos/o/r/labels/backport%2F0.189")
+        )
+        self.assertIn("Retired", labels["repos/o/r/labels/backport%2F0.189"])
+        self.assertEqual(
+            rm.line_label("o/r", "0.189", gh), "label `backport/0.189` updated in o/r"
+        )
+        self.assertIn("Also copy", labels["repos/o/r/labels/backport%2F0.189"])
+        self.assertEqual(
+            rm.line_label("o/r", "0.185", gh, retired="past end of support"),
+            "no label `backport/0.185` in o/r to mark retired",
         )
         self.assertNotIn("DELETE", [x for c in calls for x in c])
-
-        def exists(*a):
-            raise RuntimeError('{"errors":[{"code":"already_exists"}]}')
-
-        self.assertIn("already exists", rm.line_label("o/r", "0.189", exists))
 
         def denied(*a):
             raise RuntimeError("HTTP 403: Resource not accessible by integration")
@@ -1753,6 +1771,12 @@ class PrFixClass(unittest.TestCase):
                 rm.line_label("o/r", "0.189", denied, **kw)
             self.assertIn(cmd, str(e.exception))
             self.assertIn("HTTP 403", str(e.exception))
+
+    def test_old_label_names_are_unknown(self):
+        for old in ("fix/needs-backport", "fix/security", "fix/critical"):
+            for labels in ([old], [old, "backport/0.188"], [old, "main-only"]):
+                with self.assertRaisesRegex(ValueError, "unknown label", msg=labels):
+                    rm.main_fix_class("UN-1 [FIX] x", labels)
 
     def test_main_needs_one_routing_label(self):
         c = rm.main_fix_class

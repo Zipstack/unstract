@@ -186,6 +186,21 @@ class Advise(unittest.TestCase):
                 a = la.advise_pr("o/r", 7, pr=pr, patches={"backend/x.py": "@@ -1 +1 @@"})
             self.assertEqual((a["result"], a["label"]), (result, "release-branch-only"))
 
+    def test_the_relabel_command_drops_old_and_line_labels(self):
+        pr = {
+            "base": {"ref": "main"},
+            "head": {"ref": "docs-x"},
+            "labels": [{"name": n} for n in ("backport/rc", "backport/0.186", "bug")],
+        }
+        a = la.advise_pr("o/r", 7, pr=pr, patches={"docs/a.md": "@@ -1 +1 @@"})
+        self.assertEqual((a["result"], a["label"]), ("decided", "main-only"))
+        self.assertEqual(
+            a["next"],
+            "gh api -X DELETE repos/o/r/issues/7/labels/backport%2F0.186 && "
+            "gh api -X DELETE repos/o/r/issues/7/labels/backport%2Frc && "
+            "gh api repos/o/r/issues/7/labels -f 'labels[]=main-only'",
+        )  # `bug` stays
+
     def test_release_base_is_release_branch_only(self):
         a = la.advise("release/0.186", ["backend/x.py"], [])
         self.assertEqual((a["result"], a["label"]), ("decided", "release-branch-only"))
@@ -325,11 +340,11 @@ class Advise(unittest.TestCase):
             line("0.187", True, ga=True),
             line("0.186", True, ga=True),
         ]
-        b = la.advise("main", ["backend/x.py"], two, pr=7)
+        b = la.advise("main", ["backend/x.py"], two, pr=7, how=how)
         self.assertEqual(
             b["question"]["answers"], {"yes": "backport/0.186", "no": "backport/0.188"}
         )
-        self.assertIn(how, a["reason"])
+        self.assertIn(how, b["reason"])
 
 
 class OldRanges(unittest.TestCase):
@@ -343,6 +358,9 @@ class OldRanges(unittest.TestCase):
         self.assertEqual(la.old_ranges(None), [])  # GitHub omits the patch of a binary
 
 
+OLD, NEW = "0a" * 20, "0b" * 20  # blame commit SHAs
+
+
 class LineFacts(unittest.TestCase):
     """The facts advise() is fed, from mocked GitHub answers."""
 
@@ -353,17 +371,19 @@ class LineFacts(unittest.TestCase):
             if self.blame_fails:
                 raise RuntimeError("gh api graphql (exit 1): HTTP 502")
             rows = [
-                {"startingLine": 1, "endingLine": 9, "commit": {"oid": "old"}},
-                {"startingLine": 10, "endingLine": 20, "commit": {"oid": "new"}},
+                {"startingLine": 1, "endingLine": 9, "commit": {"oid": OLD}},
+                {"startingLine": 10, "endingLine": 20, "commit": {"oid": NEW}},
             ]
             return json.dumps(
                 {"data": {"repository": {"object": {"blame": {"ranges": rows}}}}}
             )
         if "matching-refs/heads/release/" in url:
             return "refs/heads/release/0.188\nrefs/heads/release/0.186\nrefs/heads/release/0.185\nrefs/heads/release/v0.148.1001"
+        if "/compare/main...release/" in url:
+            return self.picked.get(url.rsplit("/", 1)[1], "")
         if "/compare/" in url:
-            # "old" is on every line, "new" only on 0.188.
-            on = "/compare/release/0.188..." in url or url.endswith("...old")
+            # OLD is on every line, NEW only on 0.188.
+            on = "/compare/release/0.188..." in url or url.endswith("..." + OLD)
             return json.dumps({"status": "behind" if on else "diverged"})
         if "trees/release/0.188" in url:
             return json.dumps({"truncated": True, "tree": []})
@@ -379,8 +399,8 @@ class LineFacts(unittest.TestCase):
             return json.dumps([{"ref": "refs/tags/v0.188.0-rc.3"}])
         raise AssertionError(args)
 
-    def facts(self, patches, blame_fails=False):
-        self.blamed, self.blame_fails = [], blame_fails
+    def facts(self, patches, blame_fails=False, picked=None):
+        self.blamed, self.blame_fails, self.picked = [], blame_fails, picked or {}
         with mock.patch.object(la, "_gh", side_effect=self.gh):
             lines, how = la.line_facts("o/r", "b" * 40, patches)
         return {f["line"]: f for f in lines}, how
@@ -402,6 +422,43 @@ class LineFacts(unittest.TestCase):
         self.assertTrue(f["0.186"]["present"])
         self.assertTrue(f["0.186"]["ga"])  # stable tag
         self.assertFalse(f["0.188"]["ga"])  # an RC tag is not GA
+
+    def test_a_picked_commit_counts_as_on_the_line(self):
+        # Backport's pick of "new" onto 0.186 has its own SHA; only its trailer names "new".
+        msg = "fix: thing (#12)\n\n(cherry picked from commit " + "a" * 40 + ")\n"
+        f, _ = self.facts({"backend/x.py": "@@ -12,2 +12,2 @@"}, picked={"0.186": msg})
+        self.assertFalse(f["0.186"]["present"])  # the trailer names another commit
+        msg = msg.replace("a" * 40, NEW)
+        f, _ = self.facts({"backend/x.py": "@@ -12,2 +12,2 @@"}, picked={"0.186": msg})
+        self.assertTrue(f["0.186"]["present"])
+        self.assertFalse(f["0.185"]["present"])
+
+    def test_a_file_without_a_patch_falls_back_to_paths(self):
+        # GitHub's pulls/N/files omits `patch` for a large or binary file.
+        _, how = self.facts({"backend/x.py": None, "backend/y.py": "@@ -12,2 +12,2 @@"})
+        self.assertEqual(how, "by file path: GitHub sends no diff for backend/x.py")
+        self.assertEqual(self.blamed, [])
+
+    def test_a_rename_is_blamed_at_its_old_path(self):
+        files = [
+            [
+                {
+                    "filename": "backend/y.py",
+                    "previous_filename": "backend/x.py",
+                    "patch": "@@ -12,2 +12,2 @@",
+                }
+            ]
+        ]
+        with mock.patch.object(
+            la, "_gh", side_effect=['{"number": 7}', json.dumps(files)]
+        ):
+            _, patches = la.pr_facts("o/r", 7)
+        self.assertEqual(
+            patches, {"backend/y.py": "", "backend/x.py": "@@ -12,2 +12,2 @@"}
+        )
+        _, how = self.facts(patches)
+        self.assertEqual(self.blamed, ["path=backend/x.py"])
+        self.assertEqual(how, "blame: 1 commit(s) behind the changed lines")
 
     def test_path_fallback_says_why(self):
         f, how = self.facts({"backend/x.py": "@@ -0,0 +1,3 @@"})
@@ -436,7 +493,12 @@ class LineFacts(unittest.TestCase):
 
 class Cli(unittest.TestCase):
     def test_bad_input_exits_2(self):
-        for argv in ([], ["--pr", "1", "--answer", "hotfix=maybe"]):
+        for argv in (
+            [],
+            ["--pr", "1", "--answer", "hotfix=maybe"],
+            ["--pr", "1", "--answer", "line=foo"],
+            ["--pr", "1", "--answer", "line=backport/0.188"],
+        ):
             with mock.patch("sys.stderr"):
                 self.assertEqual(la.main(argv), 2, argv)
 
