@@ -44,8 +44,8 @@ def provider_error_details(exc: BaseException) -> dict[str, Any] | None:
             or _request_id_from(headers),
             "retry_after_seconds": _retry_after(headers),
         }
-    except Exception:
-        logger.debug("Could not read provider error details", exc_info=True)
+    except Exception as e:
+        logger.warning("Could not read provider error details: %s", type(e).__name__)
         return None
     if all(value is None for value in details.values()):
         return None
@@ -61,8 +61,8 @@ def _find_provider_error(exc: BaseException) -> openai.APIError | None:
             return current
         current = (
             getattr(current, "actual_err", None)
-            or current.__cause__
-            or current.__context__
+            or getattr(current, "__cause__", None)
+            or getattr(current, "__context__", None)
         )
     return None
 

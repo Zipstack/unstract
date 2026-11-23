@@ -6,8 +6,10 @@ result's metadata carries the provider name, request id and retry hint found
 on that chain, so the IDE callback can show them.
 """
 
+import logging
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import httpx
@@ -113,6 +115,61 @@ class TestProviderErrorDetails:
 
         assert provider_error_details(wrapper)["request_id"] == "req-2"
 
+    def test_retry_after_ms_wins_over_retry_after(self):
+        err = _provider_error({"retry-after-ms": "1500", "retry-after": "60"})
+
+        assert provider_error_details(_wrapped(err))["retry_after_seconds"] == 2
+
+    def test_fractional_retry_after_rounds_up(self):
+        err = _provider_error({"retry-after": "1.2"})
+
+        assert provider_error_details(_wrapped(err))["retry_after_seconds"] == 2
+
+    @pytest.mark.parametrize(
+        "header",
+        [
+            "x-request-id",
+            "request-id",
+            "apim-request-id",
+            "x-amzn-requestid",
+            "x-ms-request-id",
+        ],
+    )
+    def test_each_request_id_header(self, header):
+        err = _provider_error(response_headers={header.upper(): "req-h"})
+
+        assert provider_error_details(_wrapped(err))["request_id"] == "req-h"
+
+    def test_request_id_attribute_wins_over_headers(self):
+        err = _provider_error({"request-id": "from-header"})
+        err.request_id = "from-attribute"
+
+        assert provider_error_details(_wrapped(err))["request_id"] == "from-attribute"
+
+    def test_found_through_cause_only(self):
+        err = _provider_error({"x-request-id": "req-c"})
+        outer = LegacyExecutorError(message="wrapped")
+        outer.__cause__ = err
+
+        assert provider_error_details(outer)["request_id"] == "req-c"
+
+    def test_found_through_context_only(self):
+        err = _provider_error({"x-request-id": "req-x"})
+        outer = LegacyExecutorError(message="wrapped")
+        outer.__context__ = err
+
+        assert provider_error_details(outer)["request_id"] == "req-x"
+
+    def test_non_exception_actual_err_ends_quietly(self, caplog):
+        # sdk1 passes an HTTP response object as actual_err for LLMWhisperer.
+        wrapper = LLMError(
+            message="whisper failed", actual_err=SimpleNamespace(status=500)
+        )
+
+        with caplog.at_level(logging.WARNING):
+            assert provider_error_details(wrapper) is None
+        assert caplog.records == []
+
     def test_long_values_truncated(self):
         err = _provider_error({"x-request-id": "r" * 500}, provider="p" * 500)
 
@@ -141,13 +198,17 @@ class TestProviderErrorDetails:
 
         assert provider_error_details(exc) is None
 
-    def test_never_raises(self):
+    def test_never_raises_and_warns(self, caplog):
         err = _provider_error({"x-request-id": "req-1"})
-        with patch(
-            "executor.executors.provider_error_details._headers",
-            side_effect=RuntimeError("broken"),
+        with (
+            patch(
+                "executor.executors.provider_error_details._headers",
+                side_effect=RuntimeError("broken"),
+            ),
+            caplog.at_level(logging.WARNING),
         ):
             assert provider_error_details(_wrapped(err)) is None
+        assert "RuntimeError" in caplog.text
 
 
 class TestLegacyExecutorFailureMetadata:

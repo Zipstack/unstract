@@ -152,6 +152,25 @@ class TestFailedEventFromExecutorResult:
         assert event["error_details"]["retry_after_seconds"] is None
 
 
+def test_inline_cap_stays_under_the_django_upload_limit():
+    from ide_callback.run_event_fields import MAX_INLINE_OUTPUTS_BYTES
+
+    # DATA_UPLOAD_MAX_MEMORY_SIZE default is 2.5 MiB; leave room for the envelope.
+    assert 0 < MAX_INLINE_OUTPUTS_BYTES <= 2_621_440 // 2
+
+
+def test_empty_strings_are_not_error_details():
+    from ide_callback.run_event_fields import error_details
+
+    details = {"provider": "", "request_id": "", "retry_after_seconds": 0}
+
+    assert error_details({"error_details": details}) == {
+        "provider": None,
+        "request_id": None,
+        "retry_after_seconds": 0,
+    }
+
+
 class TestFailedEventFromCallbackException:
     def test_null_details_and_run_id(self, api, cb):
         from ide_callback.tasks import ide_prompt_complete
