@@ -1548,4 +1548,50 @@ describe("second review round", () => {
     );
     expect(screen.getByText("Showing 1 to 10 of 30 entries")).toBeTruthy();
   });
+
+  it("asks a server table for page 1 when a parent changes the sort", () => {
+    const onPageChange = vi.fn();
+    const paged = {
+      ...props,
+      rows: FIVE,
+      onSortChange: vi.fn(),
+      pagination: {
+        mode: "server" as const,
+        page: 3,
+        pageSize: 5,
+        total: 50,
+        onPageChange,
+      },
+    };
+    const { rerender } = renderV1(
+      <DataTable {...paged} sort={{ columnId: "name", direction: "asc" }} />,
+    );
+    // Restored with the page (from a URL, say): no reset on first render.
+    expect(onPageChange).not.toHaveBeenCalled();
+    rerender(
+      <DataTable {...paged} sort={{ columnId: "owner", direction: "desc" }} />,
+    );
+    expect(onPageChange).toHaveBeenCalledWith(1);
+  });
+
+  it("keeps caller column ids apart from the built-in cells' keys", () => {
+    const errors = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const columns: DataTableColumn<GalleryDeployment>[] = [
+      { id: "select", header: "Select col", cell: (r) => r.name },
+      { id: "expand", header: "Expand col", cell: (r) => r.owner },
+      { id: "actions", header: "Actions col", cell: (r) => r.workflow },
+    ];
+    setup({
+      columns,
+      selectable: true,
+      renderExpanded: (r) => r.name,
+      rowActions,
+    });
+    expect(bodyRows()[0].cells).toHaveLength(6);
+    expect(
+      errors.mock.calls.some((call) => String(call[0]).includes("same key")),
+    ).toBe(false);
+  });
 });

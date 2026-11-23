@@ -316,11 +316,6 @@ export function DataTable<TRow>({
     const next = nextSort(sort, columnId);
     setOwnSort(next);
     onSortChange?.(next);
-    // A new order starts on page 1: a client table resets itself when the
-    // shown sort changes (useClientPage); a server table asks its parent.
-    if (server && pagination.page !== 1) {
-      pagination.onPageChange(1);
-    }
     pending.current = {
       key: `${sortKeyOf(next)}|${selectedList.join(SEP)}`,
       text: sortAnnouncement(next, headerOf),
@@ -412,6 +407,23 @@ export function DataTable<TRow>({
       element.focus();
     }
   });
+
+  // A new order starts on page 1. A client table resets itself
+  // (useClientPage); a server table asks its parent, whether the sort came
+  // from a header or from the parent (a URL, another control).
+  const shownSort = sortKeyOf(sort);
+  const lastSort = useRef(shownSort);
+  const onServerPage = server ? pagination.onPageChange : undefined;
+  const serverPage = server ? pagination.page : 1;
+  useEffect(() => {
+    if (lastSort.current === shownSort) {
+      return;
+    }
+    lastSort.current = shownSort;
+    if (onServerPage && serverPage !== 1) {
+      onServerPage(1);
+    }
+  }, [shownSort, onServerPage, serverPage]);
 
   // A container table opens a new page or order at the top.
   const viewKey = `${server ? pagination.page : page.pageIndex}|${sortKeyOf(sort)}`;
@@ -604,7 +616,7 @@ export function DataTable<TRow>({
     const cells: { key: string; className: string; content: ReactNode }[] = [];
     if (selectable) {
       cells.push({
-        key: "select",
+        key: "builtin:select",
         className: UTILITY_CELL,
         content: (
           <div className="ui:flex ui:items-center ui:justify-center">
@@ -620,7 +632,7 @@ export function DataTable<TRow>({
     }
     if (expandable) {
       cells.push({
-        key: "expand",
+        key: "builtin:expand",
         className: UTILITY_CELL,
         content: row.getCanExpand() ? (
           <IconButton
@@ -640,7 +652,7 @@ export function DataTable<TRow>({
     }
     for (const column of shownColumns) {
       cells.push({
-        key: column.id,
+        key: `column:${column.id}`,
         className: ALIGN_CLASS[column.align ?? "start"],
         content: column.cell(row.original, {
           tabIndex: controlTab,
@@ -650,7 +662,7 @@ export function DataTable<TRow>({
     }
     if (actions) {
       cells.push({
-        key: "actions",
+        key: "builtin:actions",
         className: "ui:px-2 ui:text-right",
         content: (
           <div className="ui:inline-flex ui:items-center">
