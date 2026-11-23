@@ -375,6 +375,8 @@ class OldRanges(unittest.TestCase):
             la.old_ranges("@@ -1,6 +1,7 @@\n a\n-b\n+B\n c\n d\n+x\n e\n f"),
             [(2, 2), (4, 5)],
         )
+        # No context (`git diff -U0`): `-7,0` inserts after line 7.
+        self.assertEqual(la.old_ranges("@@ -7,0 +8,2 @@\n+x\n+y"), [(7, 8)])
         self.assertEqual(la.old_ranges("@@ -0,0 +1,9 @@\n+new file"), [])
         self.assertEqual(la.old_ranges(None), [])  # GitHub omits the patch of a binary
 

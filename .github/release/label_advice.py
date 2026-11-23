@@ -34,7 +34,7 @@ NONCODE = re.compile(
     r"^[^/]*\.(md|mdx|rst)$|(^|/)README\.md$|^docs/|(^|/)tests?/|(^|/)test_[^/]*\.py$|_test\.py$|\.(test|spec)\.[jt]sx?$"
     r"|(^|/)__tests__/|(^|/)unittests/|^\.github/|^\.claude(-plugin)?/|^\.pre-commit-config\.yaml$"
 )
-HUNK_RE = re.compile(r"^@@ -(\d+)(?:,\d+)? .*$", re.M)
+HUNK_RE = re.compile(r"^@@ -(\d+(?:,\d+)?) .*$", re.M)
 BLAME_MAX = 20  # files blamed per PR; past it, presence is judged by path
 
 
@@ -196,8 +196,10 @@ def old_ranges(patch):
     """
     lines = set()
     parts = HUNK_RE.split(patch or "")[1:]
-    for n, body in zip(parts[::2], parts[1::2], strict=True):
-        n, prev = int(n), ""
+    for head, body in zip(parts[::2], parts[1::2], strict=True):
+        start, _, count = head.partition(",")
+        # `-N,0` is an insertion after line N, so the next old line is N+1; `-0,0` is a new file.
+        n, prev = int(start) + (count == "0" and start != "0"), ""
         for row in body.split("\n"):
             tag = row[:1]
             if tag == "-":
@@ -385,9 +387,7 @@ def advise_pr(slug, n, hotfix=None, pr=None, patches=None, need_ga=True, line=No
 def advise_branch(slug, ref, hotfix=None, line=None):
     base = rm.git(".", "merge-base", "origin/main", ref)
     patches = {}
-    for chunk in rm.git(".", "diff", "-U0", "--no-renames", base, ref).split(
-        "diff --git "
-    )[1:]:
+    for chunk in rm.git(".", "diff", "--no-renames", base, ref).split("diff --git ")[1:]:
         path = chunk.split("\n", 1)[0].split(" b/", 1)[-1]
         patches[path] = chunk
     lines, how = line_facts(slug, base, patches) if code(patches) else ([], "")
