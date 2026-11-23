@@ -312,9 +312,9 @@ class TableOptionsSerializer(serializers.Serializer):
     **`enable_highlight` is free on this extractor too**, which an earlier
     version of this docstring got wrong. It claimed the engine's
     `HighlightValidator` ("Agent 3.5", LLM-based row-to-line matching) made
-    the option cost a per-page LLM call. Agent 3.5 is real and is a vision
-    call per page, but it runs only when `RunnerConfig.highlight_validator` is
-    set, and the blind API's binding never constructs one -- it is an IDE
+    the option cost a per-page LLM call. Agent 3.5 is real and is one
+    LLM call per page, but it runs only when `RunnerConfig.highlight_validator`
+    is set, and the blind API's binding never constructs one -- it is an IDE
     stage. The OCR fetch is unconditional on both extractors. So what the flag
     turns on is the deterministic row-to-line mapping the engine was already
     computing and discarding.
@@ -326,9 +326,8 @@ class TableOptionsSerializer(serializers.Serializer):
     **`enable_word_confidence` is not offered here**, unlike on `kv`. Per-word
     confidence arrives from the OCR as one list per line of the extracted
     text, so attaching it to a value needs that value's line numbers -- which
-    `kv` has on `KeyResult.line_start`/`line_end` and the table rows do not.
-    The engine keeps row line ranges inside `_build_highlight_data`'s own
-    scope and emits coordinates only, so there is no join key on this path.
+    `kv` has on `KeyResult.line_start`/`line_end` and the table result does
+    not: `table` emits coordinates only.
     Refused rather than accepted-and-ignored: a caller who set it would
     otherwise get a result with no confidence in it and nothing saying why.
 

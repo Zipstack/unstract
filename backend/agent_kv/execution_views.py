@@ -527,8 +527,7 @@ def _resolved_adapters(entry: dict, agent_kv_key) -> dict:
         # `ADD_LINE_NOS` and `INCLUDE_LINE_CONFIDENCE` and then fetches
         # `get_highlight_data` (`sdk1/.../llm_whisperer_v2/src/helper.py`). No
         # other x2text adapter has that path, so highlight on one of them would
-        # return an empty block on a job the caller paid extra for -- and for
-        # `table`, "extra" is a per-page LLM call.
+        # return an empty block on a job the caller asked for it on.
         #
         # Refused at submit, naming the adapter, for the same reason every
         # other gate in this function is: before staging, before a slot, before

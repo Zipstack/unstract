@@ -48,8 +48,15 @@ _CONFIDENCE_METADATA = [
 #: `raw` element present. `base_y_percent`/`height_percent` are part of the
 #: real shape and are kept so this does not quietly become a narrower fixture
 #: than the service sends.
+#:
+#: **Keyed from "0", because the endpoint is 0-indexed.** It returns
+#: `{i: ... for i, lx in enumerate(line_metadata)}`, so the first line of the
+#: document is key "0" while the line numbers embedded in the text and cited by
+#: the model are 1-indexed. Every consumer converts between the two; a fixture
+#: keyed from "1" here reads as though the producer were 1-indexed, which would
+#: put every coordinate out by exactly one line.
 _LINE_METADATA = {
-    "1": {
+    "0": {
         "raw": [0, 155, 51, 3168, 0.93],
         "page": 0,
         "page_height": 3168,
@@ -137,7 +144,7 @@ class TestLineConfidenceRidesWithHighlight:
 
         meta = _adapter().process("in.pdf", enable_highlight=True).extraction_metadata
 
-        entry = meta.line_metadata["1"]
+        entry = meta.line_metadata["0"]
         assert entry["line_confidence"] == 0.93
         # Also the fifth element of `raw`, which is where the service reads it
         # from. Both are asserted because the engine reads the named keys while

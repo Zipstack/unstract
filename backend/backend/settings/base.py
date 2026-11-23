@@ -402,7 +402,7 @@ AGENT_KV_MAX_CUSTOM_DATA_BYTES = int(
 # grounding needs the line numbers -- so the fetch happens either way and these
 # options stop the result being discarded. (An earlier version of this comment
 # said `table` paid a per-page LLM call for its highlight validator. The
-# validator is real and is a vision call per page, but it runs only when
+# validator is real and is one LLM call per page, but it runs only when
 # `RunnerConfig.highlight_validator` is set, and the blind API's binding never
 # constructs one -- it is a Prompt Studio stage.)
 AGENT_KV_HIGHLIGHT_ENABLED = (

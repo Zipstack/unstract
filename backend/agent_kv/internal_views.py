@@ -292,10 +292,6 @@ class FinalizeView(APIView):
         )
         if finalized:
             job.status = JobStatus.COMPLETED
-            # Exactly once, by the request that won the guard: a retried or
-            # duplicate finalize gets `finalized is False` and falls through to
-            # the attach path below, so it cannot enqueue a second review copy.
-            #
             return True, False
         return False, _attach_or_discard(
             job_id, org_id, result_ref, body.get("usage_summary")

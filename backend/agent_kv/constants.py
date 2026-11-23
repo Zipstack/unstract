@@ -116,7 +116,7 @@ STAGE_NAMES_BY_EXTRACTOR = {
 #: A literal rather than an import: pulling the SDK adapter class into a
 #: request path to read one `get_id()` drags its whole registry in. The literal
 #: is pinned to the SDK's own value by
-#: `tests/test_highlight_gate.py::test_the_whisperer_id_matches_the_sdk`, so it
+#: `tests/test_custom_data_and_highlight_options.py::TestWhispererGateConstant::test_the_whisperer_id_matches_the_sdk`, so it
 #: cannot drift silently.
 #:
 #: **V2 only, and that is the point.** Only `llm_whisperer_v2`'s helper fetches

@@ -847,13 +847,16 @@ metered either way and these options only stop that data being discarded. The
 table engine *does* have an LLM-based row-to-line validator, but it runs only
 on the Prompt Studio path, which constructs it; this API never does.
 
-Spreadsheets take a different path in both engines and request no highlights at
-all, so asking for them on a workbook costs nothing and returns nothing.
+Spreadsheets return nothing for either option, and still cost nothing. The
+table engine requests no highlights at all on its workbook path; `kv` shares
+one OCR call across both paths, so it requests the line metadata on every
+workbook job exactly as it already did and discards it — the data is fetched
+and metered either way, so neither option changes what a workbook is billed.
 
 #### `kv` — per key
 
 Each `keys[]` entry of `kind: "scalar"` — which includes the cells inside an
-array entry's `rows` — gains up to three fields:
+array entry's `rows` — gains up to four fields:
 
 ```json
 {
@@ -865,6 +868,7 @@ array entry's `rows` — gains up to three fields:
   "source_page": 1,
   "highlight": [[0, 38, 12, 792, {"offset": 0, "width": 612, "page_width": 612}]],
   "confidence": 0.93,
+  "confidence_lines": 1,
   "word_confidence": [{"text": "1,240.00", "confidence": 0.74}]
 }
 ```
@@ -872,24 +876,21 @@ array entry's `rows` — gains up to three fields:
 | Field | Meaning |
 |---|---|
 | `highlight` | One entry per line the value spans, each `[page, y, height, 792, {offset, width, page_width}]`. Page is **0-indexed**. Coordinates are scaled into a 792x612 box: a viewer places the overlay with `top = (y - height) / 792 * 100`. This is the same convention the Prompt Studio document viewer and the `table` extractor use. |
-| `confidence` | Mean OCR line confidence across the value's lines, 0–1, rounded to 4 places. Lines the OCR reported no confidence for are excluded from the mean rather than counted as zero. |
+| `confidence` | Mean OCR line confidence across the value's lines, rounded to 4 places. Lines the OCR reported no confidence for are excluded from the mean rather than counted as zero. **Read it with `confidence_lines`, not alone.** The scale is whatever your OCR reports and is not normalised — do not assume 0–1 without checking your adapter. |
+| `confidence_lines` | How many lines of `line_start`..`line_end` actually carried a confidence and so contributed to `confidence`. Present whenever `confidence` is. It is the denominator that makes `confidence` safe to read: because unmeasured lines are excluded rather than averaged in as zero, a value spanning twenty lines of which one scored 0.99 reports `confidence: 0.99` with `confidence_lines: 1`. A caller gating auto-acceptance on `confidence >= 0.95` without this will accept values that were barely measured. |
 | `word_confidence` | Only with `enable_word_confidence`. The OCR's per-word entries for those lines, as reported — not averaged, since `confidence` is already the single number. |
 
 Each is omitted individually. A key that was not found has no line citation, so
 it gets none of them; a found key always gets `line_start`/`line_end` as before.
 
-**Spreadsheet inputs get none of the three.** A workbook has no page geometry
-to draw a box on — its "pages" are fixed line-count chunks the engine invented
-by splitting the text, not physical pages with a height — so the engine retains
-no OCR metadata for a spreadsheet at all, and `confidence` and
-`word_confidence` go with the coordinates. `line_start`, `line_end` and
+**Spreadsheet inputs get none of the four.** The engine retains no OCR
+metadata for a workbook, so `highlight`, `confidence`, `confidence_lines` and
+`word_confidence` are all absent. The reason is the page index: a retained
+entry's page is the OCR's own, while the "pages" the engine reports for a
+workbook are fixed line-count chunks it invented by splitting the text — so a
+coordinate would name a page you never see. `line_start`, `line_end` and
 `source_page` are unaffected, so a spreadsheet value still tells you where it
 was read from.
-
-Confidence could in principle be served for a workbook, since it needs no
-geometry. It is not, because whether the OCR emits line numbers for `.xlsx` at
-all is unverified, and a confidence value attached to the wrong line is worse
-than none.
 
 #### `table` — one structure for the table
 
@@ -1992,7 +1993,7 @@ with the default shown:
 | `AGENT_KV_MAX_PAGES` | `100` | Pre-OCR cap on the pages of the DOCUMENT for PDFs — checked against `pages_total`, **not** against the `page_start`/`page_end` range (§6.1), because the whole file is OCR'd and billed whatever the range. The cloud worker refuses on the same quantity. Excel has no pre-OCR page concept, so it takes the engine's post-OCR virtual-page cap instead; images are not accepted. |
 | `AGENT_KV_MAX_CALCULATIONS_BYTES` | `20000` | Byte cap on the optional `calculations` field. |
 | `AGENT_KV_MAX_CUSTOM_DATA_BYTES` | `20000` | Byte cap on the submit `custom_data` object. It is stored on the job row, echoed in every status and result response, and substituted into billed prompt text, so it is capped for three separate reasons. |
-| `AGENT_KV_HIGHLIGHT_ENABLED` | `false` | Gates `enable_highlight` / `enable_word_confidence` on both extractors; a submit asking for them while off is a 400. Off ships the previous behaviour exactly: no highlight block in the result. Neither extractor pays an OCR or LLM call for these options in either state — both already request the OCR line metadata — so the gate exists to hold the result shape stable, not to hold spend down. |
+| `AGENT_KV_HIGHLIGHT_ENABLED` | `false` | Gates `enable_highlight` on both extractors and `enable_word_confidence` on `kv`, which is the only extractor that accepts it (`table` refuses the field outright — see §3); a submit asking for a gated option while off is a 400. Off ships the previous behaviour exactly: no highlight block in the result. Neither extractor pays an OCR or LLM call for these options in either state — both already request the OCR line metadata — so the gate exists to hold the result shape stable, not to hold spend down. |
 | `AGENT_KV_MAX_SCHEMA_BYTES` | `262144` | Byte cap on the raw `keys` JSON document (256 KiB). |
 | `AGENT_KV_RESULT_TTL_DAYS` | `7` | Result retention window (and a cancelled job's input, which rides the same TTL — a completed/failed job's input is deleted immediately at finalize instead), stamped at submit time (see [§6](#9-retention-and-ttl)). |
 | `AGENT_KV_MAX_TIMEOUT_SECONDS` | `300` | Upper bound on the submit `timeout` (synchronous-wait) field. |

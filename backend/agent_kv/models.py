@@ -186,10 +186,6 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
     files_purged = models.BooleanField(default=False)
     tags = models.JSONField(default=list, blank=True)
     custom_data = models.JSONField(null=True, blank=True)
-    # The review queue the caller named at submit, empty when they named none.
-    #
-    # Stored rather than derived because it is part of the request and the
-    # push happens later, at terminalize -- and because it is what a caller
     webhook_url = models.URLField(max_length=1024, blank=True, default="")
 
     class Meta:
