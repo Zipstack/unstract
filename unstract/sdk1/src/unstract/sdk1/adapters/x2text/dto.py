@@ -10,6 +10,10 @@ from unstract.sdk1.file_storage import FileStorageProvider
 class TextExtractionMetadata:
     whisper_hash: str
     line_metadata: dict[Any, Any] | None = None
+    # Optional, additive field populated only in image output mode. Defaults to
+    # None so existing text-mode consumers are entirely unaffected (the field is
+    # never encoded into ``extracted_text``). See PageImageReference below.
+    page_images: list[PageImageReference] | None = None
     #: Per-line OCR word confidence, when the extractor reports it.
     #:
     #: Shape, as LLMWhisperer builds it: one entry per line of
@@ -23,16 +27,12 @@ class TextExtractionMetadata:
     #: and rides along with the highlight geometry. This is the per-word
     #: breakdown behind it.
     #:
-    #: Optional and additive, like ``page_images`` below: ``None`` whenever the
+    #: Optional and additive, like ``page_images``: ``None`` whenever the
     #: extractor was not asked for highlight data, which is every existing
     #: caller. Populated only on request because it scales with the word count
     #: of the document, and no consumer that does not ask for it should carry
     #: that in memory.
     confidence_metadata: list[Any] | None = None
-    # Optional, additive field populated only in image output mode. Defaults to
-    # None so existing text-mode consumers are entirely unaffected (the field is
-    # never encoded into ``extracted_text``). See PageImageReference below.
-    page_images: list[PageImageReference] | None = None
 
 
 @dataclass
