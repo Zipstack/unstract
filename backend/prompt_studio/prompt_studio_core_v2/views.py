@@ -66,6 +66,7 @@ from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudi
 from prompt_studio.prompt_studio_core_v2.retrieval_strategies import (
     get_retrieval_strategy_metadata,
 )
+from prompt_studio.prompt_studio_core_v2.run_events import emit_run_started
 from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
 from prompt_studio.prompt_studio_document_manager_v2.prompt_studio_document_helper import (  # noqa: E501
     PromptStudioDocumentHelper,
@@ -564,6 +565,7 @@ class PromptStudioCoreView(
                 ),
                 task_id=executor_task_id,
             )
+            emit_run_started(cb_kwargs)
             return Response(
                 {"task_id": task.id, "run_id": run_id, "status": "accepted"},
                 status=status.HTTP_202_ACCEPTED,
@@ -617,6 +619,7 @@ class PromptStudioCoreView(
             ),
             task_id=executor_task_id,
         )
+        emit_run_started(cb_kwargs)
         return Response(
             {"task_id": task.id, "run_id": run_id, "status": "accepted"},
             status=status.HTTP_202_ACCEPTED,
@@ -729,6 +732,7 @@ class PromptStudioCoreView(
             ),
             task_id=executor_task_id,
         )
+        emit_run_started(cb_kwargs)
         return Response(
             {"task_id": task.id, "run_id": run_id, "status": "accepted"},
             status=status.HTTP_202_ACCEPTED,
@@ -822,6 +826,7 @@ class PromptStudioCoreView(
             ),
             task_id=executor_task_id,
         )
+        emit_run_started(cb_kwargs)
         return Response(
             {"task_id": task.id, "run_id": run_id, "status": "accepted"},
             status=status.HTTP_202_ACCEPTED,
