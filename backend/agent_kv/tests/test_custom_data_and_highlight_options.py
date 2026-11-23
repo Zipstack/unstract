@@ -72,7 +72,8 @@ class TestCustomDataValidation:
         with pytest.raises(Exception) as e:
             self._submit(big)
         msg = str(e.value)
-        assert str(len(json.dumps(big).encode())) in msg and "100" in msg
+        assert str(len(json.dumps(big).encode())) in msg
+        assert "100" in msg
 
     @override_settings(AGENT_KV_MAX_CUSTOM_DATA_BYTES=100)
     def test_exactly_at_the_cap_passes(self):
@@ -213,8 +214,10 @@ class TestSubstitutionIsApplied:
     def test_a_missing_key_is_reported_against_custom_data(self):
         from agent_kv import custom_data as cd
 
+        entry = self._entry()
+
         with pytest.raises(cd.MissingCustomDataKey) as e:
-            cd.resolve_entry(self._entry(), {"vendor": "Acme"})
+            cd.resolve_entry(entry, {"vendor": "Acme"})
         assert e.value.path == "kind"
 
 
