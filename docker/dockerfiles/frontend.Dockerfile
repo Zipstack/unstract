@@ -70,7 +70,7 @@ RUN VITE_V1_DEV_ROUTES="${VITE_V1_DEV_ROUTES}" \
     bun run build
 
 # Production stage
-FROM nginx:1.29.1-alpine AS production
+FROM nginx:1.30.7-alpine AS production
 ARG BUILD_CONTEXT_PATH
 LABEL maintainer="Zipstack Inc."
 
