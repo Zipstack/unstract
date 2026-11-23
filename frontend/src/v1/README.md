@@ -154,6 +154,19 @@ is convention.
 - A new overlay (a dialog) builds on the shared parts there: the dim layer,
   `OverlayHeader`, `OverlayFooter`, `dismissGuards` and `useReturnFocus`.
 
+## Dialogs
+
+- Every dialog uses the shell in `components/ui/dialog/` (`Dialog`,
+  `DialogContent`, `DialogHeader`, `DialogBody`, `DialogFooter`,
+  `DialogCancel`); its README lists every prop. Do not build another modal.
+- Ask with `await confirm({ ... })` from `@v1/components/ui/dialog`, never
+  `window.confirm`. It resolves true or false; `ConfirmHost`, beside each
+  page, shows one at a time. A destructive confirm states the consequence;
+  a blocked one states why and resolves false.
+- Escape closes unless busy; an outside click closes unless busy or
+  `dismissible={false}` (a destructive confirm). `beforeClose` guards unsaved
+  changes. Focus returns to the opener.
+
 ## Text inputs
 
 - Text controls come from `components/ui/form/` (`Input`, `Textarea`,

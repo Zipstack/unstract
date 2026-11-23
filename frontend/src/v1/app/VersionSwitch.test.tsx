@@ -1,10 +1,13 @@
-import { act, configure, render, screen } from "@testing-library/react";
+import { act, configure, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setOldVersion } from "@v1/app/api";
 import { DEMO_PAGES } from "@v1/app/registry/entries";
 import { buildLiveRegistry, type LiveRegistry } from "@v1/app/registry/live";
+import { confirm } from "@v1/components/ui/dialog";
 import { toast } from "@v1/lib/notify";
 import { oldVersionStorageKey } from "@v1/lib/oldVersion";
+import { useSession } from "@v1/lib/session";
+import { ApiError } from "@v1/services/errors";
 import { useOldVersionStore } from "@v1/stores/oldVersion";
 import { HttpResponse, makeSession, http as mock, mockApi } from "@v1/test";
 import { sessionHandlers } from "@v1/test/fixtures/session";
@@ -104,6 +107,11 @@ const v0 = (
     <Route path="*" element={<p data-testid="v0">v0 other</p>} />
   </Routes>
 );
+
+// Confirm content that needs the page's session.
+function SignedInAs() {
+  return <span>Signed in as {useSession().user.email}</span>;
+}
 
 function renderAt(
   path: string | string[],
@@ -297,6 +305,52 @@ describe("VersionSwitch", () => {
     const log = vi.spyOn(console, "info").mockImplementation(() => undefined);
     expect(toast.success("After v1")).toBeUndefined();
     expect(log).toHaveBeenCalledWith("[v1 notify] After v1");
+  });
+
+  it("mounts the ConfirmHost inside the page's gate, so confirm content can read the session", async () => {
+    renderAt("/acme/v1-demo");
+    await screen.findByTestId("v1-demo");
+    act(() => {
+      void confirm({
+        title: "Leave the demo?",
+        description: "Nothing on it is saved.",
+        details: <SignedInAs />,
+        confirmLabel: "Leave",
+      });
+    });
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Leave the demo?",
+    });
+    expect(dialog.textContent).toContain("Signed in as ");
+  });
+
+  it("shows a failed confirm action's API message and request id in the dialog", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const user = userEvent.setup();
+    renderAt("/acme/v1-demo");
+    await screen.findByTestId("v1-demo");
+    const failure = new ApiError({
+      kind: "client",
+      message: "It is in use.",
+      requestId: "req-7",
+    });
+    act(() => {
+      void confirm({
+        title: "Delete the profile?",
+        description: "Workflows using it fail.",
+        confirmLabel: "Delete",
+        action: () => Promise.reject(failure),
+      });
+    });
+    const dialog = await screen.findByRole("alertdialog");
+    // Past the answer guard that ignores a click straight after the dialog shows.
+    vi.setSystemTime(Date.now() + 60_000);
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "It is in use.Request ID req-7",
+    );
+    vi.useRealTimers();
   });
 
   it("contains a v1 failure in its own boundary instead of unmounting the app", async () => {
