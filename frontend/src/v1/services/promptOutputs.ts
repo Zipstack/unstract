@@ -128,9 +128,9 @@ export function mergePromptOutputs(
   return [...kept, ...fresh];
 }
 
-/** Query keys: `[org, "promptOutputs", "list", params]`. */
+/** Query keys: `[org, "prompt-outputs", "list", params]`. */
 export const promptOutputKeys = {
-  all: () => [currentOrganizationId(), "promptOutputs"] as const,
+  all: () => [currentOrganizationId(), "prompt-outputs"] as const,
   list: (params: PromptOutputParams) =>
     [...promptOutputKeys.all(), "list", params] as const,
 };

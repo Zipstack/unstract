@@ -223,7 +223,7 @@ it("keys outputs by organisation and params", () => {
   const params = { toolId: TOOL_ID, documentId: "doc-1" };
   expect(promptOutputKeys.list(params)).toEqual([
     "org-1",
-    "promptOutputs",
+    "prompt-outputs",
     "list",
     params,
   ]);

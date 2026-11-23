@@ -1,7 +1,9 @@
+import { Button } from "@v1/components/ui/button";
 import { InlineCode } from "@v1/components/ui/code";
 import { Spinner } from "@v1/components/ui/feedback";
 import { cn } from "@v1/lib/cn";
 import { SHELL_ICONS, STATUS_ICONS } from "@v1/lib/icons";
+import type { RunStatus } from "@v1/stores/promptRuns";
 import type { JSX } from "react";
 import { describeMissing, type PromptCoverage } from "./coverage";
 import { formatCost, formatSeconds, formatTokens } from "./format";
@@ -39,16 +41,15 @@ export function CoverageCaption({
       className="ui:m-0 ui:flex ui:min-w-0 ui:items-center ui:gap-1.5 ui:text-caption ui:font-medium"
     >
       {onOpen ? (
-        <button
-          type="button"
+        <Button
+          variant="link"
+          size="xs"
+          leadingIcon={SearchIcon}
           onClick={onOpen}
-          className={cn(
-            "ui:inline-flex ui:cursor-pointer ui:items-center ui:gap-1.5 ui:rounded-sm ui:border-0 ui:bg-transparent ui:p-0 ui:font-medium ui:hover:underline ui:focus-visible:focus-ring",
-            tone,
-          )}
+          className={cn("ui:h-auto ui:gap-1.5 ui:px-0", tone)}
         >
-          {body}
-        </button>
+          {label}
+        </Button>
       ) : (
         <span className={cn("ui:inline-flex ui:items-center ui:gap-1.5", tone)}>
           {body}
@@ -127,25 +128,45 @@ export function RunMetadata({
 }
 
 export type CellRunStateProps = Readonly<{
-  /** `running` covers queued requests too; `idle` means it never ran. */
-  status: "running" | "idle";
+  /** The cell's status from `cellRunStatus`; a completed cell shows its output instead. */
+  status: RunStatus | "idle";
 }>;
 
-/** A model-grid cell with no output to show: "Running…" or "Yet to run". */
-export function CellRunState({ status }: CellRunStateProps): JSX.Element {
-  const WarningIcon = STATUS_ICONS.warning;
-  return status === "running" ? (
-    <p className="ui:m-0 ui:flex ui:items-center ui:gap-1.5 ui:text-caption ui:font-medium ui:text-muted-foreground">
-      <Spinner />
-      Running…
-    </p>
-  ) : (
-    <p className="ui:m-0 ui:flex ui:items-center ui:gap-1.5 ui:text-caption ui:font-medium ui:text-muted-foreground">
-      <WarningIcon
+const CELL_LINE =
+  "ui:m-0 ui:flex ui:items-center ui:gap-1.5 ui:text-caption ui:font-medium";
+
+/** A model-grid cell with no output to show: "Running…", "Run failed" or "Yet to run". */
+export function CellRunState({
+  status,
+}: CellRunStateProps): JSX.Element | null {
+  if (status === "completed") {
+    return null;
+  }
+  if (status === "queued" || status === "running") {
+    return (
+      <p className={cn(CELL_LINE, "ui:text-muted-foreground")}>
+        <Spinner />
+        Running…
+      </p>
+    );
+  }
+  const failed = status === "failed";
+  const Icon = failed ? STATUS_ICONS.error : STATUS_ICONS.warning;
+  return (
+    <p
+      className={cn(
+        CELL_LINE,
+        failed ? "ui:text-destructive" : "ui:text-muted-foreground",
+      )}
+    >
+      <Icon
         aria-hidden
-        className="ui:size-3.5 ui:shrink-0 ui:text-warning"
+        className={cn(
+          "ui:size-3.5 ui:shrink-0",
+          failed ? "ui:text-destructive" : "ui:text-warning",
+        )}
       />
-      Yet to run
+      {failed ? "Run failed" : "Yet to run"}
     </p>
   );
 }

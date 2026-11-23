@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { notify as defaultNotify, type NotifyInput } from "@v1/lib/notify";
+import { newUuid } from "@v1/lib/uuid";
 import {
   mergePromptOutputs,
   type PromptOutput,
@@ -43,8 +44,10 @@ const COMPLETED_MESSAGE = "Prompt execution completed successfully.";
 const SINGLE_PASS_COMPLETED_MESSAGE =
   "Single pass extraction completed successfully.";
 
-// Toast ids, so a burst of results replaces one toast instead of stacking.
-const RESULT_TOAST_ID = "prompt-run-result";
+// Toast ids, so a burst of results replaces one toast instead of stacking;
+// a success never replaces a failure.
+const COMPLETED_TOAST_ID = "prompt-run-completed";
+const FAILED_TOAST_ID = "prompt-run-failed";
 const TIMEOUT_TOAST_ID = "prompt-run-timeout";
 
 export type RunClient = Readonly<{
@@ -74,7 +77,7 @@ export type RunEngine = Readonly<{
   dispose: () => void;
 }>;
 
-const OUTPUT_RESOURCE = "promptOutputs";
+const OUTPUT_RESOURCE = "prompt-outputs";
 
 /** The params of a cached output list, or null for any other query. */
 function outputListParams(
@@ -127,7 +130,8 @@ export function applyRunOutputs(
 function toSignal(event: RunStartedEvent | RunResultEvent): RunSignal {
   return {
     toolId: event.tool_id,
-    runId: event.run_id ?? null,
+    // The error callback may send an empty run id: treat it as missing.
+    runId: event.run_id || null,
     promptIds: event.prompt_ids,
     documentId: event.document_id ?? null,
     profileId: event.profile_manager_id ?? null,
@@ -145,7 +149,7 @@ export function createRunEngine({
   channel,
   queryClient,
   client = { runPrompt, runPrompts, runSinglePass },
-  newRunId = () => crypto.randomUUID(),
+  newRunId = newUuid,
   notify = defaultNotify,
   report = (error) => reportApiError(error),
 }: RunEngineDeps): RunEngine {
@@ -236,7 +240,7 @@ export function createRunEngine({
         title: signal.singlePass
           ? SINGLE_PASS_COMPLETED_MESSAGE
           : COMPLETED_MESSAGE,
-        id: RESULT_TOAST_ID,
+        id: COMPLETED_TOAST_ID,
       });
       return;
     }
@@ -247,7 +251,7 @@ export function createRunEngine({
       kind: "error",
       title: message,
       requestId: details.requestId ?? undefined,
-      id: RESULT_TOAST_ID,
+      id: FAILED_TOAST_ID,
     });
   };
 

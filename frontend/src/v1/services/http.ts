@@ -1,3 +1,4 @@
+import { newUuid } from "@v1/lib/uuid";
 import axios, {
   type AxiosInstance,
   type InternalAxiosRequestConfig,
@@ -43,20 +44,6 @@ function readCookie(name: string): string | undefined {
   }
 }
 
-/* A v4 UUID; randomUUID exists only in secure contexts (not plain-http on-prem). */
-function newRequestId(): string {
-  if (typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(
-    "",
-  );
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
 // The CSRF token never goes to another origin.
 const isSameOrigin = (url: string | undefined): boolean =>
   new URL(url ?? "", window.location.href).origin === window.location.origin;
@@ -65,7 +52,7 @@ function addHeaders(
   config: InternalAxiosRequestConfig,
 ): InternalAxiosRequestConfig {
   if (!config.headers.has(REQUEST_ID_HEADER)) {
-    config.headers.set(REQUEST_ID_HEADER, newRequestId());
+    config.headers.set(REQUEST_ID_HEADER, newUuid());
   }
   const method = (config.method ?? "get").toLowerCase();
   if (!MUTATING_METHODS.has(method) || !isSameOrigin(config.url)) {

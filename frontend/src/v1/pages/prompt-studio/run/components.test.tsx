@@ -219,11 +219,17 @@ describe("captions", () => {
     expect(screen.getByText("Cost: NA")).toBeInTheDocument();
   });
 
-  it("shows a cell running or yet to run", () => {
-    const { rerender } = renderV1(<CellRunState status="running" />);
+  it("shows a cell's status in the run vocabulary", () => {
+    const { rerender, container } = renderV1(<CellRunState status="queued" />);
     expect(screen.getByText("Running…")).toBeInTheDocument();
+    rerender(<CellRunState status="running" />);
+    expect(screen.getByText("Running…")).toBeInTheDocument();
+    rerender(<CellRunState status="failed" />);
+    expect(screen.getByText("Run failed")).toHaveClass("ui:text-destructive");
     rerender(<CellRunState status="idle" />);
     expect(screen.getByText("Yet to run")).toBeInTheDocument();
+    rerender(<CellRunState status="completed" />);
+    expect(container.querySelector("p")).toBeNull();
   });
 });
 

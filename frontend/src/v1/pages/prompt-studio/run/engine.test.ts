@@ -46,6 +46,7 @@ let engine: RunEngine;
 let pending: Deferred[];
 let client: { [K in keyof RunClient]: ReturnType<typeof vi.fn> };
 let notified: { kind: string; title: string }[];
+let toastIds: (string | undefined)[];
 let counter = 0;
 
 const accepted = (runId: string): RunResponse => ({
@@ -67,6 +68,7 @@ beforeEach(() => {
   vi.useFakeTimers({ now: 1_000 });
   setOrganizationId(DEFAULT_SESSION.organization.id);
   notified = [];
+  toastIds = [];
   store = createPromptRunStore();
   channel = createLocalRunChannel();
   queryClient = createTestQueryClient();
@@ -84,6 +86,7 @@ beforeEach(() => {
     client: client as unknown as RunClient,
     notify: (input) => {
       notified.push({ kind: input.kind, title: input.title });
+      toastIds.push(input.id);
     },
     report: () => {
       notified.push({ kind: "error", title: "request failed" });
@@ -326,6 +329,17 @@ describe("events", () => {
       requestId: null,
       retryAfterSeconds: null,
     });
+  });
+
+  it("treats an empty run id as missing, so the in-flight run still settles", () => {
+    channel.emit(RUN_RESULT_EVENT, failedEvent({ run_id: "" }));
+    expect(entry()?.status).toBe("failed");
+  });
+
+  it("keeps a failure toast apart from success toasts", () => {
+    channel.emit(RUN_RESULT_EVENT, failedEvent({ run_id: "run-1" }));
+    channel.emit(RUN_RESULT_EVENT, completedEvent({ run_id: "other" }));
+    expect(toastIds).toEqual(["prompt-run-failed", "prompt-run-completed"]);
   });
 
   it("ignores payloads that are not run events", () => {
