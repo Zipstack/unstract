@@ -7,7 +7,7 @@ on that chain, so the IDE callback can show them.
 """
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from email.utils import format_datetime
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -115,6 +115,31 @@ class TestProviderErrorDetails:
 
         assert provider_error_details(wrapper)["request_id"] == "req-2"
 
+    @pytest.mark.parametrize("millis, seconds", [("1001", 2), ("2000", 2), ("0", 0)])
+    def test_retry_after_ms_converted_and_rounded_up(self, millis, seconds):
+        err = _provider_error({"retry-after-ms": millis})
+
+        assert provider_error_details(_wrapped(err))["retry_after_seconds"] == seconds
+
+    def test_retry_after_zero_means_now(self):
+        err = _provider_error({"retry-after": "0"})
+
+        assert provider_error_details(_wrapped(err))["retry_after_seconds"] == 0
+
+    def test_retry_after_date_with_offset(self):
+        when = datetime.now(UTC) + timedelta(seconds=90)
+        plus_two = when.astimezone(timezone(timedelta(hours=2)))
+        err = _provider_error({"retry-after": format_datetime(plus_two)})
+
+        seconds = provider_error_details(_wrapped(err))["retry_after_seconds"]
+
+        assert 85 <= seconds <= 90
+
+    def test_values_stripped(self):
+        err = _provider_error(response_headers={"x-request-id": "  req-s  "})
+
+        assert provider_error_details(_wrapped(err))["request_id"] == "req-s"
+
     def test_retry_after_ms_wins_over_retry_after(self):
         err = _provider_error({"retry-after-ms": "1500", "retry-after": "60"})
 
@@ -191,6 +216,16 @@ class TestProviderErrorDetails:
         err = _provider_error(provider="")
 
         assert provider_error_details(_wrapped(err)) is None
+
+    @pytest.mark.parametrize("wrappers, found", [(9, True), (10, False)])
+    def test_chain_walk_stops_after_ten_hops(self, wrappers, found):
+        current = _provider_error({"x-request-id": "deep"})
+        for _ in range(wrappers):
+            outer = LegacyExecutorError(message="wrapped")
+            outer.__cause__ = current
+            current = outer
+
+        assert (provider_error_details(current) is not None) is found
 
     def test_self_referencing_chain_terminates(self):
         exc = LegacyExecutorError(message="loop")

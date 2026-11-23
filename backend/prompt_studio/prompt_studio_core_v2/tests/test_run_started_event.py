@@ -53,6 +53,28 @@ class TestEmitRunStarted:
             },
         )
 
+    def test_defaults_for_missing_kwargs(self):
+        with patch(_EMIT) as emit:
+            run_events.emit_run_started({"log_events_id": "room-1"})
+
+        assert emit.call_args[0][2] == {
+            "task_id": "",
+            "operation": "fetch_response",
+            "tool_id": "",
+            "status": "started",
+            "run_id": "",
+            "prompt_ids": [],
+            "document_id": "",
+            "profile_manager_id": None,
+            "started_at": None,
+        }
+
+    def test_operation_passed_through(self):
+        with patch(_EMIT) as emit:
+            run_events.emit_run_started(_cb_kwargs(operation="single_pass_extraction"))
+
+        assert emit.call_args[0][2]["operation"] == "single_pass_extraction"
+
     def test_not_the_v0_result_event(self):
         assert run_events.PROMPT_STUDIO_RUN_STARTED_EVENT != "prompt_studio_result"
 
