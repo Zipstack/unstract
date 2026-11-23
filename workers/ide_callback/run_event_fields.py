@@ -5,7 +5,10 @@
 large to send (the client then refetches).
 
 ``error_details``: provider, request id and retry hint from the executor's
-failure metadata. Always the three keys, ``None`` when unknown.
+failure metadata. Always the three keys, ``None`` when unknown. Only a failure
+the legacy executor caught and returned as a failed result can carry values;
+a crashed executor task (``ide_prompt_error``) and a failing callback always
+send all three as ``None``.
 """
 
 import json

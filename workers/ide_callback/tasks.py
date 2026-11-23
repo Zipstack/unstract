@@ -496,9 +496,9 @@ def ide_prompt_complete(
                 "outputs": inline_outputs(output_response),
             },
             status="completed",
-            # result intentionally omitted — output already persisted via
-            # update_prompt_output(); frontend refetches via promptOutputApi
-            # to avoid DATA_UPLOAD_MAX_MEMORY_SIZE on emit-websocket endpoint.
+            # result stays omitted so v0 keeps refetching via promptOutputApi.
+            # The persisted rows go in outputs when under the size cap in
+            # run_event_fields.py; outputs None means the client refetches.
         )
         # Return minimal status to avoid logging sensitive extracted data
         return {"status": "completed", "operation": operation}
