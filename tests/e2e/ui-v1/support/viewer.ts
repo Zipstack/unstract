@@ -42,23 +42,43 @@ export interface ScrollRun {
   maxCanvases: number;
   /** Pages with a figure in the list. */
   figures: number;
+  /** Distinct pages seen painted at some frame during the run. */
+  renderedPages: number;
+}
+
+export interface ScrollOptions {
+  /** CSS px scrolled per animation frame. */
+  step: number;
+  /** Stop where this 0-based page starts; the whole list when absent. */
+  untilPage?: number;
 }
 
 /**
- * Scrolls the page list from top to bottom, `step` CSS px per animation
- * frame, as a fast drag of the scrollbar would, and records every frame's
- * duration and how many canvases were alive.
+ * Scrolls the page list down from the top, `step` CSS px per animation frame,
+ * and records every frame's duration, how many canvases were alive and which
+ * pages had painted. A large step is a fast drag of the scrollbar; a small one
+ * is reading speed.
  */
-export function scrollThrough(list: Locator, step = 400): Promise<ScrollRun> {
+export function scrollThrough(
+  list: Locator,
+  { step, untilPage }: ScrollOptions,
+): Promise<ScrollRun> {
   return list.evaluate(
-    (root, { px, MAX_FRAMES, STALL_FRAMES }) =>
+    (root, { px, stopPage, MAX_FRAMES, STALL_FRAMES }) =>
       new Promise<ScrollRun>((resolve) => {
         const frames: number[] = [];
+        const rendered = new Set<string>();
         let maxCanvases = 0;
         let last = performance.now();
         let previous = -1;
         let stalled = 0;
         root.scrollTop = 0;
+        const stopAt =
+          stopPage === null
+            ? Number.POSITIVE_INFINITY
+            : (root.querySelector<HTMLElement>(
+                `figure[data-page-index="${stopPage}"]`,
+              )?.offsetTop ?? 0);
         const tick = (now: number) => {
           frames.push(now - last);
           last = now;
@@ -66,7 +86,12 @@ export function scrollThrough(list: Locator, step = 400): Promise<ScrollRun> {
             maxCanvases,
             root.querySelectorAll("canvas").length,
           );
-          const end = root.scrollHeight - root.clientHeight;
+          for (const figure of root.querySelectorAll<HTMLElement>(
+            'figure[data-render-state="rendered"]',
+          )) {
+            rendered.add(figure.dataset.pageIndex ?? "");
+          }
+          const end = Math.min(stopAt, root.scrollHeight - root.clientHeight);
           // A list that stops scrolling ends the run rather than spinning
           // until the test times out, so the page checks report it.
           stalled = root.scrollTop === previous ? stalled + 1 : 0;
@@ -80,6 +105,7 @@ export function scrollThrough(list: Locator, step = 400): Promise<ScrollRun> {
               frames: frames.slice(1),
               maxCanvases,
               figures: root.querySelectorAll("figure[data-page-index]").length,
+              renderedPages: rendered.size,
             });
             return;
           }
@@ -91,7 +117,12 @@ export function scrollThrough(list: Locator, step = 400): Promise<ScrollRun> {
           requestAnimationFrame(tick);
         });
       }),
-    { px: step, MAX_FRAMES: 3000, STALL_FRAMES: 30 },
+    {
+      px: step,
+      stopPage: untilPage ?? null,
+      MAX_FRAMES: 3000,
+      STALL_FRAMES: 30,
+    },
   );
 }
 
