@@ -792,7 +792,7 @@ export function DataTable<TRow>({
     >
       {toolbar && <div data-slot="data-table-toolbar">{toolbar}</div>}
       {selectable && selectedCount > 0 && (
-        <BulkBar count={selectedCount} onClear={clearSelection}>
+        <BulkBar label={label} count={selectedCount} onClear={clearSelection}>
           {bulkActions?.({
             selectedIds: selectedList,
             selectedRows: rows.filter((row) => selected.has(getRowId(row))),

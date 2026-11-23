@@ -2,6 +2,8 @@ import type { JSX, ReactNode } from "react";
 import { selectedText } from "./announce";
 
 export type BulkBarProps = Readonly<{
+  /** The table's label: the bar is named "Bulk actions for <label>". */
+  label: string;
   count: number;
   onClear: () => void;
   children?: ReactNode;
@@ -15,13 +17,14 @@ export type BulkBarProps = Readonly<{
  * announces selection changes once.
  */
 export function BulkBar({
+  label,
   count,
   onClear,
   children,
 }: BulkBarProps): JSX.Element {
   return (
     <section
-      aria-label="Bulk actions"
+      aria-label={`Bulk actions for ${label}`}
       data-slot="data-table-bulk-bar"
       className="ui:box-border ui:flex ui:min-h-11 ui:flex-wrap ui:items-center ui:gap-x-4 ui:gap-y-2 ui:rounded-lg ui:border ui:border-solid ui:border-primary/20 ui:bg-primary-muted ui:px-5 ui:py-1.5"
     >

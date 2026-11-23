@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import { Slider } from "@v1/components/ui/toggles";
-import { renderV1 } from "@v1/test";
+import { expectNoA11yViolations, renderV1 } from "@v1/test";
 import { describe, expect, it, vi } from "vitest";
 import { DataTable } from "./DataTable";
 import {
@@ -237,12 +237,18 @@ describe("selection and the bulk bar", () => {
     const bulk = vi.fn(() => <button type="button">Delete selected</button>);
     const { user } = setup({ selectable: true, bulkActions: bulk });
     expect(all().getAttribute("aria-checked")).toBe("false");
-    expect(screen.queryByRole("region", { name: "Bulk actions" })).toBeNull();
+    expect(
+      screen.queryByRole("region", {
+        name: "Bulk actions for API deployments",
+      }),
+    ).toBeNull();
 
     await user.click(checkbox("Select masa_cms"));
     expect(all().getAttribute("aria-checked")).toBe("mixed");
     expect(status()).toBe("1 row selected");
-    const bar = screen.getByRole("region", { name: "Bulk actions" });
+    const bar = screen.getByRole("region", {
+      name: "Bulk actions for API deployments",
+    });
     expect(bar.textContent).toContain("1 selected");
     expect(bulk).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -263,7 +269,11 @@ describe("selection and the bulk bar", () => {
     await user.click(all());
     expect(all().getAttribute("aria-checked")).toBe("false");
     expect(status()).toBe("Selection cleared");
-    expect(screen.queryByRole("region", { name: "Bulk actions" })).toBeNull();
+    expect(
+      screen.queryByRole("region", {
+        name: "Bulk actions for API deployments",
+      }),
+    ).toBeNull();
   });
 
   it("clears from the bulk bar and from the bulk action's context", async () => {
@@ -277,10 +287,15 @@ describe("selection and the bulk bar", () => {
       ),
     });
     expect(
-      screen.getByRole("region", { name: "Bulk actions" }).textContent,
+      screen.getByRole("region", { name: "Bulk actions for API deployments" })
+        .textContent,
     ).toContain("2 selected");
     await user.click(screen.getByRole("button", { name: "Clear selection" }));
-    expect(screen.queryByRole("region", { name: "Bulk actions" })).toBeNull();
+    expect(
+      screen.queryByRole("region", {
+        name: "Bulk actions for API deployments",
+      }),
+    ).toBeNull();
     expect(status()).toBe("Selection cleared");
   });
 
@@ -306,7 +321,7 @@ describe("selection and the bulk bar", () => {
       let i = 0;
       i < 12 &&
       !screen
-        .getByRole("region", { name: "Bulk actions" })
+        .getByRole("region", { name: "Bulk actions for API deployments" })
         .contains(document.activeElement);
       i++
     ) {
@@ -347,7 +362,8 @@ describe("selection and the bulk bar", () => {
     expect(all().getAttribute("aria-checked")).toBe("false");
     await user.click(checkbox("Select invoice-parser"));
     expect(
-      screen.getByRole("region", { name: "Bulk actions" }).textContent,
+      screen.getByRole("region", { name: "Bulk actions for API deployments" })
+        .textContent,
     ).toContain("6 selected");
   });
 });
@@ -900,7 +916,8 @@ describe("review fixes", () => {
     const { rerender } = renderV1(<DataTable {...props} rows={FIVE} />);
     rerender(<DataTable {...props} rows={FIVE.slice(1)} />);
     expect(
-      screen.getByRole("region", { name: "Bulk actions" }).textContent,
+      screen.getByRole("region", { name: "Bulk actions for API deployments" })
+        .textContent,
     ).toContain("1 selected");
     expect(bulk).toHaveBeenLastCalledWith(
       expect.objectContaining({ selectedIds: ["dep-2"] }),
@@ -920,7 +937,8 @@ describe("review fixes", () => {
       />,
     );
     expect(
-      screen.getByRole("region", { name: "Bulk actions" }).textContent,
+      screen.getByRole("region", { name: "Bulk actions for API deployments" })
+        .textContent,
     ).toContain("2 selected");
   });
 
@@ -959,7 +977,8 @@ describe("review fixes", () => {
     // A filter hides health-monitoring API.
     rerender(<DataTable {...props} rows={FIVE.slice(1)} filtered />);
     expect(
-      screen.getByRole("region", { name: "Bulk actions" }).textContent,
+      screen.getByRole("region", { name: "Bulk actions for API deployments" })
+        .textContent,
     ).toContain("1 selected");
 
     // Changes while filtered keep the hidden row in the held selection...
@@ -994,7 +1013,8 @@ describe("review fixes", () => {
         .getAttribute("aria-checked"),
     ).toBe("true");
     expect(
-      screen.getByRole("region", { name: "Bulk actions" }).textContent,
+      screen.getByRole("region", { name: "Bulk actions for API deployments" })
+        .textContent,
     ).toContain("1 selected");
 
     // "Clear selection" clears the hidden rows too.
@@ -1003,7 +1023,11 @@ describe("review fixes", () => {
     await user.click(screen.getByRole("button", { name: "Clear selection" }));
     expect(onSelectionChange).toHaveBeenLastCalledWith([]);
     rerender(<DataTable {...props} rows={FIVE} />);
-    expect(screen.queryByRole("region", { name: "Bulk actions" })).toBeNull();
+    expect(
+      screen.queryByRole("region", {
+        name: "Bulk actions for API deployments",
+      }),
+    ).toBeNull();
   });
 
   it("stores the clamped page, so rows growing back do not jump pages", async () => {
@@ -1156,5 +1180,39 @@ describe("review fixes", () => {
     expect(onRowClick).not.toHaveBeenCalled();
     fireEvent.click(within(row).getByText("health-monitoring API"));
     expect(onRowClick).toHaveBeenCalledOnce();
+  });
+
+  it("names each table's bulk bar and pagination from its label, so two tables on a page pass axe", async () => {
+    const table = (label: string) => (
+      <DataTable
+        label={label}
+        columns={GALLERY_COLUMNS}
+        rows={galleryRows(12)}
+        getRowId={rowId}
+        getRowLabel={rowLabel}
+        selectable
+        defaultSelectedIds={["dep-1"]}
+        pagination={{ mode: "client", pageSize: 5 }}
+      />
+    );
+    const { container } = renderV1(
+      <div>
+        {table("API deployments")}
+        {table("ETL pipelines")}
+      </div>,
+    );
+    expect(
+      screen.getByRole("region", { name: "Bulk actions for API deployments" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "Bulk actions for ETL pipelines" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("navigation", { name: "API deployments pages" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("navigation", { name: "ETL pipelines pages" }),
+    ).toBeTruthy();
+    await expectNoA11yViolations(container);
   });
 });

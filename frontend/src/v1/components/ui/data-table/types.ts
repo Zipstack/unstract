@@ -119,7 +119,12 @@ export type DataTableError = Readonly<{
 }>;
 
 export type DataTableProps<TRow> = Readonly<{
-  /** Names the table for assistive technology ("API deployments"). */
+  /**
+   * Names the table for assistive technology ("API deployments"), and from
+   * it the bulk bar ("Bulk actions for API deployments") and the pagination
+   * ("API deployments pages"). Unique on the page: two tables with one label
+   * would give two landmarks the same name.
+   */
   label: string;
   columns: readonly DataTableColumn<TRow>[];
   rows: readonly TRow[];

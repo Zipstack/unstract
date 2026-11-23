@@ -44,6 +44,20 @@ it("matches the committed markup of every variant", async () => {
   await expect(doc).toMatchFileSnapshot("./__snapshots__/markup.md");
 });
 
+it("passes the accessibility scan with every entry on one page, as the gallery shows them", async () => {
+  stubViewport();
+  const { container } = renderV1(
+    <div>
+      {DATA_TABLE_GALLERY.map(({ name, element }) => (
+        <section key={name} aria-label={name}>
+          {element}
+        </section>
+      ))}
+    </div>,
+  );
+  await expectNoA11yViolations(container);
+});
+
 describe.each([
   "light",
   "dark",
