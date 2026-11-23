@@ -61,11 +61,10 @@ import {
   `undefined` counts as absent, and the types cannot catch that: a
   conditional `label={cond && "x"}` compiles and can render an unnamed
   control, so pass `aria-label` when the label may be empty.
-- **The checkbox icon is the Indicator itself.** v0's global rule forces any
-  `svg.lucide` whose parent is a `span`, `p`, `label`, `li`, `a`, `td` or
-  `th` to `1em` (see the v1 README, Styling), and it beats `ui:size-*`. So
-  the Radix `Indicator` renders `asChild` onto the lucide svg, whose parent
-  is then the `button`. Never wrap a lucide icon in a `span` in this folder.
+- **The checkbox icon is the Indicator itself.** The Radix `Indicator`
+  renders `asChild` onto the lucide svg, so its parent is the `button` and
+  v0's `svg.lucide` rule (see the v1 README, Styling) does not reach it.
+  Never wrap a lucide icon in a `span` in this folder.
 - **The row is private.** Label and description are drawn by `ControlRow`
   with the classes of the form `Label` and `HelperText` (`LABEL_CLASS` and
   `HELPER_TEXT_CLASS` from `@v1/components/ui/form`); the label adds

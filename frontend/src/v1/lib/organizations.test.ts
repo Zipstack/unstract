@@ -6,6 +6,7 @@ import {
   landingPath,
   organizationInitials,
   roleLabel,
+  sessionEndedPath,
 } from "./organizations";
 
 describe("roleLabel", () => {
@@ -109,4 +110,14 @@ describe("landingPath", () => {
       "/tanushree/dashboard",
     );
   });
+});
+
+test("sessionEndedPath: code without domain, and junk bodies", () => {
+  expect(sessionEndedPath({ code: "USR" })).toBe("/error?code=USR");
+  expect(sessionEndedPath({ code: "a&b", domain: "x y" })).toBe(
+    "/error?code=a%26b&domain=x+y",
+  );
+  expect(sessionEndedPath(undefined)).toBe("/landing");
+  expect(sessionEndedPath("<html>")).toBe("/landing");
+  expect(sessionEndedPath({ code: 7 })).toBe("/landing");
 });

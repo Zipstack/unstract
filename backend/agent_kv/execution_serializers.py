@@ -18,6 +18,7 @@ from agent_kv.constants import (
 from unstract.agent_kv_schema import SchemaError, compile_schema
 from unstract.core.mime_gate import (
     INCONCLUSIVE_MIME_TYPES,
+    ZIP_CANDIDATE_MIME_TYPES,
     identify_zip_container,
     resolve_inconclusive_mime_type,
 )
@@ -188,7 +189,7 @@ def enabled_extractors() -> tuple[str, ...]:
 def _classify_path(path: str) -> str:
     """Classify a staged file, looking inside a zip when that is all we get."""
     mime_type = magic.from_file(path, mime=True)
-    if mime_type == "application/zip":
+    if mime_type in ZIP_CANDIDATE_MIME_TYPES:
         try:
             return identify_zip_container(path) or mime_type
         except Exception:

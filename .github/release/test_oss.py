@@ -813,6 +813,13 @@ def dispatch_inputs(workflow):
     return inputs
 
 
+def cloud_apps():
+    """take-rc-build's environment -> ArgoCD app map, read from the workflow so no app is named here."""
+    with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
+        m = re.search(r"APP: \$\{\{ fromJSON\('(\{.*?\})'\)", fh.read())
+    return json.loads(m.group(1))
+
+
 def step(workflow, name, exprs=()):
     """Each ${{ }} expression is replaced from exprs, "" when absent."""
     with open(os.path.join(HERE, "..", "workflows", workflow)) as fh:
@@ -935,6 +942,7 @@ true
             "PYTHONPATH": self.site,
             "FORCE": "false",
             "REASON": "",
+            "ENVIRONMENT": "none",
             "OSS_REPO": self.repos["oss"][1],
             "OSS_TOKEN": "oss-token",
             "GH_TOKEN": "cloud-token",
@@ -1655,6 +1663,17 @@ class SyncArgocdParameters(unittest.TestCase):
         self.assertNotIn("global.unstract.image.tag", got)
         self.assertNotIn("runner.configMap.TOOL_SIDECAR_IMAGE_TAG", got)
 
+    def test_an_rc_revision_drops_a_pinned_tag(self):
+        # an app pinned to a dev tag; an RC deploys the images its chart names
+        pinned = {"name": "global.unstract.image.tag", "value": "snapshot.1018"}
+        got = self.merged([self.OTHER, pinned], cloud_rc=self.REG, revision="v1.1.0-rc.2")
+        self.assertNotIn("global.unstract.image.tag", got)
+        self.assertEqual(got["backend.image.registry"], self.REG)
+        self.assertNotIn("runner.configMap.TOOL_SIDECAR_IMAGE_TAG", got)
+        # a branch revision keeps it
+        got = self.merged([self.OTHER, pinned], cloud_rc=self.REG, revision="main")
+        self.assertEqual(got["global.unstract.image.tag"], "snapshot.1018")
+
     def test_an_rc_tag_without_cloud_rc_fails(self):
         tag = {"name": "global.unstract.image.tag", "value": "v2.0.0-rc.1"}
         for current, kwargs in (
@@ -1911,7 +1930,66 @@ esac
                 "returned no .spec.source", r.stdout, body
             )  # named, not a traceback
             self.assertIsNone(params, body)
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(os.path.join(self.d, "out"))
         r, params = self.sync(self.APP, code=403)
+        self.assertEqual((r.returncode, params), (1, None))
+        with (
+            contextlib.suppress(FileNotFoundError),
+            open(os.path.join(self.d, "out")) as fh,
+        ):
+            self.assertNotIn("previous=", fh.read())  # set only once the update lands
+
+    def test_sync_reports_what_the_app_ran_before(self):
+        pinned = {
+            "spec": {
+                "source": {
+                    "targetRevision": "main",
+                    "helm": {
+                        "parameters": [
+                            {
+                                "name": "global.unstract.image.tag",
+                                "value": "snapshot.1018",
+                            }
+                        ]
+                    },
+                }
+            }
+        }
+        for app, before in (
+            (pinned, "snapshot.1018"),
+            ({"spec": {"source": {"targetRevision": "v1.7.0-rc.2"}}}, "v1.7.0-rc.2"),
+            (  # an empty tag parameter is no tag
+                {
+                    "spec": {
+                        "source": {
+                            "targetRevision": "v1.7.0-rc.2",
+                            "helm": {
+                                "parameters": [
+                                    {"name": "global.unstract.image.tag", "value": ""}
+                                ]
+                            },
+                        }
+                    }
+                },
+                "v1.7.0-rc.2",
+            ),
+        ):
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(os.path.join(self.d, "out"))
+            r, params = self.sync(
+                app,
+                APP_NAME=cloud_apps()["integration"],
+                TARGET_REVISION="v1.7.1-rc.1",
+                CLOUD_RC=RC,
+            )
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertNotIn("global.unstract.image.tag", params)
+            with open(os.path.join(self.d, "out")) as fh:
+                self.assertEqual(fh.read(), f"previous={before}\n")
+        # A near miss of a real app name, so a loosened allowlist fails here.
+        near_miss = cloud_apps()["staging"].replace("staging", "prod")
+        r, params = self.sync(pinned, APP_NAME=near_miss)
         self.assertEqual((r.returncode, params), (1, None))
 
     def test_sync_of_an_app_with_no_parameters(self):
@@ -3290,7 +3368,7 @@ class LateTargetWorkflow(Workflow):
         )
         self.assertEqual(
             out,
-            "tag=v1.7.0-rc.3\nbump=false\ntargets=on-prem\nwant=on-prem\nnewest=release/1.7\nchart=true\n",
+            "tag=v1.7.0-rc.3\nbump=false\ntargets=on-prem\nwant=on-prem\nchart=true\n",
         )
         self.built("v1.7.0-rc.3")
         st = self.state()
@@ -3374,7 +3452,7 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.0-rc.2\nbump=true\ntargets=cloud\nwant=cloud\nnewest=release/1.7\nchart=false\n",
+            "tag=v1.7.0-rc.2\nbump=true\ntargets=cloud\nwant=cloud\nchart=false\n",
         )
 
     def test_allocates_past_a_kept_rc_chart(self):
@@ -3395,18 +3473,6 @@ class TakeRcVersion(Workflow):
         self.assertIn("tag=v1.7.0-rc.2\n", self.read("output"))
         self.assertIn("\nchart=true\n", self.read("output"))
 
-    def test_plan_names_the_newest_line(self):
-        self.line("1.7", "v1.7.0")
-        self.line("1.8")
-        dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
-        r = self.run_step(
-            inline("take-rc-build.yaml", "Plan version and targets"),
-            BRANCH="release/1.7",
-            TARGETS="cloud",
-        )
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("\nnewest=release/1.8\n", self.read("output"))
-
     def test_a_failed_rc_chart_fails_the_summary(self):
         def summary(chart, version="v1.7.1-rc.1"):
             out = os.path.join(self.d, "summary")
@@ -3423,7 +3489,6 @@ class TakeRcVersion(Workflow):
                     "CHART": chart,
                     "CHART_VERSION": version,
                     "BRANCH": "release/1.7",
-                    "NEWEST": "release/1.7",
                     "GITHUB_STEP_SUMMARY": out,
                 },
                 capture_output=True,
@@ -3444,8 +3509,8 @@ class TakeRcVersion(Workflow):
         self.assertNotIn("QA tests", text)
         self.assertEqual(summary("skipped")[0], 0)
 
-    def test_staging_is_left_alone_for_an_older_line(self):
-        def summary(build, newest, **env):
+    def test_summary_says_where_the_rc_deployed(self):
+        def summary(build, env, deployed_from, **extra):
             out = os.path.join(self.d, "summary")
             with contextlib.suppress(FileNotFoundError):
                 os.remove(out)
@@ -3458,48 +3523,148 @@ class TakeRcVersion(Workflow):
                     "BUILD": build,
                     "RESULT": "success",
                     "BRANCH": "release/1.7",
-                    "NEWEST": newest,
+                    "ENVIRONMENT": env,
+                    "DEPLOYED_FROM": deployed_from,
+                    "APP": apps.get(env, ""),
+                    "ARGOCD_APPS": "https://argo/applications",
+                    "GITHUB_SERVER_URL": "",
                     "GITHUB_STEP_SUMMARY": out,
-                    **env,
+                    **extra,
                 },
                 capture_output=True,
                 text=True,
             )
-            self.assertEqual(r.returncode, 0, r.stderr)
+            ok = extra.get("RESULT", "success") == "success"
+            self.assertEqual(r.returncode, 0 if ok else 1, r.stderr)
             return self.read("summary")
 
+        apps = cloud_apps()
+        stg, intg = apps["staging"], apps["integration"]
+        text = summary("cloud", "integration", "v1.7.0-rc.3")
+        self.assertIn(
+            "Deployed to: integration (v1.7.0-rc.3 → v1.7.1-rc.1), "
+            f"[{intg}](https://argo/applications/{intg})\n",
+            text,
+        )
+        self.assertNotIn("sync-argocd.yaml", text)
+        text = summary("cloud on-prem", "none", "")
+        self.assertIn("Deployed to: none", text)
+        self.assertIn(
+            f"Apps: [{stg}](https://argo/applications/{stg}), "
+            f"[{intg}](https://argo/applications/{intg})\n",
+            text,
+        )
+        self.assertIn(
+            f"gh workflow run sync-argocd.yaml -f app_name={stg} -f target_revision=v1.7.1-rc.1",
+            text,
+        )
+        self.assertNotIn("sync-argocd.yaml", summary("on-prem", "none", ""))
+        self.assertNotIn("Apps:", summary("on-prem", "none", ""))
+        self.assertIn(
+            "Deployed to: none (the integration deploy did not complete)",
+            summary("cloud", "integration", ""),
+        )
+        self.assertIn(  # the app was updated but its sync failed
+            "Deployed to: integration updated (v1.7.0-rc.3 → v1.7.1-rc.1), but the build ended failure; check "
+            f"its sync in [{intg}](https://argo/applications/{intg})",
+            summary("cloud", "integration", "v1.7.0-rc.3", RESULT="failure"),
+        )
+        self.assertIn(  # a rerun that rebuilt only on-prem leaves the cloud RC where it is
+            "Deployed to: not redeployed (this run built no cloud images)",
+            summary("on-prem", "staging", ""),
+        )
         with open(os.path.join(HERE, "..", "workflows", "build-push.yaml")) as fh:
-            (staging,) = set(
-                re.findall(r"\n +app_name: (\S+)\n", fh.read())
-            )  # the app the build deploys
-        note = f"gh workflow run sync-argocd.yaml -f app_name={staging} -f target_revision=v1.7.1-rc.1"
-        self.assertIn(
-            "Staging not updated: it runs the newest line, `release/1.8`",
-            summary("cloud", "release/1.8", GITHUB_SERVER_URL=""),
-        )
-        self.assertIn(note, summary("cloud on-prem", "release/1.8"))
-        web = "https://github.com/Zipstack/unstract-cloud"
-        self.assertIn(
-            f"newest line, [`release/1.8`]({web}/tree/release/1.8). To deploy "
-            f"[`v1.7.1-rc.1`]({web}/releases/tag/v1.7.1-rc.1) there anyway:",
-            summary("cloud", "release/1.8", GITHUB_SERVER_URL="https://github.com"),
-        )
-        self.assertIn(
-            note, summary("cloud", "release/1.8", GITHUB_SERVER_URL="https://github.com")
-        )
-        self.assertNotIn(note, summary("cloud", "release/1.7"))
-        self.assertNotIn(note, summary("on-prem", "release/1.8"))
+            build_push = fh.read()
+        maps = re.findall(r"fromJSON\('(\{.*?\})'\)\[inputs\.environment\]", build_push)
+        self.assertEqual(len(maps), 3)
+        with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
+            maps += re.findall(
+                r"fromJSON\('(\{.*?\})'\)\[needs\.take-rc\.outputs\.environment\]",
+                fh.read(),
+            )
+        self.assertEqual(len(maps), 4)
+        for m in maps:  # every map keys the environments relstate names, to the same apps
+            self.assertEqual(json.loads(m), apps)
+        self.assertEqual(set(apps), set(rs.LINE_ENVS))
         with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
             text = fh.read()
         for wire in (
-            "\n      newest: ${{ steps.plan.outputs.newest }}\n",  # the job output both of these read
-            "\n      skip_argocd_deployment: ${{ inputs.skip_argocd_deployment || "
-            "needs.take-rc.outputs.newest != needs.take-rc.outputs.branch }}\n",
-            "\n      NEWEST: ${{ needs.take-rc.outputs.newest }}\n",
-            "\n      branch: ${{ needs.line.outputs.branch }}\n",  # release/X.Y, as newest is
-            "\n      BRANCH: ${{ needs.take-rc.outputs.branch }}\n",
+            "\n      environment: ${{ steps.checks.outputs.environment }}\n",
+            "\n      skip_argocd_deployment: ${{ needs.take-rc.outputs.environment == 'none' }}\n",
+            "\n      ENVIRONMENT: ${{ needs.take-rc.outputs.environment }}\n",
+            "\n      DEPLOYED_FROM: ${{ needs.build.outputs.deployed-from }}\n",
         ):
             self.assertIn(wire, text)
+        self.assertRegex(text, r"\n      ARGOCD_APPS: https://[^\s/]+/applications\n")
+
+    def test_environment_of_a_stabilizing_line(self):
+        self.line("1.7")
+        own = rs.line_env("1.7")
+        other = "staging" if own == "integration" else "integration"
+        r = self.checks(TARGETS="cloud", ENVIRONMENT="auto")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(f"environment={own}\n", self.read("output"))
+        for env in (own, "none"):
+            r = self.checks(TARGETS="cloud", ENVIRONMENT=env)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn(f"environment={env}\n", self.read("output"))
+        r = self.checks(TARGETS="cloud", ENVIRONMENT=other)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn(
+            f"::error::release/1.7 deploys to {own}; to deploy it to {other}, rerun with force",
+            r.stdout,
+        )
+        r = self.checks(TARGETS="cloud", ENVIRONMENT=other, FORCE="true", REASON="soak")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(f"environment={other}\n", self.read("output"))
+        self.assertIn(f"Forced deploy to {other}", self.read("notes.md"))
+        r = self.checks(TARGETS="cloud", ENVIRONMENT="prod")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("::error::unknown environment 'prod'", r.stdout)
+
+    def test_environment_shared_by_two_lines_in_rc(self):
+        self.line("1.7")
+        self.line("1.9")  # same parity, so the same own environment
+        own = rs.line_env("1.7")
+        r = self.checks(TARGETS="cloud", ENVIRONMENT="auto")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn(
+            f"::error::{own} is held by release/1.9, still in RC; to deploy it to {own}, rerun with force",
+            r.stdout,
+        )
+        r = self.checks(TARGETS="cloud", ENVIRONMENT="auto", FORCE="true", REASON="soak")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(f"environment={own}\n", self.read("output"))
+
+    def test_environment_of_a_patch_rc(self):
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
+        r = self.checks(TARGETS="cloud", ENVIRONMENT="auto")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn(
+            "::error::release/1.7 is stabilized: a patch RC has no environment of its own",
+            r.stdout,
+        )
+        for env in ("staging", "integration", "none"):  # free environments need no force
+            r = self.checks(TARGETS="cloud", ENVIRONMENT=env)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn(f"environment={env}\n", self.read("output"))
+        self.line("1.8")  # in RC on its own environment
+        held = rs.line_env("1.8")
+        r = self.checks(TARGETS="cloud", ENVIRONMENT=held)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn(
+            f"::error::{held} is held by release/1.8, still in RC; to deploy it to {held}, rerun with force",
+            r.stdout,
+        )
+        r = self.checks(TARGETS="cloud", ENVIRONMENT=held, FORCE="true", REASON="hotfix")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(f"Forced deploy to {held}", self.read("notes.md"))
+        # An on-prem-only RC deploys nothing, so auto passes.
+        r = self.checks(
+            TARGETS="on-prem", ENVIRONMENT="auto", FORCE="true", REASON="late"
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("environment=none\n", self.read("output"))
 
     def test_patch_rc_on_a_ga_line(self):
         self.line("1.7", "v1.7.0")
@@ -3512,7 +3677,7 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.1-rc.1\nbump=true\ntargets=cloud\nwant=cloud\nnewest=release/1.7\nchart=false\n",
+            "tag=v1.7.1-rc.1\nbump=true\ntargets=cloud\nwant=cloud\nchart=false\n",
         )
 
     def test_rerun_on_a_tagged_tip_builds_only_the_missing_target(self):
@@ -3543,7 +3708,7 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.1-rc.1\nbump=false\ntargets=cloud\nwant=cloud on-prem\nnewest=release/1.7\nchart=true\n",  # on-prem built earlier: still push its chart
+            "tag=v1.7.1-rc.1\nbump=false\ntargets=cloud\nwant=cloud on-prem\nchart=true\n",  # on-prem built earlier: still push its chart
         )
 
 
@@ -3712,9 +3877,8 @@ class InputSteps(unittest.TestCase):
                 run_name(wf, **{**ctx, "inputs.force": True}), want + " (forced)"
             )
             form = dispatch_inputs(wf)
-            self.assertTrue(
-                form["force"][0].startswith('description: "Force: overrides '), wf
-            )
+            # Short on purpose: each refusal says when force applies.
+            self.assertTrue(form["force"][0].startswith('description: "Force'), wf)
             self.assertEqual(
                 form["reason"][0], 'description: "Reason (required with Force)"', wf
             )
@@ -3769,7 +3933,11 @@ class InputSteps(unittest.TestCase):
 class CutPickLine(unittest.TestCase):
     """Cut's line input: X.Y or release/X.Y; empty takes relstate's next minor."""
 
-    def pick(self, line):
+    def pick(
+        self,
+        line,
+        state='{"branches": [], "next_minor": "1.8", "backport_targets": {"rc": []}}',
+    ):
         with tempfile.TemporaryDirectory() as d:
             work, bin_ = os.path.join(d, "work"), os.path.join(d, "bin")
             rm.git(d, "init", "-q", "--bare", os.path.join(d, "origin.git"))
@@ -3784,7 +3952,7 @@ class CutPickLine(unittest.TestCase):
                 fh.write(
                     "#!/bin/sh\n"
                     'case "$1$2" in\n'
-                    """.github/release/relstate.py) echo '{"branches": [], "next_minor": "1.8"}' ;;\n"""
+                    f".github/release/relstate.py) echo '{state}' ;;\n"
                     "*used_tags*) echo ;;\n"
                     f'*) exec {sys.executable} "$@" ;;\n'
                     "esac\n"
@@ -3805,7 +3973,8 @@ class CutPickLine(unittest.TestCase):
             )
             with open(out, "a+") as fh:
                 fh.seek(0)
-                return r.returncode, fh.read(), r.stderr
+                # ::error:: lines go to stdout
+                return r.returncode, fh.read(), r.stderr + r.stdout
 
     def test_line(self):
         self.assertEqual(self.pick("")[:2], (0, "line=1.8\n"))
@@ -3814,6 +3983,28 @@ class CutPickLine(unittest.TestCase):
         code, out, err = self.pick("1.9.0")
         self.assertEqual((code, out), (1, ""))
         self.assertIn("::error::not a release line X.Y", err)
+
+    def test_rc_cap_and_environment(self):
+        def state(*rc):
+            return json.dumps({"branches": [], "backport_targets": {"rc": list(rc)}})
+
+        self.assertEqual(
+            self.pick("0.189", state("release/0.188"))[:2], (0, "line=0.189\n")
+        )
+        code, out, err = self.pick("0.190", state("release/0.188"))
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn(
+            "::error::cannot cut 0.190: its environment staging is held by release/0.188, still in RC",
+            err,
+        )
+        code, out, err = self.pick("0.189", state("release/0.187"))
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("its environment integration is held by release/0.187", err)
+        code, out, err = self.pick("0.189", state("release/0.188", "release/0.187"))
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn(
+            "2 lines already in RC (release/0.188, release/0.187); the cap is 2", err
+        )
 
 
 class TakeRcBump(Workflow):
@@ -4256,7 +4447,6 @@ sys.exit(int(codes[os.environ["BUILD"].split().index(t)] if len(codes) > 1 else 
                     "RESULT": "success",
                     "CHART": "skipped",
                     "BRANCH": "release/1.7",
-                    "NEWEST": "release/1.7",
                     "FORCE": force,
                     "GITHUB_SERVER_URL": "",
                     "GITHUB_STEP_SUMMARY": os.path.join(self.d, "summary"),

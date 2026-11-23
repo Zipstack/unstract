@@ -1,8 +1,8 @@
 /*
  * v1's extension-point contract. Shell and pages render `<Slot>` from here.
- * The registry itself is built in `@v1/plugins`. The v1 shell (P2-T01) is to
- * hand it down through `PluginProvider`; nothing does yet. With no provider,
- * as in OSS tests, every slot shows its fallback.
+ * The registry itself is built in `@v1/plugins`; `V1App` hands it down
+ * through `PluginProvider`. With no provider, as in unit tests, every slot
+ * shows its fallback.
  */
 import { createContext, type ReactNode, useContext } from "react";
 import type { makeSlot, SlotComponentProps } from "./Slot";
@@ -23,6 +23,7 @@ export {
   type SlotComponentProps,
 } from "./Slot";
 export type * from "./types";
+export { GATE_SLOT_IDS } from "./types";
 
 type SlotRenderer = ReturnType<typeof makeSlot>;
 

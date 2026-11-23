@@ -11,6 +11,7 @@ detection itself is deliberately *not* patched — sniffing the bytes with
 libmagic is the behaviour under test.
 """
 
+import hashlib
 import io
 import lzma
 import struct
@@ -705,6 +706,137 @@ def test_a_plain_zip_stays_rejected(collaborators) -> None:
         archive.writestr("data.bin", bytes(range(256)) * 8)
 
     result = _stage([_upload("archive.pdf", buf.getvalue(), "application/pdf")])
+
+    assert result == {}
+    collaborators["storage"].write.assert_not_called()
+
+
+_XLSX_MAIN = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"
+
+
+def _metadata_first_package(main_part: str | None, main_type: str) -> bytes:
+    """An OOXML package laid out the way some carriers' exporters write one.
+
+    `[Content_Types].xml` and `_rels/.rels` come first, as they should, but
+    `docProps/` and `customXml/` follow ahead of the main part. libmagic names
+    a package only when the main part's directory shows up within its first few
+    members, so it calls this "Microsoft OOXML", which has no MIME:
+    `application/octet-stream` from the whole file, not `application/zip`.
+
+    With `main_part=None` nothing is declared, so it is not a loadable package.
+    """
+    content_types = '<?xml version="1.0"?><Types>'
+    rels = '<?xml version="1.0"?><Relationships>'
+    if main_part is not None:
+        content_types += f'<Override PartName="/{main_part}" ContentType="{main_type}"/>'
+        rels += (
+            f'<Relationship Id="rId1" Target="{main_part}" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+            'relationships/officeDocument"/>'
+        )
+    content_types += "</Types>"
+    rels += "</Relationships>"
+    main_dir = (main_part or "xl/workbook.xml").split("/", 1)[0]
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", content_types)
+        archive.writestr("_rels/.rels", rels)
+        archive.writestr("docProps/app.xml", '<?xml version="1.0"?><Properties/>')
+        archive.writestr("docProps/core.xml", '<?xml version="1.0"?><coreProperties/>')
+        archive.writestr("customXml/_rels/item1.xml.rels", rels)
+        # A large, stored data-store item, as the exporters write, so the main
+        # part sits well past whatever libmagic reads of the archive.
+        archive.writestr(
+            "customXml/item1.xml",
+            '<?xml version="1.0"?><root>' + "<v>0</v>" * 1750 + "</root>",
+            compress_type=zipfile.ZIP_STORED,
+        )
+        archive.writestr("customXml/itemProps1.xml", '<?xml version="1.0"?><ds/>')
+        archive.writestr(
+            main_part or f"{main_dir}/workbook.xml", '<?xml version="1.0"?><main/>'
+        )
+        archive.writestr(f"{main_dir}/styles.xml", '<?xml version="1.0"?><styles/>')
+    return buf.getvalue()
+
+
+def _assert_libmagic_reads_octet_stream(tmp_path, data: bytes) -> None:
+    """The precondition: libmagic gives no zip answer at all for these bytes.
+
+    Without it, the case would pass on a classifier that only ever opened files
+    libmagic called a zip, which is the bug.
+    """
+    path = tmp_path / "package.bin"
+    path.write_bytes(data)
+    assert src_mod.magic.from_file(str(path), mime=True) == "application/octet-stream"
+
+
+@pytest.mark.parametrize(
+    "name,main_part,main_type,expected",
+    [
+        pytest.param(
+            "loss_run.xlsx",
+            "xl/workbook.xml",
+            _XLSX_MAIN,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            id="xlsx",
+        ),
+        pytest.param(
+            "report.docx",
+            "word/document.xml",
+            _OOXML_MAIN,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            id="docx",
+        ),
+    ],
+)
+def test_a_package_libmagic_calls_octet_stream_is_looked_inside(
+    collaborators, tmp_path, name: str, main_part: str, main_type: str, expected: str
+) -> None:
+    """A valid package whose main part follows its metadata is staged.
+
+    It used to be rejected as `application/octet-stream`: only a file libmagic
+    called `application/zip` was opened, and libmagic does not call this one
+    that. Real libmagic throughout, since the bug is in what it answers.
+    """
+    data = _metadata_first_package(main_part, main_type)
+    _assert_libmagic_reads_octet_stream(tmp_path, data)
+
+    result = _stage([_upload(name, data, "application/octet-stream")])
+
+    assert set(result) == {name}
+    assert result[name].mime_type == expected
+    written = b"".join(
+        call.kwargs["data"] for call in collaborators["storage"].write.call_args_list
+    )
+    assert written == data
+
+
+def test_an_octet_stream_package_without_a_main_part_stays_rejected(
+    collaborators, tmp_path
+) -> None:
+    """Looking inside an octet-stream zip still needs a loadable package."""
+    data = _metadata_first_package(None, _XLSX_MAIN)
+    _assert_libmagic_reads_octet_stream(tmp_path, data)
+
+    result = _stage([_upload("loss_run.xlsx", data, "application/octet-stream")])
+
+    assert result == {}
+    collaborators["storage"].write.assert_not_called()
+
+
+def test_an_octet_stream_file_that_is_not_a_zip_stays_rejected(
+    collaborators, tmp_path
+) -> None:
+    """Unmocked, unlike `test_unidentifiable_binary_is_rejected`: the bytes
+    really are octet-stream to libmagic, and opening them as a zip finds
+    nothing, so libmagic's answer stands.
+    """
+    # Hash output: no format's magic, so "data" on every libmagic build.
+    data = b"".join(hashlib.sha256(bytes([i])).digest() for i in range(128))
+    _assert_libmagic_reads_octet_stream(tmp_path, data)
+
+    result = _stage([_upload("mystery.xlsx", data, "application/octet-stream")])
 
     assert result == {}
     collaborators["storage"].write.assert_not_called()

@@ -9,7 +9,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   type CurrentOrganization,
   OrganizationSwitcher,
-  sessionEndedPath,
 } from "./OrganizationSwitcher";
 
 const list = vi.fn<() => Promise<Organization[]>>();
@@ -406,16 +405,6 @@ describe("OrganizationSwitcher", () => {
     await waitFor(() =>
       expect(assign).toHaveBeenCalledWith("/error?code=INS&domain=acme.com"),
     );
-  });
-
-  test("sessionEndedPath: code without domain, and junk bodies", () => {
-    expect(sessionEndedPath({ code: "USR" })).toBe("/error?code=USR");
-    expect(sessionEndedPath({ code: "a&b", domain: "x y" })).toBe(
-      "/error?code=a%26b&domain=x+y",
-    );
-    expect(sessionEndedPath(undefined)).toBe("/landing");
-    expect(sessionEndedPath("<html>")).toBe("/landing");
-    expect(sessionEndedPath({ code: 7 })).toBe("/landing");
   });
 
   test("a 412 with an empty body means the session is gone: go to sign-in", async () => {

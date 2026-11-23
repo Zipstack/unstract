@@ -27,8 +27,8 @@ export type SearchMenuProps = Omit<
   Readonly<{
     /**
      * The control that opens the menu, used as the trigger itself
-     * (`asChild`), so it must accept a ref and props: for now `MenuButton`
-     * or `MenuIconButton`, the v1 `Button` once P1-T02 lands.
+     * (`asChild`), so it must accept a ref and props: a v1 button such as
+     * `MenuButton` or `MenuIconButton`.
      */
     trigger: ReactElement;
     open?: boolean;
