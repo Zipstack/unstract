@@ -1,5 +1,6 @@
 import json
 import logging
+from collections.abc import Callable
 from enum import Enum
 
 from django.core.exceptions import ImproperlyConfigured, ValidationError
@@ -120,13 +121,20 @@ class PromptStudioIndexHelper:
 
     @staticmethod
     def mark_index_failed(
-        document_id: str, profile_manager: ProfileManager, error: str
+        document_id: str,
+        profile_manager: ProfileManager,
+        error: str,
+        superseded: Callable[[], bool] | None = None,
     ) -> ExtractionStatusResult:
         """Records why indexing a document under a profile failed.
 
         The reason is kept on the IndexManager row so the Documents tab can
         show it after a reload; handle_index_manager clears it the next time
         the document is indexed (a summary index leaves it).
+
+        superseded, checked under the row lock, tells a late write from an
+        older attempt that a newer one has since succeeded; it then writes
+        nothing.
         """
         try:
             with transaction.atomic():
@@ -138,6 +146,14 @@ class PromptStudioIndexHelper:
                     profile_manager=profile_manager,
                     defaults={"extraction_status": {}},
                 )
+                if superseded and superseded():
+                    logger.info(
+                        "Index failure for document %s profile %s dropped: "
+                        "a newer attempt has indexed it.",
+                        document_id,
+                        profile_manager.profile_id,
+                    )
+                    return ExtractionStatusResult.OK
                 index_manager.index_error = error[:INDEX_ERROR_MAX_LENGTH]
                 index_manager.save(update_fields=["index_error"])
             return ExtractionStatusResult.OK

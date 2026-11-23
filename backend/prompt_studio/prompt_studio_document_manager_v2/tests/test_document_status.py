@@ -24,6 +24,9 @@ from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2 import internal_views
 from prompt_studio.prompt_studio_core_v2 import views as core_views
 from prompt_studio.prompt_studio_core_v2.constants import IndexingStatus
+from prompt_studio.prompt_studio_core_v2.document_indexing_service import (
+    DocumentIndexingService,
+)
 from prompt_studio.prompt_studio_core_v2.exceptions import IndexingAPIError
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
@@ -398,6 +401,44 @@ class PromptRunReusedIndexTests(_ToolWithDocument):
             self._run(indexed_doc_id="doc-shared")
         self.assertEqual(self._status(self.other)["status"], "pending")
 
+    def test_a_fresh_index_marks_the_cache_before_the_row(self) -> None:
+        # A late failure write checks the cache under the row lock; the
+        # cache has to say "indexed" before the row's error is cleared.
+        self.other.chunk_size = 512
+        self.other.save()
+        order: list[str] = []
+        dispatcher = MagicMock()
+        dispatcher.dispatch.return_value = SimpleNamespace(
+            success=True, data={"doc_id": "doc-new"}
+        )
+        helper = PromptStudioHelper
+        with (
+            patch.object(helper, "_get_dispatcher", return_value=dispatcher),
+            patch.object(helper, "_get_platform_api_key", return_value="k"),
+            patch.object(
+                PromptStudioIndexHelper,
+                "handle_index_manager",
+                side_effect=lambda **_: order.append("row"),
+            ),
+            patch(
+                "prompt_studio.prompt_studio_core_v2.prompt_studio_helper"
+                ".DocumentIndexingService"
+            ) as cache,
+        ):
+            cache.mark_document_indexed.side_effect = lambda **_: order.append("cache")
+            helper.dynamic_indexer(
+                profile_manager=self.other,
+                tool_id=str(self.tool.tool_id),
+                file_path="/tmp/a.pdf",
+                org_id=self.org.organization_id,
+                document_id=str(self.document.document_id),
+                user_id=str(self.user.user_id),
+                extracted_text="text",
+                reindex=True,
+                doc_id_key="key",
+            )
+        self.assertEqual(order, ["cache", "row"])
+
 
 class UploadWiringTests(_ToolWithDocument):
     def _upload(self, upload, *, converter=None) -> dict:
@@ -485,6 +526,37 @@ class IndexErrorInternalApiTests(_ToolWithDocument):
         # The worker client posts to v1/prompt-studio/index-error/.
         match = resolve("/internal/v1/prompt-studio/index-error/")
         self.assertIs(match.func, internal_views.index_error)
+
+    def _post_attempt(self, cached: str | None) -> int:
+        body = self._body(
+            org_id=self.org.organization_id, user_id="owner-1", doc_id_key="key-1"
+        )
+        with patch.object(
+            DocumentIndexingService, "get_indexed_document_id", return_value=cached
+        ) as lookup:
+            code = self._post(body)
+        lookup.assert_called_once_with(
+            org_id=self.org.organization_id, user_id="owner-1", doc_id_key="key-1"
+        )
+        return code
+
+    def test_a_late_failure_after_a_newer_success_is_dropped(self) -> None:
+        # The failed attempt cleared the cache key before posting, so an
+        # indexed value there comes from a newer, successful attempt.
+        self._index(self.default)
+        self.assertEqual(self._post_attempt(cached="doc-new"), 200)
+        self.assertEqual(self._status(self.default)["status"], "indexed")
+
+    def test_a_failure_with_no_newer_success_is_recorded(self) -> None:
+        self._index(self.default)
+        self.assertEqual(self._post_attempt(cached=None), 200)
+        self.assertEqual(self._status(self.default)["status"], "failed")
+
+    def test_a_failure_without_the_attempt_keys_is_recorded(self) -> None:
+        with patch.object(DocumentIndexingService, "get_indexed_document_id") as lookup:
+            self.assertEqual(self._post(self._body()), 200)
+        lookup.assert_not_called()
+        self.assertEqual(self._status(self.default)["status"], "failed")
 
     def test_missing_field_is_400(self) -> None:
         self.assertEqual(self._post(self._body(error="")), 400)

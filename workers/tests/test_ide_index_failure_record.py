@@ -23,11 +23,15 @@ _KWARGS = {
 
 
 def _recorded(api: MagicMock, error: str) -> None:
+    # user_id + doc_id_key name the attempt's indexing-cache key, which the
+    # backend reads to drop a write that a newer success has overtaken.
     api.mark_index_failed.assert_called_once_with(
         document_id="doc-1",
         profile_manager_id="profile-1",
         error=error,
         organization_id="org-1",
+        user_id="user-1",
+        doc_id_key="key-abc",
     )
 
 
@@ -70,7 +74,9 @@ class TestRecordsTheFailure:
         _index_error(dict(_KWARGS))
 
         api.mark_index_failed.assert_called_once()
-        assert "Index OOM" in api.mark_index_failed.call_args.kwargs["error"]
+        kwargs = api.mark_index_failed.call_args.kwargs
+        assert "Index OOM" in kwargs["error"]
+        assert (kwargs["user_id"], kwargs["doc_id_key"]) == ("user-1", "key-abc")
 
     def test_success_records_nothing(self, api):
         from ide_callback.tasks import ide_index_complete
@@ -176,7 +182,9 @@ class TestRecordsTheRightReason:
 
         api.mark_index_failed.side_effect = SoftTimeLimitExceeded()
         with pytest.raises(SoftTimeLimitExceeded):
-            _record_index_failure(api, "doc-1", "profile-1", "boom", "org-1")
+            _record_index_failure(
+                api, "doc-1", "profile-1", "boom", "org-1", "user-1", "key-abc"
+            )
 
 
 def test_client_posts_to_the_backend_route():
@@ -189,11 +197,20 @@ def test_client_posts_to_the_backend_route():
             profile_manager_id="profile-1",
             error="boom",
             organization_id="org-1",
+            user_id="user-1",
+            doc_id_key="key-abc",
         )
 
     # The backend route is pinned by its own test against this path.
     post.assert_called_once_with(
         "v1/prompt-studio/index-error/",
-        data={"document_id": "doc-1", "profile_manager_id": "profile-1", "error": "boom"},
+        data={
+            "document_id": "doc-1",
+            "profile_manager_id": "profile-1",
+            "error": "boom",
+            "org_id": "org-1",
+            "user_id": "user-1",
+            "doc_id_key": "key-abc",
+        },
         organization_id="org-1",
     )

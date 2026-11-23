@@ -2697,13 +2697,15 @@ class PromptStudioHelper:
                 )
             doc_id = result.data.get("doc_id")
 
+            # Cache first: a late failure write from an older attempt skips
+            # itself once the cache says indexed (see mark_index_failed).
+            DocumentIndexingService.mark_document_indexed(
+                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key, doc_id=doc_id
+            )
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
                 profile_manager=profile_manager,
                 doc_id=doc_id,
-            )
-            DocumentIndexingService.mark_document_indexed(
-                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key, doc_id=doc_id
             )
             return {"status": IndexingStatus.COMPLETED_STATUS.value, "output": doc_id}
         except (IndexingError, IndexingAPIError, SdkError) as e:

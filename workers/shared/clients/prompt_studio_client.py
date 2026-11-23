@@ -106,12 +106,21 @@ class PromptStudioAPIClient(BaseAPIClient):
         profile_manager_id: str,
         error: str,
         organization_id: str | None = None,
+        user_id: str = "",
+        doc_id_key: str = "",
     ) -> dict[str, Any]:
-        """Record why indexing a document failed, so it survives a reload."""
+        """Record why indexing a document failed, so it survives a reload.
+
+        org_id, user_id and doc_id_key name the attempt's indexing-cache key;
+        the backend drops the write when a newer attempt has since indexed it.
+        """
         payload = {
             "document_id": document_id,
             "profile_manager_id": profile_manager_id,
             "error": error,
+            "org_id": organization_id or "",
+            "user_id": user_id,
+            "doc_id_key": doc_id_key,
         }
         return self.post(
             _INDEX_ERROR_ENDPOINT, data=payload, organization_id=organization_id

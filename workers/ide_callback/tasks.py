@@ -56,6 +56,8 @@ def _record_index_failure(
     profile_manager_id: str | None,
     error: str,
     org_id: str,
+    user_id: str,
+    doc_id_key: str,
 ) -> None:
     """Keep the failure reason for the Documents tab; never fails the callback.
 
@@ -75,6 +77,8 @@ def _record_index_failure(
             profile_manager_id=profile_manager_id,
             error=error or _UNKNOWN_EXECUTOR_ERROR,
             organization_id=org_id,
+            user_id=user_id,
+            doc_id_key=doc_id_key,
         )
     except SoftTimeLimitExceeded:
         raise
@@ -259,7 +263,15 @@ def ide_index_complete(
                 status="failed",
                 error=error_msg,
             )
-            _record_index_failure(api, document_id, profile_manager_id, error_msg, org_id)
+            _record_index_failure(
+                api,
+                document_id,
+                profile_manager_id,
+                error_msg,
+                org_id,
+                user_id,
+                doc_id_key,
+            )
             return {"status": "failed", "error": error_msg}
 
         doc_id = result_dict.get("data", {}).get("doc_id", doc_id_key)
@@ -380,7 +392,13 @@ def ide_index_complete(
         )
         if not indexed:
             _record_index_failure(
-                api, document_id, profile_manager_id, executor_error or str(e), org_id
+                api,
+                document_id,
+                profile_manager_id,
+                executor_error or str(e),
+                org_id,
+                user_id,
+                doc_id_key,
             )
         raise
 
@@ -434,7 +452,13 @@ def ide_index_error(
     except Exception:
         logger.exception("ide_index_error callback failed")
     _record_index_failure(
-        api, document_id, cb.get("profile_manager_id"), error_msg, org_id
+        api,
+        document_id,
+        cb.get("profile_manager_id"),
+        error_msg,
+        org_id,
+        user_id,
+        doc_id_key,
     )
 
 
