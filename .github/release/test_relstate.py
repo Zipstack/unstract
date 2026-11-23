@@ -1672,8 +1672,12 @@ class PrFixClass(unittest.TestCase):
                 with self.assertRaisesRegex(
                     ValueError, f"`{old}` is no longer used", msg=labels
                 ) as e:
-                    rm.pr_fix_class("UN-1 [FIX] x", labels)
+                    rm.main_fix_class("UN-1 [FIX] x", labels)
                 self.assertNotIn("active:", str(e.exception))
+            # A pick or conflict PR into a release line keeps its source PR's old label: inert there.
+            c = rm.pr_fix_class
+            self.assertIsNone(c("UN-1 [FIX] x", [old, "backport-conflict"]))
+            self.assertEqual(c("UN-1 [FIX] x", [old, "backport/0.186"]), "0.186")
         with self.assertRaises(ValueError) as e:
             rm.pr_fix_class("UN-1 [FIX] x", ["backport/rc"], ["0.188", "0.187"])
         self.assertIn("(active: `backport/0.188`, `backport/0.187`)", str(e.exception))

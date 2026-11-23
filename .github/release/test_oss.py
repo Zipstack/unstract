@@ -5008,6 +5008,14 @@ esac
                 out,
             )
 
+    def test_a_retired_label_is_inert_on_a_release_base(self):
+        # Pick and conflict PRs carry their source PR's labels, so one opened before line labels keeps the old one.
+        for old in ("backport/rc", "backport/ga"):
+            for labels in ([old, "backport-conflict"], [old, "backport/0.186"]):
+                rc, out = self.classify("UN-1 [FIX] x", labels, "release/0.186")
+                self.assertEqual(rc, 0, (labels, out))
+                self.assertNotIn("::error", out)
+
     def test_an_inactive_line_is_refused_with_the_active_lines(self):
         heads = ("0.188", "v0.181.1001", "0.187")  # a legacy head is not a line
         rc, out = self.classify("UN-1 [FIX] x", ["backport/0.186"], "main", heads=heads)

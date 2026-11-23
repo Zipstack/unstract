@@ -124,7 +124,8 @@ def advise(
             "reason": f"the changed code is on released line(s) {_rel(ga)}{why}",
             "question": {
                 "key": "hotfix",
-                "text": f"Is this a hotfix or vulnerability fix that {_rel(ga)} must get as a patch release?",
+                "text": f"Does {_rel(ga)} need this fix: a hotfix or vulnerability fix for a patch release, or a fix "
+                f"its on-prem RC still needs?",
                 "answers": {"yes": yes, "no": no},
             },
             "next": {
@@ -136,7 +137,8 @@ def advise(
             **out,
             "result": "suggest",
             "label": yes,
-            "reason": f"a hotfix for released line(s) {_rel(ga)}; each pick there is confirmed before Promote{why}",
+            "reason": f"released line(s) {_rel(ga)} need it (a hotfix, or a fix for their on-prem RC); each pick there "
+            f"is confirmed before Promote{why}",
         }
     reason = (
         f"the changed code is on {_rel(rc)}, still awaiting GA; the oldest is release/{rc[-1]}{why}"
@@ -386,10 +388,9 @@ def advise_pr(slug, n, hotfix=None, pr=None, patches=None, need_ga=True, line=No
 
 def advise_branch(slug, ref, hotfix=None, line=None):
     base = rm.git(".", "merge-base", "origin/main", ref)
-    patches = {}
-    for chunk in rm.git(".", "diff", "--no-renames", base, ref).split("diff --git ")[1:]:
-        path = chunk.split("\n", 1)[0].split(" b/", 1)[-1]
-        patches[path] = chunk
+    patches = {
+        p: bp.path_diff(".", base, ref, p) for p in bp.changed_paths(".", base, ref)
+    }
     lines, how = line_facts(slug, base, patches) if code(patches) else ([], "")
     return {
         "repo": slug,

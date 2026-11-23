@@ -17,6 +17,8 @@ labels decide what it copies, so set them when you open the PR.
     `release/X.Y` and to every newer active line. Name the oldest line that needs the
     fix. Lines still in RC get it automatically; a released line gets it only when a
     Backport run confirms it.
+    A line released for cloud whose on-prem is still in RC counts as released: if only
+    its on-prem RC needs the fix, label it `backport/X.Y` for that line.
   - **`main-only`:** it stays on `main`. Never with a `backport/` label.
   - **A revert** takes the backport label of the PR it reverts. GitHub's Revert
     button opens it with no label.

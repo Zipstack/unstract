@@ -2270,6 +2270,8 @@ class StateCheck(unittest.TestCase):
             return list(owed if branch == "release/0.191" else held)
 
         def under_(repo, branch, cache):
+            if isinstance(under, Exception):
+                raise under
             return list(under) if branch == "release/0.190" else []
 
         listing = {
@@ -2292,6 +2294,19 @@ class StateCheck(unittest.TestCase):
     def test_scans_stabilizing_owed_and_stabilized_held(self):
         self.assertEqual(self.check(), (0, ""))
         self.assertEqual(self.scanned, ["release/0.191", "release/0.190"])
+
+    def test_a_failed_narrow_label_check_warns_and_still_reports(self):
+        owed = [(self.a, "0.191", "#7", "UN-1 [FIX] x")]
+        err = RuntimeError("git blame (exit 128): fatal: no such path")
+        code, out = self.check(owed, merged="2026-10-01T00:00:00Z", under=err)
+        self.assertEqual(code, 1)
+        self.assertIn(
+            f"::error::{self.a[:7]} (0.191, PR #7) owed on stabilizing release/0.191", out
+        )
+        for b in ("release/0.191", "release/0.190"):
+            self.assertIn(
+                f"::warning::cannot check {b} for fixes labelled too narrowly: {err}", out
+            )
 
     def test_owed_pick_at_the_grace_boundary(self):
         owed = [(self.a, "0.191", "#7", "UN-1 [FIX] x")]
@@ -2420,6 +2435,32 @@ class OnpremRcBlockers(unittest.TestCase):
 
 class UnderBackported(unittest.TestCase):
     """A fix labelled for a newer line that changes code the older line also has."""
+
+    def test_any_path_is_blamed(self):
+        # git quotes a non-ASCII or quoted name in a diff header and ends a spaced one with a tab; `[` is a glob.
+        names = [
+            "docs/Simple Manual Review/simple review.md",
+            "naïve.py",
+            'q"x.py',
+            "x[1].py",
+        ]
+        with tempfile.TemporaryDirectory() as repo:
+            git = lambda *a: dev_git(repo, *a)
+            git("init", "-q", "-b", "main")
+
+            def commit(files):
+                for n, text in files.items():
+                    os.makedirs(os.path.dirname(os.path.join(repo, n)), exist_ok=True)
+                    with open(os.path.join(repo, n), "w") as f:
+                        f.write(text)
+                git("add", "--", *files)
+                git("commit", "-q", "-m", "x")
+                return git("rev-parse", "HEAD")
+
+            # One commit per name, so each must be blamed; x1.py is what the glob x[1].py would also match.
+            cuts = {commit({n: "a\n"}) for n in names} | {commit({"x1.py": "a\nb\nc\n"})}
+            fix = commit({**dict.fromkeys(names, "b\n"), "x1.py": "a\nb\nC\n"})
+            self.assertEqual(bp._blamed(repo, fix), cuts)
 
     def test_listed_only_when_the_changed_code_is_on_the_line(self):
         with tempfile.TemporaryDirectory() as repo:

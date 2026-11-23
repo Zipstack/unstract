@@ -60,6 +60,41 @@ class SearchSince(Repo):
         self.assertEqual(bp.search_since(self.repo, cut), "2026-10-30")
 
 
+class BranchMode(Repo):
+    def test_any_path_gets_its_own_patch(self):
+        # git quotes a non-ASCII or quoted name in a diff header and ends a spaced one with a tab; `[` is a glob.
+        names = [
+            "docs/Simple Manual Review/simple review.md",
+            "naïve.py",
+            'q"x.py',
+            "x[1].py",
+        ]
+
+        def commit(files):
+            for n, text in files.items():
+                os.makedirs(os.path.dirname(os.path.join(self.repo, n)), exist_ok=True)
+                with open(os.path.join(self.repo, n), "w") as f:
+                    f.write(text)
+            dev_git(self.repo, "add", "--", *files)
+            dev_git(self.repo, "commit", "-q", "-m", "x")
+
+        # x1.py is what the glob x[1].py would also match.
+        commit({**dict.fromkeys(names, "a\n"), "x1.py": "a\nb\nc\n"})
+        dev_git(self.repo, "push", "-q", "origin", "main")
+        commit({**dict.fromkeys(names, "b\n"), "x1.py": "a\nb\nC\n"})
+        seen = {}
+        facts = lambda slug, base, patches: seen.update(patches) or ([], "")
+        with (
+            contextlib.chdir(self.repo),
+            mock.patch.object(la, "line_facts", facts),
+            mock.patch.object(la, "advise", lambda *a, **k: {}),
+        ):
+            la.advise_branch("o/r", "HEAD")
+        self.assertEqual(sorted(seen), sorted([*names, "x1.py"]))
+        for n in names:
+            self.assertEqual(la.old_ranges(seen[n]), [(1, 1)], n)
+
+
 class Owed(Repo):
     def owed(self, run_log=None):
         dev_git(self.repo, "fetch", "-q", "origin", "--tags")
@@ -258,6 +293,12 @@ class Advise(unittest.TestCase):
         lines = [line("0.188"), line("0.186", ga=True)]
         a = la.advise("main", ["backend/x.py"], lines, pr=7)
         self.assertEqual(a["result"], "ask")
+        # A fix only the released line's on-prem RC needs is a yes too, or that RC never gets it.
+        self.assertEqual(
+            a["question"]["text"],
+            "Does release/0.186 need this fix: a hotfix or vulnerability fix for a patch release, or a fix its "
+            "on-prem RC still needs?",
+        )
         self.assertEqual(
             a["question"]["answers"], {"yes": "backport/0.186", "no": "backport/0.188"}
         )

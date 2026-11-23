@@ -406,10 +406,12 @@ def line_label(slug, x_y, gh, retired=None):
 
 def pr_fix_class(title, labels=(), active=None):
     """The oldest line X.Y a PR's `backport/X.Y` label names; None without one. active: the release lines a new label
-    may name (Lint PR); None checks the form only, so a merged PR keeps its line after the line retires.
+    may name (Lint PR on a PR into main); None checks the form only, so a merged PR keeps its line after the line
+    retires, and a pick or conflict PR into a release line, which carries its source PR's labels, may keep a retired
+    one: there it is inert. main_fix_class refuses retired labels itself.
     """
     retired = [l for l in labels if l in RETIRED_LABELS]
-    if retired:
+    if retired and active is not None:
         raise ValueError(
             f"{_ticks(retired)} is no longer used: label the oldest release line that needs the fix, as "
             f"`backport/X.Y`{_active(active)}"
@@ -419,6 +421,7 @@ def pr_fix_class(title, labels=(), active=None):
         l
         for l in labels
         if not LINE_LABEL_RE.fullmatch(l)
+        and l not in RETIRED_LABELS
         and re.match(
             r"\s*(backports?\s*(/|[\W_]+\s*(rc|ga|\d)(?![a-z]))|fix(\w{0,3}[\W_]*class(?![a-z])|\s*/))",
             l,
@@ -456,6 +459,10 @@ def pr_fix_class(title, labels=(), active=None):
 
 def main_fix_class(title, labels=()):
     """pr_fix_class for a PR merged into main, which must say whether it is backported."""
+    if retired := [l for l in labels if l in RETIRED_LABELS]:
+        raise ValueError(
+            f"{_ticks(retired)} is no longer used: label the oldest release line that needs the fix, as `backport/X.Y`"
+        )
     cls = pr_fix_class(title, labels)
     if refusal := release_only_refusal("main", labels):
         raise ValueError(refusal)

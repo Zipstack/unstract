@@ -502,15 +502,32 @@ def _trailers(repo, base, remote):
 HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? ", re.M)
 
 
+def changed_paths(repo, a, b, *opts):
+    """Paths a..b changes, read NUL-separated: a diff header quotes some names and ends a spaced one with a tab."""
+    out = rm.git(repo, "diff", "-z", "--name-only", "--no-renames", *opts, a, b)
+    return [p for p in out.split("\0") if p]
+
+
+def path_diff(repo, a, b, path, *opts):
+    return rm.git(
+        repo,
+        "--literal-pathspecs",
+        "diff",
+        "--no-color",
+        "--no-renames",
+        *opts,
+        a,
+        b,
+        "--",
+        path,
+    )
+
+
 def _blamed(repo, sha):
     """Commits behind the lines sha changes or removes, blamed at its parent."""
     out = set()
-    diff = rm.git(repo, "diff", "-U0", "--no-color", "--no-renames", f"{sha}^", sha)
-    for part in diff.split("\ndiff --git "):
-        path = re.search(r"^--- a/(.+)$", part, re.M)
-        if not path:
-            continue  # an added file has no old lines
-        for start, n in HUNK_RE.findall(part):
+    for path in changed_paths(repo, f"{sha}^", sha):
+        for start, n in HUNK_RE.findall(path_diff(repo, f"{sha}^", sha, path, "-U0")):
             n = 1 if n == "" else int(n)
             if not n:
                 continue  # a pure addition
@@ -522,7 +539,7 @@ def _blamed(repo, sha):
                 f"{start},+{n}",
                 f"{sha}^",
                 "--",
-                path.group(1),
+                path,
             )
             out |= set(re.findall(r"^([0-9a-f]{40}) \d+ \d+", blame, re.M))
     return out
@@ -666,7 +683,12 @@ def state_check(state, others=(), slug=None, now=None):
                     f"{sha[:7]} ({cls}, PR {pr}) owed on stabilizing {b} and not picked: "
                     f"dispatch Backport with commits={sha[:12]}, or record a decline"
                 )
-        for sha, cls, pr, title in under_backported(REPO, b, cache):  # information only
+        try:  # information only, so a failure here must not hide the errors above
+            rows = under_backported(REPO, b, cache)
+        except RuntimeError as e:
+            print(f"::warning::cannot check {b} for fixes labelled too narrowly: {e}")
+            rows = []
+        for sha, cls, pr, title in rows:
             print(
                 f"::notice::{sha[:7]} ({pr}, {title}) is labelled backport/{cls}, but code it changes is also on "
                 f"{b}: if {b} needs the fix, relabel the PR backport/{rm.line(b)}"
