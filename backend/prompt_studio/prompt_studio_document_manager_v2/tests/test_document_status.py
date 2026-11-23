@@ -23,6 +23,7 @@ from utils.user_context import UserContext
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2 import internal_views
 from prompt_studio.prompt_studio_core_v2 import views as core_views
+from prompt_studio.prompt_studio_core_v2.constants import IndexingStatus
 from prompt_studio.prompt_studio_core_v2.exceptions import IndexingAPIError
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
@@ -321,6 +322,81 @@ class PromptRunIndexFailureTests(_ToolWithDocument):
         status = self._status(self.default)
         self.assertEqual(status["status"], "failed")
         self.assertIn("vector db down", status["failure_reason"])
+
+
+class PromptRunReusedIndexTests(_ToolWithDocument):
+    """Profiles with the same indexing settings share one index key."""
+
+    def _run(self, *, indexed_doc_id=None, wait_result=None) -> MagicMock:
+        self.other.chunk_size = 512
+        self.other.save()
+        dispatcher = MagicMock()
+        helper = PromptStudioHelper
+        with (
+            patch.object(helper, "_get_dispatcher", return_value=dispatcher),
+            patch.object(helper, "_wait_for_indexing", return_value=wait_result),
+            patch(
+                "prompt_studio.prompt_studio_core_v2.prompt_studio_helper"
+                ".DocumentIndexingService"
+            ) as cache,
+        ):
+            cache.get_indexed_document_id.return_value = indexed_doc_id
+            helper.dynamic_indexer(
+                profile_manager=self.other,
+                tool_id=str(self.tool.tool_id),
+                file_path="/tmp/a.pdf",
+                org_id=self.org.organization_id,
+                document_id=str(self.document.document_id),
+                user_id=str(self.user.user_id),
+                extracted_text="text",
+                doc_id_key="key",
+            )
+        return dispatcher
+
+    def test_a_cached_index_marks_the_profile_indexed(self) -> None:
+        dispatcher = self._run(indexed_doc_id="doc-shared")
+        dispatcher.dispatch.assert_not_called()
+        self.assertEqual(self._status(self.other)["status"], "indexed")
+        row = IndexManager.objects.get(profile_manager=self.other)
+        self.assertEqual(row.raw_index_id, "doc-shared")
+
+    def test_a_cached_index_clears_an_earlier_failure(self) -> None:
+        self._fail(self.other)
+        self._run(indexed_doc_id="doc-shared")
+        self.assertEqual(self._status(self.other)["status"], "indexed")
+
+    def test_a_recorded_reuse_is_not_written_again(self) -> None:
+        self._run(indexed_doc_id="doc-shared")
+        with patch.object(PromptStudioIndexHelper, "handle_index_manager") as write:
+            self._run(indexed_doc_id="doc-shared")
+        write.assert_not_called()
+
+    def test_a_completed_wait_marks_the_profile_indexed(self) -> None:
+        self._run(
+            wait_result={
+                "status": IndexingStatus.COMPLETED_STATUS.value,
+                "output": "doc-shared",
+            }
+        )
+        self.assertEqual(self._status(self.other)["status"], "indexed")
+
+    def test_a_timed_out_wait_stays_pending(self) -> None:
+        self._run(
+            wait_result={
+                "status": IndexingStatus.PENDING_STATUS.value,
+                "output": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
+            }
+        )
+        self.assertEqual(self._status(self.other)["status"], "pending")
+
+    def test_a_bookkeeping_error_does_not_fail_the_run(self) -> None:
+        with patch.object(
+            PromptStudioIndexHelper,
+            "handle_index_manager",
+            side_effect=IndexingAPIError("Error updating indexing status"),
+        ):
+            self._run(indexed_doc_id="doc-shared")
+        self.assertEqual(self._status(self.other)["status"], "pending")
 
 
 class UploadWiringTests(_ToolWithDocument):

@@ -89,6 +89,36 @@ class PromptStudioIndexHelper:
             raise IndexingAPIError("Error updating indexing status") from e
 
     @staticmethod
+    def record_reused_index(
+        document_id: str, profile_manager: ProfileManager, doc_id: str
+    ) -> None:
+        """Marks the profile indexed when it reuses an index already built.
+
+        Profiles with the same indexing settings share one index key, so a
+        prompt run can find the index ready without indexing under this
+        profile. A bookkeeping error is logged; the run goes on.
+        """
+        already = IndexManager.objects.filter(
+            document_manager_id=document_id,
+            profile_manager=profile_manager,
+            raw_index_id=doc_id,
+            index_error__isnull=True,
+        ).exists()
+        if already:
+            return
+        try:
+            PromptStudioIndexHelper.handle_index_manager(
+                document_id=document_id, profile_manager=profile_manager, doc_id=doc_id
+            )
+        except IndexingAPIError:
+            logger.warning(
+                "Could not mark document %s indexed for profile %s",
+                document_id,
+                profile_manager.profile_id,
+                exc_info=True,
+            )
+
+    @staticmethod
     def mark_index_failed(
         document_id: str, profile_manager: ProfileManager, error: str
     ) -> ExtractionStatusResult:

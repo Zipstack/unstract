@@ -2632,6 +2632,9 @@ class PromptStudioHelper:
                     org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
                 )
                 if indexed_doc_id:
+                    PromptStudioIndexHelper.record_reused_index(
+                        document_id, profile_manager, indexed_doc_id
+                    )
                     return {
                         "status": IndexingStatus.COMPLETED_STATUS.value,
                         "output": indexed_doc_id,
@@ -2641,6 +2644,10 @@ class PromptStudioHelper:
                     org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
                 )
                 if wait_result is not None:
+                    if wait_result["status"] == IndexingStatus.COMPLETED_STATUS.value:
+                        PromptStudioIndexHelper.record_reused_index(
+                            document_id, profile_manager, wait_result["output"]
+                        )
                     return wait_result
                 # wait_result is None → indexing failed; fall through to
                 # re-index below
