@@ -1,0 +1,53 @@
+import type { SlotId } from "@v1/lib/plugins";
+
+/*
+ * The Settings tab's sections in design order (frame D09). Three are cloud
+ * extensions: a plugin fills their slot, and in OSS they are absent, from
+ * the page and from the section list.
+ */
+
+export type SettingsSlotId = Extract<
+  SlotId,
+  `prompt-studio.settings.${string}`
+>;
+
+export type SettingsSection = Readonly<{
+  /** Anchor of the section (or, for Postamble, of its field). */
+  id: string;
+  label: string;
+  slot?: SettingsSlotId;
+}>;
+
+export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
+  { id: "llm-profiles", label: "LLM Profiles" },
+  {
+    id: "summarized-extraction",
+    label: "Summarized Extraction",
+    slot: "prompt-studio.settings.summarized-extraction",
+  },
+  {
+    id: "llm-challenge",
+    label: "LLM Challenge",
+    slot: "prompt-studio.settings.llm-challenge",
+  },
+  { id: "custom-data", label: "Custom Data" },
+  { id: "grammar", label: "Grammar" },
+  // One section with two fields (D15); the list keeps both labels (D09).
+  { id: "preamble", label: "Preamble" },
+  { id: "postamble", label: "Postamble" },
+  {
+    id: "highlighting",
+    label: "Highlighting",
+    slot: "prompt-studio.settings.highlighting",
+  },
+];
+
+/** The sections this build shows: OSS ones always, cloud ones when a plugin fills their slot. */
+export function visibleSections(
+  isFilled: (slot: SettingsSlotId) => boolean,
+): readonly SettingsSection[] {
+  return SETTINGS_SECTIONS.filter((s) => !s.slot || isFilled(s.slot));
+}
+
+/** The DOM id for a section anchor, namespaced so two tabs never clash. */
+export const anchorId = (id: string): string => `ps-settings-${id}`;
