@@ -82,6 +82,12 @@ class TestEmitRunStarted:
         with patch(_EMIT, side_effect=RuntimeError("redis down")):
             run_events.emit_run_started(_cb_kwargs())
 
+    def test_bad_dispatch_time_does_not_raise(self):
+        with patch(_EMIT) as emit:
+            run_events.emit_run_started(_cb_kwargs(dispatch_time="not-a-time"))
+
+        emit.assert_not_called()
+
 
 # --- Wiring: every dispatching endpoint sends the event after dispatch -------
 
@@ -105,12 +111,16 @@ def wiring():
     calls = []
     dispatcher = MagicMock()
     dispatcher.dispatch_with_callback.side_effect = lambda *a, **k: (
-        calls.append("dispatch") or MagicMock(id=k["task_id"])
+        calls.append(("dispatch", k["task_id"])) or MagicMock(id=k["task_id"])
     )
+    # The builders return the payload without the ids the view adds before
+    # dispatch, so the test sees whether the view set them.
     cb = _cb_kwargs()
+    del cb["executor_task_id"], cb["dispatch_time"]
 
     def _emit(cb_kwargs):
-        calls.append(("started", cb_kwargs))
+        # Copy: the view's dict is the one later code could still change.
+        calls.append(("started", dict(cb_kwargs)))
 
     prompt = MagicMock(
         enforce_type="text", prompt_type="PROMPT", active=True, prompt_id="p1"
@@ -154,10 +164,13 @@ def wiring():
 
 
 def _assert_started_after_dispatch(calls, cb):
-    assert calls[0] == "dispatch"
-    assert calls[1] == ("started", cb)
-    assert cb["executor_task_id"]
-    assert cb["dispatch_time"]
+    assert len(calls) == 2
+    (dispatched, task_id), (started, sent) = calls
+    assert (dispatched, started) == ("dispatch", "started")
+    assert sent["executor_task_id"] == task_id
+    assert task_id
+    assert isinstance(sent["dispatch_time"], float)
+    assert sent["run_id"] == cb["run_id"]
 
 
 class TestEndpointsSendStarted:
