@@ -80,8 +80,28 @@ const ICON_BUTTON =
   "ui:inline-flex ui:size-8 ui:cursor-pointer ui:items-center ui:justify-center ui:rounded-md ui:border-0 ui:bg-transparent ui:p-0 ui:text-muted-foreground ui:outline-none ui:hover:bg-accent ui:hover:text-foreground ui:focus-visible:focus-ring";
 
 /** A click on these inside a row is theirs, not the row's. */
-const OWN_CLICK =
-  "a, button, input, select, textarea, label, [role=checkbox], [role=menuitem], [contenteditable=true]";
+const OWN_CLICK = [
+  "a",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  "label",
+  "[contenteditable=true]",
+  ...[
+    "checkbox",
+    "menuitem",
+    "slider",
+    "switch",
+    "radio",
+    "combobox",
+    "textbox",
+  ].map((role) => `[role=${role}]`),
+  // The v1 Slider's track and range are plain spans inside this group.
+  "[data-slot=slider]",
+  // Anything else a cell wants to keep to itself.
+  "[data-row-click=ignore]",
+].join(", ");
 
 function fromControl(event: MouseEvent<HTMLElement>): boolean {
   const target = event.target as Element | null;
@@ -553,7 +573,10 @@ export function DataTable<TRow>({
       cells.push({
         key: column.id,
         className: ALIGN_CLASS[column.align ?? "start"],
-        content: column.cell(row.original),
+        content: column.cell(row.original, {
+          tabIndex: controlTab,
+          active: isActive,
+        }),
       });
     }
     if (rowActions) {

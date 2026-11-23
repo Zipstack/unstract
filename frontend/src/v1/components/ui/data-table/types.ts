@@ -25,12 +25,28 @@ export type DataTableColumnWidth = "xs" | "sm" | "md" | "lg" | "xl";
  */
 export type DataTableColumnPriority = 1 | 2 | 3 | 4;
 
+/**
+ * What a cell renderer gets besides its row. Only one row is in the tab order
+ * (the active one; arrows move it): in the others `tabIndex` is -1.
+ */
+export type DataTableCellContext = Readonly<{
+  /** Put it on any link or button in the cell. */
+  tabIndex: -1 | undefined;
+  /** The row is the one in the tab order. */
+  active: boolean;
+}>;
+
 export type DataTableColumn<TRow> = Readonly<{
   /** Unique within the table; what `DataTableSort.columnId` names. */
   id: string;
   /** Header text, and the column's accessible name. Drawn in overline caps. */
   header: string;
-  cell: (row: TRow) => ReactNode;
+  /**
+   * The cell's content. A link or button in it should take
+   * `context.tabIndex`, so it leaves the tab order with its row, as the
+   * table's own controls do.
+   */
+  cell: (row: TRow, context: DataTableCellContext) => ReactNode;
   /**
    * Makes the column sortable. With client sorting, the table compares this
    * field of the row, or what the function returns. With server pagination

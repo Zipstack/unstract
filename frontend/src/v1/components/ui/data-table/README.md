@@ -42,7 +42,7 @@ const columns: DataTableColumn<Deployment>[] = [
 | --- | --- | --- |
 | `id` | `string` | unique; `DataTableSort.columnId` names it |
 | `header` | `string` | header text and the column's accessible name, drawn in overline caps |
-| `cell` | `(row) => ReactNode` | |
+| `cell` | `(row, { tabIndex, active }) => ReactNode` | put `tabIndex` on any link or button in the cell, so it leaves the tab order with its row |
 | `sortKey` | `keyof TRow` or `(row) => string \| number \| boolean \| Date \| null` | makes the column sortable; see Sorting |
 | `priority` | `1 \| 2 \| 3 \| 4` | default 1; see Column priority |
 | `align` | `"start" \| "center" \| "end"` | default `start`; numbers go `end` |
@@ -139,9 +139,14 @@ const columns: DataTableColumn<Deployment>[] = [
 - One polite status region announces what the user did: "Sorted by Name,
   ascending", "Sort cleared", "3 rows selected", "All 25 rows on this page
   selected, 40 in total", "Selection cleared".
-- Clicks on a link, button, checkbox or input inside a row belong to that
-  control, not to `onRowClick`. Keep interactive content in cells rare: use
-  the row click target and `rowActions`.
+- A cell renderer gets `{ tabIndex, active }`: `tabIndex` is -1 in every
+  row but the active one. Put it on any link or button the cell renders, or
+  that control stays a tab stop in every row.
+- Clicks on a link, button, input, checkbox, switch, radio, slider or menu
+  item inside a row belong to that control, not to `onRowClick`; so does
+  anything inside an element with `data-row-click="ignore"`. Keep
+  interactive content in cells rare: use the row click target and
+  `rowActions`.
 
 ## Scrolling
 

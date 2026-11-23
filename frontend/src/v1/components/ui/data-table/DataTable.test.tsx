@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, within } from "@testing-library/react";
+import { Slider } from "@v1/components/ui/toggles";
 import { renderV1 } from "@v1/test";
 import { describe, expect, it, vi } from "vitest";
 import { DataTable } from "./DataTable";
@@ -1089,5 +1090,71 @@ describe("review fixes", () => {
     rerender(<DataTable {...props} rows={[]} loading />);
     rerender(<DataTable {...props} rows={galleryRows(30)} />);
     expect(screen.getByText("Showing 21 to 30 of 30 entries")).toBeTruthy();
+  });
+
+  it("gives cell renderers the row's tab index, so cell links follow the roving focus", async () => {
+    const columns: DataTableColumn<GalleryDeployment>[] = [
+      {
+        id: "name",
+        header: "Name",
+        cell: (row, { tabIndex, active }) => (
+          <a href={`#${row.id}`} tabIndex={tabIndex} data-active={active}>
+            {row.name}
+          </a>
+        ),
+      },
+    ];
+    const { user } = setup({ columns, onRowClick: vi.fn() });
+    const link = (name: string) => screen.getByRole("link", { name });
+    expect(link("health-monitoring API").getAttribute("tabindex")).toBeNull();
+    expect(link("health-monitoring API").getAttribute("data-active")).toBe(
+      "true",
+    );
+    expect(link("masa_cms").getAttribute("tabindex")).toBe("-1");
+    expect(link("masa_cms").getAttribute("data-active")).toBe("false");
+    bodyRows()[0].focus();
+    await user.keyboard("{ArrowDown}");
+    expect(link("health-monitoring API").getAttribute("tabindex")).toBe("-1");
+    expect(
+      link("API Hub - Purchase Order API").getAttribute("tabindex"),
+    ).toBeNull();
+  });
+
+  it("keeps clicks on a slider or an opted-out element in a cell off the row", () => {
+    const onRowClick = vi.fn();
+    const columns: DataTableColumn<GalleryDeployment>[] = [
+      { id: "name", header: "Name", cell: (row) => row.name },
+      {
+        id: "weight",
+        header: "Weight",
+        cell: (row) => (
+          <Slider
+            aria-label={`Weight of ${row.name}`}
+            defaultValue={[5]}
+            max={10}
+          />
+        ),
+      },
+      {
+        id: "note",
+        header: "Note",
+        cell: () => (
+          <span data-row-click="ignore">
+            <span>Note</span>
+          </span>
+        ),
+      },
+    ];
+    setup({ columns, onRowClick });
+    const row = bodyRows()[0];
+    const track = row.querySelector("[data-slot=slider-track]") as HTMLElement;
+    fireEvent.click(track);
+    fireEvent.click(
+      row.querySelector("[data-slot=slider-range]") as HTMLElement,
+    );
+    fireEvent.click(within(row).getByText("Note"));
+    expect(onRowClick).not.toHaveBeenCalled();
+    fireEvent.click(within(row).getByText("health-monitoring API"));
+    expect(onRowClick).toHaveBeenCalledOnce();
   });
 });

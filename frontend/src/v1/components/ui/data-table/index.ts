@@ -13,6 +13,7 @@ export {
 export type {
   DataTableAlign,
   DataTableBulkContext,
+  DataTableCellContext,
   DataTableColumn,
   DataTableColumnPriority,
   DataTableColumnWidth,
