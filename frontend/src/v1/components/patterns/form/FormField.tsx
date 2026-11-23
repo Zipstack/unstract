@@ -32,7 +32,9 @@ export function FormField<T extends FieldValues, N extends FieldPath<T>>({
   // A hidden field cannot show its error, so drop it; a submit validates again
   // and an error that still stands shows in the footer. Check after the commit:
   // a field-array row that moved, or the row that took a removed row's path,
-  // mounts the same path again and keeps its error.
+  // mounts the same path again and keeps its error. Known gap: `replace()` and
+  // `update()` remount a new row at the same path, so it keeps the old row's
+  // server error until the user edits that field or submits.
   const { clearErrors, control } = form;
   useEffect(
     () => () => {
