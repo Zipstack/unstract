@@ -191,22 +191,27 @@ def has_ga(slug, line):
 
 
 def old_ranges(patch):
-    """Old-side lines a unified diff removes or replaces. A hunk that only adds lines gives its unchanged neighbours
-    instead, since an addition has no old line of its own; a new file gives none.
+    """Old-side lines a unified diff changes: each removed or replaced line, and for an insertion, which has no old
+    line of its own, the unchanged line on each side of it. A new file gives none.
     """
-    out = []
+    lines = set()
     parts = HUNK_RE.split(patch or "")[1:]
     for n, body in zip(parts[::2], parts[1::2], strict=True):
-        n, seen, gone = int(n), [], []
+        n, prev = int(n), ""
         for row in body.split("\n"):
-            if row[:1] in (" ", "-"):
-                (gone if row[0] == "-" else seen).append(n)
-                n += 1
-        for i in gone or seen:
-            if out and out[-1][1] == i - 1:
-                out[-1] = (out[-1][0], i)
-            else:
-                out.append((i, i))
+            tag = row[:1]
+            if tag == "-":
+                lines.add(n)
+            elif tag == "+" and prev != "-":
+                lines.update(i for i in (n - 1, n) if i > 0)
+            if tag in (" ", "-"):
+                n, prev = n + 1, tag
+    out = []
+    for i in sorted(lines):
+        if out and out[-1][1] == i - 1:
+            out[-1] = (out[-1][0], i)
+        else:
+            out.append((i, i))
     return out
 
 

@@ -368,7 +368,12 @@ class OldRanges(unittest.TestCase):
 
     def test_an_insertion_gives_its_neighbours(self):
         self.assertEqual(
-            la.old_ranges("@@ -10,4 +10,5 @@\n a\n b\n+x\n c\n d"), [(10, 13)]
+            la.old_ranges("@@ -10,4 +10,5 @@\n a\n b\n+x\n c\n d"), [(11, 12)]
+        )
+        # A replacement and a separate insertion in one hunk: both count.
+        self.assertEqual(
+            la.old_ranges("@@ -1,6 +1,7 @@\n a\n-b\n+B\n c\n d\n+x\n e\n f"),
+            [(2, 2), (4, 5)],
         )
         self.assertEqual(la.old_ranges("@@ -0,0 +1,9 @@\n+new file"), [])
         self.assertEqual(la.old_ranges(None), [])  # GitHub omits the patch of a binary
