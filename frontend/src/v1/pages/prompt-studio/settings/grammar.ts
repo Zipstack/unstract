@@ -1,22 +1,31 @@
 import { z } from "zod";
 
 /*
- * Grammar: words and the phrases the extractor treats as equal to them,
- * saved as `prompt_grammer` ({word: [equivalents]}). Equivalents are typed
- * comma-separated.
+ * Grammar: words and the phrases the model is told to treat as equal to
+ * them, saved as `prompt_grammer` ({word: [equivalents]}). Equivalents are
+ * typed comma-separated; a loaded row keeps its list while its text is
+ * unchanged, so a stored phrase with a comma survives a save.
  */
 
 /** v0's cap on rows. */
 export const GRAMMAR_LIMIT = 200;
 
-export type GrammarRow = { word: string; synonyms: string };
+/** `loaded` is the stored list, kept so an unchanged row saves as it came. */
+export type GrammarRow = {
+  word: string;
+  synonyms: string;
+  loaded?: readonly string[];
+};
+
+const SEPARATOR = ", ";
 
 export function grammarRows(
   grammar: Readonly<Record<string, readonly string[]>> | null,
 ): GrammarRow[] {
   return Object.entries(grammar ?? {}).map(([word, synonyms]) => ({
     word,
-    synonyms: synonyms.join(", "),
+    synonyms: synonyms.join(SEPARATOR),
+    loaded: synonyms,
   }));
 }
 
@@ -32,12 +41,25 @@ export function splitSynonyms(text: string): string[] {
   ];
 }
 
+/** The row's equivalents: the stored list while unchanged, else the typed text split. */
+function rowSynonyms(row: GrammarRow): readonly string[] {
+  return row.loaded !== undefined && row.synonyms === row.loaded.join(SEPARATOR)
+    ? row.loaded
+    : splitSynonyms(row.synonyms);
+}
+
 const isBlank = (row: GrammarRow) =>
   row.word.trim() === "" && splitSynonyms(row.synonyms).length === 0;
 
 export const grammarFormSchema = z
   .object({
-    rows: z.array(z.object({ word: z.string(), synonyms: z.string() })),
+    rows: z.array(
+      z.object({
+        word: z.string(),
+        synonyms: z.string(),
+        loaded: z.array(z.string()).readonly().optional(),
+      }),
+    ),
   })
   .superRefine(({ rows }, ctx) => {
     const filled = rows.filter((row) => !isBlank(row));
@@ -81,7 +103,7 @@ export const grammarFormSchema = z
     prompt_grammer: Object.fromEntries(
       rows
         .filter((row) => !isBlank(row))
-        .map((row) => [row.word.trim(), splitSynonyms(row.synonyms)]),
+        .map((row) => [row.word.trim(), [...rowSynonyms(row)]]),
     ),
   }));
 

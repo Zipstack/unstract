@@ -3,12 +3,19 @@ import { z } from "zod";
 
 /*
  * Custom Data as key-value rows over the project's `custom_data` object.
- * Values may nest (prompts read `{{custom_data.user.name}}`): a value that
- * starts with `{` or `[` is JSON, anything else is text. A value loaded as a
- * number, boolean or null shows as JSON and keeps its type while it parses.
+ * Values may nest (prompts read `{{custom_data.user.name}}`): a typed value
+ * that starts with `{` or `[` is JSON, anything else is text. A loaded string
+ * stays text until it is edited; a value loaded as a number, boolean or null
+ * shows as JSON and keeps its type while it parses.
  */
 
-export type CustomDataRow = { key: string; value: string; json: boolean };
+/** `loaded` is a loaded string's text, kept so an unchanged value saves as it came. */
+export type CustomDataRow = {
+  key: string;
+  value: string;
+  json: boolean;
+  loaded?: string;
+};
 
 type JsonObject = { readonly [key: string]: JsonValue };
 
@@ -22,7 +29,7 @@ export function customDataRows(data: JsonValue | null): CustomDataRow[] {
   }
   return Object.entries(data).map(([key, value]) =>
     typeof value === "string"
-      ? { key, value, json: false }
+      ? { key, value, json: false, loaded: value }
       : { key, value: JSON.stringify(value), json: true },
   );
 }
@@ -39,8 +46,14 @@ function parseJson(text: string): Parsed {
   }
 }
 
-/** A row's value: JSON when it starts an object or array (or was loaded as JSON and still parses), else text. */
+/**
+ * A row's value: an unchanged loaded string is text; otherwise JSON when it
+ * starts an object or array (or was loaded as JSON and still parses), else text.
+ */
 function rowValue(row: CustomDataRow): Parsed {
+  if (row.loaded !== undefined && row.value === row.loaded) {
+    return { ok: true, value: row.value };
+  }
   if (STRUCTURED.test(row.value)) {
     return parseJson(row.value);
   }
@@ -58,6 +71,7 @@ const rowSchema = z.object({
   key: z.string(),
   value: z.string(),
   json: z.boolean(),
+  loaded: z.string().optional(),
 });
 
 /** The section's form: rows in, `custom_data` to save (null for none) out. */

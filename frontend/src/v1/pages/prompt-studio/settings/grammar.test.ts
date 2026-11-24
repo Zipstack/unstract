@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   GRAMMAR_LIMIT,
+  type GrammarRow,
   grammarFormSchema,
   grammarRows,
   splitSynonyms,
@@ -18,10 +19,28 @@ const issues = (rows: { word: string; synonyms: string }[]) => {
 describe("grammar", () => {
   it("shows equivalents comma-separated and saves them as a list", () => {
     const rows = grammarRows({ Amt: ["Amount", "Amt."] });
-    expect(rows).toEqual([{ word: "Amt", synonyms: "Amount, Amt." }]);
+    expect(rows).toEqual([
+      { word: "Amt", synonyms: "Amount, Amt.", loaded: ["Amount", "Amt."] },
+    ]);
     expect(grammarFormSchema.parse({ rows })).toEqual({
       prompt_grammer: { Amt: ["Amount", "Amt."] },
     });
+  });
+
+  it("keeps a loaded equivalent that contains a comma while the row is unchanged", () => {
+    const grammar = { NY: ["New York, NY", "NYC"] };
+    expect(grammarFormSchema.parse({ rows: grammarRows(grammar) })).toEqual({
+      prompt_grammer: grammar,
+    });
+  });
+
+  it("splits an edited row on commas", () => {
+    const [row] = grammarRows({ NY: ["New York, NY"] });
+    expect(
+      grammarFormSchema.parse({
+        rows: [{ ...(row as GrammarRow), synonyms: "New York, NYC" }],
+      }),
+    ).toEqual({ prompt_grammer: { NY: ["New York", "NYC"] } });
   });
 
   it("has no rows for null", () => {

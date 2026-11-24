@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  type CustomDataRow,
   customDataFormSchema,
   customDataRows,
   isDefined,
@@ -26,7 +27,7 @@ describe("customDataRows", () => {
     expect(
       customDataRows({ code: "CYB", year: 2026, user: { name: "A" } }),
     ).toEqual([
-      { key: "code", value: "CYB", json: false },
+      { key: "code", value: "CYB", json: false, loaded: "CYB" },
       { key: "year", value: "2026", json: true },
       { key: "user", value: '{"name":"A"}', json: true },
     ]);
@@ -43,6 +44,20 @@ describe("customDataFormSchema", () => {
     const data = { code: "CYB", year: 2026, user: { name: "A" }, on: true };
     const result = customDataFormSchema.parse({ rows: customDataRows(data) });
     expect(result).toEqual({ custom_data: data });
+  });
+
+  it("keeps a loaded string as text while it is unchanged, even if it looks like JSON", () => {
+    const data = { tbd: "[TBD] see contract", json: '{"a":1}', list: "[1,2]" };
+    expect(
+      customDataFormSchema.safeParse({ rows: customDataRows(data) }).data,
+    ).toEqual({ custom_data: data });
+  });
+
+  it("reads an edited loaded string by the typed rule", () => {
+    const [row] = customDataRows({ list: "[1]" });
+    expect(
+      parse([{ ...(row as CustomDataRow), value: "[1, 2]" }]).data,
+    ).toEqual({ custom_data: { list: [1, 2] } });
   });
 
   it("stores a typed value as a string unless it starts an object or array", () => {
