@@ -21,6 +21,11 @@ class WorkflowDoesNotExistError(APIException):
     default_detail = "Workflow does not exist"
 
 
+class WorkflowDeletionError(APIException):
+    status_code = 400
+    default_detail = "Workflow cannot be deleted as it is currently in use."
+
+
 class ExecutionDoesNotExistError(APIException):
     status_code = 404
     default_detail = "Execution does not exist."
