@@ -114,6 +114,24 @@ is convention.
 - `CodeEditor` uses Monaco from its default CDN, as v0 does. Never call
   `loader.config()` in v1: the loader is shared with v0.
 
+## Selection inputs
+
+- Dropdowns, searchable pickers, chip inputs and segmented switches come
+  from `@v1/components/ui/select` (`Select`, `Combobox`, `MultiSelect`,
+  `SegmentedControl`, `Chip`); its README lists every prop and the keyboard.
+  Do not build another dropdown, picker or chip input.
+- Pick by list size: `Select` for a short, known list (under about 50
+  options; it renders every one), `Combobox` for a long or server-loaded
+  list (`loadOptions`), `MultiSelect` for several values, and
+  `SegmentedControl` for 2 to 5 always-visible options.
+- `Select`, `Combobox` and `MultiSelect` take `SelectOption`, and
+  `SegmentedControl` takes `SegmentedOption`; the folder README lists their
+  fields. A provider or connector logo goes in a `SelectOption`'s `leading`
+  as `<ProviderLogo decorative … />` from `@v1/components/ui/BrandMark`.
+- Inside `Field` they take its label, description, invalid and disabled
+  state (a `SegmentedControl` is named by `aria-labelledby` on the Field's
+  label); outside it, name them with `aria-label` or `aria-labelledby`.
+
 ## Toggles
 
 - Checkboxes, switches, radio groups and sliders come from
