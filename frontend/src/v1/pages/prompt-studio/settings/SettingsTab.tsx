@@ -30,7 +30,8 @@ export type SettingsTabProps = Readonly<{
    * Hands the host a check to await before it leaves the tab (another tab,
    * closing the dialog): it asks only while a section has unsaved changes
    * and resolves true when leaving is fine. Closing the browser tab is
-   * guarded here.
+   * guarded here. A new `toolId` starts the tab afresh and drops unsaved
+   * changes, so the host awaits this check before it switches projects.
    */
   onLeaveGuard?: (canLeave: () => Promise<boolean>) => void;
   /** Whether a plugin fills a cloud section's slot; the plugin registry by default. */
@@ -108,19 +109,19 @@ function ProjectSettings({
         }}
         fallback={null}
         failed={
-          <SettingsSection id={section.id} title={section.label}>
-            <InlineAlert title={`${section.label} could not load`}>
-              Reload the page to try again.
-            </InlineAlert>
-          </SettingsSection>
+          <FailedSection
+            id={section.id}
+            label={section.label}
+            onDirtyChange={report(section.id)}
+          />
         }
       />
     ) : null;
   };
 
   // A 403 on the project read means no access. A project the user cannot
-  // see at all answers 404 (the query is scoped to the user), which the
-  // frame decides on before it mounts this tab.
+  // see at all answers 404 (the query is scoped to the user); that case is
+  // the project frame's to handle before it mounts this tab.
   if (settings.isError && toApiError(settings.error).kind === "forbidden") {
     return <NoPermission />;
   }
@@ -160,6 +161,30 @@ function ProjectSettings({
         {cloud("prompt-studio.settings.highlighting")}
       </div>
     </div>
+  );
+}
+
+/**
+ * A cloud section whose plugin failed to load or render. It has nothing left
+ * to save, so it clears the section's unsaved flag itself rather than trust
+ * a filler that crashed to have done so.
+ */
+function FailedSection({
+  id,
+  label,
+  onDirtyChange,
+}: Readonly<{
+  id: string;
+  label: string;
+  onDirtyChange: (dirty: boolean) => void;
+}>): JSX.Element {
+  useEffect(() => onDirtyChange(false), [onDirtyChange]);
+  return (
+    <SettingsSection id={id} title={label}>
+      <InlineAlert title={`${label} could not load`}>
+        Reload the page to try again.
+      </InlineAlert>
+    </SettingsSection>
   );
 }
 

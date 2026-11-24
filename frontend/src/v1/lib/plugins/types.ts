@@ -50,7 +50,8 @@ export type GateProps = Readonly<{ children: ReactNode }>;
  * Highlighting). The filler renders the whole section, heading included,
  * with `id={anchorId}`. It saves only its own fields through
  * `PATCH prompt-studio/{toolId}/` and writes the response to the project's
- * cached detail, so other sections see it. It reports unsaved changes, and
+ * cached detail (after cancelling any read of it in flight, so an older read
+ * cannot land on top), so other sections see it. It reports unsaved changes, and
  * `false` when it unmounts, so the tab asks before they are lost and only then.
  */
 export type SettingsSectionProps = Readonly<{
@@ -62,15 +63,19 @@ export type SettingsSectionProps = Readonly<{
   onDirtyChange: (dirty: boolean) => void;
 }>;
 
-type SettingsSlotId = Extract<SlotId, `prompt-studio.settings.${string}`>;
+/** The Prompt Studio Settings tab's slots. */
+export type SettingsSlotId = Extract<
+  SlotId,
+  `prompt-studio.settings.${string}`
+>;
 
-/** Slots whose host passes props of its own; gates get GateProps, the rest none. */
+/** Non-gate slots whose host passes props: every settings slot gets SettingsSectionProps. */
 type HostProps = { [K in SettingsSlotId]: SettingsSectionProps };
 
 /*
  * The props a filler receives; the host passes them.
- * ponytail: a slot's props stay empty until the host page that renders it is
- * built; that task adds the slot to HostProps.
+ * ponytail: any other slot's props stay empty until the host page that
+ * renders it is built; that task adds the slot to HostProps.
  */
 export type SlotProps = {
   [K in SlotId]: K extends GateSlotId

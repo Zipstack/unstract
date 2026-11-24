@@ -25,6 +25,7 @@ import {
   SETTINGS_TOOL_ID,
   settingsHandlers,
 } from "@v1/test/fixtures/promptStudioSettings";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsTab, type SettingsTabProps } from "./SettingsTab";
 
@@ -598,7 +599,7 @@ describe("saving against the cached project", () => {
   });
 
   it("keeps a save when an older read of the project lands after it", async () => {
-    const tool = makeToolSettings();
+    let tool = makeToolSettings();
     let release: () => void = () => undefined;
     let hold = false;
     const held = new Promise<void>((resolve) => {
@@ -607,22 +608,25 @@ describe("saving against the cached project", () => {
     mockApi(
       ...settingsHandlers(S).slice(1),
       http.get(TOOL, async () => {
+        const snapshot = tool;
         if (hold) {
+          hold = false;
           await held;
         }
-        return HttpResponse.json(tool);
+        return HttpResponse.json(snapshot);
       }),
-      http.patch(TOOL, async ({ request }) =>
-        HttpResponse.json({
+      http.patch(TOOL, async ({ request }) => {
+        tool = {
           ...tool,
           ...((await request.json()) as Partial<ToolSettings>),
-        }),
-      ),
+        };
+        return HttpResponse.json(tool);
+      }),
     );
     const { user, queryClient } = renderTab();
     await loaded();
     hold = true;
-    void queryClient.refetchQueries({
+    const stale = queryClient.refetchQueries({
       queryKey: promptStudioToolKeys.detail(SETTINGS_TOOL_ID),
     });
     await user.clear(preambleBox());
@@ -632,13 +636,144 @@ describe("saving against the cached project", () => {
     );
     await within(section("Preamble")).findByText("No changes");
     release();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await stale;
+    await waitFor(() =>
+      expect(
+        queryClient.isFetching({
+          queryKey: promptStudioToolKeys.detail(SETTINGS_TOOL_ID),
+        }),
+      ).toBe(0),
+    );
     expect(preambleBox()).toHaveValue("Be brief.");
     expect(
       queryClient.getQueryData<ToolSettings>(
         promptStudioToolKeys.detail(SETTINGS_TOOL_ID),
       )?.preamble,
     ).toBe("Be brief.");
+  });
+
+  it("keeps what is typed in a grammar row while its save is in flight", async () => {
+    const tool = makeToolSettings();
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mockApi(
+      ...settingsHandlers(S, { tool }),
+      http.patch(TOOL, async ({ request }) => {
+        const patch = (await request.json()) as Partial<ToolSettings>;
+        await held;
+        return HttpResponse.json({ ...tool, ...patch });
+      }),
+    );
+    const { user } = renderTab();
+    await loaded();
+    const grammar = section("Grammar");
+    const word = within(grammar).getByLabelText("Word 1");
+    await user.type(word, "A");
+    await user.click(
+      within(grammar).getByRole("button", { name: "Save changes" }),
+    );
+    await user.type(word, "B");
+    release();
+    await within(grammar).findByText("1 unsaved change");
+    expect((word as HTMLInputElement).value.endsWith("AB")).toBe(true);
+  });
+
+  it("shows the value the server saved when it differs from the one sent", async () => {
+    const tool = makeToolSettings();
+    mockApi(
+      ...settingsHandlers(S, { tool }),
+      http.patch(TOOL, () =>
+        HttpResponse.json({ ...tool, preamble: "Server version." }),
+      ),
+    );
+    const { user } = renderTab();
+    await loaded();
+    await user.clear(preambleBox());
+    await user.type(preambleBox(), "Be brief.");
+    await user.click(
+      within(section("Preamble")).getByRole("button", { name: "Save changes" }),
+    );
+    await waitFor(() => expect(preambleBox()).toHaveValue("Server version."));
+    expect(within(section("Preamble")).getByText("No changes")).toBeVisible();
+  });
+
+  it("does not undo a change saved elsewhere while the section saved", async () => {
+    let tool = makeToolSettings();
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mockApi(
+      ...settingsHandlers(S).slice(1),
+      http.get(TOOL, () => HttpResponse.json(tool)),
+      http.patch(TOOL, async ({ request }) => {
+        const before = tool;
+        const patch = (await request.json()) as Partial<ToolSettings>;
+        await held;
+        tool = { ...tool, ...patch };
+        return HttpResponse.json({ ...before, ...patch });
+      }),
+    );
+    const { user, queryClient } = renderTab();
+    await loaded();
+    const key = promptStudioToolKeys.detail(SETTINGS_TOOL_ID);
+    await user.type(preambleBox(), " More.");
+    await user.click(
+      within(section("Preamble")).getByRole("button", { name: "Save changes" }),
+    );
+    tool = { ...tool, default_profile: "set-elsewhere" };
+    await queryClient.refetchQueries({ queryKey: key });
+    release();
+    await within(section("Preamble")).findByText("No changes");
+    await waitFor(() =>
+      expect(queryClient.getQueryData<ToolSettings>(key)?.default_profile).toBe(
+        "set-elsewhere",
+      ),
+    );
+  });
+
+  it("reads the project again when a save cancelled a read in flight", async () => {
+    const loadedTool = makeToolSettings();
+    let tool = loadedTool;
+    let releaseGet: () => void = () => undefined;
+    let hold = false;
+    mockApi(
+      ...settingsHandlers(S).slice(1),
+      http.get(TOOL, async () => {
+        if (hold) {
+          hold = false;
+          await new Promise<void>((resolve) => {
+            releaseGet = resolve;
+          });
+        }
+        return HttpResponse.json(tool);
+      }),
+      http.patch(TOOL, async ({ request }) => {
+        const patch = (await request.json()) as Partial<ToolSettings>;
+        tool = { ...tool, ...patch };
+        // A response serialised before the other change committed.
+        return HttpResponse.json({ ...loadedTool, ...patch });
+      }),
+    );
+    const { user, queryClient } = renderTab();
+    await loaded();
+    const key = promptStudioToolKeys.detail(SETTINGS_TOOL_ID);
+    tool = { ...tool, default_profile: "set-elsewhere" };
+    hold = true;
+    void queryClient.invalidateQueries({ queryKey: key });
+    await user.type(preambleBox(), " More.");
+    await user.click(
+      within(section("Preamble")).getByRole("button", { name: "Save changes" }),
+    );
+    await within(section("Preamble")).findByText("No changes");
+    releaseGet();
+    await waitFor(() =>
+      expect(queryClient.getQueryData<ToolSettings>(key)?.default_profile).toBe(
+        "set-elsewhere",
+      ),
+    );
   });
 });
 
@@ -711,9 +846,64 @@ describe("cloud sections", () => {
     await waitFor(async () => expect(await canLeave()).toBe(false));
   });
 
+  it("stops asking about a cloud section whose filler crashed", async () => {
+    serve();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    function Crashing({ onDirtyChange }: SettingsSectionProps) {
+      const [crash, setCrash] = useState(false);
+      if (crash) {
+        throw new Error("filler crashed");
+      }
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            onDirtyChange(true);
+            setCrash(true);
+          }}
+        >
+          Break challenge
+        </button>
+      );
+    }
+    const registry = buildRegistry(
+      [
+        {
+          id: "challenge",
+          distributions: ["cloud"],
+          slots: {
+            "prompt-studio.settings.llm-challenge": async () => ({
+              default: Crashing,
+            }),
+          },
+        },
+      ],
+      "cloud",
+    );
+    let canLeave: () => Promise<boolean> = async () => false;
+    const { user } = renderV1(
+      <PluginProvider slot={makeSlot(registry, () => undefined)}>
+        <SettingsTab
+          toolId={SETTINGS_TOOL_ID}
+          isSlotFilled={(slot) => registry.slot(slot) !== undefined}
+          onLeaveGuard={(fn) => {
+            canLeave = fn;
+          }}
+        />
+      </PluginProvider>,
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Break challenge" }),
+    );
+    await screen.findByText("LLM Challenge could not load");
+    await waitFor(async () => expect(await canLeave()).toBe(true));
+  });
+
   it("says when a cloud section could not load instead of leaving a dead link", async () => {
     serve();
     renderWithPlugins();
+    expect(await screen.findByText(`tool ${SETTINGS_TOOL_ID}`)).toBeVisible();
     const failed = await screen.findByRole("region", { name: "Highlighting" });
     expect(failed).toHaveAttribute("id", "ps-settings-highlighting");
     expect(

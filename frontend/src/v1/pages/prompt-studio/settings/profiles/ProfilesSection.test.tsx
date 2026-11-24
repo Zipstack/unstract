@@ -285,6 +285,43 @@ it("refreshes the list only after the first profile is the default", async () =>
   expect(events[0]).toBe("default");
 });
 
+it("lists the first profile while it is being made the default", async () => {
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const setRows = serveProfiles([]);
+  mockApi(
+    http.post(CREATE, () => {
+      const created = makeProfile({
+        profile_id: "first",
+        profile_name: "first",
+        is_default: false,
+      });
+      setRows([{ ...created, is_default: true }]);
+      return HttpResponse.json(created, { status: 201 });
+    }),
+    http.patch(LIST, async () => {
+      await held;
+      return HttpResponse.json({ default_profile: "first" });
+    }),
+  );
+  const { user } = renderSection();
+  await user.click(
+    await screen.findByRole("button", { name: "Add New LLM Profile" }),
+  );
+  await fillNewProfile(user, "first");
+  await user.click(screen.getByRole("button", { name: "Save profile" }));
+  expect(await screen.findByRole("cell", { name: "first" })).toBeVisible();
+  expect(screen.queryByText(/No LLM profiles yet/)).toBeNull();
+  release();
+  await waitFor(() =>
+    expect(
+      screen.getByRole("radio", { name: "Make first the default" }),
+    ).toBeChecked(),
+  );
+});
+
 it("says so when the first profile could not be made the default", async () => {
   const setRows = serveProfiles([]);
   mockApi(
@@ -310,6 +347,7 @@ it("says so when the first profile could not be made the default", async () => {
       "Profile saved, but it is not the default",
     ),
   );
+  expect(shown.filter((n) => n.kind === "error")).toEqual([]);
   expect(await screen.findByRole("cell", { name: "first" })).toBeVisible();
 });
 
@@ -447,10 +485,12 @@ it("edits a profile by its adapter ids and keeps one the user cannot see", async
 
 it("leaves the context window out when the backend does not know it", async () => {
   serveProfiles();
+  let answered = false;
   mockApi(
-    http.get(apiPath(S, "/adapter/info/:id/"), ({ params }) =>
-      HttpResponse.json({ id: params.id, context_window_size: 0 }),
-    ),
+    http.get(apiPath(S, "/adapter/info/:id/"), ({ params }) => {
+      answered = true;
+      return HttpResponse.json({ id: params.id, context_window_size: 0 });
+    }),
   );
   const { user } = renderSection();
   await user.click(await screen.findByRole("button", { name: "Edit test3" }));
@@ -458,7 +498,10 @@ it("leaves the context window out when the backend does not know it", async () =
   await waitFor(() =>
     expect(screen.getByLabelText("LLM")).toHaveValue(ADAPTER_IDS.llm),
   );
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await waitFor(() => expect(answered).toBe(true));
+  await waitFor(() =>
+    expect(screen.getByLabelText("Chunk size")).toBeVisible(),
+  );
   expect(screen.queryByText(/LLM context/)).toBeNull();
 });
 

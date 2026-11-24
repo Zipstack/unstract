@@ -108,10 +108,14 @@ function ProfileEditor({
       onCancel={onClose}
       onDirtyChange={onDirtyChange}
       onSaved={(saved) => {
-        const refresh = () =>
-          queryClient.invalidateQueries({
-            queryKey: promptProfileKeys.list(toolId),
-          });
+        const key = promptProfileKeys.list(toolId);
+        // Show the saved profile at once; the refresh below confirms it.
+        queryClient.setQueryData<LlmProfile[]>(key, (rows = []) =>
+          rows.some((p) => p.profile_id === saved.profile_id)
+            ? rows.map((p) => (p.profile_id === saved.profile_id ? saved : p))
+            : [...rows, saved],
+        );
+        const refresh = () => queryClient.invalidateQueries({ queryKey: key });
         // A project's first profile becomes its default, as in v0. The list
         // refreshes after that, so it cannot read the profile before it is.
         if (profiles.length === 0) {

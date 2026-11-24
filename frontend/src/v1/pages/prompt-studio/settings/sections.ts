@@ -1,4 +1,4 @@
-import type { SlotId } from "@v1/lib/plugins";
+import type { SettingsSlotId } from "@v1/lib/plugins";
 import {
   Braces,
   Database,
@@ -16,10 +16,7 @@ import {
  * the page and from the section list.
  */
 
-export type SettingsSlotId = Extract<
-  SlotId,
-  `prompt-studio.settings.${string}`
->;
+export type { SettingsSlotId };
 
 export type SettingsSection = Readonly<{
   /** Anchor of the section (or, for Postamble, of its field). */

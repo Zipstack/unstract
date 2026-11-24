@@ -25,8 +25,9 @@ const required = (message: string) => z.string().trim().min(1, message);
 
 /**
  * The rules. `takenNames` are the other profiles' names in this project;
- * the backend refuses a duplicate on create too (case-sensitive, as checked
- * here), but an edit that collides reaches it only as a server error.
+ * the backend rejects a duplicate on create with a clear message
+ * (case-sensitive, as checked here); an edit that collides gets only a
+ * generic server error.
  */
 export function profileFormSchema(takenNames: readonly string[]) {
   const taken = new Set(takenNames.map((n) => n.trim()));

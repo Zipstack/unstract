@@ -44,6 +44,15 @@ function changedOnly<O extends ToolSettingsPatch>(
   );
 }
 
+/** A deep copy: react-hook-form's getValues shares nested arrays with the live form. */
+const snapshot = <T>(values: T): T => structuredClone(values);
+
+const pick = (
+  from: ToolSettings,
+  keys: readonly string[],
+): Partial<ToolSettings> =>
+  Object.fromEntries(keys.filter((k) => k in from).map((k) => [k, from[k]]));
+
 /** Puts back the fields typed while the save ran, as unsaved changes. */
 function keepTypedSince<I extends FieldValues, O>(
   form: UseFormReturn<I, unknown, O>,
@@ -65,8 +74,9 @@ function keepTypedSince<I extends FieldValues, O>(
 
 /**
  * One project-settings section as its own form. The schema's output is the
- * patch, so saving sends only this section's changed fields
- * (`PATCH prompt-studio/{id}/`), refreshes the cached project and makes the
+ * patch, so saving sends only this section's fields (`PATCH
+ * prompt-studio/{id}/`; for a form of separate fields, such as Preamble and
+ * Postamble, only those changed), refreshes the cached project and makes the
  * saved values the new baseline; anything typed while the save runs stays.
  * Settings that change elsewhere replace the form's values whenever it has no
  * unsaved changes.
@@ -111,23 +121,34 @@ export function useToolSettingsForm<
 
   const onSubmit = form.handleSubmit(async (values) => {
     const key = promptStudioToolKeys.detail(settings.tool_id);
-    const submitted = form.getValues();
+    const submitted = snapshot(form.getValues());
+    const patch = changedOnly(
+      values,
+      form.formState.defaultValues ?? {},
+      form.formState.dirtyFields,
+    );
+    let next: ToolSettings;
     try {
-      const patch = changedOnly(
-        values,
-        form.formState.defaultValues ?? {},
-        form.formState.dirtyFields,
-      );
-      const next = await save.mutateAsync(patch);
-      // A read that started before the save would land older data on top.
-      await queryClient.cancelQueries({ queryKey: key });
-      queryClient.setQueryData(key, next);
-      const current = form.getValues();
-      form.reset(fromSettings(next));
-      keepTypedSince(form, submitted, current);
+      next = await save.mutateAsync(patch);
     } catch (error) {
       applyServerErrors(form, error);
+      return;
     }
+    // A read that started before the save would land older data on top:
+    // cancel it, and read again once this save is in the cache.
+    const reading = queryClient.isFetching({ queryKey: key }) > 0;
+    await queryClient.cancelQueries({ queryKey: key });
+    // Only this section's fields: the rest of the response may predate a
+    // change saved elsewhere meanwhile (the default profile, another section).
+    const saved = queryClient.setQueryData<ToolSettings>(key, (old) =>
+      old ? { ...old, ...pick(next, Object.keys(patch)) } : next,
+    );
+    if (reading) {
+      void queryClient.invalidateQueries({ queryKey: key });
+    }
+    const current = snapshot(form.getValues());
+    form.reset(fromSettings(saved ?? next));
+    keepTypedSince(form, submitted, current);
   });
   return { form, onSubmit };
 }
