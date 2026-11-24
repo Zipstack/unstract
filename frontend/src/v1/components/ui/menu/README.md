@@ -94,6 +94,8 @@ const actions: MenuAction[] = [
 
 - `label` names the kebab. Name the row ("Actions for Invoice parser"), so a
   screen reader can tell the kebabs apart.
+- `tabIndex` goes on the kebab: a table with roving focus (the v1
+  `DataTable`) passes -1 for every row but the active one.
 - Actions with the same `group` sit together, in first-seen order, between
   separators. Every `destructive` action is moved into one last group,
   whatever order it was given in (`groupActions`).

@@ -102,6 +102,15 @@ is convention.
   its README has the props, colour ramp, marker rule and text alternative.
   Colours come from `--chart-1`…`--chart-5` and the semantic tokens only.
 
+## Tables
+
+- Every list is a `DataTable` from `components/ui/data-table/`; its README has
+  the column and prop contract. Do not build another table, sort header,
+  selection bar or row menu.
+- Columns carry a `priority` (1 to 4); the table drops them at the dev spec's
+  breakpoints (1024, 1280, 1440). Pages set priorities, never their own
+  breakpoints.
+
 ## Code and data
 
 - Code, JSON, diffs, Markdown, copy controls and code editors come from
