@@ -1,6 +1,7 @@
 import { cn } from "@v1/lib/cn";
 import { ACTION_ICONS } from "@v1/lib/icons";
 import type { JSX } from "react";
+import { HIT_AREA_24 } from "./trigger";
 
 const RemoveIcon = ACTION_ICONS.close;
 
@@ -47,7 +48,11 @@ export function Chip({
           tabIndex={removeFocusable ? undefined : -1}
           disabled={disabled}
           onClick={onRemove}
-          className="ui:flex ui:size-4 ui:shrink-0 ui:cursor-pointer ui:items-center ui:justify-center ui:rounded-sm ui:border-0 ui:bg-transparent ui:p-0 ui:text-muted-foreground ui:hover:bg-accent ui:hover:text-foreground ui:focus-visible:focus-ring"
+          // 16px drawn, 24px to hit.
+          className={cn(
+            HIT_AREA_24,
+            "ui:flex ui:size-4 ui:shrink-0 ui:cursor-pointer ui:items-center ui:justify-center ui:rounded-sm ui:border-0 ui:bg-transparent ui:p-0 ui:text-muted-foreground ui:hover:bg-accent ui:hover:text-foreground ui:focus-visible:focus-ring",
+          )}
         >
           <RemoveIcon aria-hidden className="ui:size-3" />
         </button>

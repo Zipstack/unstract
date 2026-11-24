@@ -330,6 +330,12 @@ it("closes the list and restores the label when disabled while open", async () =
   expect(input().value).toBe("Llama");
 });
 
+it("shows a value no option or selectedOption names as its raw value", () => {
+  setup({ value: "retired-model" });
+  expect(input().value).toBe("retired-model");
+  expect(screen.getByRole("button", { name: "Clear" })).toBeTruthy();
+});
+
 it("follows a controlled value", async () => {
   const { user, onValueChange, rerender } = setup({ value: "claude" });
   await user.tab();

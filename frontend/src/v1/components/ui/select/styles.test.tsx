@@ -1,7 +1,7 @@
 import { screen } from "@testing-library/react";
 import { fieldControlClass, fieldFrameVariants } from "@v1/components/ui/form";
 import { renderV1 } from "@v1/test";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { Chip } from "./Chip";
 import { Combobox } from "./Combobox";
 import { MultiSelect } from "./MultiSelect";
@@ -141,4 +141,25 @@ it("drops the frame transition under reduced motion", () => {
   expect(tokens(fieldFrameVariants())).toContain(
     "ui:motion-reduce:transition-none",
   );
+});
+
+// A 16px button whose `after` box reaches 4px past each edge: a 24px target.
+const HIT_AREA = ["ui:relative", "ui:after:absolute", "ui:after:-inset-1"];
+
+it("gives the 16px Clear and chip remove buttons a 24px hit area", () => {
+  renderV1(
+    <>
+      <Combobox
+        aria-label="C"
+        options={[{ value: "a", label: "A" }]}
+        value="a"
+      />
+      <Chip label="Tag" onRemove={vi.fn()} />
+    </>,
+  );
+  for (const name of ["Clear", "Remove Tag"]) {
+    const button = classes(screen.getByRole("button", { name }));
+    expect(button).toContain("ui:size-4");
+    expect(button).toEqual(expect.arrayContaining(HIT_AREA));
+  }
 });

@@ -25,6 +25,7 @@ import {
   useListFieldControl,
   useLoadedOptions,
 } from "./shared";
+import { HIT_AREA_24 } from "./trigger";
 import { isComposing } from "./useListbox";
 
 const ClearIcon = ACTION_ICONS.close;
@@ -157,7 +158,8 @@ export function Combobox(props: ComboboxProps): JSX.Element {
             placeholder={placeholder}
             autoComplete="off"
             spellCheck={false}
-            value={editing ? listbox.query : (selected?.label ?? "")}
+            // A value no option names shows as itself, as a MultiSelect chip does.
+            value={editing ? listbox.query : (selected?.label ?? value ?? "")}
             onChange={(event) => {
               setEditing(true);
               listbox.setQuery(event.target.value);
@@ -179,7 +181,7 @@ export function Combobox(props: ComboboxProps): JSX.Element {
               aria-label="Clear"
               onClick={clear}
               onBlur={onBlur}
-              className={cn(ICON_BUTTON, "ui:size-4")}
+              className={cn(ICON_BUTTON, "ui:size-4", HIT_AREA_24)}
             >
               <ClearIcon aria-hidden className="ui:size-3.5" />
             </button>

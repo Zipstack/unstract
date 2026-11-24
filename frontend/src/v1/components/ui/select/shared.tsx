@@ -91,7 +91,10 @@ export function listName(
   return { "aria-labelledby": control.labelId };
 }
 
-/** An icon button inside the frame (clear, chevron). */
+/**
+ * An icon button inside the frame (clear, chevron). Hand-styled: these are 16
+ * and 24 square, outside IconButton's 32/28 scale.
+ */
 export const ICON_BUTTON =
   "ui:flex ui:shrink-0 ui:cursor-pointer ui:items-center ui:justify-center ui:rounded-md ui:border-0 ui:bg-transparent ui:p-0 ui:text-muted-foreground ui:hover:text-foreground ui:focus-visible:focus-ring ui:disabled:pointer-events-none";
 

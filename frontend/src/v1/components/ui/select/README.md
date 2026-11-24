@@ -63,6 +63,10 @@ import {
   }>;
   ```
 
+  Values must be unique within a list: duplicate values are not supported,
+  since the selection, the active option and each row's id are tracked by
+  value.
+
   `keywords` feed the Combobox and MultiSelect filter (a case-insensitive
   substring of the label or any keyword, e.g. a model id). Type-ahead is
   Radix Select's own (it matches labels); `Combobox` and `MultiSelect`
@@ -91,7 +95,11 @@ import {
 - **Combobox pattern.** `Combobox` and `MultiSelect` follow the ARIA
   combobox-with-listbox pattern: focus stays on the input (`role="combobox"`,
   `aria-expanded`, `aria-controls`, `aria-autocomplete="list"`), which points
-  at the active `role="option"` with `aria-activedescendant`; no live region.
+  at the active `role="option"` with `aria-activedescendant`, so moving
+  through the list is announced without a live region. The list's status
+  rows ("Loading…", the empty row, "Could not load options") are the only
+  live regions: each is an `<output>` (role `status`, polite), so its text
+  is announced when it appears.
   Each option's id is tied to its value, not its index, so when typing
   changes the first match the active id changes and a screen reader
   announces it. The listbox takes the field's `aria-labelledby` (or
@@ -116,6 +124,14 @@ import {
   option rows measure the same as before. `styles.test.tsx` pins the
   classes. The focus ring already carries a transparent outline
   (`focus-ring`); the field frames have real borders.
+
+- **Hand-styled buttons.** The chevron ("Show options", 24 square), the
+  `Combobox` Clear button and the `Chip` remove button (both 16 square) are
+  plain `<button>`s styled here, not `IconButton`: `IconButton` comes in 32
+  and 28 only. Swap them in if it gains a 24px size. The 16px Clear and
+  remove buttons draw at 16 but take clicks over 24 × 24 (`HIT_AREA_24` in
+  `trigger.ts`: an `after` box 4px past each edge, checked in Chromium);
+  `styles.test.tsx` pins the classes.
 
 ### Keyboard
 
@@ -241,7 +257,8 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
   waits. Each load aborts the one before through `signal`, a response for a
   query that is no longer current is dropped, and a "Loading…" row (with
   `aria-busy` on the listbox) or a "Could not load options" row shows the
-  state. "Loading…" shows from the moment the list opens, and closing drops
+  state. There is no retry button or error callback: typing a new query, or
+  closing and reopening the list, loads again. "Loading…" shows from the moment the list opens, and closing drops
   the loaded options, so a reopened list never flashes stale options or "No
   options". Opening with a saved value before its options have loaded keeps
   that value active, so it is the active option once the results hold it
@@ -250,7 +267,9 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
   read from a ref).
 - The selected label comes from the current options, else from any option
   seen before (remembered by value, so it survives a filter or a server
-  response that no longer holds it), else from `selectedOption`.
+  response that no longer holds it), else from `selectedOption`, else it is
+  the value itself (a saved value no option names any more shows as its raw
+  value, with the Clear button), as a `MultiSelect` chip does.
 - Disabling it while the list is open closes the list, drops the typed text
   and shows the selected label again; it stays closed when enabled again.
   `useListbox` (shared with `MultiSelect`) also refuses to open or select
@@ -268,7 +287,7 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
 | `options`, `loadOptions`, `placeholder`, `emptyText` | as Combobox | | the placeholder shows only with no chips |
 | `value` / `defaultValue` | `readonly string[]` | `[]` | chip order; duplicates in a controlled `value` collapse |
 | `onValueChange` | `(values: readonly string[]) => void` | — | |
-| `selectedOptions` | `readonly SelectOption[]` | — | names preset values before the first load; a chip's label comes from the current options, then any option seen, then these |
+| `selectedOptions` | `readonly SelectOption[]` | — | names preset values before the first load; a chip's label comes from the current options, then any option seen, then these, then the raw value |
 | `name` | `string` | — | one hidden input per value, only while enabled |
 | `disabled`, `invalid`, `id`, `aria-label`, `aria-labelledby`, `aria-describedby`, `className` | as Combobox | | |
 | `ref` | `Ref<HTMLInputElement>` | — | the text input |

@@ -17,3 +17,10 @@ export const TRIGGER_CHEVRON = "ui:size-4 ui:shrink-0 ui:text-muted-foreground";
  */
 export const LIST_SURFACE =
   "ui:z-50 ui:min-w-48 ui:max-h-80 ui:overflow-auto ui:rounded-lg ui:border ui:border-border ui:bg-popover ui:p-1.5 ui:text-body-small ui:shadow-md";
+
+/**
+ * Widens a 16px button's hit area to 24px without changing its drawn size:
+ * an `after` box 4px past each edge, part of the button, so it takes the
+ * clicks (the Combobox Clear and Chip remove buttons).
+ */
+export const HIT_AREA_24 = "ui:relative ui:after:absolute ui:after:-inset-1";
