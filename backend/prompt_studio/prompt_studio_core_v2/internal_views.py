@@ -483,7 +483,8 @@ def indexing_status(request):
                 org_id=org_id, user_id=user_id, doc_id_key=doc_id_key, doc_id=doc_id
             )
         elif action == "remove":
-            DocumentIndexingService.remove_document_indexing(
+            # Workers send this only after a failed attempt.
+            DocumentIndexingService.clear_indexing_flag(
                 org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
             )
         else:

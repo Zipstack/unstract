@@ -13,7 +13,9 @@ def index_status(
 
     failed: the last indexing failed (cleared when the document is next
     indexed; a summary index leaves it).
-    indexed: a raw index exists. pending: neither.
+    indexed: a raw index exists under this profile. It is not reset when
+    the profile's chunk size, embedding model or vector DB changes, so
+    the next prompt run may re-index. pending: neither.
     failure_reason is None unless show_failure_reason is set.
     """
     managers = {im.profile_manager_id: im for im in document.index_managers.all()}

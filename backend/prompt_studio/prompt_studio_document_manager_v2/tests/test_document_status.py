@@ -13,7 +13,7 @@ from account_v2.models import Organization, User
 from adapter_processor_v2.models import AdapterInstance
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import resolve
 from rest_framework.request import Request
@@ -47,6 +47,14 @@ from prompt_studio.prompt_studio_index_manager_v2.prompt_studio_index_helper imp
 from prompt_studio.prompt_studio_index_manager_v2.serializers import (
     IndexManagerSerializer,
 )
+
+# The indexing flags live in the cache; tests that drive them need a real one.
+_LOCAL_CACHE = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "test-document-status",
+    }
+}
 
 
 def _pdf(pages: int) -> bytes:
@@ -293,7 +301,7 @@ class AccessTests(_ToolWithDocument):
 
 
 class PromptRunIndexFailureTests(_ToolWithDocument):
-    def test_a_failed_dynamic_index_is_recorded(self) -> None:
+    def _run_failing_index(self, cached: str | None) -> None:
         self.default.chunk_size = 512
         self.default.save()
         dispatcher = MagicMock()
@@ -308,9 +316,10 @@ class PromptRunIndexFailureTests(_ToolWithDocument):
             patch(
                 "prompt_studio.prompt_studio_core_v2.prompt_studio_helper"
                 ".DocumentIndexingService"
-            ),
+            ) as cache,
             self.assertRaises(IndexingAPIError),
         ):
+            cache.get_indexed_document_id.return_value = cached
             helper.dynamic_indexer(
                 profile_manager=self.default,
                 tool_id=str(self.tool.tool_id),
@@ -322,9 +331,18 @@ class PromptRunIndexFailureTests(_ToolWithDocument):
                 reindex=True,
                 doc_id_key="key",
             )
+        cache.clear_indexing_flag.assert_called_once()
+
+    def test_a_failed_dynamic_index_is_recorded(self) -> None:
+        self._run_failing_index(cached=None)
         status = self._status(self.default)
         self.assertEqual(status["status"], "failed")
         self.assertIn("vector db down", status["failure_reason"])
+
+    def test_a_failed_dynamic_index_after_a_newer_success_is_dropped(self) -> None:
+        self._index(self.default)
+        self._run_failing_index(cached="doc-b")
+        self.assertEqual(self._status(self.default)["status"], "indexed")
 
 
 class PromptRunReusedIndexTests(_ToolWithDocument):
@@ -541,8 +559,8 @@ class IndexErrorInternalApiTests(_ToolWithDocument):
         return code
 
     def test_a_late_failure_after_a_newer_success_is_dropped(self) -> None:
-        # The failed attempt cleared the cache key before posting, so an
-        # indexed value there comes from a newer, successful attempt.
+        # A failed attempt clears only its in-progress flag, so an indexed
+        # value there comes from a newer, successful attempt.
         self._index(self.default)
         self.assertEqual(self._post_attempt(cached="doc-new"), 200)
         self.assertEqual(self._status(self.default)["status"], "indexed")
@@ -550,6 +568,45 @@ class IndexErrorInternalApiTests(_ToolWithDocument):
     def test_a_failure_with_no_newer_success_is_recorded(self) -> None:
         self._index(self.default)
         self.assertEqual(self._post_attempt(cached=None), 200)
+        self.assertEqual(self._status(self.default)["status"], "failed")
+
+    def _worker_remove(self, keys: dict) -> None:
+        request = RequestFactory().post(
+            "/internal/indexing-status/",
+            json.dumps({"action": "remove", **keys}),
+            content_type="application/json",
+        )
+        self.assertEqual(internal_views.indexing_status(request).status_code, 200)
+
+    @override_settings(CACHES=_LOCAL_CACHE)
+    def test_a_late_failure_in_worker_order_is_dropped(self) -> None:
+        # A starts, B starts, B succeeds, then A's error callback runs:
+        # remove first, then the failure post.
+        keys = {
+            "org_id": self.org.organization_id,
+            "user_id": "owner-1",
+            "doc_id_key": "key-1",
+        }
+        DocumentIndexingService.set_document_indexing(**keys)
+        DocumentIndexingService.set_document_indexing(**keys)
+        DocumentIndexingService.mark_document_indexed(**keys, doc_id="doc-b")
+        self._index(self.default)
+        self._worker_remove(keys)
+        self.assertEqual(self._post(self._body(**keys)), 200)
+        self.assertEqual(self._status(self.default)["status"], "indexed")
+        self.assertEqual(DocumentIndexingService.get_indexed_document_id(**keys), "doc-b")
+
+    @override_settings(CACHES=_LOCAL_CACHE)
+    def test_a_failure_in_worker_order_with_no_newer_success_is_recorded(self) -> None:
+        keys = {
+            "org_id": self.org.organization_id,
+            "user_id": "owner-1",
+            "doc_id_key": "key-1",
+        }
+        DocumentIndexingService.set_document_indexing(**keys)
+        self._worker_remove(keys)
+        self.assertFalse(DocumentIndexingService.is_document_indexing(**keys))
+        self.assertEqual(self._post(self._body(**keys)), 200)
         self.assertEqual(self._status(self.default)["status"], "failed")
 
     def test_a_failure_without_the_attempt_keys_is_recorded(self) -> None:

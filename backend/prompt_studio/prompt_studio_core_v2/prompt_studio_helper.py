@@ -2711,7 +2711,7 @@ class PromptStudioHelper:
         except (IndexingError, IndexingAPIError, SdkError) as e:
             # Clear the indexing flag so subsequent requests are not blocked
             try:
-                DocumentIndexingService.remove_document_indexing(
+                DocumentIndexingService.clear_indexing_flag(
                     org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
                 )
             except Exception:
@@ -2724,7 +2724,14 @@ class PromptStudioHelper:
             logger.error(msg, stack_info=True, exc_info=True)
             # Shown in the Documents tab after a reload.
             PromptStudioIndexHelper.mark_index_failed(
-                document_id=document_id, profile_manager=profile_manager, error=msg
+                document_id=document_id,
+                profile_manager=profile_manager,
+                error=msg,
+                superseded=lambda: bool(
+                    DocumentIndexingService.get_indexed_document_id(
+                        org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+                    )
+                ),
             )
             PromptStudioHelper._publish_log(
                 {"tool_id": tool_id, "run_id": run_id, "doc_name": filename},
