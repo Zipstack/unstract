@@ -1,6 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { type NotifyInput, setNotifier } from "@v1/lib/notify";
-import type { ToolSettings } from "@v1/services/promptStudioTool";
+import {
+  promptStudioToolKeys,
+  type ToolSettings,
+} from "@v1/services/promptStudioTool";
 import {
   apiPath,
   DEFAULT_SESSION,
@@ -12,6 +15,7 @@ import {
 } from "@v1/test";
 import {
   makeToolSettings,
+  profileFixtures,
   SETTINGS_TOOL_ID,
   settingsHandlers,
 } from "@v1/test/fixtures/promptStudioSettings";
@@ -344,4 +348,98 @@ describe("leave guard", () => {
     await waitFor(async () => expect(await canLeave()).toBe(false));
     expect(ask).toHaveBeenCalled();
   });
+});
+
+describe("changing project", () => {
+  const OTHER = "9b8c7d6e-5f4a-4b3c-8d2e-1f0a9b8c7d6e";
+  const other = makeToolSettings({ tool_id: OTHER, preamble: "Other." });
+
+  function serveBoth() {
+    serve();
+    mockApi(
+      http.get(apiPath(S, `/prompt-studio/${OTHER}/`), () =>
+        HttpResponse.json(other),
+      ),
+      http.get(
+        apiPath(S, `/prompt-studio/prompt-studio-profile/${OTHER}/`),
+        () => HttpResponse.json([]),
+      ),
+    );
+  }
+
+  it("drops the previous project's unsaved draft", async () => {
+    serveBoth();
+    let canLeave: () => Promise<boolean> = async () => false;
+    const ask = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const onLeaveGuard = (fn: () => Promise<boolean>) => {
+      canLeave = fn;
+    };
+    const { user, rerender, queryClient } = renderTab({ onLeaveGuard });
+    await loaded();
+    queryClient.setQueryData(promptStudioToolKeys.detail(OTHER), other);
+    const box = within(section("Preamble")).getByLabelText("Preamble");
+    await user.clear(box);
+    await user.type(box, "Draft for the first project.");
+    rerender(<SettingsTab toolId={OTHER} onLeaveGuard={onLeaveGuard} />);
+    expect(
+      await within(section("Preamble")).findByDisplayValue("Other."),
+    ).toBeVisible();
+    await expect(canLeave()).resolves.toBe(true);
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it("closes the profile editor", async () => {
+    serveBoth();
+    const { user, rerender } = renderTab();
+    await loaded();
+    const [first] = profileFixtures.three;
+    await user.click(
+      screen.getByRole("button", { name: `Edit ${first?.profile_name}` }),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Edit LLM Profile" }),
+    ).toBeVisible();
+    rerender(<SettingsTab toolId={OTHER} />);
+    expect(
+      await screen.findByRole("heading", { name: "LLM Profile Settings" }),
+    ).toBeVisible();
+  });
+});
+
+it("stops asking once a dirty section is replaced by the no-permission state", async () => {
+  let forbidden = false;
+  mockApi(
+    ...settingsHandlers(S).slice(1),
+    http.get(TOOL, () =>
+      forbidden
+        ? HttpResponse.json(
+            {
+              type: "client_error",
+              errors: [
+                { code: "permission_denied", detail: "No.", attr: null },
+              ],
+            },
+            { status: 403 },
+          )
+        : HttpResponse.json(makeToolSettings()),
+    ),
+  );
+  let canLeave: () => Promise<boolean> = async () => false;
+  vi.spyOn(window, "confirm").mockReturnValue(false);
+  const { user, queryClient } = renderTab({
+    onLeaveGuard: (fn) => {
+      canLeave = fn;
+    },
+  });
+  await loaded();
+  await user.type(within(section("Grammar")).getByLabelText("Word 1"), "x");
+  await waitFor(async () => expect(await canLeave()).toBe(false));
+  forbidden = true;
+  await queryClient.refetchQueries({
+    queryKey: promptStudioToolKeys.detail(SETTINGS_TOOL_ID),
+  });
+  await screen.findByRole("heading", {
+    name: "You don't have access to this page",
+  });
+  await waitFor(async () => expect(await canLeave()).toBe(true));
 });

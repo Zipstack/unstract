@@ -16,7 +16,7 @@ import {
   setDefaultProfile,
 } from "@v1/services/promptProfiles";
 import { promptStudioToolKeys } from "@v1/services/promptStudioTool";
-import { type JSX, useEffect, useState } from "react";
+import { type JSX, useState } from "react";
 import { ProfileForm } from "./ProfileForm";
 
 export type ProfilesSectionProps = Readonly<{
@@ -45,12 +45,6 @@ export function ProfilesSection({
 }: ProfilesSectionProps): JSX.Element {
   const query = useQuery(promptProfileQueries.list(toolId));
   const [editing, setEditing] = useState<Editing>(null);
-  // Closing the form drops its changes, so a closed form is never unsaved.
-  useEffect(() => {
-    if (editing === null) {
-      onDirtyChange(false);
-    }
-  }, [editing, onDirtyChange]);
 
   return (
     <SettingsSection id="llm-profiles" title={sectionTitle(editing)}>

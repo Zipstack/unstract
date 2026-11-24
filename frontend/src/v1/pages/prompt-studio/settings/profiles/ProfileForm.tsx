@@ -105,6 +105,8 @@ export function ProfileForm({
   });
   const dirty = form.formState.isDirty;
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
+  // A closed form has nothing left to lose.
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
   const save = useMutation({
     mutationFn: (values: ProfileFormOutput) => {
       const body = toProfileBody(values, toolId);

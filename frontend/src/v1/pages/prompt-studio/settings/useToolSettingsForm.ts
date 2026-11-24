@@ -52,6 +52,8 @@ export function useToolSettingsForm<
   });
   const dirty = form.formState.isDirty;
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
+  // A section that goes away has nothing left to lose.
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
   // Compared by content: `saved` is a new object on every render.
   const savedKey = JSON.stringify(saved);

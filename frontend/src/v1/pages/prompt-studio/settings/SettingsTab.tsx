@@ -48,8 +48,14 @@ const askDiscard = () =>
 /**
  * The Prompt Studio Settings tab: a section list and one scrollable column of
  * sections, each saving on its own. The project frame (P5-T02) mounts it.
+ * Its state belongs to one project: a new `toolId` starts it afresh, so a
+ * draft or an open profile editor never carries over to another project.
  */
-export function SettingsTab({
+export function SettingsTab(props: SettingsTabProps): JSX.Element {
+  return <ProjectSettings key={props.toolId} {...props} />;
+}
+
+function ProjectSettings({
   toolId,
   readOnly = false,
   onLeaveGuard,
