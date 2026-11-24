@@ -445,6 +445,47 @@ it("edits a profile by its adapter ids and keeps one the user cannot see", async
   );
 });
 
+it("leaves the context window out when the backend does not know it", async () => {
+  serveProfiles();
+  mockApi(
+    http.get(apiPath(S, "/adapter/info/:id/"), ({ params }) =>
+      HttpResponse.json({ id: params.id, context_window_size: 0 }),
+    ),
+  );
+  const { user } = renderSection();
+  await user.click(await screen.findByRole("button", { name: "Edit test3" }));
+  await screen.findByText(/≈ 0.0k tokens/);
+  await waitFor(() =>
+    expect(screen.getByLabelText("LLM")).toHaveValue(ADAPTER_IDS.llm),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(screen.queryByText(/LLM context/)).toBeNull();
+});
+
+it("keeps Cancel disabled while the profile saves", async () => {
+  serveProfiles();
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  mockApi(
+    http.put(one(first.profile_id), async () => {
+      await held;
+      return HttpResponse.json(makeProfile());
+    }),
+  );
+  const { user } = renderSection();
+  await user.click(await screen.findByRole("button", { name: "Edit test3" }));
+  await waitFor(() =>
+    expect(screen.getByLabelText("LLM")).toHaveValue(ADAPTER_IDS.llm),
+  );
+  await user.click(screen.getByRole("button", { name: "Save profile" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled(),
+  );
+  release();
+});
+
 it("goes back to the list on Cancel", async () => {
   serveProfiles();
   const { user } = renderSection();

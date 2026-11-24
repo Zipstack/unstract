@@ -27,7 +27,7 @@ export type ProfilesSectionProps = Readonly<{
   onDirtyChange: (dirty: boolean) => void;
 }>;
 
-/** What the dialog is doing: closed, adding, or editing one profile. */
+/** What the section shows: the list (null), the add form, or one profile's edit form. */
 type Editing = null | "new" | LlmProfile;
 
 const COLUMNS = [

@@ -60,7 +60,12 @@ export function AmbleSection({
     <SettingsSection id="preamble" title="Preamble">
       <form noValidate onSubmit={onSubmit} className="ui:grid ui:gap-4">
         {FIELDS.map((f) => (
-          <div key={f.name} id={anchorId(f.name)} className="ui:scroll-mt-4">
+          // The section carries the Preamble anchor; only Postamble needs its own.
+          <div
+            key={f.name}
+            id={f.name === "postamble" ? anchorId(f.name) : undefined}
+            className="ui:scroll-mt-4"
+          >
             <FormField
               form={form}
               name={f.name}

@@ -115,6 +115,9 @@ describe("layout and slot gating", () => {
       section("Grammar"),
     );
     expect(document.getElementById("ps-settings-postamble")).not.toBeNull();
+    expect(document.querySelectorAll("[id]").length).toBe(
+      new Set([...document.querySelectorAll("[id]")].map((e) => e.id)).size,
+    );
     await user.click(link);
     expect(link).toHaveAttribute("aria-current", "location");
   });

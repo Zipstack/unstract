@@ -48,8 +48,10 @@ export type GateProps = Readonly<{ children: ReactNode }>;
 /**
  * A Prompt Studio Settings section (Summarized Extraction, LLM Challenge,
  * Highlighting). The filler renders the whole section, heading included,
- * saves through `PATCH prompt-studio/{toolId}/`, and reports unsaved
- * changes so the tab can ask before they are lost.
+ * with `id={anchorId}`. It saves only its own fields through
+ * `PATCH prompt-studio/{toolId}/` and writes the response to the project's
+ * cached detail, so other sections see it. It reports unsaved changes, and
+ * `false` when it unmounts, so the tab asks before they are lost and only then.
  */
 export type SettingsSectionProps = Readonly<{
   toolId: string;
@@ -60,17 +62,15 @@ export type SettingsSectionProps = Readonly<{
   onDirtyChange: (dirty: boolean) => void;
 }>;
 
-/** Slots whose host passes props; every other slot gets none. */
-type HostProps = {
-  "prompt-studio.settings.summarized-extraction": SettingsSectionProps;
-  "prompt-studio.settings.llm-challenge": SettingsSectionProps;
-  "prompt-studio.settings.highlighting": SettingsSectionProps;
-};
+type SettingsSlotId = Extract<SlotId, `prompt-studio.settings.${string}`>;
+
+/** Slots whose host passes props of its own; gates get GateProps, the rest none. */
+type HostProps = { [K in SettingsSlotId]: SettingsSectionProps };
 
 /*
  * The props a filler receives; the host passes them.
- * ponytail: props are empty until the host page that renders each slot is
- * built; that task adds the fields it passes to HostProps.
+ * ponytail: a slot's props stay empty until the host page that renders it is
+ * built; that task adds the slot to HostProps.
  */
 export type SlotProps = {
   [K in SlotId]: K extends GateSlotId

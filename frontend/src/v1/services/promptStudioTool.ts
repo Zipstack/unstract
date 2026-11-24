@@ -58,12 +58,12 @@ export const toolSettingsSchema = z.looseObject({
 });
 export type ToolSettings = z.infer<typeof toolSettingsSchema>;
 
-/** What one section saves; every key is optional. */
+/** What one section saves; every key is optional. The backend refuses a null preamble or postamble. */
 export type ToolSettingsPatch = Partial<
-  Pick<
-    ToolSettings,
-    "preamble" | "postamble" | "prompt_grammer" | "custom_data"
-  >
+  Pick<ToolSettings, "prompt_grammer" | "custom_data"> & {
+    preamble: string;
+    postamble: string;
+  }
 >;
 
 const toolPath = (toolId: string) =>

@@ -199,7 +199,12 @@ export function ProfileForm({
       </Collapsible>
       {formError ? <ErrorText>{formError}</ErrorText> : null}
       <div className="ui:flex ui:justify-end ui:gap-2">
-        <Button size="lg" variant="outline" onClick={onCancel}>
+        <Button
+          size="lg"
+          variant="outline"
+          disabled={isSubmitting}
+          onClick={onCancel}
+        >
           Cancel
         </Button>
         <Button
@@ -231,7 +236,10 @@ function ChunkSizeField({ form }: Readonly<{ form: Form }>): JSX.Element {
   const estimate = Number.isFinite(chars)
     ? `≈ ${approxTokens(chars)} tokens`
     : "";
-  const max = info.data ? `, LLM context ${info.data.context_window_size}` : "";
+  // 0 is the backend's "unknown".
+  const max = info.data?.context_window_size
+    ? `, LLM context ${info.data.context_window_size}`
+    : "";
   return (
     <FormField
       form={form}

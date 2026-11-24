@@ -118,7 +118,9 @@ function ProjectSettings({
     ) : null;
   };
 
-  // The project read answers 403 when the user may not open it at all.
+  // A 403 on the project read means no access. A project the user cannot
+  // see at all answers 404 (the query is scoped to the user), which the
+  // frame decides on before it mounts this tab.
   if (settings.isError && toApiError(settings.error).kind === "forbidden") {
     return <NoPermission />;
   }
