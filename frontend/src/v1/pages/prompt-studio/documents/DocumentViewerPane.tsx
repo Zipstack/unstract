@@ -91,24 +91,27 @@ export function DocumentViewerPane({
     () => (content.data ? toViewerSource(content.data) : null),
     [content.data],
   );
+  // C14 is for stored contents the viewer cannot draw; a failed request
+  // shows its own error with Retry.
   const unrenderable =
-    view === "ORIGINAL" &&
-    ((content.isError && content.dataUpdatedAt === 0) ||
-      (content.isSuccess && source === null));
+    view === "ORIGINAL" && content.isSuccess && source === null;
 
   let body: ReactNode;
   if (!selected) {
     // A list that failed to load shows its error and Retry, not an empty project.
     body = (
       <QueryView query={list} loading={<SkeletonBlock className="ui:h-full" />}>
-        {() => (
+        {(rows) => (
           <p
             className={cn(
               CENTRED,
               "ui:m-0 ui:text-body ui:text-muted-foreground",
             )}
           >
-            Nothing to preview yet
+            {/* A saved document can be gone, e.g. removed in another tab. */}
+            {rows.length > 0
+              ? "Choose a document to preview"
+              : "Nothing to preview yet"}
           </p>
         )}
       </QueryView>

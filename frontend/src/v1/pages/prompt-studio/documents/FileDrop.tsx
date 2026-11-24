@@ -11,9 +11,9 @@ import {
 } from "react";
 
 /*
- * ponytail: P1-T18 (UN-4415, file inputs) replaces this drop zone with the
- * shared one. Keep the seam: `onFiles`, `accept`, `disabled`/`disabledReason`
- * and a handle with `open()`; nothing else here is reused.
+ * ponytail: the shared file input replaces this drop zone. Keep the seam:
+ * `onFiles`, `accept`, `disabledReason` and a handle with `open()`; nothing
+ * else here is reused.
  */
 
 export type FileDropHandle = Readonly<{ open: () => void }>;
@@ -108,7 +108,9 @@ export function FileDrop({
         aria-label="Choose files to upload"
         data-testid="file-drop-input"
         onChange={(event) => {
-          onFiles(Array.from(event.target.files ?? []));
+          if (!disabled) {
+            onFiles(Array.from(event.target.files ?? []));
+          }
           // The same file can be chosen again after a refusal.
           event.target.value = "";
         }}

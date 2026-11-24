@@ -23,7 +23,7 @@ import {
   type DocumentViewerPaneProps,
 } from "./DocumentViewerPane";
 
-// The viewer itself is P1-T21's and tested there; here it only reports what it got.
+// The document viewer pattern is tested on its own; here it only reports what it got.
 vi.mock("@v1/components/patterns/document-viewer/DocumentViewer", () => ({
   DocumentViewer: ({ source, highlights }: DocumentViewerProps) => (
     <div data-testid="viewer">
@@ -153,11 +153,11 @@ it("says to index when there is no extracted text yet", async () => {
 });
 
 it.each([
-  ["the file cannot be fetched", 500],
   [
     "the file has no preview",
     { data: "Preview not available.", mime_type: "application/vnd.ms-excel" },
   ],
+  ["the PDF data is not base64", { data: "%%%", mime_type: "application/pdf" }],
 ] as const)("shows failed to load when %s (C14)", async (_, original) => {
   serve({ ORIGINAL: original, EXTRACT: TEXT });
   const { user, container } = renderPane();
@@ -177,11 +177,33 @@ it.each([
   );
 });
 
-it("fetches the file again on Retry (C14)", async () => {
+it("shows the request's error, not C14, when the file cannot be fetched", async () => {
   const seen = serve({ ORIGINAL: 500 });
+  const { user } = renderPane();
+  expect(await screen.findByText("Nope.")).toBeInTheDocument();
+  expect(
+    screen.queryByText("Failed to load the document"),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(seen).toHaveLength(2));
+});
+
+it("fetches the file again on Retry (C14)", async () => {
+  const seen = serve({
+    ORIGINAL: { data: "Preview not available.", mime_type: "text/x-unknown" },
+  });
   const { user } = renderPane();
   await user.click(await screen.findByRole("button", { name: "Retry" }));
   await waitFor(() => expect(seen).toHaveLength(2));
+});
+
+it("asks for a choice when the saved document is not in the list", async () => {
+  serve({ ORIGINAL: pdfContent });
+  renderPane({ selectedId: "removed-elsewhere" });
+  expect(
+    await screen.findByText("Choose a document to preview"),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("Nothing to preview yet")).not.toBeInTheDocument();
 });
 
 it("has nothing to preview with no documents (D05)", async () => {
@@ -242,4 +264,14 @@ it("shows the list's error with Retry instead of an empty project", async () => 
     await screen.findByRole("button", { name: "Retry" }),
   ).toBeInTheDocument();
   expect(screen.queryByText("Nothing to preview yet")).not.toBeInTheDocument();
+});
+
+it("holds the switcher while a run uses the shown document", async () => {
+  serve({ ORIGINAL: pdfContent });
+  renderPane({ switchingDisabled: true });
+  expect(
+    await screen.findByRole("button", {
+      name: `Document: ${FIRST.document_name}`,
+    }),
+  ).toBeDisabled();
 });

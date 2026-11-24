@@ -54,7 +54,7 @@ const uploadResponseSchema = z.object({
 export const DOCUMENT_VIEWS = ["ORIGINAL", "EXTRACT"] as const;
 export type DocumentView = (typeof DOCUMENT_VIEWS)[number];
 
-/** A PDF arrives base64-encoded; text and CSV as text; other types as a message. */
+/** A PDF arrives base64-encoded; text and CSV as text; a spreadsheet as a notice; a type the backend does not read as empty data. */
 export const documentContentSchema = z.object({
   data: z.string(),
   mime_type: z.string(),

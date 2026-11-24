@@ -1,7 +1,16 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { type NotifyInput, setNotifier } from "@v1/lib/notify";
 import { setOrganizationId } from "@v1/services/context";
-import type { PromptDocument } from "@v1/services/promptDocuments";
+import {
+  type PromptDocument,
+  promptDocumentQueries,
+} from "@v1/services/promptDocuments";
 import {
   apiPath,
   DEFAULT_SESSION,
@@ -10,6 +19,7 @@ import {
   HttpResponse,
   http,
   mockApi,
+  type RenderV1Options,
   renderV1,
 } from "@v1/test";
 import {
@@ -54,10 +64,16 @@ function serveList(initial: readonly PromptDocument[]) {
   };
 }
 
-function renderPanel(props: Partial<DocumentsPanelProps> = {}) {
+function renderPanel({
+  userEventOptions,
+  ...props
+}: Partial<DocumentsPanelProps> &
+  Readonly<{
+    userEventOptions?: RenderV1Options["userEventOptions"];
+  }> = {}) {
   return renderV1(<DocumentsPanel toolId={TOOL_ID} {...props} />, {
     // The picker's accept is checked by the panel itself, not the browser.
-    userEventOptions: { applyAccept: false },
+    userEventOptions: { applyAccept: false, ...userEventOptions },
   });
 }
 
@@ -261,6 +277,121 @@ describe("uploads (D06)", () => {
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(screen.getByText("0 documents")).toBeInTheDocument();
   });
+
+  it("reads the list again when an upload's answer cannot be read", async () => {
+    let reads = 0;
+    mockApi(
+      http.get(LIST, () => {
+        reads += 1;
+        return HttpResponse.json([]);
+      }),
+      // The file is stored, but the answer is not the expected shape.
+      http.post(FILE, () => HttpResponse.json({ data: [] })),
+    );
+    const { user } = renderPanel();
+    await screen.findByText("No documents yet");
+    const before = reads;
+    await user.upload(screen.getByTestId("file-drop-input"), pdf("a.pdf"));
+    await waitFor(() => expect(reads).toBe(before + 1));
+  });
+
+  it("refuses a second file with the name of one still uploading", async () => {
+    serveList([]);
+    const posted: string[] = [];
+    mockApi(
+      http.post(FILE, async ({ request }) => {
+        posted.push(((await request.formData()).get("file") as File).name);
+        await new Promise(() => undefined);
+        return HttpResponse.json({});
+      }),
+    );
+    const { user } = renderPanel();
+    await screen.findByText("No documents yet");
+    const input = screen.getByTestId("file-drop-input");
+    await user.upload(input, pdf("a.pdf"));
+    await waitFor(() => expect(posted).toEqual(["a.pdf"]));
+    await user.upload(input, pdf("a.pdf"));
+    expect(shown.map((toast) => toast.description)).toEqual([
+      "A document named a already exists.",
+    ]);
+  });
+
+  it("uploads dropped files", async () => {
+    serveList([]);
+    const posted: string[] = [];
+    mockApi(
+      http.post(FILE, async ({ request }) => {
+        posted.push(((await request.formData()).get("file") as File).name);
+        return HttpResponse.json({ data: [uploadedFixture] });
+      }),
+    );
+    renderPanel();
+    await screen.findByText("No documents yet");
+    fireEvent.drop(
+      screen.getByRole("button", {
+        name: "Drag & drop files here, or click to browse",
+      }),
+      { dataTransfer: { files: [pdf("dropped.pdf")] } },
+    );
+    await waitFor(() => expect(posted).toEqual(["dropped.pdf"]));
+  });
+
+  it("ignores a drop while uploads are refused", async () => {
+    serveList([]);
+    const posted = vi.fn();
+    mockApi(http.post(FILE, posted));
+    renderPanel({ uploadBlockedReason: "Set the default LLM profile first" });
+    await screen.findByText("No documents yet");
+    fireEvent.drop(
+      screen.getByRole("button", {
+        name: "Drag & drop files here, or click to browse",
+      }),
+      { dataTransfer: { files: [pdf("dropped.pdf")] } },
+    );
+    await delay(20);
+    expect(posted).not.toHaveBeenCalled();
+  });
+
+  it("refuses uploads until the list has loaded, so a same-named file is never sent", async () => {
+    mockApi(http.get(LIST, () => HttpResponse.json({}, { status: 500 })));
+    const posted = vi.fn();
+    mockApi(http.post(FILE, posted));
+    const { user } = renderPanel();
+    expect(
+      await screen.findByText(
+        "Uploads wait for the document list. Retry it first.",
+      ),
+    ).toBeInTheDocument();
+    await user.upload(screen.getByTestId("file-drop-input"), pdf("a.pdf"));
+    await delay(20);
+    expect(posted).not.toHaveBeenCalled();
+  });
+
+  it("starts afresh for another tool and sends its files there", async () => {
+    serveList([]);
+    const posted: string[] = [];
+    const other = apiPath(ORG, "/prompt-studio/file/other-tool");
+    mockApi(
+      http.post(FILE, async () => {
+        posted.push("first");
+        await new Promise(() => undefined);
+        return HttpResponse.json({});
+      }),
+      http.post(other, () => {
+        posted.push("other");
+        return HttpResponse.json({ data: [uploadedFixture] });
+      }),
+    );
+    const { user, rerender } = renderPanel();
+    await screen.findByText("No documents yet");
+    await user.upload(screen.getByTestId("file-drop-input"), pdf("a.pdf"));
+    await waitFor(() => expect(posted).toEqual(["first"]));
+    rerender(<DocumentsPanel toolId="other-tool" />);
+    await screen.findByText("No documents yet");
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    await user.upload(screen.getByTestId("file-drop-input"), pdf("b.pdf"));
+    await waitFor(() => expect(posted).toEqual(["first", "other"]));
+  });
 });
 
 describe("parse failure (D07)", () => {
@@ -284,7 +415,7 @@ describe("parse failure (D07)", () => {
     serveList([amex({ status: "failed", reason: null })]);
     renderPanel();
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "The extractor gave no reason.",
+      "No reason is available.",
     );
   });
 
@@ -298,6 +429,18 @@ describe("parse failure (D07)", () => {
       }),
     );
     const { user, queryClient } = renderPanel();
+    mockApi(
+      http.get(FILE, () =>
+        HttpResponse.json({ data: "old", mime_type: "text/plain" }),
+      ),
+    );
+    const extractQuery = promptDocumentQueries.content({
+      toolId: TOOL_ID,
+      documentId: promptDocumentFixtures.failed.document_id,
+      view: "EXTRACT",
+    });
+    const extract = extractQuery.queryKey;
+    await queryClient.prefetchQuery(extractQuery);
     await user.click(await screen.findByRole("button", { name: "Retry" }));
     expect(indexed).toHaveBeenCalledWith({
       document_id: promptDocumentFixtures.failed.document_id,
@@ -308,9 +451,79 @@ describe("parse failure (D07)", () => {
       screen.getByRole("button", { name: "Remove amex_jan_2026.pdf" }),
     ).toBeDisabled();
 
+    expect(
+      screen.getByRole("button", { name: "Index amex_jan_2026.pdf again" }),
+    ).toBeDisabled();
+    expect(queryClient.getQueryState(extract)?.isInvalidated).toBe(false);
+
     setRows([amex({ status: "indexed" })]);
     await queryClient.refetchQueries();
     expect(await screen.findByText("Parsed")).toBeInTheDocument();
+    // The re-index may have changed the extracted text.
+    expect(queryClient.getQueryState(extract)?.isInvalidated).toBe(true);
+  });
+
+  describe("with a clock", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("polls while a re-index changes nothing, and stops after the wait", async () => {
+      let reads = 0;
+      mockApi(
+        http.get(LIST, () => {
+          reads += 1;
+          return HttpResponse.json([amex({ status: "indexed" })]);
+        }),
+        http.post(INDEX, () => HttpResponse.json({}, { status: 202 })),
+      );
+      const { user } = renderPanel({
+        userEventOptions: { advanceTimers: vi.advanceTimersByTime },
+      });
+      await user.click(
+        await screen.findByRole("button", {
+          name: "Index amex_jan_2026.pdf again",
+        }),
+      );
+      expect(await screen.findByText("Processing")).toBeInTheDocument();
+      const before = reads;
+      await act(() => vi.advanceTimersByTimeAsync(5_000));
+      await waitFor(() => expect(reads).toBe(before + 1));
+      await act(() => vi.advanceTimersByTimeAsync(170_000));
+      expect(screen.getByText("Processing")).toBeInTheDocument();
+      await act(() => vi.advanceTimersByTimeAsync(10_000));
+      expect(await screen.findByText("Parsed")).toBeInTheDocument();
+      const after = reads;
+      await act(() => vi.advanceTimersByTimeAsync(20_000));
+      expect(reads).toBe(after);
+    });
+
+    it("stops waiting after the wait even while the list keeps failing", async () => {
+      let failing = false;
+      mockApi(
+        http.get(LIST, () =>
+          failing
+            ? HttpResponse.json({}, { status: 503 })
+            : HttpResponse.json([amex({ status: "indexed" })]),
+        ),
+        http.post(INDEX, () => HttpResponse.json({}, { status: 202 })),
+      );
+      const { user } = renderPanel({
+        userEventOptions: { advanceTimers: vi.advanceTimersByTime },
+      });
+      await user.click(
+        await screen.findByRole("button", {
+          name: "Index amex_jan_2026.pdf again",
+        }),
+      );
+      expect(await screen.findByText("Processing")).toBeInTheDocument();
+      failing = true;
+      await act(() => vi.advanceTimersByTimeAsync(185_000));
+      expect(await screen.findByText("Parsed")).toBeInTheDocument();
+    });
   });
 
   it("stops processing when the index request fails", async () => {
@@ -404,6 +617,26 @@ describe("remove (D08)", () => {
         "d0000000-0000-4000-8000-000000000003",
       ],
     );
+  });
+
+  it("cannot remove a document twice while its removal is in flight", async () => {
+    serveList(promptDocumentFixtures.list);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const removed = vi.fn();
+    mockApi(
+      http.delete(FILE, async () => {
+        removed();
+        await new Promise(() => undefined);
+        return HttpResponse.json("");
+      }),
+    );
+    const { user } = renderPanel();
+    const button = await screen.findByRole("button", {
+      name: "Remove amex_jan_2026.pdf",
+    });
+    await user.click(button);
+    await waitFor(() => expect(removed).toHaveBeenCalledTimes(1));
+    expect(button).toBeDisabled();
   });
 
   it("removes nothing when the user cancels", async () => {

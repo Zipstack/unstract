@@ -58,17 +58,122 @@ it("moves to the first document left, and saves it, when the shown one is remove
   expect(result.current.selectedId).toBeNull();
 });
 
-it("keeps a newer choice when an earlier save fails", async () => {
+/** A PATCH endpoint the test answers by hand, one save at a time. */
+function serveSaves() {
+  const saves: { output: string; answer: (status: number) => void }[] = [];
   mockApi(
     http.patch(TOOL, async ({ request }) => {
       const { output } = (await request.json()) as { output: string };
-      await delay(output === "b" ? 20 : 0);
-      return HttpResponse.json({}, { status: output === "b" ? 500 : 200 });
+      const status = await new Promise<number>((resolve) =>
+        saves.push({ output, answer: resolve }),
+      );
+      return HttpResponse.json({}, { status });
     }),
   );
+  return saves;
+}
+
+it("keeps a newer choice when an earlier save fails", async () => {
+  const saves = serveSaves();
   const { result } = renderHookV1(() => useDocumentSelection(TOOL_ID, "a"));
   act(() => result.current.select("b"));
+  await waitFor(() => expect(saves).toHaveLength(1));
   act(() => result.current.select("c"));
-  await delay(40);
+  await act(async () => saves[0]?.answer(500));
   expect(result.current.selectedId).toBe("c");
+  await waitFor(() => expect(saves).toHaveLength(2));
+  await act(async () => saves[1]?.answer(200));
+  expect(result.current.selectedId).toBe("c");
+});
+
+it("goes back to the saved document, not an unsaved choice, when saves fail", async () => {
+  const saves = serveSaves();
+  const { result } = renderHookV1(() => useDocumentSelection(TOOL_ID, "a"));
+  act(() => result.current.select("b"));
+  await waitFor(() => expect(saves).toHaveLength(1));
+  act(() => result.current.select("c"));
+  await act(async () => saves[0]?.answer(500));
+  await waitFor(() => expect(saves).toHaveLength(2));
+  await act(async () => saves[1]?.answer(500));
+  await waitFor(() => expect(result.current.selectedId).toBe("a"));
+});
+
+it("saves one choice at a time, so the server ends on the last one", async () => {
+  const saves = serveSaves();
+  const { result } = renderHookV1(() => useDocumentSelection(TOOL_ID, "a"));
+  act(() => result.current.select("b"));
+  await waitFor(() => expect(saves).toHaveLength(1));
+  act(() => result.current.select("c"));
+  act(() => result.current.select("d"));
+  await delay(10);
+  // Nothing else is sent while the first save is open.
+  expect(saves).toHaveLength(1);
+  await act(async () => saves[0]?.answer(200));
+  await waitFor(() => expect(saves).toHaveLength(2));
+  await act(async () => saves[1]?.answer(200));
+  // The superseded "c" is never sent.
+  expect(saves.map((save) => save.output)).toEqual(["b", "d"]);
+  expect(result.current.selectedId).toBe("d");
+});
+
+it("never goes back to a removed document when saving the next one fails", async () => {
+  const saves = serveSaves();
+  const { result } = renderHookV1(() => useDocumentSelection(TOOL_ID, "a"));
+  act(() => result.current.removed("a", ["c"]));
+  await waitFor(() => expect(saves).toHaveLength(1));
+  await act(async () => saves[0]?.answer(500));
+  await delay(10);
+  expect(result.current.selectedId).toBe("c");
+});
+
+it("clears the saved document when the last one is removed", async () => {
+  const saves = serveSaves();
+  const { result } = renderHookV1(() => useDocumentSelection(TOOL_ID, "a"));
+  act(() => result.current.removed("a", []));
+  expect(result.current.selectedId).toBeNull();
+  await waitFor(() => expect(saves.map((save) => save.output)).toEqual([""]));
+});
+
+it("judges a removal against the current choice, not an earlier render's", async () => {
+  serveSaves();
+  const { result } = renderHookV1(() => useDocumentSelection(TOOL_ID, "a"));
+  const early = result.current.removed;
+  act(() => result.current.select("b"));
+  act(() => early("a", ["c"]));
+  expect(result.current.selectedId).toBe("b");
+});
+
+it("treats an unset saved document as none, and takes one that arrives later", () => {
+  const { result, rerender } = renderHookV1(
+    ({ saved }: { saved: string | null }) =>
+      useDocumentSelection(TOOL_ID, saved),
+    { initialProps: { saved: "" } },
+  );
+  expect(result.current.selectedId).toBeNull();
+  rerender({ saved: "a" });
+  expect(result.current.selectedId).toBe("a");
+});
+
+it("keeps the user's choice when the saved document changes afterwards", async () => {
+  serveSaves();
+  const { result, rerender } = renderHookV1(
+    ({ saved }: { saved: string | null }) =>
+      useDocumentSelection(TOOL_ID, saved),
+    { initialProps: { saved: "a" as string | null } },
+  );
+  act(() => result.current.select("b"));
+  rerender({ saved: "c" });
+  expect(result.current.selectedId).toBe("b");
+});
+
+it("starts again from the new tool's saved document", async () => {
+  serveSaves();
+  const { result, rerender } = renderHookV1(
+    ({ tool, saved }: { tool: string; saved: string }) =>
+      useDocumentSelection(tool, saved),
+    { initialProps: { tool: TOOL_ID, saved: "a" } },
+  );
+  act(() => result.current.select("b"));
+  rerender({ tool: "other-tool", saved: "x" });
+  expect(result.current.selectedId).toBe("x");
 });

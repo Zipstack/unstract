@@ -32,6 +32,10 @@ describe("toViewerSource", () => {
     ).toBeNull();
   });
 
+  it("has no preview when the backend sends no text", () => {
+    expect(toViewerSource({ data: "", mime_type: "text/csv" })).toBeNull();
+  });
+
   it("has no preview for a PDF whose data is not base64", () => {
     expect(
       toViewerSource({ data: "%%% not base64", mime_type: "application/pdf" }),

@@ -47,6 +47,9 @@ export type DocumentsPanelProps = Readonly<{
 
 const SUGGESTION =
   "Try a higher-resolution file, or switch the text extractor in Settings.";
+// Without the list the duplicate-name check cannot run, and the backend
+// overwrites a stored file before it refuses the duplicate.
+const LIST_NOT_LOADED = "Uploads wait for the document list. Retry it first.";
 const NO_IDS: ReadonlySet<string> = new Set();
 const AddIcon = ACTION_ICONS.add;
 const EmptyIcon = ACTION_ICONS.document;
@@ -57,7 +60,12 @@ const EmptyIcon = ACTION_ICONS.document;
  * failures with the extractor's reason, re-index, remove, and a footer. The
  * workspace frame puts it in its Documents tab or dialog.
  */
-export function DocumentsPanel({
+export function DocumentsPanel(props: DocumentsPanelProps): JSX.Element {
+  // Uploads, waits and drafts belong to one tool; another starts afresh.
+  return <ToolDocumentsPanel key={props.toolId} {...props} />;
+}
+
+function ToolDocumentsPanel({
   toolId,
   policy = OSS_UPLOAD_POLICY,
   uploadBlockedReason = null,
@@ -77,10 +85,13 @@ export function DocumentsPanel({
   });
   const documents = list.data ?? [];
   const { settle } = indexing;
-  // dataUpdatedAt, not data: an unchanged list keeps its reference, and the
-  // wait must still be judged on each poll.
+  // Each fetch, not each new data: an unchanged list keeps its reference, and
+  // a failing one must still let the wait run out.
   // biome-ignore lint/correctness/useExhaustiveDependencies: judged on each fetch
-  useEffect(() => settle(list.data), [list.dataUpdatedAt, settle]);
+  useEffect(
+    () => settle(list.data),
+    [list.dataUpdatedAt, list.errorUpdatedAt, settle],
+  );
 
   const busyIds = useMemo(
     () => new Set([...indexing.ids, ...indexingIds]),
@@ -129,6 +140,9 @@ export function DocumentsPanel({
     }
   };
 
+  const blockedReason =
+    uploadBlockedReason ?? (list.isSuccess ? null : LIST_NOT_LOADED);
+
   const failed = documents.filter(
     (document) => documentState(document, busyIds) === "failed",
   );
@@ -141,7 +155,7 @@ export function DocumentsPanel({
           onFiles={uploads.add}
           accept={acceptAttribute(policy)}
           caption={policyCaption(policy)}
-          disabledReason={uploadBlockedReason}
+          disabledReason={blockedReason}
         />
         {failed.map((document) => (
           <InlineAlert
@@ -149,8 +163,7 @@ export function DocumentsPanel({
             title={`${document.document_name} could not be parsed`}
             onRetry={() => indexing.request(document)}
           >
-            {failureReason(document) ?? "The extractor gave no reason."}{" "}
-            {SUGGESTION}
+            {failureReason(document) ?? "No reason is available."} {SUGGESTION}
           </InlineAlert>
         ))}
       </div>
@@ -162,7 +175,7 @@ export function DocumentsPanel({
           {(rows) =>
             rows.length === 0 && uploads.rows.length === 0 ? (
               <EmptyDocuments
-                blocked={Boolean(uploadBlockedReason)}
+                blocked={Boolean(blockedReason)}
                 onUpload={() => drop.current?.open()}
               />
             ) : (
@@ -180,7 +193,7 @@ export function DocumentsPanel({
                       variant="outline"
                       size="sm"
                       leadingIcon={AddIcon}
-                      disabled={Boolean(uploadBlockedReason)}
+                      disabled={Boolean(blockedReason)}
                       onClick={() => drop.current?.open()}
                     >
                       Upload New File
@@ -204,6 +217,10 @@ export function DocumentsPanel({
                       }
                       onIndex={() => indexing.request(document)}
                       onRemove={() => void askRemove(document)}
+                      removing={
+                        remove.isPending &&
+                        remove.variables?.documentId === document.document_id
+                      }
                     />
                   ))}
                 </ul>

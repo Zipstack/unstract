@@ -54,7 +54,11 @@ function extensionOf(name: string): string | null {
   return dot > 0 ? name.slice(dot + 1).toLowerCase() : null;
 }
 
-/** The name without its extension, lower-cased: the backend stores extracts by it. */
+/**
+ * The name without its extension: the backend stores extracts by it. Lower-cased
+ * here, so names that differ only in case also count as one (stricter than the
+ * backend).
+ */
 function stemOf(name: string): string {
   const dot = name.lastIndexOf(".");
   return (dot > 0 ? name.slice(0, dot) : name).toLowerCase();

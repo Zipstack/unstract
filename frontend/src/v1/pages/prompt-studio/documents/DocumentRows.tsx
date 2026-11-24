@@ -44,6 +44,8 @@ export type DocumentRowProps = Readonly<{
   onView?: () => void;
   onIndex: () => void;
   onRemove: () => void;
+  /** While its removal is in flight. */
+  removing?: boolean;
 }>;
 
 /** A stored document: name, size · pages, its state and its actions (D04, D07). */
@@ -53,6 +55,7 @@ export function DocumentRow({
   onView,
   onIndex,
   onRemove,
+  removing = false,
 }: DocumentRowProps): JSX.Element {
   const name = document.document_name;
   const busy = state === "processing";
@@ -80,7 +83,7 @@ export function DocumentRow({
           <IconButton
             icon={ACTION_ICONS.delete}
             aria-label={`Remove ${name}`}
-            disabled={busy}
+            disabled={busy || removing}
             onClick={onRemove}
             className="ui:text-destructive ui:not-disabled:hover:text-destructive"
           />

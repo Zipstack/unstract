@@ -35,7 +35,8 @@ export type Uploads = Readonly<{
  * Uploads files one at a time, so each row shows its own progress. Refused
  * files never start: each gets a toast saying why. A failed upload is
  * reported by the app's mutation handler (a toast with the request id) and its
- * row goes; the next file still uploads.
+ * row goes; the next file still uploads. The state belongs to one tool: the
+ * panel mounts it afresh for another.
  */
 export function useUploads({
   toolId,
@@ -65,31 +66,38 @@ export function useUploads({
       return;
     }
     busy.current = true;
-    for (
-      let row = pending.current.shift();
-      row;
-      row = pending.current.shift()
-    ) {
-      const { key, file } = row;
-      patch(key, { started: true });
-      try {
-        const document = await mutateAsync({
-          toolId,
-          file,
-          onProgress: (loaded) => patch(key, { loaded }),
-        });
+    try {
+      for (
+        let row = pending.current.shift();
+        row;
+        row = pending.current.shift()
+      ) {
+        const { key, file } = row;
+        patch(key, { started: true });
+        let document: UploadedDocument | null = null;
+        try {
+          document = await mutateAsync({
+            toolId,
+            file,
+            onProgress: (loaded) => patch(key, { loaded }),
+          });
+        } catch {
+          // Already shown: the mutation cache reports every failed mutation.
+        }
+        // Read the list either way: a failed answer can follow a stored file.
         await queryClient.invalidateQueries({
           queryKey: promptDocumentKeys.list(toolId),
         });
-        onUploaded?.(document);
-      } catch {
-        // Already shown: the mutation cache reports every failed mutation.
+        setRows((current) =>
+          current.filter((candidate) => candidate.key !== key),
+        );
+        if (document) {
+          onUploaded?.(document);
+        }
       }
-      setRows((current) =>
-        current.filter((candidate) => candidate.key !== key),
-      );
+    } finally {
+      busy.current = false;
     }
-    busy.current = false;
   }, [mutateAsync, onUploaded, patch, queryClient, toolId]);
 
   const add = useCallback(

@@ -29,9 +29,11 @@ function snapshot(document: PromptDocument | undefined) {
 
 /*
  * ponytail: the index result arrives on the Prompt Studio socket
- * (`index_document`, owned by the run engine, P5-T03). Until the frame passes
- * those ids in, a document asked to index here shows Processing while the list
- * is polled, and stops when its state or reason changes, or after a wait.
+ * (`index_document`, owned by the run engine). Until the frame passes those
+ * ids in, a document asked to index here shows Processing while the list is
+ * polled, and stops when its state or reason changes, or after a wait. Once
+ * the socket's ids arrive, `request` only sends the index request: the poll,
+ * `settle` and the wait go, and the frame invalidates the list and EXTRACT.
  */
 export function useIndexing(toolId: string): Indexing {
   const queryClient = useQueryClient();
@@ -63,8 +65,8 @@ export function useIndexing(toolId: string): Indexing {
           at: Date.now(),
         }),
       );
-      // Per call, not mutate's per-call onError: a shared mutation keeps only
-      // the latest call's callbacks, so an earlier failure would be lost.
+      // Awaited per call, not through mutate's onError: a shared mutation keeps
+      // only the latest call's callbacks, so an earlier failure would be lost.
       // The mutation cache shows the error; here the row stops processing.
       mutateAsync({ toolId, documentId: id }).catch(() => forget([id]));
     },

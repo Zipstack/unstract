@@ -12,8 +12,9 @@ export function formatBytes(bytes: number): string {
   if (bytes < KB) {
     return `${bytes} B`;
   }
-  if (bytes < MB) {
-    return `${Math.round(bytes / KB)} KB`;
+  const kilobytes = Math.round(bytes / KB);
+  if (kilobytes < KB) {
+    return `${kilobytes} KB`;
   }
   return `${Number((bytes / MB).toFixed(1))} MB`;
 }

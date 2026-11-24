@@ -1,10 +1,9 @@
 /*
- * ponytail: P1-T07 (UN-4316, dialogs) replaces this with `confirm()` from
- * `@v1/components/ui/dialog`, whose destructive options this takes as they
- * are. The swap is the import, the workspace mounting its ConfirmHost (without
- * one, confirm() resolves false), and DocumentsPanel.test.tsx answering the
- * dialog instead of stubbing window.confirm. Until then the browser's own
- * confirm asks, so frame D08's layout is not drawn here.
+ * ponytail: the shared destructive confirm dialog replaces this; the options
+ * are its shape. Until then the browser's own confirm asks with the title and
+ * description only (no confirmLabel, no consequence), so frame D08's layout
+ * is not drawn here. The swap also moves DocumentsPanel.test.tsx from
+ * stubbing window.confirm to answering the dialog.
  */
 
 export type DestructiveConfirm = Readonly<{

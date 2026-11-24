@@ -158,3 +158,29 @@ it("uploads a document, switches documents and removes one", async () => {
   );
   expect(saved).toEqual([SECOND.document_id, FIRST.document_id]);
 });
+
+it("shows a seeded parse failure's reason, and Retry indexes it again", async () => {
+  const failed = promptDocumentFixtures.failed;
+  serveBackend([...promptDocumentFixtures.list.slice(0, 1), failed]);
+  const indexed: unknown[] = [];
+  mockApi(
+    http.post(
+      apiPath(ORG, `/prompt-studio/index-document/${TOOL_ID}`),
+      async ({ request }) => {
+        indexed.push(await request.json());
+        return HttpResponse.json({}, { status: 202 });
+      },
+    ),
+  );
+  const { user } = renderV1(<Workspace />);
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(
+    `${failed.document_name} could not be parsed`,
+  );
+  expect(alert).toHaveTextContent("LLM Whisperer V2 returned no text.");
+  await user.click(within(alert).getByRole("button", { name: "Retry" }));
+  await waitFor(() =>
+    expect(indexed).toEqual([{ document_id: failed.document_id }]),
+  );
+  expect(await screen.findAllByText("Processing")).not.toHaveLength(0);
+});
