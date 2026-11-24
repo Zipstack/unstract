@@ -29,6 +29,8 @@ def _job(queue="high-value-invoices", **over):
     job.id = "11111111-2222-3333-4444-555555555555"
     job.hitl_queue_name = queue
     job.organization = _Org()
+    job.input_ref = "unstract/agent_kv/org_abc123/11111111/input.pdf"
+    job.status = "COMPLETED"
     job.extractor = "kv"
     job.custom_data = {"vendor": "Acme"}
     job.tags = ["q4"]
@@ -96,6 +98,10 @@ class TestPushHappens:
         assert kw["queue_type"] == "api"
         assert kw["source_id"] == "11111111-2222-3333-4444-555555555555"
         assert kw["document_data"] == {"fields": {"total": 1}}
+        # `file` and `status` on the review side. The reader requires both and
+        # validates only after dequeuing, so omitting them destroys the record.
+        assert kw["document_name"] == "11111111-2222-3333-4444-555555555555.pdf"
+        assert kw["job_status"] == "completed"
 
     def test_the_reviewer_gets_the_callers_context(self):
         plugin = _plugin()

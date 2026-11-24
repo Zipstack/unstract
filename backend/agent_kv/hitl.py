@@ -32,6 +32,7 @@ caller would get `success: false` for a result that exists.
 from __future__ import annotations
 
 import logging
+import os
 
 from django.conf import settings
 
@@ -61,6 +62,16 @@ def _review_plugin():
     except ImportError:
         return None
     return agentic_extract_push
+
+
+def _document_name(job) -> str:
+    """A name for the staged document, since the caller's own is not kept.
+
+    `stage_input` writes `{...}/{job_id}/input{ext}`, discarding the uploaded
+    name, so the extension is the only part of it that survives.
+    """
+    ext = os.path.splitext(job.input_ref or "")[1]
+    return f"{job.id}{ext}"
 
 
 def push_completed_job(job, result: dict | None) -> bool:
@@ -108,6 +119,17 @@ def push_completed_job(job, result: dict | None) -> bool:
         pushed = plugin.enqueue_api_record(
             organization_id=job.organization.organization_id,
             hitl_queue_name=queue,
+            # The approved-results reader REQUIRES `file` and `status`, and
+            # rejects the record after it has already dequeued it -- on Postgres
+            # that is an unrecoverable loss. Only this side can supply them.
+            #
+            # The caller's own filename is not available: `stage_input` writes
+            # `input{ext}` and keeps no record of it. The job id carries the
+            # real extension instead, so a reviewer gets something that
+            # identifies the document and the caller gets something they can
+            # match to their own job.
+            document_name=_document_name(job),
+            job_status=(job.status or "").lower(),
             queue_type=HITL_QUEUE_TYPE_API,
             source_id=str(job.id),
             document_data=result or {},
