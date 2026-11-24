@@ -125,3 +125,22 @@ class TestPageImageReferenceSerialization:
         restored = PageImageReference.from_dict(as_dict)
         assert restored == ref
         assert restored.provider is FileStorageProvider.LOCAL
+
+
+class TestAnAdditiveFieldStaysAtTheEnd:
+    """A new optional field must not shift an existing positional argument.
+
+    ``TextExtractionMetadata`` is exported from the published SDK, so a caller
+    outside this repository may construct it positionally. Inserting a field
+    ahead of ``page_images`` binds that caller's third argument to the new
+    field and leaves ``page_images`` as ``None`` -- a silent loss of the page
+    references, with no error anywhere.
+    """
+
+    def test_the_third_positional_argument_is_still_page_images(self) -> None:
+        images = [PageImageReference(page_number=1, path="doc/page_001.png")]
+
+        meta = TextExtractionMetadata("h", None, images)
+
+        assert meta.page_images == images
+        assert meta.confidence_metadata is None

@@ -360,9 +360,9 @@ def test_a_job_cancelled_before_enqueue_is_not_dispatched(m_objects, m_disp, m_k
 
     dispatch.dispatch_job(job, extractor=TABLE_EXTRACTOR_NAME, schema={}, options={})
 
-    assert (
-        not m_disp.return_value.dispatch_with_callback.called
-    ), "paid work was enqueued for a job that was already cancelled"
+    assert not m_disp.return_value.dispatch_with_callback.called, (
+        "paid work was enqueued for a job that was already cancelled"
+    )
     # And no bookkeeping UPDATE either -- there is nothing to advance.
     assert not m_objects.filter.return_value.update.called
 
@@ -477,3 +477,51 @@ def test_a_failed_enqueue_is_logged_not_raised(monkeypatch, caplog):
         dispatch.dispatch_terminal_webhook(_FakeJob(), "completed")
 
     assert "could not queue the completed webhook" in caplog.text
+
+
+@mock.patch.object(dispatch, "_platform_api_key", return_value="pk")
+@mock.patch.object(dispatch, "_dispatcher")
+@mock.patch.object(AgentKVJob, "objects")
+def test_custom_data_and_the_highlight_flags_reach_the_engine(m_objects, m_disp, m_key):
+    """The gap this closes: `custom_data` was accepted, stored, and then left
+    out of `executor_params` entirely, so no engine ever saw it.
+
+    The highlight flags need no plumbing of their own -- they are extractor
+    options, and `options` was already passed through. Asserted here anyway,
+    because "it rides inside options" is the kind of fact that stops being
+    true when someone starts filtering options.
+    """
+    _not_cancelled(m_objects)
+    job = _job()
+    job.custom_data = {"vendor": "Acme", "nested": {"k": "v"}}
+
+    dispatch.dispatch_job(
+        job,
+        extractor=TABLE_EXTRACTOR_NAME,
+        schema={"a": {"description": "d"}},
+        options={"enable_highlight": True, "enable_word_confidence": True},
+        custom_data=job.custom_data,
+    )
+
+    params = m_disp.return_value.dispatch_with_callback.call_args.args[0].executor_params
+    assert params["custom_data"] == {"vendor": "Acme", "nested": {"k": "v"}}
+    assert params["options"]["enable_highlight"] is True
+    assert params["options"]["enable_word_confidence"] is True
+
+
+@mock.patch.object(dispatch, "_platform_api_key", return_value="pk")
+@mock.patch.object(dispatch, "_dispatcher")
+@mock.patch.object(AgentKVJob, "objects")
+def test_absent_custom_data_is_an_empty_object_not_none(m_objects, m_disp, m_key):
+    """`{}` rather than `None`, so an engine reading it never has to test for
+    both falsy forms -- the same reason the status document echoes `{}`.
+    """
+    _not_cancelled(m_objects)
+    dispatch.dispatch_job(
+        _job(),
+        extractor=TABLE_EXTRACTOR_NAME,
+        schema={},
+        options={},
+    )
+    params = m_disp.return_value.dispatch_with_callback.call_args.args[0].executor_params
+    assert params["custom_data"] == {}

@@ -19,7 +19,7 @@ from agent_kv.models import JobStatus
 from agent_kv.storage import read_result
 
 
-def result_payload(job) -> dict:
+def _terminal_payload(job) -> dict:
     """Return the result/outcome payload for a terminal ``job``.
 
     - COMPLETED: ``{success, status, extractors, usage_summary}`` -- the stored
@@ -141,3 +141,30 @@ def result_payload(job) -> dict:
             },
         }
     return {"success": False, "status": "cancelled"}
+
+
+def result_payload(job) -> dict:
+    """``_terminal_payload`` plus the caller's own inputs echoed back.
+
+    A wrapper rather than four edits inside that function: it has four exit
+    points (completed, failed, the cancel that lost its race, and the cancel
+    that won), and an echo added to three of them would be worse than none --
+    a client would have to know which terminal state it got before trusting
+    the field.
+
+    `custom_data` is **omitted entirely for a job that sent none**, rather
+    than echoed as `{}`. An earlier version echoed it unconditionally, which
+    added a key to every cancelled and failed body that had never carried one
+    -- caught by the two salvage tests that assert those bodies are
+    byte-identical to before. A caller who sends no custom data must get the
+    response they got before the field existed, which is the same rule the
+    highlight fields follow one layer down.
+
+    It survives a purge, because it lives on the job row rather than in the
+    stored blob `files_purged` destroys -- which is what keeps a purged job's
+    response self-describing.
+    """
+    payload = _terminal_payload(job)
+    if job.custom_data:
+        payload["custom_data"] = job.custom_data
+    return payload

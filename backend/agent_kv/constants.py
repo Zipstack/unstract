@@ -108,3 +108,21 @@ STAGE_NAMES_BY_EXTRACTOR = {
     V1_EXTRACTOR_NAME: STAGE_NAMES,
     TABLE_EXTRACTOR_NAME: TABLE_STAGE_NAMES,
 }
+
+
+#: The x2text adapter that can produce highlight and confidence data, by the
+#: provider descriptor `AdapterInstance.adapter_id` carries.
+#:
+#: A literal rather than an import: pulling the SDK adapter class into a
+#: request path to read one `get_id()` drags its whole registry in. The literal
+#: is pinned to the SDK's own value by
+#: `tests/test_custom_data_and_highlight_options.py::TestWhispererGateConstant::test_the_whisperer_id_matches_the_sdk`, so it
+#: cannot drift silently.
+#:
+#: **V2 only, and that is the point.** Only `llm_whisperer_v2`'s helper fetches
+#: `line_metadata` -- `enable_highlight` there sets both `ADD_LINE_NOS` and
+#: `INCLUDE_LINE_CONFIDENCE` and then calls `get_highlight_data`
+#: (`sdk1/.../x2text/llm_whisperer_v2/src/helper.py`). No other x2text adapter
+#: has that path, so highlight on any of them would return an empty block the
+#: caller paid for.
+LLM_WHISPERER_ADAPTER_ID = "llmwhisperer|a5e6b8af-3e1f-4a80-b006-d017e8e67f93"
