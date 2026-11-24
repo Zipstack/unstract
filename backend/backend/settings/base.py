@@ -385,6 +385,29 @@ AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS = int(
 AGENT_KV_CALCULATIONS_ENABLED = (
     os.environ.get("AGENT_KV_CALCULATIONS_ENABLED", "false").lower() == "true"
 )
+# Byte cap on the submit `custom_data` object. Mirrors
+# AGENT_KV_MAX_CALCULATIONS_BYTES rather than api_v2's `validate_custom_data`,
+# which checks only that the value is a JSON object and caps nothing -- this
+# value is stored on the job row, echoed in every status and result response,
+# and substituted into prompt text, so an uncapped one is three problems.
+AGENT_KV_MAX_CUSTOM_DATA_BYTES = int(
+    os.environ.get("AGENT_KV_MAX_CUSTOM_DATA_BYTES", 20_000)
+)
+# Gates `enable_highlight` / `enable_word_confidence`. Off ships the behaviour
+# unchanged: no highlight block in the result.
+#
+# Neither option costs an OCR or an LLM call on either extractor, so this gate
+# holds the RESULT SHAPE stable rather than holding spend down. Both engines
+# already request the OCR's line metadata on the PDF/image path -- `kv` because
+# grounding needs the line numbers -- so the fetch happens either way and these
+# options stop the result being discarded. (An earlier version of this comment
+# said `table` paid a per-page LLM call for its highlight validator. The
+# validator is real and is one LLM call per page, but it runs only when
+# `RunnerConfig.highlight_validator` is set, and the blind API's binding never
+# constructs one -- it is a Prompt Studio stage.)
+AGENT_KV_HIGHLIGHT_ENABLED = (
+    os.environ.get("AGENT_KV_HIGHLIGHT_ENABLED", "false").lower() == "true"
+)
 AGENT_KV_STRUCTURED_OUTPUT_ENABLED = (
     os.environ.get("AGENT_KV_STRUCTURED_OUTPUT_ENABLED", "false").lower() == "true"
 )
