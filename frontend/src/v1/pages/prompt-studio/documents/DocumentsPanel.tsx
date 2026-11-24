@@ -7,11 +7,17 @@ import {
   type DocumentRef,
   deletePromptDocument,
   type PromptDocument,
-  promptDocumentKeys,
   promptDocumentQueries,
   type UploadedDocument,
 } from "@v1/services/promptDocuments";
-import { type JSX, type ReactNode, useEffect, useMemo, useRef } from "react";
+import {
+  type JSX,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { confirm } from "./confirm";
 import { DocumentRow, UploadingRow } from "./DocumentRows";
 import { documentState, failureReason, footerSummary } from "./documentFacts";
@@ -49,7 +55,8 @@ const SUGGESTION =
   "Try a higher-resolution file, or switch the text extractor in Settings.";
 // Without the list the duplicate-name check cannot run, and the backend
 // overwrites a stored file before it refuses the duplicate.
-const LIST_NOT_LOADED = "Uploads wait for the document list. Retry it first.";
+const LIST_FAILED = "Uploads wait for the document list. Retry it first.";
+const LIST_LOADING = "Uploads open once the document list loads.";
 const NO_IDS: ReadonlySet<string> = new Set();
 const AddIcon = ACTION_ICONS.add;
 const EmptyIcon = ACTION_ICONS.document;
@@ -61,7 +68,7 @@ const EmptyIcon = ACTION_ICONS.document;
  * workspace frame puts it in its Documents tab or dialog.
  */
 export function DocumentsPanel(props: DocumentsPanelProps): JSX.Element {
-  // Uploads, waits and drafts belong to one tool; another starts afresh.
+  // Uploads, index waits and removals belong to one tool; another starts afresh.
   return <ToolDocumentsPanel key={props.toolId} {...props} />;
 }
 
@@ -108,20 +115,42 @@ function ToolDocumentsPanel({
     onUploaded,
   });
 
-  const remove = useMutation({
+  // Per document, not the mutation's variables: those name only the latest
+  // call, and two removals can be in flight at once.
+  const inFlight = useRef<ReadonlySet<string>>(NO_IDS);
+  const [removingIds, setRemovingIds] = useState(inFlight.current);
+  const markRemoving = (documentId: string, removing: boolean) => {
+    const next = new Set(inFlight.current);
+    if (removing) {
+      next.add(documentId);
+    } else {
+      next.delete(documentId);
+    }
+    inFlight.current = next;
+    setRemovingIds(next);
+  };
+  const { mutateAsync: deleteDocument } = useMutation({
     mutationFn: (params: DocumentRef) => deletePromptDocument(params),
-    onSuccess: async (_, { documentId }) => {
-      await queryClient.invalidateQueries({
-        queryKey: promptDocumentKeys.list(toolId),
-      });
-      onRemoved?.(
-        documentId,
-        documents
-          .map((document) => document.document_id)
-          .filter((id) => id !== documentId),
-      );
-    },
   });
+
+  const removeDocument = async (documentId: string) => {
+    markRemoving(documentId, true);
+    try {
+      await deleteDocument({ toolId, documentId });
+    } catch {
+      // Already shown: the mutation cache reports every failed mutation.
+      markRemoving(documentId, false);
+      return;
+    }
+    const listQuery = promptDocumentQueries.list(toolId);
+    await queryClient.invalidateQueries({ queryKey: listQuery.queryKey });
+    markRemoving(documentId, false);
+    // What is listed now, less anything still being removed.
+    const left = (queryClient.getQueryData(listQuery.queryKey) ?? [])
+      .map((document) => document.document_id)
+      .filter((id) => id !== documentId && !inFlight.current.has(id));
+    onRemoved?.(documentId, left);
+  };
 
   const askRemove = async (document: PromptDocument) => {
     const ok = await confirm({
@@ -136,12 +165,18 @@ function ToolDocumentsPanel({
       consequence: "This cannot be undone.",
     });
     if (ok) {
-      remove.mutate({ toolId, documentId: document.document_id });
+      await removeDocument(document.document_id);
     }
   };
 
+  // A failed refresh keeps the rows, and with them the duplicate check.
   const blockedReason =
-    uploadBlockedReason ?? (list.isSuccess ? null : LIST_NOT_LOADED);
+    uploadBlockedReason ??
+    (list.data !== undefined
+      ? null
+      : list.isError
+        ? LIST_FAILED
+        : LIST_LOADING);
 
   const failed = documents.filter(
     (document) => documentState(document, busyIds) === "failed",
@@ -217,10 +252,7 @@ function ToolDocumentsPanel({
                       }
                       onIndex={() => indexing.request(document)}
                       onRemove={() => void askRemove(document)}
-                      removing={
-                        remove.isPending &&
-                        remove.variables?.documentId === document.document_id
-                      }
+                      removing={removingIds.has(document.document_id)}
                     />
                   ))}
                 </ul>

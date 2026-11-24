@@ -1,8 +1,7 @@
 /*
  * Fixtures for services/promptDocuments, shaped as the backend's
- * PromptStudioDocumentStatusSerializer renders `GET prompt-document/` (the
- * document-status change; until it lands the endpoint sends only id, name
- * and tool, and the list parse fails):
+ * PromptStudioDocumentStatusSerializer renders `GET prompt-document/`. A
+ * backend that sends only id, name and tool fails the list parse:
  * document_id, document_name, tool, size_bytes, page_count (null for rows
  * uploaded before sizes were recorded) and one index_status entry per LLM
  * profile of the tool.

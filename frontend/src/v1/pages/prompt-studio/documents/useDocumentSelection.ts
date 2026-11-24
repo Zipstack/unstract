@@ -7,9 +7,12 @@ import { useCallback, useRef, useState } from "react";
 
 export type DocumentSelection = Readonly<{
   selectedId: string | null;
-  /** Shows the document at once and saves it as the tool's; goes back to the saved one if the save fails. */
+  /** Shows the document at once and saves it as the tool's; goes back to the last saved one if the save fails. */
   select: (documentId: string) => void;
-  /** After a removal: the removed document gives way to the first one left, which is saved. */
+  /**
+   * After a removal: if it was the shown document, the first one left is
+   * shown and saved, or the saved document is cleared when none is left.
+   */
   removed: (documentId: string, remaining: readonly string[]) => void;
 }>;
 
@@ -19,6 +22,12 @@ type Shown = Readonly<{
   /** Whether the user has picked since the tool's saved document was read. */
   chosen: boolean;
   selectedId: string | null;
+}>;
+
+type Held = Readonly<{
+  toolId: string;
+  id: string | null;
+  epoch: number;
 }>;
 
 const fresh = (toolId: string, saved: string | null): Shown => ({
@@ -31,10 +40,10 @@ const fresh = (toolId: string, saved: string | null): Shown => ({
 /**
  * The document the workspace shows, starting from the tool's saved one
  * (`output`; an unset tool sends ""). As in v0, picking a document saves it
- * on the tool. Saves go one at a time and a superseded pick is never sent, so
- * the server ends on the last pick. A failed save goes back to the document
- * the server holds, unless a newer pick is on screen; the mutation cache
- * shows why.
+ * on the tool. Saves go one at a time, and a pick replaced while it is still
+ * queued is skipped. A failed save goes back to the last document saved (after
+ * a removal of the shown one, the first one left), unless a newer pick is on
+ * screen; the mutation cache shows why.
  */
 export function useDocumentSelection(
   toolId: string,
@@ -54,10 +63,14 @@ export function useDocumentSelection(
   // Read by callbacks bound in an earlier render (a delete's onSuccess).
   const shown = useRef(current.selectedId);
   shown.current = current.selectedId;
-  // What the server holds, to go back to when a save fails.
-  const held = useRef(saved);
-  if (!current.chosen) {
-    held.current = saved;
+  // What the server holds, to go back to when a save fails. A tool switch
+  // or a removal starts a new epoch, so a save that lands later from before
+  // it cannot set a document of another tool, or a removed one.
+  const held = useRef<Held>({ toolId, id: saved, epoch: 0 });
+  if (held.current.toolId !== toolId) {
+    held.current = { toolId, id: saved, epoch: held.current.epoch + 1 };
+  } else if (!current.chosen && held.current.id !== saved) {
+    held.current = { ...held.current, id: saved };
   }
   const queue = useRef<Promise<void>>(Promise.resolve());
   const { mutateAsync } = useMutation({
@@ -75,12 +88,15 @@ export function useDocumentSelection(
         if (shown.current !== documentId) {
           return;
         }
+        const { epoch } = held.current;
         try {
           await mutateAsync({ toolId, documentId: documentId ?? "" });
-          held.current = documentId;
+          if (held.current.epoch === epoch) {
+            held.current = { ...held.current, id: documentId };
+          }
         } catch {
           if (shown.current === documentId) {
-            show(held.current);
+            show(held.current.id);
           }
         }
       });
@@ -98,13 +114,17 @@ export function useDocumentSelection(
 
   const removed = useCallback(
     (documentId: string, remaining: readonly string[]) => {
-      if (held.current === documentId) {
-        held.current = remaining[0] ?? null;
-      }
+      const next = remaining[0] ?? null;
+      const gone =
+        held.current.id === documentId || shown.current === documentId;
+      held.current = {
+        ...held.current,
+        id: gone ? next : held.current.id,
+        epoch: held.current.epoch + 1,
+      };
       if (documentId !== shown.current) {
         return;
       }
-      const next = remaining[0] ?? null;
       show(next);
       save(next);
     },

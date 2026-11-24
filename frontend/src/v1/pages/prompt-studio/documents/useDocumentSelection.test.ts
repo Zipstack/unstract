@@ -177,3 +177,68 @@ it("starts again from the new tool's saved document", async () => {
   rerender({ tool: "other-tool", saved: "x" });
   expect(result.current.selectedId).toBe("x");
 });
+
+it("goes back to the last document saved, not the one it started on", async () => {
+  const saves = serveSaves();
+  const { result } = renderHookV1(() => useDocumentSelection(TOOL_ID, "a"));
+  act(() => result.current.select("b"));
+  await waitFor(() => expect(saves).toHaveLength(1));
+  await act(async () => saves[0]?.answer(200));
+  act(() => result.current.select("c"));
+  await waitFor(() => expect(saves).toHaveLength(2));
+  await act(async () => saves[1]?.answer(500));
+  await waitFor(() => expect(result.current.selectedId).toBe("b"));
+});
+
+it("goes back to a saved document that arrived late", async () => {
+  const saves = serveSaves();
+  const { result, rerender } = renderHookV1(
+    ({ saved }: { saved: string | null }) =>
+      useDocumentSelection(TOOL_ID, saved),
+    { initialProps: { saved: "" as string | null } },
+  );
+  rerender({ saved: "a" });
+  act(() => result.current.select("b"));
+  await waitFor(() => expect(saves).toHaveLength(1));
+  await act(async () => saves[0]?.answer(500));
+  await waitFor(() => expect(result.current.selectedId).toBe("a"));
+});
+
+it("never goes back to another tool's document", async () => {
+  const saves: { answer: (status: number) => void }[] = [];
+  mockApi(
+    http.patch(/\/prompt-studio\/[^/]+\/$/, async () => {
+      const status = await new Promise<number>((resolve) =>
+        saves.push({ answer: resolve }),
+      );
+      return HttpResponse.json({}, { status });
+    }),
+  );
+  const { result, rerender } = renderHookV1(
+    ({ tool, saved }: { tool: string; saved: string }) =>
+      useDocumentSelection(tool, saved),
+    { initialProps: { tool: TOOL_ID, saved: "a" } },
+  );
+  act(() => result.current.select("b"));
+  await waitFor(() => expect(saves).toHaveLength(1));
+  rerender({ tool: "other-tool", saved: "x" });
+  // The first tool's save lands after the switch.
+  await act(async () => saves[0]?.answer(200));
+  act(() => result.current.select("y"));
+  await waitFor(() => expect(saves).toHaveLength(2));
+  await act(async () => saves[1]?.answer(500));
+  await waitFor(() => expect(result.current.selectedId).toBe("x"));
+});
+
+it("never goes back to a document removed while its save was open", async () => {
+  const saves = serveSaves();
+  const { result } = renderHookV1(() => useDocumentSelection(TOOL_ID, "a"));
+  act(() => result.current.select("b"));
+  await waitFor(() => expect(saves).toHaveLength(1));
+  act(() => result.current.removed("b", ["c"]));
+  await act(async () => saves[0]?.answer(200));
+  await waitFor(() => expect(saves).toHaveLength(2));
+  await act(async () => saves[1]?.answer(500));
+  await delay(10);
+  expect(result.current.selectedId).toBe("c");
+});

@@ -6,7 +6,8 @@ import {
   type UploadParams,
   uploadPromptDocument,
 } from "@v1/services/promptDocuments";
-import { useCallback, useRef, useState } from "react";
+import { reportApiError } from "@v1/services/report";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { planUploads, type UploadPolicy } from "./uploadPolicy";
 
 /** A file waiting for, or in, its upload. */
@@ -49,6 +50,15 @@ export function useUploads({
   const pending = useRef<UploadRow[]>([]);
   const busy = useRef(false);
   const nextKey = useRef(0);
+  // The queue drains after an unmount (each file belongs to its tool), but a
+  // panel that has gone is not told: its callbacks belong to another screen.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const { mutateAsync } = useMutation({
     mutationFn: (params: UploadParams) => uploadPromptDocument(params),
   });
@@ -66,6 +76,8 @@ export function useUploads({
       return;
     }
     busy.current = true;
+    // The list this tool's uploads land in, read while the page is still on it.
+    const listKey = promptDocumentKeys.list(toolId);
     try {
       for (
         let row = pending.current.shift();
@@ -85,14 +97,17 @@ export function useUploads({
           // Already shown: the mutation cache reports every failed mutation.
         }
         // Read the list either way: a failed answer can follow a stored file.
-        await queryClient.invalidateQueries({
-          queryKey: promptDocumentKeys.list(toolId),
-        });
+        await queryClient.invalidateQueries({ queryKey: listKey });
         setRows((current) =>
           current.filter((candidate) => candidate.key !== key),
         );
-        if (document) {
-          onUploaded?.(document);
+        if (document && mounted.current) {
+          try {
+            onUploaded?.(document);
+          } catch (error) {
+            // The workspace's callback failing must not strand the queue.
+            reportApiError(error);
+          }
         }
       }
     } finally {

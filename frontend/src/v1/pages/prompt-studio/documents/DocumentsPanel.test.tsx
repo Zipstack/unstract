@@ -270,12 +270,14 @@ describe("uploads (D06)", () => {
         ),
       ),
     );
-    const { user } = renderPanel();
+    const onUploaded = vi.fn();
+    const { user } = renderPanel({ onUploaded });
     await screen.findByText("No documents yet");
     await user.upload(screen.getByTestId("file-drop-input"), pdf("a.pdf"));
     await waitFor(() => expect(shown).toHaveLength(1));
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(screen.getByText("0 documents")).toBeInTheDocument();
+    expect(onUploaded).not.toHaveBeenCalled();
   });
 
   it("reads the list again when an upload's answer cannot be read", async () => {
@@ -391,6 +393,77 @@ describe("uploads (D06)", () => {
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     await user.upload(screen.getByTestId("file-drop-input"), pdf("b.pdf"));
     await waitFor(() => expect(posted).toEqual(["first", "other"]));
+  });
+
+  it("keeps uploading, and says so, when the workspace's callback throws", async () => {
+    serveList([]);
+    const posted: string[] = [];
+    mockApi(
+      http.post(FILE, async ({ request }) => {
+        posted.push(((await request.formData()).get("file") as File).name);
+        return HttpResponse.json({ data: [uploadedFixture] });
+      }),
+    );
+    const onUploaded = vi.fn(() => {
+      throw new Error("boom");
+    });
+    const { user } = renderPanel({ onUploaded });
+    await screen.findByText("No documents yet");
+    await user.upload(screen.getByTestId("file-drop-input"), [
+      pdf("a.pdf"),
+      pdf("b.pdf"),
+    ]);
+    await waitFor(() => expect(posted).toEqual(["a.pdf", "b.pdf"]));
+    await waitFor(() => expect(onUploaded).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.queryByRole("progressbar")).not.toBeInTheDocument(),
+    );
+    expect(shown).not.toHaveLength(0);
+  });
+
+  it("does not report an upload to a panel that has gone", async () => {
+    serveList([]);
+    let release: () => void = () => undefined;
+    const arrived = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mockApi(
+      http.post(FILE, async () => {
+        await arrived;
+        return HttpResponse.json({ data: [uploadedFixture] });
+      }),
+    );
+    const onUploaded = vi.fn();
+    const { user, unmount } = renderPanel({ onUploaded });
+    await screen.findByText("No documents yet");
+    await user.upload(screen.getByTestId("file-drop-input"), pdf("a.pdf"));
+    await screen.findByRole("progressbar");
+    unmount();
+    release();
+    await delay(30);
+    expect(onUploaded).not.toHaveBeenCalled();
+  });
+
+  it("keeps uploads open when a refresh fails with the list on screen", async () => {
+    let failing = false;
+    mockApi(
+      http.get(LIST, () =>
+        failing
+          ? HttpResponse.json({}, { status: 503 })
+          : HttpResponse.json(promptDocumentFixtures.list),
+      ),
+    );
+    const posted = vi.fn(() => HttpResponse.json({ data: [uploadedFixture] }));
+    mockApi(http.post(FILE, posted));
+    const { user, queryClient } = renderPanel();
+    await screen.findByText("4 documents · 14 pages total");
+    failing = true;
+    await queryClient.refetchQueries();
+    expect(
+      screen.queryByText("Uploads wait for the document list. Retry it first."),
+    ).not.toBeInTheDocument();
+    await user.upload(screen.getByTestId("file-drop-input"), pdf("new.pdf"));
+    await waitFor(() => expect(posted).toHaveBeenCalledTimes(1));
   });
 });
 
@@ -637,6 +710,44 @@ describe("remove (D08)", () => {
     await user.click(button);
     await waitFor(() => expect(removed).toHaveBeenCalledTimes(1));
     expect(button).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Remove CreditCardStatement.pdf" }),
+    ).toBeEnabled();
+  });
+
+  it("holds each row while its own removal is in flight, and never offers a document being removed", async () => {
+    serveList(promptDocumentFixtures.list);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const answers = new Map<string, () => void>();
+    mockApi(
+      http.delete(FILE, async ({ request }) => {
+        const { document_id } = (await request.json()) as {
+          document_id: string;
+        };
+        await new Promise<void>((resolve) => answers.set(document_id, resolve));
+        return HttpResponse.json("File deleted succesfully.");
+      }),
+    );
+    const onRemoved = vi.fn();
+    const { user } = renderPanel({ onRemoved });
+    const [first, second] = promptDocumentFixtures.list;
+    if (!first || !second) {
+      throw new Error("fixture needs two documents");
+    }
+    const removeFirst = await screen.findByRole("button", {
+      name: `Remove ${first.document_name}`,
+    });
+    const removeSecond = screen.getByRole("button", {
+      name: `Remove ${second.document_name}`,
+    });
+    await user.click(removeFirst);
+    await user.click(removeSecond);
+    await waitFor(() => expect(answers.size).toBe(2));
+    expect(removeFirst).toBeDisabled();
+    expect(removeSecond).toBeDisabled();
+    answers.get(first.document_id)?.();
+    await waitFor(() => expect(onRemoved).toHaveBeenCalledTimes(1));
+    expect(onRemoved.mock.calls[0]?.[1]).not.toContain(second.document_id);
   });
 
   it("removes nothing when the user cancels", async () => {

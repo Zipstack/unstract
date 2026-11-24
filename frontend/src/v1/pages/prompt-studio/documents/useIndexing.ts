@@ -29,11 +29,12 @@ function snapshot(document: PromptDocument | undefined) {
 
 /*
  * ponytail: the index result arrives on the Prompt Studio socket
- * (`index_document`, owned by the run engine). Until the frame passes those
- * ids in, a document asked to index here shows Processing while the list is
- * polled, and stops when its state or reason changes, or after a wait. Once
- * the socket's ids arrive, `request` only sends the index request: the poll,
- * `settle` and the wait go, and the frame invalidates the list and EXTRACT.
+ * (`index_document`, owned by the run engine). Until then, a document asked
+ * to index here shows Processing while the list is polled, and stops when its
+ * state or reason changes, it leaves the list, or the wait runs out. When the
+ * frame passes the socket's ids, replace the poll, `settle` and the wait with
+ * them; `request` then only sends the index request, and the frame
+ * invalidates the list and EXTRACT when the socket reports a result.
  */
 export function useIndexing(toolId: string): Indexing {
   const queryClient = useQueryClient();

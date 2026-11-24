@@ -2,8 +2,8 @@
  * ponytail: the shared destructive confirm dialog replaces this; the options
  * are its shape. Until then the browser's own confirm asks with the title and
  * description only (no confirmLabel, no consequence), so frame D08's layout
- * is not drawn here. The swap also moves DocumentsPanel.test.tsx from
- * stubbing window.confirm to answering the dialog.
+ * is not drawn here. The swap also moves the tests that stub window.confirm
+ * to answering the dialog.
  */
 
 export type DestructiveConfirm = Readonly<{

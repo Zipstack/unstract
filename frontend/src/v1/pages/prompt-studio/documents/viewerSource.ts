@@ -6,7 +6,8 @@ const TEXT_TYPES = new Set(["text/plain", "text/csv"]);
 /**
  * What the viewer shows for stored contents: a PDF as bytes, text and CSV as
  * text, and null (no preview) for anything else, such as the notice the
- * backend sends for a spreadsheet or empty data.
+ * backend sends for a spreadsheet. Empty text goes on to the viewer, which
+ * says no text was found.
  */
 export function toViewerSource(
   content: DocumentContent,
@@ -24,8 +25,7 @@ export function toViewerSource(
       return null;
     }
   }
-  // The backend sends empty data for a type it does not read.
-  if (TEXT_TYPES.has(content.mime_type) && content.data !== "") {
+  if (TEXT_TYPES.has(content.mime_type)) {
     return { kind: "text", text: content.data };
   }
   return null;
