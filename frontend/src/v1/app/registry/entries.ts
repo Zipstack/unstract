@@ -17,7 +17,8 @@ export const REGISTERED_PAGES: readonly PageKey[] = [];
 /**
  * Development-only demo pages that prove the switch. Registered only in a
  * build with VITE_V1_DEV_ROUTES=true (the E2E image), never in a release.
- * Their v0 side is the stand-in rendered by routes/Router.jsx.
+ * Their v0 side is the stand-in rendered by routes/Router.jsx; DEMO-VIEWER
+ * has none, as nothing tests its v0 side beyond the redirect.
  */
 export const DEMO_PAGES: readonly RegistryEntry[] = [
   {
@@ -46,5 +47,17 @@ export const DEMO_PAGES: readonly RegistryEntry[] = [
     toggle: true,
     distributions: ["oss", "cloud", "onprem"],
     registeredBy: "P0-T03",
+  },
+  {
+    // The document viewer's gallery (UN-4645), where its browser tests run.
+    page: "DEMO-VIEWER",
+    v1Routes: ["/:orgName/v1-demo-viewer"],
+    replaces: ["/:orgName/v0-demo-viewer"],
+    access: "authenticated",
+    toV0: { "/:orgName/v1-demo-viewer": "/:orgName/v0-demo-viewer" },
+    toV1: { "/:orgName/v0-demo-viewer": "/:orgName/v1-demo-viewer" },
+    toggle: false,
+    distributions: ["oss", "cloud", "onprem"],
+    registeredBy: "P1-T21",
   },
 ];

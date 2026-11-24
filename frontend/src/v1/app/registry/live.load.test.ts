@@ -22,10 +22,11 @@ it("falls back to OSS, with a console error, on an unknown distribution", async 
     "VITE_DISTRIBUTION=saas is not one of oss, cloud, onprem; using oss",
   );
   // v0 imports this module eagerly, so it must load rather than throw, and
-  // as OSS: the demo pages ship in every distribution, so both stay live.
+  // as OSS: the demo pages ship in every distribution, so all stay live.
   expect(LIVE_REGISTRY.entries.map((e) => e.page)).toEqual([
     "DEMO-PAGE",
     "DEMO-REVIEW",
+    "DEMO-VIEWER",
   ]);
 });
 

@@ -18,4 +18,9 @@ export const PAGE_COMPONENTS: Readonly<
   "DEMO-REVIEW": lazy(() =>
     import("@v1/pages/demo").then((m) => ({ default: m.DemoReviewPage })),
   ),
+  "DEMO-VIEWER": lazy(() =>
+    import("@v1/pages/demo/viewer").then((m) => ({
+      default: m.DemoViewerPage,
+    })),
+  ),
 };
