@@ -126,3 +126,19 @@ STAGE_NAMES_BY_EXTRACTOR = {
 #: has that path, so highlight on any of them would return an empty block the
 #: caller paid for.
 LLM_WHISPERER_ADAPTER_ID = "llmwhisperer|a5e6b8af-3e1f-4a80-b006-d017e8e67f93"
+
+#: `hitl_queue_name`'s accepted shape, matching the documented API-deployment
+#: field it mirrors (docs: "Push to HITL from API Deployments"): alphanumerics,
+#: hyphens and underscores, and short enough to stay readable in a queue name.
+#:
+#: The queue this ends up addressing is
+#: `review_queue_{organization_id}_{class}:{hitl_queue_name}`, so a name
+#: carrying `:` or whitespace would alter the queue's own structure rather than
+#: name a queue within it. That is why this is a refusal and not a sanitiser.
+HITL_QUEUE_NAME_RE = r"^[A-Za-z0-9_-]{1,50}$"
+
+#: `queue_type` for records pushed over an API rather than drained from an ETL
+#: pipeline. `HITLQueue.queue_type` already carries this value for the
+#: API-deployment path. It marks where a record came from; it does not scope
+#: it -- the review app resolves the queue identity itself.
+HITL_QUEUE_TYPE_API = "api"
