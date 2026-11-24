@@ -116,10 +116,13 @@ it("sets the default profile and returns its id", async () => {
 
 it("creates a profile on the slashless profilemanager route", async () => {
   let sent: unknown;
+  let path = "";
   mockApi(
     http.post(
       apiPath(S, `/prompt-studio/profilemanager/${TOOL}`),
       async ({ request }) => {
+        // msw matches this handler with or without a trailing slash; Django does not.
+        path = new URL(request.url).pathname;
         sent = await request.json();
         return HttpResponse.json(makeProfile({ profile_name: "new" }), {
           status: 201,
@@ -128,6 +131,7 @@ it("creates a profile on the slashless profilemanager route", async () => {
     ),
   );
   const created = await createProfile(body);
+  expect(path.endsWith(`/profilemanager/${TOOL}`)).toBe(true);
   expect(sent).toEqual(body);
   expect(created.profile_name).toBe("new");
 });

@@ -299,6 +299,12 @@ describe("project settings sections", () => {
     expect(
       within(section("Preamble")).getByLabelText("Preamble"),
     ).toHaveAttribute("readonly");
+    for (const name of [/^Edit /, /^Delete /, /^Remove /, /^Reset /]) {
+      expect(screen.queryAllByRole("button", { name })).toEqual([]);
+    }
+    for (const radio of screen.getAllByRole("radio")) {
+      expect(radio).toBeDisabled();
+    }
   });
 
   it("shows an error with Retry when the project cannot load", async () => {
@@ -334,6 +340,69 @@ it("shows the no-permission state when the project is forbidden", async () => {
 });
 
 describe("leave guard", () => {
+  type User = ReturnType<typeof renderTab>["user"];
+  const edits: [string, (user: User) => Promise<void>][] = [
+    [
+      "LLM Profiles",
+      async (user) => {
+        await user.click(
+          screen.getByRole("button", { name: "Add New LLM Profile" }),
+        );
+        await user.type(screen.getByLabelText("Name"), "x");
+      },
+    ],
+    [
+      "Custom Data",
+      (user) =>
+        user.type(within(section("Custom Data")).getByLabelText("Key 1"), "x"),
+    ],
+    [
+      "Grammar",
+      (user) =>
+        user.type(within(section("Grammar")).getByLabelText("Word 1"), "x"),
+    ],
+    [
+      "Preamble",
+      (user) =>
+        user.type(within(section("Preamble")).getByLabelText("Postamble"), "x"),
+    ],
+  ];
+
+  it.each(edits)("asks while %s has unsaved changes", async (_, edit) => {
+    serve();
+    let canLeave: () => Promise<boolean> = async () => true;
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { user } = renderTab({
+      onLeaveGuard: (fn) => {
+        canLeave = fn;
+      },
+    });
+    await loaded();
+    await edit(user);
+    await waitFor(async () => expect(await canLeave()).toBe(false));
+  });
+
+  it("stops asking once the changes are saved", async () => {
+    serve();
+    let canLeave: () => Promise<boolean> = async () => false;
+    const ask = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { user } = renderTab({
+      onLeaveGuard: (fn) => {
+        canLeave = fn;
+      },
+    });
+    await loaded();
+    const preamble = section("Preamble");
+    await user.type(within(preamble).getByLabelText("Preamble"), " More.");
+    await user.click(
+      within(preamble).getByRole("button", { name: "Save changes" }),
+    );
+    await within(preamble).findByText("No changes");
+    ask.mockClear();
+    await expect(canLeave()).resolves.toBe(true);
+    expect(ask).not.toHaveBeenCalled();
+  });
+
   it("asks before leaving only while a section has unsaved changes", async () => {
     serve();
     let canLeave: () => Promise<boolean> = async () => false;

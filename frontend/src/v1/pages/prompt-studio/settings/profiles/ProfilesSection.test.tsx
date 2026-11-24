@@ -400,6 +400,9 @@ it("edits a profile by its adapter ids and keeps one the user cannot see", async
       x2text_id: "99999999-9999-4999-8999-999999999999",
       chunk_size: 1024,
       chunk_overlap: 128,
+      reindex: true,
+      retrieval_strategy: "fusion",
+      similarity_top_k: 7,
     }),
   ]);
   let sent: Record<string, unknown> | undefined;
@@ -421,13 +424,23 @@ it("edits a profile by its adapter ids and keeps one the user cannot see", async
   expect(
     screen.getByRole("option", { name: "Unshared extractor" }),
   ).toBeDisabled();
-  expect(screen.getByLabelText("Matching count limit")).toHaveValue("3");
+  expect(screen.getByLabelText("Matching count limit")).toHaveValue("7");
   expect(await screen.findByText(/LLM context 200000/)).toBeVisible();
   await user.click(screen.getByRole("button", { name: "Save profile" }));
   await waitFor(() =>
-    expect(sent).toMatchObject({
+    expect(sent).toEqual({
+      profile_name: "test3",
+      llm: ADAPTER_IDS.llm,
+      embedding_model: ADAPTER_IDS.embedding,
+      vector_store: ADAPTER_IDS.vectorDb,
       x2text: "99999999-9999-4999-8999-999999999999",
       chunk_size: 1024,
+      chunk_overlap: 128,
+      reindex: true,
+      retrieval_strategy: "fusion",
+      similarity_top_k: 7,
+      section: "Default",
+      prompt_studio_tool: SETTINGS_TOOL_ID,
     }),
   );
 });
