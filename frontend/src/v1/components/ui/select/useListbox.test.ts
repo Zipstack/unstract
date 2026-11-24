@@ -196,6 +196,14 @@ it("opens at the first enabled selected option, passing over a disabled one", ()
   expect(result.current.activeIndex).toBe(2);
 });
 
+it("selects nothing when onSelect is called with a disabled option", () => {
+  const { result, onSelect } = setup();
+  act(() => result.current.onSelect(OPTIONS[1]));
+  expect(onSelect).not.toHaveBeenCalled();
+  act(() => result.current.onSelect(OPTIONS[0]));
+  expect(onSelect).toHaveBeenCalledExactlyOnceWith(OPTIONS[0]);
+});
+
 it("never makes a disabled option active: it falls back to the first enabled one", () => {
   const { result, press } = setup();
   press("ArrowDown");

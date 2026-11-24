@@ -43,3 +43,9 @@ it("takes the remove button out of the tab order when not removeFocusable", asyn
   await user.click(remove());
   expect(onRemove).toHaveBeenCalledTimes(1);
 });
+
+it("puts className on the chip", () => {
+  renderV1(<Chip label="Tag" className="custom" />);
+  const chip = screen.getByText("Tag").closest("[data-slot=chip]");
+  expect(chip?.className.split(" ")).toContain("custom");
+});

@@ -185,6 +185,15 @@ say otherwise. `Field`'s `error` makes the control invalid.
   `aria-label` or `aria-labelledby` wins over the Field's label.
 - Outside `Field` nothing changes: each control uses its own `id`,
   `aria-describedby`, `invalid` and `disabled`.
+- **Clicking the Field's label** (checked in Chromium): on a `Select` it
+  opens the list, and Radix moves focus into it, onto an option; on a
+  `Combobox` or `MultiSelect` it focuses the input and opens the list (the
+  label's click reaches the input's click handler); on a `SegmentedControl`
+  it does nothing: the label's `for` points at the group, which is not a
+  labelable element, so nothing is focused and the selection is unchanged.
+- **No read-only.** `Field`'s `readOnly` is not supported by these four
+  controls: inside a read-only `Field` the control stays editable. Use
+  `disabled` instead.
 
 ### SegmentedControl ruling
 
