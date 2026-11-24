@@ -23,6 +23,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import psycopg2
+import psycopg2.errors
 import pytest
 from queue_backend.pg_queue.connection import create_pg_connection
 from queue_backend.pg_queue.leader_election import (
@@ -317,6 +318,41 @@ class TestSingleRowConstraint:
                     "INSERT INTO pg_orchestrator_lock (id, leader, acquired_at) "
                     "VALUES (2, '', now())"
                 )
+
+
+class TestSharedDeadConnectionClassification:
+    """UN-3749: the lease asks the shared ``is_connection_dead`` whether a
+    connection is dead, rather than keeping its own copy of the error list.
+    """
+
+    def test_follows_the_shared_classifier(self, monkeypatch):
+        # Whatever the shared rule calls dead, the lease discards.
+        class _NewDeadError(Exception):
+            pass
+
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.leader_election.is_connection_dead",
+            lambda exc: isinstance(exc, _NewDeadError),
+        )
+        bad = _mock_conn(execute_exc=_NewDeadError("dead"))
+        monkeypatch.setattr(_FACTORY_PATH, MagicMock(side_effect=[bad]))
+        lease = LeaderLease("w")
+        with pytest.raises(_NewDeadError):
+            lease.try_acquire()
+        bad.close.assert_called_once()
+        assert lease._conn is None
+
+    def test_payload_rejection_keeps_the_owned_conn(self, monkeypatch):
+        # ProgramLimitExceeded subclasses OperationalError but leaves the
+        # connection usable: the shared rule says "not dead", so no reconnect.
+        bad = _mock_conn(execute_exc=psycopg2.errors.ProgramLimitExceeded("big"))
+        monkeypatch.setattr(_FACTORY_PATH, MagicMock(side_effect=[bad]))
+        lease = LeaderLease("w")
+        with pytest.raises(psycopg2.errors.ProgramLimitExceeded):
+            lease.try_acquire()
+        bad.rollback.assert_called_once()
+        bad.close.assert_not_called()
+        assert lease._conn is bad
 
 
 if __name__ == "__main__":

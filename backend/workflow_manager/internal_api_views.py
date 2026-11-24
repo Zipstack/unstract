@@ -69,7 +69,9 @@ def get_workflow_execution_data(request, execution_id: str):
             "execution_type": execution.execution_type,
             "pipeline_id": execution.pipeline_id,
             "total_files": execution.total_files,
-            "completed_files": execution.completed_files,
+            # The row has no completed_files column. As in the execution cache,
+            # "completed" means succeeded, disjoint from failed_files below.
+            "completed_files": execution.successful_files,
             "failed_files": execution.failed_files,
             "execution_log_id": execution.execution_log_id,  # Include for WebSocket messaging
         }

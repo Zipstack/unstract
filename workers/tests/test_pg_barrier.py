@@ -992,6 +992,15 @@ class TestPgBarrierEnqueue:
         assert _row(barrier_db, "exec-D") is None  # cleaned up
 
 
+def _dedup_count(conn, execution_id):
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT count(*) FROM pg_batch_dedup WHERE execution_id = %s",
+            (execution_id,),
+        )
+        return cur.fetchone()[0]
+
+
 def _seed(conn, execution_id, remaining, *, results="[]"):
     with conn.cursor() as cur:
         cur.execute(
@@ -1227,6 +1236,24 @@ class TestDecrAndCheck:
         assert out["status"] == "abandoned"
         sig.assert_not_called()
         assert _row(barrier_db, "exec-N") is None
+
+    def test_negative_remaining_keeps_dedup_markers(self, barrier_db):
+        # UN-3749: the over-decrement branch keeps the per-batch markers. The
+        # execution is not terminal and deliveries are being replayed, so a
+        # surviving marker is what makes a sibling's redelivery skip its batch.
+        _seed(barrier_db, "exec-NM", 0)  # decrement → -1
+        for batch_index in (0, 1):
+            claim_batch("exec-NM", batch_index)
+        with patch("queue_backend.dispatch.dispatch") as sig:
+            out = _barrier_pg_decrement(
+                {"f": 1}, execution_id="exec-NM", callback_descriptor=_CALLBACK
+            )
+        assert out == {"status": "abandoned", "remaining": -1}
+        sig.assert_not_called()
+        assert _row(barrier_db, "exec-NM") is None
+        assert _dedup_count(barrier_db, "exec-NM") == 2
+        # A redelivered batch is skipped, not re-run.
+        assert claim_batch("exec-NM", 1) is False
 
     def test_missing_row_does_not_fire(self, barrier_db):
         with patch("queue_backend.dispatch.dispatch") as sig:
@@ -1650,14 +1677,38 @@ class TestPgFireAndForgetMode:
         assert mock_dispatch.call_args.kwargs["backend"] is QueueBackend.PG
         assert mock_dispatch.call_args.args[0] == "process_batch_callback_api"
         assert mock_dispatch.call_args.kwargs["args"] == [[{"successful_files": 1}]]
-        # barrier row + dedup markers cleaned up at finalise
+        # barrier row removed at finalise; the dedup marker is kept (UN-3749) so a
+        # redelivery of this batch before the callback marks the run terminal is
+        # skipped. It is reclaimed by a barrier re-arm or the reaper's sweep.
         assert _row(barrier_db, "exec-last") is None
         with barrier_db.cursor() as cur:
             cur.execute(
                 "SELECT count(*) FROM pg_batch_dedup WHERE execution_id = %s",
                 ("exec-last",),
             )
-            assert cur.fetchone()[0] == 0
+            assert cur.fetchone()[0] == 1
+
+    def test_last_batch_redelivered_after_finalise_is_not_rerun(self, barrier_db):
+        # UN-3749: the worker finalises (remaining → 0, callback dispatched) and is
+        # killed before acking. The lease expires and the same batch redelivers
+        # while the callback is still running, so the terminal-execution guard
+        # cannot stop it yet. Only the dedup marker can.
+        with barrier_db.cursor() as cur:
+            cur.execute("DELETE FROM pg_batch_dedup")
+        _seed(barrier_db, "exec-redeliver", 1)
+        ctx = {
+            "execution_id": "exec-redeliver",
+            "batch_index": 0,
+            "callback_descriptor": _CALLBACK,
+        }
+        with patch("queue_backend.dispatch.dispatch") as mock_dispatch:
+            mock_dispatch.return_value = MagicMock(id="pg-cb")
+            run_batch_with_barrier(ctx, lambda: {"successful_files": 1})
+            work = MagicMock(return_value={"successful_files": 1})
+            out = run_batch_with_barrier(ctx, work)
+        work.assert_not_called()
+        assert out["status"] == "skipped_redelivery"
+        assert mock_dispatch.call_count == 1  # callback fired once only
 
     def test_decrement_failure_aborts_barrier(self, barrier_db, monkeypatch):
         # #69: a decrement-side failure (after the work succeeded) must tear the

@@ -13,6 +13,15 @@ from unstract.core.cache.redis_client import create_redis_client
 
 redis_cache = get_redis_connection("default")
 
+# HINCRBY that never creates the hash: 1 if incremented, 0 if the key is absent.
+_HINCRBY_IF_EXISTS = """
+if redis.call('EXISTS', KEYS[1]) == 1 then
+    redis.call('HINCRBY', KEYS[1], ARGV[1], ARGV[2])
+    return 1
+end
+return 0
+"""
+
 logger = logging.getLogger(__name__)
 
 
@@ -224,6 +233,19 @@ class CacheService:
     def hincrby(key: str, field: str, increment: int) -> None:
         """Increment a value in a Redis hash."""
         redis_cache.hincrby(key, field, increment)
+
+    @staticmethod
+    def hincrby_if_exists(key: str, field: str, increment: int) -> bool:
+        """Increment a value in a Redis hash only if the hash already exists.
+
+        A plain HINCRBY on an expired or deleted key recreates it holding that
+        field alone, with no TTL. The check and the increment run in one Lua
+        script, so the key cannot expire between them.
+
+        Returns:
+            bool: True if the hash existed and was incremented.
+        """
+        return redis_cache.eval(_HINCRBY_IF_EXISTS, 1, key, field, increment) == 1
 
     @staticmethod
     def exists(key: str) -> bool:
