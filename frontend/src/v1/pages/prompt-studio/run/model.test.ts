@@ -84,6 +84,25 @@ describe("coverage", () => {
     expect(coverage.byPrompt.p1?.missing).toEqual([]);
   });
 
+  it("is never complete without a prompt or a document", () => {
+    const row = outputRow({ document_manager: "doc-1" });
+    const noDocuments = computeCoverage({
+      prompts: [{ promptId: "p1" }],
+      documents: [],
+      rows: [row],
+      singlePass: false,
+    });
+    expect(noDocuments.complete).toBe(false);
+    const noPrompts = computeCoverage({
+      prompts: [],
+      documents,
+      rows: [row],
+      singlePass: false,
+    });
+    expect(noPrompts.complete).toBe(false);
+    expect(noPrompts.missingCount).toBe(0);
+  });
+
   it("counts only the mode and the profile asked for", () => {
     const rows = [
       outputRow({ document_manager: "doc-1", is_single_pass_extract: true }),

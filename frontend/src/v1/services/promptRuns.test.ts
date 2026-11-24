@@ -12,7 +12,7 @@ import {
   startedEvent,
   TOOL_ID,
 } from "@v1/test/fixtures/promptRuns";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { setOrganizationId } from "./context";
 import {
   listPromptOutputs,
@@ -177,7 +177,37 @@ it("posts a bulk run and reads the pending-indexing answer", async () => {
   expect(body).toMatchObject({ prompt_ids: ["p1", "p2"], run_id: "run-2" });
 });
 
-it("posts single pass and accepts the old synchronous rows", async () => {
+it("posts single pass and reads the accepted answer", async () => {
+  let body: unknown;
+  mockApi(
+    http.post(
+      apiPath(
+        DEFAULT_SESSION,
+        `/prompt-studio/single-pass-extraction/${TOOL_ID}`,
+      ),
+      async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(
+          { status: "accepted", task_id: "t-3", run_id: "run-3" },
+          { status: 202 },
+        );
+      },
+    ),
+  );
+  const response = await runSinglePass({
+    toolId: TOOL_ID,
+    documentId: "doc-1",
+    runId: "run-3",
+  });
+  expect(body).toEqual({ document_id: "doc-1", run_id: "run-3" });
+  expect(response).toEqual({
+    status: "accepted",
+    task_id: "t-3",
+    run_id: "run-3",
+  });
+});
+
+it("rejects a synchronous list of rows as a single-pass answer", async () => {
   mockApi(
     http.post(
       apiPath(
@@ -187,12 +217,9 @@ it("posts single pass and accepts the old synchronous rows", async () => {
       () => HttpResponse.json([outputRow({ is_single_pass_extract: true })]),
     ),
   );
-  const response = await runSinglePass({
-    toolId: TOOL_ID,
-    documentId: "doc-1",
-    runId: "run-3",
-  });
-  expect(Array.isArray(response)).toBe(true);
+  await expect(
+    runSinglePass({ toolId: TOOL_ID, documentId: "doc-1", runId: "run-3" }),
+  ).rejects.toThrow();
 });
 
 it("lists outputs with only the filters given", async () => {
@@ -257,4 +284,67 @@ it("merges incoming rows by slot and skips rows the list excludes", () => {
   expect(
     matchesOutputParams(outputRow(), { toolId: TOOL_ID, singlePass: true }),
   ).toBe(false);
+});
+
+it("keeps rows of other documents, profiles and modes in an unfiltered list", () => {
+  const params = { toolId: TOOL_ID, singlePass: false };
+  const current = [outputRow({ output: "doc-1" })];
+  const merged = mergePromptOutputs(
+    current,
+    [
+      outputRow({ document_manager: "doc-2", output: "doc-2" }),
+      outputRow({ profile_manager: "profile-2", output: "profile-2" }),
+    ],
+    params,
+  );
+  expect(merged.map((row) => row.output)).toEqual([
+    "doc-1",
+    "doc-2",
+    "profile-2",
+  ]);
+  expect(
+    mergePromptOutputs(current, [outputRow({ output: "new" })], params).map(
+      (row) => row.output,
+    ),
+  ).toEqual(["new"]);
+});
+
+it("reads a list without a mode as the server does: not single pass", () => {
+  const params = { toolId: TOOL_ID };
+  expect(
+    matchesOutputParams(outputRow({ is_single_pass_extract: true }), params),
+  ).toBe(false);
+  expect(matchesOutputParams(outputRow(), params)).toBe(true);
+});
+
+it("keeps a result event whose outputs or failure details do not match", () => {
+  const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const completed = parseRunResult(
+    completedEvent({ outputs: [{ output: 5 }] }),
+  );
+  expect(completed).toMatchObject({ status: "completed", outputs: null });
+  const failed = parseRunResult(
+    failedEvent({ error_details: { request_id: 42 } }),
+  );
+  expect(failed).toMatchObject({ status: "failed", error_details: null });
+  const fractional = parseRunResult(
+    failedEvent({ error_details: { retry_after_seconds: 1.5 } }),
+  );
+  expect(fractional?.status === "failed" && fractional.error_details).toEqual({
+    retry_after_seconds: 1.5,
+  });
+  expect(error).not.toHaveBeenCalled();
+});
+
+it("logs a run event it cannot read, and stays quiet for other operations", () => {
+  const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  expect(parseRunResult(completedEvent({ tool_id: 7 }))).toBeNull();
+  expect(parseRunStarted(startedEvent({ task_id: null }))).toBeNull();
+  expect(error).toHaveBeenCalledTimes(2);
+  error.mockClear();
+  expect(
+    parseRunResult(completedEvent({ operation: "index_document" })),
+  ).toBeNull();
+  expect(parseRunResult(null)).toBeNull();
+  expect(error).not.toHaveBeenCalled();
 });

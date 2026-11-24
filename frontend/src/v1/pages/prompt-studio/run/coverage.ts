@@ -26,7 +26,7 @@ export type PromptCoverage = Readonly<{
 
 export type ToolCoverage = Readonly<{
   byPrompt: Readonly<Record<string, PromptCoverage>>;
-  /** Every prompt covers every document: export may go ahead. */
+  /** At least one prompt and one document, and every prompt covers every document: export may go ahead. */
   complete: boolean;
   /** Prompt x document pairs not run yet. */
   missingCount: number;
@@ -70,7 +70,9 @@ export function computeCoverage({
     (sum, c) => sum + c.missing.length,
     0,
   );
-  return { byPrompt, complete: missingCount === 0, missingCount };
+  const complete =
+    prompts.length > 0 && documents.length > 0 && missingCount === 0;
+  return { byPrompt, complete, missingCount };
 }
 
 /** "a.pdf", "a.pdf and b.pdf", or "a.pdf, b.pdf and 3 more". */

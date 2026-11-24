@@ -46,15 +46,15 @@ export const runCompletedEventSchema = z.object({
   status: z.literal("completed"),
   /** Whole seconds from dispatch, queue wait included. */
   elapsed: z.number().nullish(),
-  /** The persisted rows; null (or absent) means refetch `prompt-output/`. */
-  outputs: promptOutputListSchema.nullish(),
+  /** The persisted rows; null, absent or unreadable means refetch `prompt-output/`. */
+  outputs: promptOutputListSchema.nullish().catch(null),
 });
 export type RunCompletedEvent = z.infer<typeof runCompletedEventSchema>;
 
 export const errorDetailsSchema = z.object({
   provider: z.string().nullish(),
   request_id: z.string().nullish(),
-  retry_after_seconds: z.number().int().nullish(),
+  retry_after_seconds: z.number().nullish(),
 });
 export type ErrorDetails = Readonly<{
   provider: string | null;
@@ -66,7 +66,8 @@ export const runFailedEventSchema = z.object({
   ...runEventBase,
   status: z.literal("failed"),
   error: z.string().nullish(),
-  error_details: errorDetailsSchema.nullish(),
+  // Unreadable details lose the hint, not the failure.
+  error_details: errorDetailsSchema.nullish().catch(null),
 });
 export type RunFailedEvent = z.infer<typeof runFailedEventSchema>;
 
@@ -89,20 +90,45 @@ function unwrap(payload: unknown): unknown {
   return payload;
 }
 
+/** Is this payload a prompt run's event, whatever else it carries? */
+function isRunPayload(payload: unknown): boolean {
+  return (
+    payload !== null &&
+    typeof payload === "object" &&
+    "operation" in payload &&
+    runOperation.safeParse(payload.operation).success
+  );
+}
+
+function parseRunEvent<T>(
+  schema: z.ZodType<T>,
+  name: RunEventName,
+  payload: unknown,
+): T | null {
+  const body = unwrap(payload);
+  const parsed = schema.safeParse(body);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  // A run event the page cannot read would leave its run spinning: say so.
+  if (isRunPayload(body)) {
+    console.error("[v1 run] unreadable %s event", name, parsed.error.issues);
+  }
+  return null;
+}
+
 /** A started event, or null when the payload is not one. */
 export function parseRunStarted(payload: unknown): RunStartedEvent | null {
-  const parsed = runStartedEventSchema.safeParse(unwrap(payload));
-  return parsed.success ? parsed.data : null;
+  return parseRunEvent(runStartedEventSchema, RUN_STARTED_EVENT, payload);
 }
 
 /**
  * A prompt run's result event, or null for anything else on that event name
  * (`index_document` belongs to the documents pane) or a payload that does
- * not match.
+ * not match, which is logged.
  */
 export function parseRunResult(payload: unknown): RunResultEvent | null {
-  const parsed = runResultEventSchema.safeParse(unwrap(payload));
-  return parsed.success ? parsed.data : null;
+  return parseRunEvent(runResultEventSchema, RUN_RESULT_EVENT, payload);
 }
 
 /** The failure details with every field present; null fields when unknown. */
@@ -131,13 +157,6 @@ const runResponseSchema = z.discriminatedUnion("status", [
   pendingSchema,
 ]);
 export type RunResponse = z.infer<typeof runResponseSchema>;
-
-// An old synchronous single-pass backend answers 200 with the rows.
-const singlePassResponseSchema = z.union([
-  runResponseSchema,
-  promptOutputListSchema,
-]);
-export type SinglePassResponse = z.infer<typeof singlePassResponseSchema>;
 
 export type PromptRunRequest = Readonly<{
   toolId: string;
@@ -204,11 +223,11 @@ export async function runPrompts(
 export async function runSinglePass(
   request: SinglePassRequest,
   { signal, org }: RequestOptions = {},
-): Promise<SinglePassResponse> {
+): Promise<RunResponse> {
   const { data } = await http.post<unknown>(
     orgPath(toolPath("single-pass-extraction", request.toolId), org),
     { document_id: request.documentId, run_id: request.runId },
     { signal },
   );
-  return singlePassResponseSchema.parse(data);
+  return runResponseSchema.parse(data);
 }

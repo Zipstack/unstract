@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { setOrganizationId } from "@v1/services/context";
+import { ApiError } from "@v1/services/errors";
 import {
   type PromptOutput,
   promptOutputKeys,
@@ -79,7 +80,11 @@ beforeEach(() => {
     runSinglePass: vi.fn(deferredCall()),
   };
   counter = 0;
-  engine = createRunEngine({
+  engine = makeEngine();
+});
+
+function makeEngine(): RunEngine {
+  return createRunEngine({
     store,
     channel,
     queryClient,
@@ -96,7 +101,7 @@ beforeEach(() => {
       return `run-${counter}`;
     },
   });
-});
+}
 
 afterEach(() => {
   engine.dispose();
@@ -177,7 +182,8 @@ describe("responses", () => {
     expect(entry()).toBeUndefined();
     expect(notified).toContainEqual({ kind: "info", title: PENDING_MESSAGE });
     expect(store.getState().active).toBe(0);
-    // No stale timer was armed.
+    expect(toastIds).toEqual(["prompt-run-pending"]);
+    // Nothing is left to time out.
     await vi.advanceTimersByTimeAsync(STALE_RUN_MS);
     expect(notified).toHaveLength(1);
   });
@@ -197,16 +203,25 @@ describe("responses", () => {
     expect(notified[0]?.title).toBe("Document is being indexed");
   });
 
-  it("clears the status and reports a failed request", async () => {
+  it("marks the run failed and reports a failed request", async () => {
     engine.run({
       toolId: TOOL_ID,
       promptIds: ["p1"],
       profileIds: ["profile-1"],
       documentIds: ["doc-1"],
     });
-    pending[0]?.reject(new Error("boom"));
+    pending[0]?.reject(
+      new ApiError({
+        kind: "server",
+        message: "Server error",
+        requestId: "r-9",
+      }),
+    );
     await flush();
-    expect(entry()).toBeUndefined();
+    expect(entry()).toMatchObject({
+      status: "failed",
+      failure: { message: "Server error", requestId: "r-9" },
+    });
     expect(notified[0]?.kind).toBe("error");
     expect(store.getState().active).toBe(0);
   });
@@ -217,7 +232,9 @@ describe("stale runs", () => {
     expect(STALE_RUN_MS).toBe(960_000);
   });
 
-  it("fails a run with no result after sixteen minutes", async () => {
+  it("fails a run with no result after sixteen minutes, and refetches its outputs", async () => {
+    const list = promptOutputKeys.list({ toolId: TOOL_ID, singlePass: false });
+    queryClient.setQueryData(list, [] as PromptOutput[]);
     engine.run({
       toolId: TOOL_ID,
       promptIds: ["p1"],
@@ -234,9 +251,10 @@ describe("stale runs", () => {
       kind: "warning",
       title: TIMEOUT_MESSAGE,
     });
+    expect(queryClient.getQueryState(list)?.isInvalidated).toBe(true);
   });
 
-  it("does not let an earlier run's timer touch a newer run", async () => {
+  it("times a run again from its new dispatch", async () => {
     const plan = {
       toolId: TOOL_ID,
       promptIds: ["p1"],
@@ -247,8 +265,7 @@ describe("stale runs", () => {
     pending[0]?.resolve(accepted("run-1"));
     await flush();
     await vi.advanceTimersByTimeAsync(STALE_RUN_MS / 2);
-    // The first run finished; the user runs again.
-    channel.emit(RUN_RESULT_EVENT, completedEvent({ run_id: "run-1" }));
+    // Run again while the first run is still in flight.
     engine.run(plan);
     pending[1]?.resolve(accepted("run-2"));
     await flush();
@@ -259,7 +276,7 @@ describe("stale runs", () => {
     expect(entry()).toMatchObject({ status: "failed", runId: "run-2" });
   });
 
-  it("cancels the timer when the result arrives", async () => {
+  it("leaves a run alone once its result arrived", async () => {
     engine.run({
       toolId: TOOL_ID,
       promptIds: ["p1"],
@@ -269,6 +286,78 @@ describe("stale runs", () => {
     pending[0]?.resolve(accepted("run-1"));
     await flush();
     channel.emit(RUN_RESULT_EVENT, failedEvent({ run_id: "run-1" }));
+    await vi.advanceTimersByTimeAsync(STALE_RUN_MS);
+    expect(notified.filter((n) => n.kind === "warning")).toHaveLength(0);
+  });
+
+  it("expires a run whose request never answers", async () => {
+    engine.run({
+      toolId: TOOL_ID,
+      promptIds: ["p1"],
+      profileIds: ["profile-1"],
+      documentIds: ["doc-1"],
+    });
+    await vi.advanceTimersByTimeAsync(STALE_RUN_MS);
+    expect(entry()?.status).toBe("failed");
+  });
+
+  it("expires a run first seen through a started event, from the server's start", async () => {
+    channel.emit(
+      RUN_STARTED_EVENT,
+      startedEvent({
+        run_id: "tab-2",
+        started_at: new Date(1_000).toISOString(),
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(STALE_RUN_MS - 1);
+    expect(entry()?.status).toBe("running");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(entry()?.status).toBe("failed");
+  });
+
+  it("expires a run whose result event settled nothing", async () => {
+    engine.run({
+      toolId: TOOL_ID,
+      promptIds: ["p1"],
+      profileIds: ["profile-1"],
+      documentIds: ["doc-1"],
+    });
+    pending[0]?.resolve(accepted("run-1"));
+    await flush();
+    channel.emit(
+      RUN_RESULT_EVENT,
+      failedEvent({ run_id: "run-1", prompt_ids: [] }),
+    );
+    expect(entry()?.status).toBe("running");
+    await vi.advanceTimersByTimeAsync(STALE_RUN_MS);
+    expect(entry()?.status).toBe("failed");
+  });
+
+  it("expires, through a new engine, the runs a disposed one left", async () => {
+    engine.run({
+      toolId: TOOL_ID,
+      promptIds: ["p1"],
+      profileIds: ["profile-1"],
+      documentIds: ["doc-1"],
+    });
+    pending[0]?.resolve(accepted("run-1"));
+    await flush();
+    engine.dispose();
+    engine = makeEngine();
+    await vi.advanceTimersByTimeAsync(STALE_RUN_MS);
+    expect(entry()?.status).toBe("failed");
+  });
+
+  it("stops checking for stale runs when disposed", async () => {
+    engine.run({
+      toolId: TOOL_ID,
+      promptIds: ["p1"],
+      profileIds: ["profile-1"],
+      documentIds: ["doc-1"],
+    });
+    pending[0]?.resolve(accepted("run-1"));
+    await flush();
+    engine.dispose();
     expect(vi.getTimerCount()).toBe(0);
   });
 });
@@ -318,17 +407,46 @@ describe("events", () => {
     expect(notified.at(-1)?.kind).toBe("error");
   });
 
-  it("names the operation when a failed event has no message", () => {
+  it("says the run failed when a failed event has no message", () => {
     channel.emit(
       RUN_RESULT_EVENT,
       failedEvent({ run_id: "run-1", error: null, error_details: null }),
     );
     expect(entry()?.failure).toEqual({
-      message: "fetch_response failed",
+      message: "Prompt run failed.",
       provider: null,
       requestId: null,
       retryAfterSeconds: null,
     });
+  });
+
+  it("ignores a started event that trails the run's result", async () => {
+    channel.emit(RUN_RESULT_EVENT, failedEvent({ run_id: "run-1" }));
+    channel.emit(RUN_STARTED_EVENT, startedEvent({ run_id: "run-1" }));
+    expect(entry()?.status).toBe("failed");
+  });
+
+  it("starts the timer on the client clock when started_at is unreadable", () => {
+    channel.emit(
+      RUN_STARTED_EVENT,
+      startedEvent({
+        run_id: "tab-2",
+        document_id: "doc-9",
+        started_at: "soon",
+      }),
+    );
+    expect(entry("doc-9")?.startedAt).toBe(Date.now());
+  });
+
+  it("settles a run whose inline outputs cannot be read, and refetches", () => {
+    const list = promptOutputKeys.list({ toolId: TOOL_ID, singlePass: false });
+    queryClient.setQueryData(list, [] as PromptOutput[]);
+    channel.emit(
+      RUN_RESULT_EVENT,
+      completedEvent({ run_id: "run-1", outputs: [{ output: 5 }] }),
+    );
+    expect(entry()?.status).toBe("completed");
+    expect(queryClient.getQueryState(list)?.isInvalidated).toBe(true);
   });
 
   it("treats an empty run id as missing, so the in-flight run still settles", () => {
@@ -391,6 +509,40 @@ describe("outputs", () => {
     });
   });
 
+  it("skips a list that has no data yet", () => {
+    const loading = promptOutputKeys.list({
+      toolId: TOOL_ID,
+      documentId: "doc-2",
+      singlePass: false,
+    });
+    queryClient.getQueryCache().build(queryClient, { queryKey: loading });
+    channel.emit(
+      RUN_RESULT_EVENT,
+      completedEvent({ outputs: [outputRow({ output: "INV-0042" })] }),
+    );
+    expect(queryClient.getQueryData(loading)).toBeUndefined();
+    expect(notified.at(-1)?.kind).toBe("success");
+  });
+
+  it("refetches instead of merging while one of the tool's lists is loading", () => {
+    void queryClient.prefetchQuery({
+      queryKey: promptOutputKeys.list({ toolId: TOOL_ID, singlePass: true }),
+      queryFn: () => new Promise<PromptOutput[]>(() => undefined),
+    });
+    channel.emit(
+      RUN_RESULT_EVENT,
+      completedEvent({ outputs: [outputRow({ output: "INV-0042" })] }),
+    );
+    expect(
+      queryClient
+        .getQueryData<PromptOutput[]>(promptOutputKeys.list(docList))
+        ?.map((row) => row.output),
+    ).toEqual(["old"]);
+    expect(
+      queryClient.getQueryState(promptOutputKeys.list(docList))?.isInvalidated,
+    ).toBe(true);
+  });
+
   it("marks the tool's lists stale when the event carries no outputs", () => {
     channel.emit(RUN_RESULT_EVENT, completedEvent({ outputs: null }));
     expect(
@@ -433,24 +585,7 @@ describe("single pass", () => {
     );
   });
 
-  it("takes the old synchronous rows as the result", async () => {
-    const rows = [outputRow({ is_single_pass_extract: true })];
-    queryClient.setQueryData(
-      promptOutputKeys.list({ toolId: TOOL_ID, singlePass: true }),
-      [] as PromptOutput[],
-    );
-    client.runSinglePass.mockResolvedValueOnce(rows);
-    engine.runSinglePass({ toolId: TOOL_ID, documentId: "doc-1" });
-    await flush();
-    expect(store.getState().singlePass[key]?.status).toBe("completed");
-    expect(
-      queryClient.getQueryData(
-        promptOutputKeys.list({ toolId: TOOL_ID, singlePass: true }),
-      ),
-    ).toEqual(rows);
-  });
-
-  it("drops the run when pending or when the request fails", async () => {
+  it("drops the run when pending, and fails it when the request fails", async () => {
     client.runSinglePass.mockResolvedValueOnce({ status: "pending" });
     engine.runSinglePass({ toolId: TOOL_ID, documentId: "doc-1" });
     await flush();
@@ -458,7 +593,7 @@ describe("single pass", () => {
     client.runSinglePass.mockRejectedValueOnce(new Error("boom"));
     engine.runSinglePass({ toolId: TOOL_ID, documentId: "doc-1" });
     await flush();
-    expect(store.getState().singlePass[key]).toBeUndefined();
+    expect(store.getState().singlePass[key]?.status).toBe("failed");
     expect(notified.map((n) => n.kind)).toEqual(["info", "error"]);
   });
 

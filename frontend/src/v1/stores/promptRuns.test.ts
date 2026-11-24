@@ -3,7 +3,8 @@ import {
   createPromptRunStore,
   EMPTY_RUN_STATE,
   enqueueRuns,
-  expireRun,
+  expireStaleRuns,
+  failRun,
   MAX_ACTIVE_REQUESTS,
   markRunCompleted,
   markRunFailed,
@@ -156,6 +157,17 @@ describe("queue", () => {
     expect(entry(state, "p2", "doc-1")?.status).toBe("queued");
   });
 
+  it("keeps a prompt's in-flight entries when it runs again elsewhere", () => {
+    const first = request({ documentId: "doc-1" });
+    const state = enqueueRuns(enqueueRuns(EMPTY_RUN_STATE, [first]), [
+      request({ documentId: "doc-2" }),
+    ]);
+    expect(entry(state, "p1", "doc-1")).toMatchObject({
+      status: "queued",
+      runId: first.runId,
+    });
+  });
+
   it("drops a run's entries when nothing was dispatched", () => {
     const pending = request();
     const kept = request({ documentId: "doc-2" });
@@ -209,6 +221,28 @@ describe("events", () => {
       status: "queued",
       runId: newer.runId,
     });
+  });
+
+  it("ignores a started event that arrives after its run settled", () => {
+    const run = request();
+    let [state] = takeNextRequests(enqueueRuns(EMPTY_RUN_STATE, [run]), 1000);
+    state = markRunFailed(state, signal({ runId: run.runId }), failure, 2000);
+    const late = markRunStarted(state, signal({ runId: run.runId }), 900, 2500);
+    expect(late).toBe(state);
+    expect(entry(late)).toMatchObject({ status: "failed", failure });
+    const store = createPromptRunStore();
+    const sp = signal({ runId: "sp-1", singlePass: true });
+    store
+      .getState()
+      .dispatchSinglePass(
+        { toolId: "tool-1", documentId: "doc-1", runId: "sp-1" },
+        1,
+      );
+    store.getState().completed(sp, 2, 3);
+    store.getState().started(sp, null, 4);
+    expect(
+      store.getState().singlePass[singlePassKey("tool-1", "doc-1")]?.status,
+    ).toBe("completed");
   });
 
   it("completes the matching run with the server's elapsed time", () => {
@@ -278,6 +312,32 @@ describe("events", () => {
     expect(entry(state, "p2", "doc-1")?.status).toBe("queued");
   });
 
+  it("falls back to every in-flight entry of the prompts when the event names a document but no profile", () => {
+    const a = request({ documentId: "doc-1" });
+    const b = request({ documentId: "doc-2" });
+    const state = markRunFailed(
+      enqueueRuns(EMPTY_RUN_STATE, [a, b]),
+      signal({ profileId: null }),
+      failure,
+      9000,
+    );
+    expect(entry(state, "p1", "doc-1")?.status).toBe("failed");
+    expect(entry(state, "p1", "doc-2")?.status).toBe("failed");
+  });
+
+  it("settles only the event's tool when it names no document", () => {
+    const mine = request();
+    const theirs = request({ toolId: "tool-2", documentId: "doc-2" });
+    const state = markRunFailed(
+      enqueueRuns(EMPTY_RUN_STATE, [mine, theirs]),
+      signal({ toolId: "tool-2", documentId: null, profileId: null }),
+      failure,
+      9000,
+    );
+    expect(entry(state, "p1", "doc-1")?.status).toBe("queued");
+    expect(entry(state, "p1", "doc-2")?.status).toBe("failed");
+  });
+
   it("settles every prompt of a bulk run", () => {
     const bulk = request({ promptIds: ["p1", "p2"] });
     let state = enqueueRuns(EMPTY_RUN_STATE, [bulk]);
@@ -293,37 +353,83 @@ describe("events", () => {
 });
 
 describe("stale runs", () => {
-  it("fails only the entries still in flight for that run", () => {
+  const LIMIT = 1000;
+  const startAt = (runs: RunRequest[], now: number) =>
+    takeNextRequests(enqueueRuns(EMPTY_RUN_STATE, runs), now)[0];
+
+  it("fails the in-flight entries older than the limit and names their tools", () => {
     const old = request();
-    let state = enqueueRuns(EMPTY_RUN_STATE, [old]);
-    const newer = request();
-    state = enqueueRuns(state, [newer]);
-    const expiredOld = expireRun(state, old.runId, 99);
-    expect(expiredOld).toBe(state);
-    const expiredNew = expireRun(state, newer.runId, 99);
-    expect(entry(expiredNew)).toMatchObject({
+    let state = startAt([old], 100);
+    const young = request({ toolId: "tool-2", documentId: "doc-2" });
+    state = takeNextRequests(enqueueRuns(state, [young]), 600)[0];
+    const [early, none] = expireStaleRuns(state, 100 + LIMIT - 1, LIMIT);
+    expect(early).toBe(state);
+    expect(none).toEqual([]);
+    const [expired, toolIds] = expireStaleRuns(state, 100 + LIMIT, LIMIT);
+    expect(toolIds).toEqual(["tool-1"]);
+    expect(entry(expired)).toMatchObject({
       status: "failed",
-      finishedAt: 99,
+      finishedAt: 100 + LIMIT,
       failure: { message: TIMEOUT_MESSAGE, requestId: null },
     });
+    expect(entry(expired, "p1", "doc-2")?.status).toBe("running");
   });
 
-  it("leaves a settled entry alone", () => {
+  it("leaves queued and settled entries alone", () => {
     const run = request();
+    const queued = enqueueRuns(EMPTY_RUN_STATE, [run]);
+    expect(expireStaleRuns(queued, 10 * LIMIT, LIMIT)[0]).toBe(queued);
     const done = markRunCompleted(
-      enqueueRuns(EMPTY_RUN_STATE, [run]),
+      startAt([run], 0),
       signal({ runId: run.runId }),
       1,
       2,
     );
-    expect(expireRun(done, run.runId, 99)).toBe(done);
+    expect(expireStaleRuns(done, 10 * LIMIT, LIMIT)[0]).toBe(done);
+  });
+
+  it("expires a stale single-pass run", () => {
+    const store = createPromptRunStore();
+    store
+      .getState()
+      .dispatchSinglePass(
+        { toolId: "tool-1", documentId: "doc-1", runId: "sp-1" },
+        0,
+      );
+    expect(store.getState().expireStale(LIMIT - 1, LIMIT)).toEqual([]);
+    expect(store.getState().expireStale(LIMIT, LIMIT)).toEqual(["tool-1"]);
+    expect(
+      store.getState().singlePass[singlePassKey("tool-1", "doc-1")]?.failure
+        ?.message,
+    ).toBe(TIMEOUT_MESSAGE);
   });
 
   it("lets a late result settle a timed-out run", () => {
     const run = request();
-    let state = expireRun(enqueueRuns(EMPTY_RUN_STATE, [run]), run.runId, 99);
+    let [state] = expireStaleRuns(startAt([run], 0), LIMIT, LIMIT);
     state = markRunCompleted(state, signal({ runId: run.runId }), 900, 100);
     expect(entry(state)?.status).toBe("completed");
+  });
+});
+
+describe("failed requests", () => {
+  it("fails the in-flight entries of a run whose request failed", () => {
+    const run = request({ promptIds: ["p1", "p2"] });
+    const other = request({ documentId: "doc-2" });
+    const state = failRun(
+      enqueueRuns(EMPTY_RUN_STATE, [run, other]),
+      run.runId,
+      failure,
+      50,
+    );
+    expect(entry(state, "p1")).toMatchObject({
+      status: "failed",
+      failure,
+      finishedAt: 50,
+    });
+    expect(entry(state, "p2")?.status).toBe("failed");
+    expect(entry(state, "p1", "doc-2")?.status).toBe("queued");
+    expect(failRun(state, run.runId, failure, 60)).toBe(state);
   });
 });
 
@@ -360,7 +466,7 @@ describe("single pass", () => {
     expect(store.getState().entries).toEqual({});
   });
 
-  it("ignores an older single-pass result and expires the latest only", () => {
+  it("ignores an older single-pass result", () => {
     const store = createPromptRunStore();
     const actions = store.getState();
     actions.dispatchSinglePass(
@@ -370,11 +476,6 @@ describe("single pass", () => {
     actions.completed(signal({ runId: "sp-1", singlePass: true }), 3, 4);
     const key = singlePassKey("tool-1", "doc-1");
     expect(store.getState().singlePass[key]?.status).toBe("running");
-    expect(store.getState().expire("sp-1", 5)).toBe(false);
-    expect(store.getState().expire("sp-2", 5)).toBe(true);
-    expect(store.getState().singlePass[key]?.failure?.message).toBe(
-      TIMEOUT_MESSAGE,
-    );
     store
       .getState()
       .completed(signal({ runId: "sp-2", singlePass: true }), 3, 6);
@@ -411,18 +512,23 @@ describe("single pass", () => {
 });
 
 describe("store actions", () => {
-  it("enqueues, takes, releases and expires through the store", () => {
+  it("enqueues, takes, fails, releases and expires through the store", () => {
     const store = createPromptRunStore();
     const run = request();
     store.getState().enqueue([run]);
     expect(store.getState().take(10)).toEqual([run]);
     expect(store.getState().active).toBe(1);
     store.getState().started(signal({ runId: run.runId }), null, 11);
-    expect(store.getState().expire(run.runId, 12)).toBe(true);
-    expect(store.getState().expire(run.runId, 13)).toBe(false);
+    expect(store.getState().expireStale(12, 2)).toEqual(["tool-1"]);
+    expect(store.getState().expireStale(13, 2)).toEqual([]);
+    const second = request({ documentId: "doc-2" });
+    store.getState().enqueue([second]);
+    store.getState().fail(second.runId, failure, 14);
+    expect(entry(store.getState(), "p1", "doc-2")?.status).toBe("failed");
     store.getState().release();
     expect(store.getState().active).toBe(0);
     store.getState().drop(run.runId);
+    store.getState().drop(second.runId);
     expect(store.getState().entries).toEqual({});
   });
 });

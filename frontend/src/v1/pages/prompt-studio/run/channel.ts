@@ -14,8 +14,8 @@ export type LocalRunChannel = RunChannel &
 
 /**
  * ponytail: an in-memory channel so the engine can be built and tested before
- * the real-time channel exists. P2-T07 replaces it with its socket
- * subscription (same `subscribe` shape, room = the session's log events id);
+ * the real-time channel exists. The real-time channel's socket subscription
+ * replaces it (same `subscribe` shape, room = the session's log events id);
  * nothing else in the engine changes.
  */
 export function createLocalRunChannel(): LocalRunChannel {

@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { notify as defaultNotify, type NotifyInput } from "@v1/lib/notify";
 import { newUuid } from "@v1/lib/uuid";
+import { toApiError } from "@v1/services/errors";
 import {
   mergePromptOutputs,
   type PromptOutput,
@@ -22,6 +23,7 @@ import {
 import { reportApiError } from "@v1/services/report";
 import {
   planRun,
+  type RunFailure,
   type RunPlan,
   type RunRequest,
   type RunSignal,
@@ -32,23 +34,28 @@ import type { RunChannel } from "./channel";
 
 /*
  * The run engine: sends queued requests (five at a time, oldest first),
- * arms the stale-run timer per run, and turns socket events into run state
- * and output cache updates. One engine runs per page load, mounted above the
+ * times out stale runs, and turns socket events into run state and output
+ * cache updates. One engine per provider mount; the provider sits above the
  * workspace, so a run keeps going when the user leaves the project.
  */
 
-/** Longer than the LLM adapter's 900 s default, so the UI never gives up first. */
+/** v0's stale-run limit: a run with no result after this is treated as lost. One LLM adapter call defaults to 900 s. */
 export const STALE_RUN_MS = 16 * 60 * 1000;
+/** How often the stale-run check looks at the runs in flight. */
+const STALE_CHECK_MS = 5_000;
 export const PENDING_MESSAGE = "Document is being indexed. Please wait.";
 const COMPLETED_MESSAGE = "Prompt execution completed successfully.";
 const SINGLE_PASS_COMPLETED_MESSAGE =
   "Single pass extraction completed successfully.";
+const FAILED_MESSAGE = "Prompt run failed.";
+const SINGLE_PASS_FAILED_MESSAGE = "Single pass extraction failed.";
 
 // Toast ids, so a burst of results replaces one toast instead of stacking;
 // a success never replaces a failure.
 const COMPLETED_TOAST_ID = "prompt-run-completed";
 const FAILED_TOAST_ID = "prompt-run-failed";
 const TIMEOUT_TOAST_ID = "prompt-run-timeout";
+const PENDING_TOAST_ID = "prompt-run-pending";
 
 export type RunClient = Readonly<{
   runPrompt: typeof runPrompt;
@@ -73,7 +80,7 @@ export type RunEngine = Readonly<{
   runSinglePass: (
     target: Readonly<{ toolId: string; documentId: string }>,
   ) => void;
-  /** Stops listening and cancels the stale-run timers. */
+  /** Stops listening and stops the stale-run check. */
   dispose: () => void;
 }>;
 
@@ -103,21 +110,24 @@ export function refreshToolOutputs(
 
 /**
  * Applies a run's outputs: merged into every cached list of the tool they
- * belong in, or, when the event could not carry them, a refetch.
+ * belong in, or a refetch when the event could not carry them or a list
+ * fetch is in flight (it would overwrite the merge with older rows).
  */
 export function applyRunOutputs(
   queryClient: QueryClient,
   toolId: string,
   rows: readonly PromptOutput[] | null | undefined,
 ): void {
-  if (!rows) {
+  const queries = queryClient
+    .getQueryCache()
+    .findAll({ predicate: isToolOutputList(toolId) });
+  if (!rows || queries.some((q) => q.state.fetchStatus !== "idle")) {
     void refreshToolOutputs(queryClient, toolId);
     return;
   }
-  for (const [queryKey, data] of queryClient.getQueriesData<PromptOutput[]>({
-    predicate: isToolOutputList(toolId),
-  })) {
+  for (const { queryKey } of queries) {
     const params = outputListParams(queryKey);
+    const data = queryClient.getQueryData<PromptOutput[]>(queryKey);
     if (params && data) {
       queryClient.setQueryData(
         queryKey,
@@ -153,46 +163,43 @@ export function createRunEngine({
   notify = defaultNotify,
   report = (error) => reportApiError(error),
 }: RunEngineDeps): RunEngine {
-  const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const state = () => store.getState();
 
-  const clearTimer = (runId: string | null | undefined) => {
-    const timer = runId ? timers.get(runId) : undefined;
-    if (runId && timer !== undefined) {
-      clearTimeout(timer);
-      timers.delete(runId);
+  // Age is read from the store, so this also times out runs resumed from
+  // another tab or left by an earlier engine.
+  const expireStale = () => {
+    const toolIds = state().expireStale(Date.now(), STALE_RUN_MS);
+    if (toolIds.length === 0) {
+      return;
+    }
+    notify({ kind: "warning", title: TIMEOUT_MESSAGE, id: TIMEOUT_TOAST_ID });
+    for (const toolId of toolIds) {
+      void refreshToolOutputs(queryClient, toolId);
     }
   };
-
-  const armTimer = (runId: string) => {
-    clearTimer(runId);
-    timers.set(
-      runId,
-      setTimeout(() => {
-        timers.delete(runId);
-        if (state().expire(runId, Date.now())) {
-          notify({
-            kind: "warning",
-            title: TIMEOUT_MESSAGE,
-            id: TIMEOUT_TOAST_ID,
-          });
-        }
-      }, STALE_RUN_MS),
-    );
-  };
+  const staleCheck = setInterval(expireStale, STALE_CHECK_MS);
 
   /** Accepted: wait for the socket. Pending: nothing was dispatched. */
   const onResponse = (runId: string, response: RunResponse) => {
     if (response.status === "pending") {
       state().drop(runId);
-      notify({ kind: "info", title: response.message || PENDING_MESSAGE });
-      return;
+      notify({
+        kind: "info",
+        title: response.message || PENDING_MESSAGE,
+        id: PENDING_TOAST_ID,
+      });
     }
-    armTimer(runId);
   };
 
   const onRequestError = (runId: string, error: unknown) => {
-    state().drop(runId);
+    const { message, requestId } = toApiError(error);
+    const failure: RunFailure = {
+      message,
+      provider: null,
+      requestId: requestId ?? null,
+      retryAfterSeconds: null,
+    };
+    state().fail(runId, failure, Date.now());
     report(error);
   };
 
@@ -230,7 +237,6 @@ export function createRunEngine({
     if (!event) {
       return;
     }
-    clearTimer(event.run_id);
     const signal = toSignal(event);
     if (event.status === "completed") {
       state().completed(signal, event.elapsed ?? null, Date.now());
@@ -245,7 +251,9 @@ export function createRunEngine({
       return;
     }
     const details = toErrorDetails(event);
-    const message = event.error || `${event.operation} failed`;
+    const message =
+      event.error ||
+      (signal.singlePass ? SINGLE_PASS_FAILED_MESSAGE : FAILED_MESSAGE);
     state().failed(signal, { message, ...details }, Date.now());
     notify({
       kind: "error",
@@ -273,32 +281,14 @@ export function createRunEngine({
       state().dispatchSinglePass({ toolId, documentId, runId }, Date.now());
       client
         .runSinglePass({ toolId, documentId, runId })
-        .then((response) => {
-          if (Array.isArray(response)) {
-            const signal: RunSignal = {
-              toolId,
-              runId,
-              promptIds: [],
-              documentId,
-              profileId: null,
-              singlePass: true,
-            };
-            state().completed(signal, null, Date.now());
-            applyRunOutputs(queryClient, toolId, response);
-            return;
-          }
-          onResponse(runId, response);
-        })
+        .then((response) => onResponse(runId, response))
         .catch((error: unknown) => onRequestError(runId, error));
     },
     dispose: () => {
       for (const stop of unsubscribe) {
         stop();
       }
-      for (const timer of timers.values()) {
-        clearTimeout(timer);
-      }
-      timers.clear();
+      clearInterval(staleCheck);
     },
   };
 }

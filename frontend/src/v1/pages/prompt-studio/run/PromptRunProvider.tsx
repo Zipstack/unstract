@@ -24,8 +24,9 @@ export type PromptRunProviderProps = Readonly<{
 
 /**
  * Runs the engine for everything below it. Mount it above the Prompt Studio
- * routes (where v0 mounts its run listener for the whole signed-in app), so
- * a run keeps going and its results land while the user is elsewhere.
+ * routes, as v0 mounts its run listener in PersistentLogin for the whole
+ * signed-in app, so a run keeps going and its results land while the user is
+ * elsewhere. Keep `channel` stable: a new one rebuilds the engine.
  */
 export function PromptRunProvider({
   channel,

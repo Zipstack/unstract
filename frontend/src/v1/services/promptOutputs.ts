@@ -21,7 +21,7 @@ const numberLike = z
     return Number.isFinite(parsed) ? parsed : null;
   });
 
-/** Aggregated usage of the run that wrote the row; `{}` when none was recorded. */
+/** Aggregated usage of the run that wrote the row; all null when none was recorded. */
 export const tokenUsageSchema = z.looseObject({
   embedding_tokens: numberLike,
   prompt_tokens: numberLike,
@@ -60,7 +60,7 @@ export type PromptOutput = z.infer<typeof promptOutputSchema>;
 
 export const promptOutputListSchema = z.array(promptOutputSchema);
 
-/** Which outputs to list; everything but the tool is an optional filter. */
+/** Which outputs to list; everything but the tool is an optional filter. An unset `singlePass` lists the normal outputs, as the server does. */
 export type PromptOutputParams = Readonly<{
   toolId: string;
   documentId?: string;
@@ -101,8 +101,7 @@ export function matchesOutputParams(
     (params.promptId === undefined || row.prompt_id === params.promptId) &&
     (params.profileId === undefined ||
       row.profile_manager === params.profileId) &&
-    (params.singlePass === undefined ||
-      row.is_single_pass_extract === params.singlePass)
+    row.is_single_pass_extract === (params.singlePass ?? false)
   );
 }
 

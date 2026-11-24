@@ -32,7 +32,7 @@ export type RunEntry = Readonly<{
   promptId: string;
   documentId: string;
   profileId: string;
-  /** The `run_id` sent with the request; also the nonce for the stale-run timer. */
+  /** The `run_id` sent with the request; events and late results are matched on it. */
   runId: string;
   status: RunStatus;
   /** Client clock (ms) when the request went out, or the server's start on resume. */
@@ -213,7 +213,7 @@ export function releaseRequest(state: RunState): RunState {
   return { ...state, active: Math.max(0, state.active - 1) };
 }
 
-/** Nothing was dispatched for this run (document still indexing, or the POST failed). */
+/** Nothing was dispatched for this run (the document is still indexing). */
 export function removeRun(state: RunState, runId: string): RunState {
   const entries = Object.fromEntries(
     Object.entries(state.entries).filter(([, e]) => e.runId !== runId),
@@ -286,7 +286,7 @@ function updateSinglePass(
   return { ...state, singlePass: { ...state.singlePass, [key]: next } };
 }
 
-/** The run was dispatched; `serverStartedAt` seeds the timer only for a run this page did not start. */
+/** The run was dispatched; `serverStartedAt` is the start only for a run this page did not start. */
 export function markRunStarted(
   state: RunState,
   signal: RunSignal,
@@ -297,13 +297,15 @@ export function markRunStarted(
     current: T | undefined,
     fresh: T,
   ): T | undefined => {
-    if (
-      !current ||
-      (!isInFlight(current.status) && current.runId !== signal.runId)
-    ) {
+    if (!current) {
       return fresh;
     }
-    if (signal.runId !== null && current.runId !== signal.runId) {
+    const sameRun = current.runId === signal.runId;
+    if (!isInFlight(current.status)) {
+      // Started can trail the result of a run that failed at once: ignore it.
+      return sameRun ? undefined : fresh;
+    }
+    if (signal.runId !== null && !sameRun) {
       return undefined; // An older run of the same slot.
     }
     return {
@@ -390,44 +392,67 @@ export function markRunFailed(
   }));
 }
 
-/**
- * The stale-run guard: no result arrived in time. Only entries still in
- * flight for this run fail, so a timer from an earlier run of the same slot
- * never touches a newer one. Returns the same state when nothing expired.
- */
-export function expireRun(
+/** Fails the entries of one run still in flight; the same state when none is. */
+export function failRun(
   state: RunState,
   runId: string,
+  failure: RunFailure,
   now: number,
 ): RunState {
-  const timedOut = <T extends RunEntry | SinglePassRun>(e: T): T =>
-    e.runId === runId && isInFlight(e.status)
-      ? {
-          ...e,
-          status: "failed",
-          finishedAt: now,
-          failure: {
-            message: TIMEOUT_MESSAGE,
-            provider: null,
-            requestId: null,
-            retryAfterSeconds: null,
-          },
-        }
-      : e;
-  let changed = false;
+  return failWhere(state, (e) => e.runId === runId, failure, now)[0];
+}
+
+const TIMEOUT_FAILURE: RunFailure = {
+  message: TIMEOUT_MESSAGE,
+  provider: null,
+  requestId: null,
+  retryAfterSeconds: null,
+};
+
+/**
+ * The stale-run guard: fails every request sent at least `maxAgeMs` ago that
+ * has no result, and names the tools it touched. Age is read from the state,
+ * so a run resumed from another tab, or left by an earlier engine, expires
+ * too; a newer run of the same slot is younger and is left alone.
+ */
+export function expireStaleRuns(
+  state: RunState,
+  now: number,
+  maxAgeMs: number,
+): [RunState, string[]] {
+  return failWhere(
+    state,
+    (e) => e.startedAt !== null && now - e.startedAt >= maxAgeMs,
+    TIMEOUT_FAILURE,
+    now,
+  );
+}
+
+type Flight = Pick<RunEntry, "runId" | "startedAt">;
+
+function failWhere(
+  state: RunState,
+  matches: (e: Flight) => boolean,
+  failure: RunFailure,
+  now: number,
+): [RunState, string[]] {
+  const toolIds = new Set<string>();
+  const fail = <T extends RunEntry | SinglePassRun>(e: T): T => {
+    if (!isInFlight(e.status) || !matches(e)) {
+      return e;
+    }
+    toolIds.add(e.toolId);
+    return { ...e, status: "failed", finishedAt: now, failure };
+  };
   const mapAll = <T extends RunEntry | SinglePassRun>(
     record: Readonly<Record<string, T>>,
   ): Record<string, T> =>
-    Object.fromEntries(
-      Object.entries(record).map(([key, e]) => {
-        const next = timedOut(e);
-        changed ||= next !== e;
-        return [key, next];
-      }),
-    );
+    Object.fromEntries(Object.entries(record).map(([k, e]) => [k, fail(e)]));
   const entries = mapAll(state.entries);
   const singlePass = mapAll(state.singlePass);
-  return changed ? { ...state, entries, singlePass } : state;
+  return toolIds.size === 0
+    ? [state, []]
+    : [{ ...state, entries, singlePass }, [...toolIds]];
 }
 
 export type RunActions = Readonly<{
@@ -451,8 +476,10 @@ export type RunActions = Readonly<{
     now: number,
   ) => void;
   failed: (signal: RunSignal, failure: RunFailure, now: number) => void;
-  /** True when something was still in flight and has now failed as timed out. */
-  expire: (runId: string, now: number) => boolean;
+  /** A run's request failed: its entries still in flight fail with it. */
+  fail: (runId: string, failure: RunFailure, now: number) => void;
+  /** Times out the stale runs; returns the tools they belong to. */
+  expireStale: (now: number, maxAgeMs: number) => string[];
   setSinglePassMode: (on: boolean) => void;
 }>;
 
@@ -492,14 +519,13 @@ export function createPromptRunStore(): RunStore {
       set((s) => markRunCompleted(s, signal, elapsed, now)),
     failed: (signal, failure, now) =>
       set((s) => markRunFailed(s, signal, failure, now)),
-    expire: (runId, now) => {
-      const before = get();
-      const after = expireRun(before, runId, now);
-      if (after === before) {
-        return false;
+    fail: (runId, failure, now) => set((s) => failRun(s, runId, failure, now)),
+    expireStale: (now, maxAgeMs) => {
+      const [next, toolIds] = expireStaleRuns(get(), now, maxAgeMs);
+      if (toolIds.length > 0) {
+        set(next);
       }
-      set(after);
-      return true;
+      return toolIds;
     },
     setSinglePassMode: (on) => set({ singlePassMode: on }),
   }));

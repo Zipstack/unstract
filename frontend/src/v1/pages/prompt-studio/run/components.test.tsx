@@ -193,6 +193,12 @@ describe("captions", () => {
     expect(screen.getByText("Coverage: 3 of 4 docs").parentElement).toHaveClass(
       "ui:text-primary",
     );
+    rerender(
+      <CoverageCaption coverage={{ covered: 0, total: 0, missing: [] }} />,
+    );
+    expect(screen.getByText("Coverage: 0 of 0 docs").parentElement).toHaveClass(
+      "ui:text-primary",
+    );
   });
 
   it("explains single pass extraction (C11)", async () => {
