@@ -80,3 +80,26 @@ export function landingPath(
     ? `/${toOrg}/${section}`
     : `/${toOrg}/dashboard`;
 }
+
+/** v0's sign-in page; for a signed-in user it opens their home instead. */
+export const SIGN_IN_PATH = "/landing";
+/** v0's organisation picker, for a user with several and none current; it reads them from the navigation state. */
+export const CHOOSE_ORGANIZATION_PATH = "/setOrg";
+
+/**
+ * Where an ended session sends the user. A known cause carries `code` and
+ * `domain`, which v0's /error page explains (useSessionValid.js); signing in
+ * again would only fail the same way. An empty body goes back to sign-in.
+ * These are app routes, not API URLs, so they live here and not in services/.
+ */
+export function sessionEndedPath(body: unknown): string {
+  const { code, domain } = (body ?? {}) as { code?: unknown; domain?: unknown };
+  if (typeof code !== "string" || code === "") {
+    return SIGN_IN_PATH;
+  }
+  const query = new URLSearchParams({ code });
+  if (typeof domain === "string" && domain !== "") {
+    query.set("domain", domain);
+  }
+  return `/error?${query}`;
+}

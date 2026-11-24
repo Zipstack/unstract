@@ -7,10 +7,10 @@
 import { LIVE_REGISTRY, type LiveRegistry } from "@v1/app/registry/live";
 import { resolveRoute } from "@v1/app/registry/resolve";
 import type { RegistryEntry } from "@v1/app/registry/types";
-import { isChunkLoadError, reloadOnce } from "@v1/lib/chunkReload";
+import { V1ErrorBoundary } from "@v1/app/V1ErrorBoundary";
+import { registerUiVersion, type UiVersion } from "@v1/lib/analytics";
 import { useOldVersionStore } from "@v1/stores/oldVersion";
 import {
-  Component,
   type JSX,
   lazy,
   type ReactNode,
@@ -29,60 +29,6 @@ export type VersionSwitchProps = Readonly<{
   /** For tests; defaults to this build's registry. */
   registry?: LiveRegistry;
 }>;
-
-type BoundaryState = { failed: boolean };
-
-function sessionStore(): Storage | null {
-  try {
-    return window.sessionStorage;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Keeps a v1 failure from unmounting the whole app. A stale chunk after a
- * deploy reloads the page once to fetch the new one (React caches a failed
- * lazy import, so nothing short of a reload retries it); anything else, or a
- * repeat failure, shows the fallback. Navigating to another URL clears it, as
- * v0's backstop does with `resetKeys`.
- */
-class V1ErrorBoundary extends Component<
-  { children: ReactNode; resetKey: string },
-  BoundaryState
-> {
-  override state: BoundaryState = { failed: false };
-
-  static getDerivedStateFromError(): BoundaryState {
-    return { failed: true };
-  }
-
-  override componentDidUpdate(prev: Readonly<{ resetKey: string }>): void {
-    if (this.state.failed && prev.resetKey !== this.props.resetKey) {
-      this.setState({ failed: false });
-    }
-  }
-
-  override componentDidCatch(error: unknown): void {
-    if (isChunkLoadError(error)) {
-      reloadOnce(sessionStore(), () => window.location.reload());
-    }
-  }
-
-  override render(): ReactNode {
-    if (this.state.failed) {
-      return (
-        <div className="ui:p-6" role="alert">
-          <p>This page could not be loaded.</p>
-          <button type="button" onClick={() => window.location.reload()}>
-            Reload
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 
 function V1Root({
   entry,
@@ -105,27 +51,37 @@ function toUserId(userId: string | number | null | undefined): string | null {
     : String(userId);
 }
 
+/** The signed-in user's old-version choice. */
+function useOldVersionChoice(user: string | null): boolean | null {
+  const storeUser = useOldVersionStore((s) => s.userId);
+  const storedChoice = useOldVersionStore((s) => s.oldVersion);
+  useLayoutEffect(() => {
+    useOldVersionStore.getState().setUser(user);
+  }, [user]);
+  // Until the store has caught up with a newly signed-in user, their choice
+  // is unknown, so the previous user's never redirects them.
+  return user !== null && user !== storeUser ? null : storedChoice;
+}
+
+/** Tags events with the version on screen; a layout effect, so before v0's tracker (a passive effect) captures the page view. */
+function useUiVersionTag(version: UiVersion): void {
+  useLayoutEffect(() => {
+    registerUiVersion(version);
+  }, [version]);
+}
+
 export function VersionSwitch({
   userId,
   children,
   registry = LIVE_REGISTRY,
 }: VersionSwitchProps): JSX.Element {
   const location = useLocation();
-  const user = toUserId(userId);
-  const storeUser = useOldVersionStore((s) => s.userId);
-  const storedChoice = useOldVersionStore((s) => s.oldVersion);
-
-  useLayoutEffect(() => {
-    useOldVersionStore.getState().setUser(user);
-  }, [user]);
-
-  // Until the store has caught up with a newly signed-in user, their choice
-  // is unknown, so the previous user's never redirects them.
-  const oldVersion = user !== null && user !== storeUser ? null : storedChoice;
+  const oldVersion = useOldVersionChoice(toUserId(userId));
   const resolution = resolveRoute(location, {
     entries: registry.entries,
     oldVersion,
   });
+  useUiVersionTag(resolution.kind === "v1" ? "v1" : "v0");
 
   switch (resolution.kind) {
     case "v0":

@@ -26,13 +26,6 @@ DECLINED_RE = re.compile(r"^Declined: (.+)$", re.M)
 # Match with fullmatch.
 BACKPORT_HEAD_RE = re.compile(r"backport/(\d+\.\d+)/([0-9a-f]{7})")
 LINE_RE = re.compile(r"[0-9]+\.[0-9]+")
-# `Backport-also: X.Y` on its own line in a PR body: the fix is owed to release/X.Y although its label does not
-# reach that line (a line GA for cloud but not yet for on-prem). Any other line that starts with it, after quote or
-# list markers, is malformed.
-DECLARE_RE = re.compile(r"^Backport-also: ([0-9]+\.[0-9]+)[ \t]*$", re.M)
-_DECLARE_ANY_RE = re.compile(
-    r"^[ \t>*+-]*(?:[0-9]+[.)][ \t]*)?backport[ \t_-]*also\b.*$", re.I | re.M
-)
 
 
 def line(value):
@@ -44,36 +37,6 @@ def line(value):
     if not LINE_RE.fullmatch(v):
         raise ValueError(f"not a release line X.Y (e.g. 0.186): {value!r}")
     return v
-
-
-def declared_lines(body):
-    """The release lines X.Y a PR body declares with `Backport-also: X.Y`."""
-    return set(DECLARE_RE.findall((body or "").replace("\r", "")))
-
-
-def declaration_errors(body):
-    """Body lines that try to declare a line but are not exactly `Backport-also: X.Y`."""
-    body = (body or "").replace("\r", "")
-    return [
-        m.strip() for m in _DECLARE_ANY_RE.findall(body) if not DECLARE_RE.fullmatch(m)
-    ]
-
-
-def body_errors(body, labels=()):
-    """Lint PR's check on a PR body: a malformed declaration would silently declare nothing, and one on a
-    main-only PR can never be picked (Backport skips main-only).
-    """
-    errors = [
-        f"malformed `{b}`: write exactly `Backport-also: X.Y` (e.g. `Backport-also: 0.186`), one line per release "
-        "line"
-        for b in declaration_errors(body)
-    ]
-    if MAIN_ONLY in labels and declared_lines(body):
-        errors.append(
-            f"`{MAIN_ONLY}` with a `Backport-also` line: Backport never picks a {MAIN_ONLY} PR. Label it "
-            "`backport/rc` (or `backport/ga`), or remove the declaration"
-        )
-    return errors
 
 
 def vtag(value):
@@ -351,7 +314,9 @@ def ci_commits(
     return rows, where
 
 
-BACKPORT_LABELS = {"backport/rc": "rc", "backport/ga": "ga"}
+# `backport/X.Y` names the oldest release line that needs the fix; it is owed there and on every newer line.
+LINE_LABEL_RE = re.compile(r"backport/(\d+\.\d+)")
+RETIRED_LABELS = ("backport/rc", "backport/ga")
 MAIN_ONLY = "main-only"
 
 
@@ -359,26 +324,126 @@ def _ticks(names):
     return ", ".join(f"`{n}`" for n in names)
 
 
-def pr_fix_class(title, labels=()):
-    """The class ("rc" or "ga") comes from labels only; None without one. A main merge also needs a label: main_fix_class."""
-    # Reject near-miss class labels (backport/<x>, backport-ga, fix/<x>, fix-class/<x>, typos) so a typo cannot drop the class.
+def _vkey(x_y):
+    return tuple(map(int, x_y.split(".")))
+
+
+def owes(label_line, branch):
+    """A fix labelled backport/<label_line> is owed to release/X.Y when X.Y is that line or newer."""
+    return bool(label_line) and _vkey(label_line) <= _vkey(line(branch))
+
+
+def line_labels(labels):
+    return sorted({m[1] for l in labels if (m := LINE_LABEL_RE.fullmatch(l))}, key=_vkey)
+
+
+def _menu(active):
+    return ", ".join(f"`backport/{a}`" for a in active)
+
+
+def _active(active):
+    return f" (active: {_menu(active)})" if active else ""
+
+
+def active_lines(slug, gh):
+    """X.Y of every release/X.Y branch, newest first. gh(*args) -> stdout. Raises when it cannot tell, since an
+    empty answer would refuse every label.
+    """
+    out = gh(
+        "api",
+        "--paginate",
+        f"repos/{slug}/git/matching-refs/heads/release/",
+        "--jq",
+        ".[].ref",
+    )
+    names = [r.removeprefix("refs/heads/release/") for r in out.split()]
+    found = [n for n in names if LINE_RE.fullmatch(n)]
+    if not found:
+        raise RuntimeError(f"no release/X.Y branch found in {slug}")
+    return sorted(found, key=_vkey, reverse=True)
+
+
+def line_label(slug, x_y, gh, retired=None):
+    """Create backport/X.Y in slug, or with retired (a reason) only re-describe it: deleting a label strips it from
+    every old PR. gh(*args) -> stdout, raising RuntimeError. Fails loudly with the command to run by hand.
+    """
+    name = f"backport/{x_y}"
+    desc = (
+        f"Retired line release/{x_y} ({retired}); kept so old PRs keep their label"
+        if retired
+        else f"Also copy to release/{x_y} and every newer active line"
+    )[:100]  # GitHub's limit
+    url = f"repos/{slug}/labels/{name.replace('/', '%2F')}"
+    try:
+        # PATCH first: an existing label (a re-cut minor, one made by hand) gets the right description back.
+        # gh puts a 422's error code on stdout, which callers' errors do not carry, so POST only after a 404.
+        try:
+            gh("api", "-X", "PATCH", url, "-f", f"description={desc}")
+        except RuntimeError as e:
+            if "(HTTP 404)" not in str(e):
+                raise
+            if retired:
+                return f"no label `{name}` in {slug} to mark retired"
+            gh(
+                "api",
+                f"repos/{slug}/labels",
+                "-f",
+                f"name={name}",
+                "-f",
+                "color=0e8a16",
+                "-f",
+                f"description={desc}",
+            )
+            return f"label `{name}` created in {slug}"
+    except RuntimeError as e:
+        verb = "edit" if retired else "create"
+        raise RuntimeError(
+            f"cannot {verb} label `{name}` in {slug} ({e}). The release bot's token may lack the Issues or Pull "
+            f"requests write permission. By hand: gh label {verb} '{name}' -R {slug} --description '{desc}'"
+        ) from e
+    return f"label `{name}` {'marked retired' if retired else 'updated'} in {slug}"
+
+
+def pr_fix_class(title, labels=(), active=None):
+    """The oldest line X.Y a PR's `backport/X.Y` label names; None without one. active: the release lines a new label
+    may name (Lint PR on a PR into main); None checks the form only, so a merged PR keeps its line after the line
+    retires, and a pick or conflict PR into a release line, which carries its source PR's labels, may keep a retired
+    one: there it is inert. main_fix_class refuses retired labels itself.
+    """
+    retired = [l for l in labels if l in RETIRED_LABELS]
+    if retired and active is not None:
+        raise ValueError(
+            f"{_ticks(retired)} is no longer used: label the oldest release line that needs the fix, as "
+            f"`backport/X.Y`{_active(active)}"
+        )
+    # Near misses (backport/x, backport-0.187, fix/<x>, typos) so a typo cannot drop the fix.
     bad = [
         l
         for l in labels
-        if l not in BACKPORT_LABELS
+        if not LINE_LABEL_RE.fullmatch(l)
+        and l not in RETIRED_LABELS
         and re.match(
-            r"\s*(backports?\s*(/|[\W_]+\s*(rc|ga)(?![a-z]))|fix(\w{0,3}[\W_]*class(?![a-z])|\s*/))",
+            r"\s*(backports?\s*(/|[\W_]+\s*(rc|ga|\d)(?![a-z]))|fix(\w{0,3}[\W_]*class(?![a-z])|\s*/))",
             l,
             re.I,
         )
     ]
     if bad:
         raise ValueError(
-            f"unknown label(s) {_ticks(bad)}: use `backport/rc`, `backport/ga` or `{MAIN_ONLY}`"
+            f"unknown label(s) {_ticks(bad)}: use `backport/X.Y`{_active(active)} or `{MAIN_ONLY}`"
         )
-    found = sorted(set(labels) & set(BACKPORT_LABELS))
+    found = line_labels(labels)
     if len(found) > 1:
-        raise ValueError(f"conflicting labels {_ticks(found)}: keep one")
+        raise ValueError(
+            f"more than one backport label ({_ticks('backport/' + f for f in found)}): keep only the oldest line "
+            "that needs the fix"
+        )
+    if active is not None:
+        gone = [f for f in found if f not in active]
+        if gone:
+            raise ValueError(
+                f"`backport/{gone[0]}` names no active release line: use one of {_menu(active)}, or `{MAIN_ONLY}`"
+            )
     # The changelogs read the title, so no label excuses it. strip: GitHub keeps a leading space.
     inner = title.strip()
     while r := REVERT_RE.match(inner):
@@ -386,12 +451,18 @@ def pr_fix_class(title, labels=()):
     if not PR_TITLE_RE.match(inner):
         raise ValueError(f"no recognised '[TYPE]' or 'TICKET [TYPE]' prefix: {title!r}")
     if MAIN_ONLY in labels and found:
-        raise ValueError(f"conflicting labels {_ticks([MAIN_ONLY, *found])}: keep one")
-    return BACKPORT_LABELS[found[0]] if found else None
+        raise ValueError(
+            f"conflicting labels {_ticks([MAIN_ONLY, 'backport/' + found[0]])}: keep one"
+        )
+    return found[0] if found else None
 
 
 def main_fix_class(title, labels=()):
     """pr_fix_class for a PR merged into main, which must say whether it is backported."""
+    if retired := [l for l in labels if l in RETIRED_LABELS]:
+        raise ValueError(
+            f"{_ticks(retired)} is no longer used: label the oldest release line that needs the fix, as `backport/X.Y`"
+        )
     cls = pr_fix_class(title, labels)
     if refusal := release_only_refusal("main", labels):
         raise ValueError(refusal)
@@ -407,11 +478,10 @@ def release_only_refusal(base, labels):
         )
     if MAIN_ONLY in labels and base.startswith("release/"):
         return f"label `{MAIN_ONLY}` is for PRs into main; remove it here"
-    if not base.startswith("release/") and not set(labels) & {
-        MAIN_ONLY,
-        *BACKPORT_LABELS,
-    }:
-        return f"no backport label: add `backport/rc`, `backport/ga` or `{MAIN_ONLY}`"
+    if not base.startswith("release/") and not (
+        MAIN_ONLY in labels or line_labels(labels) or set(labels) & set(RETIRED_LABELS)
+    ):
+        return f"no backport label: add `backport/X.Y` (the oldest release line that needs the fix) or `{MAIN_ONLY}`"
     return None
 
 

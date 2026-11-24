@@ -1,7 +1,7 @@
 name: Lint PR
 
 # Every PR into main or a release branch needs a recognised `[TYPE]` title prefix, whatever its labels.
-# A PR into main also needs one label: backport/rc, backport/ga or main-only.
+# A PR into main also needs one label: backport/X.Y (the oldest release line that needs it) or main-only.
 # Release branches too: the release changelog is built from their PR titles.
 # The backport class is only printed here; Backport recomputes it at pick time.
 on:
@@ -37,7 +37,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
           BASE: ${{ github.base_ref }}
-          BODY: ${{ github.event.pull_request.body }}
         run: |
           if [ ! -f .github/release/relmgr.py ]; then
             echo "::notice title=Lint PR::skipped: main has no .github/release/relmgr.py yet"
@@ -59,18 +58,26 @@ jobs:
 
           title, labels = os.environ["TITLE"], json.loads(os.environ["LABELS"])
           summary = open(os.environ["GITHUB_STEP_SUMMARY"], "a")
-          # Two-argument calls: the rule comes from main, so they must work with main's relmgr before and after a change.
+          # The rule comes from main, so every call must work with main's relmgr before and after a change.
           errors = []
+          slug, pr = os.environ["GITHUB_REPOSITORY"], int(os.environ["PR"])
+          active = None
+          # Only a PR into main picks a line: Backport copies the source PR's label onto its pick PRs, which may
+          # name a line that has since retired.
+          if hasattr(relmgr, "active_lines") and os.environ["BASE"] == "main":  # main's relmgr may predate it
+              import subprocess
+              gh = lambda *a: subprocess.run(["gh", *a], capture_output=True, text=True, check=True).stdout
+              try:
+                  active = relmgr.active_lines(slug, gh)
+              except (RuntimeError, subprocess.CalledProcessError) as e:
+                  errors.append(f"could not list the active release lines: {getattr(e, 'stderr', '') or e}; re-run the job")
           try:
-              cls = relmgr.pr_fix_class(title, labels) or "none"
+              cls = (relmgr.pr_fix_class(title, labels, active) if active else relmgr.pr_fix_class(title, labels)) or "none"
           except ValueError as e:
               errors.append(str(e))
           # Also when the title failed, so one run names every error.
           if refusal := relmgr.release_only_refusal(os.environ["BASE"], labels):
               errors.append(refusal)
-          if check := getattr(relmgr, "body_errors", None):  # main's relmgr may predate it
-              errors += check(os.environ["BODY"], labels)
-          slug, pr = os.environ["GITHUB_REPOSITORY"], int(os.environ["PR"])
 
           def lookup_advice(**kw):  # advisory only: a failed lookup never fails or passes the PR
               try:
@@ -82,8 +89,9 @@ jobs:
               adv = lookup_advice()
               menu = "" if os.environ["BASE"].startswith("release/") else (
                      "A PR into main needs exactly one of these labels; the title type does not choose it:\n"
-                     "- `backport/rc`: also copy it to the release lines still awaiting GA.\n"
-                     "- `backport/ga`: also copy it to those lines; released lines get it only by a Backport run that names the line.\n"
+                     "- `backport/X.Y`: also copy it to release/X.Y and every newer active line. Name the oldest line that "
+                     "needs the fix. Lines still in RC get it automatically; a released line gets it only when a Backport "
+                     "run confirms it.\n"
                      "- `main-only`: keep it on main only.\n"
                      "A revert takes the label of the PR it reverts.\n")
               advice = f"Advice: {la.render(adv)}\n" if adv else ""

@@ -21,7 +21,7 @@ from agent_kv.models import AgentKVJob, AgentKVKey, JobStatus  # noqa: E402
 from agent_kv.tests._factories import kv_key  # noqa: E402
 
 
-def _authed(method="get", path="/agent-kv/x"):
+def _authed(method="get", path="/api/v1/agentic-extract/x"):
     req = getattr(APIRequestFactory(), method)(path)
     req.META["HTTP_AUTHORIZATION"] = "Bearer 123e4567-e89b-12d3-a456-426614174001"
     return req
@@ -219,6 +219,11 @@ def test_result_for_failed_job_is_200_with_success_false_and_error(
         "success": False,
         "status": "failed",
         "error": "LLM provider timed out",
+        # No `custom_data` key at all: this job sent none, and a caller who
+        # does not use the field must get the body they got before it existed.
+        # Exact equality kept deliberately -- this is a wire contract, and a
+        # subset check would stop noticing a field appearing by accident,
+        # which is exactly how the echo first went out unconditionally.
     }
     assert not m_read.called
 
@@ -241,8 +246,38 @@ def test_result_for_cancelled_job_is_200_with_cancelled_body(m_keys, m_jobs, m_r
     resp = ev.JobResultView.as_view()(_authed(), job_id=uuid.uuid4())
 
     assert resp.status_code == 200
-    assert resp.data == {"success": False, "status": "cancelled"}
+    assert resp.data == {
+        "success": False,
+        "status": "cancelled",
+    }
     assert not m_read.called
+
+
+@mock.patch.object(evr, "read_result")
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_a_job_that_sent_custom_data_gets_it_echoed(m_keys, m_jobs, m_read):
+    """The other half of the omission, and the one that keeps the echo alive.
+
+    Asserting only that the key is absent for a job that sent none would pass
+    with the echo deleted outright. This is the case that fails if it is.
+    """
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(
+        status=JobStatus.CANCELLED,
+        expires_at=timezone.now() + timedelta(days=1),
+        custom_data={"vendor": "Acme", "nested": {"k": "v"}},
+    )
+    m_jobs.get.return_value = job
+
+    resp = ev.JobResultView.as_view()(_authed(), job_id=uuid.uuid4())
+
+    assert resp.status_code == 200
+    assert resp.data == {
+        "success": False,
+        "status": "cancelled",
+        "custom_data": {"vendor": "Acme", "nested": {"k": "v"}},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +365,7 @@ def _executor_may_exist_in_db(m_jobs, may_exist: bool) -> None:
     NOT be released.
     """
     m_jobs.filter.return_value.exclude.return_value.exists.return_value = may_exist
+
 
 # ---------------------------------------------------------------------------
 # (6c) cancel that LOSES the guard (job already terminal) must NOT release --
@@ -508,7 +544,13 @@ def test_delete_on_a_running_job_does_NOT_release_the_slot(
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_on_a_never_dispatched_job_DOES_release_the_slot(
-    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook,
+    m_keys,
+    m_jobs,
+    m_mark_terminal,
+    m_delete_files,
+    m_save,
+    m_release,
+    m_hook,
     m_purge,
 ):
     """The case the release exists for, and the only one.
@@ -642,7 +684,7 @@ def test_all_job_views_401_without_key():
         (ev.JobCancelView, "post"),
         (ev.JobDeleteView, "delete"),
     ]:
-        req = getattr(APIRequestFactory(), method)("/agent-kv/x")
+        req = getattr(APIRequestFactory(), method)("/api/v1/agentic-extract/x")
         resp = view.as_view()(req, job_id=uuid.uuid4())
         assert resp.status_code == 403
 
@@ -744,9 +786,7 @@ def test_delete_claims_the_purge_even_when_it_wins_the_cancel(
     job.organization_id = "org1"
     m_jobs.get.return_value = job
 
-    with mock.patch.object(
-        AgentKVJob, "mark_files_purged", return_value=None
-    ) as m_purge:
+    with mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None) as m_purge:
         resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=job.id)
 
     assert resp.status_code == 204
@@ -824,7 +864,13 @@ def test_cancel_that_loses_does_not_queue_a_webhook(
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_that_cancels_a_running_job_also_queues_the_webhook(
-    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook,
+    m_keys,
+    m_jobs,
+    m_mark_terminal,
+    m_delete_files,
+    m_save,
+    m_release,
+    m_hook,
     m_purge,
 ):
     """DELETE on a non-terminal job cancels it first; that cancellation is just
@@ -998,9 +1044,9 @@ def test_cancel_loss_reports_the_refreshed_status(
     resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
 
     assert resp.status_code == 409
-    assert resp.data == {"status": "completed"}, (
-        "the 409 body reported the status read BEFORE the guard was lost"
-    )
+    assert resp.data == {
+        "status": "completed"
+    }, "the 409 body reported the status read BEFORE the guard was lost"
 
 
 # ---------------------------------------------------------------------------

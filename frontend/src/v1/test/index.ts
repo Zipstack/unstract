@@ -21,6 +21,11 @@ export {
   stubLayout,
 } from "./dom";
 export {
+  expectGalleryAccessible,
+  type GalleryEntry,
+  galleryMarkup,
+} from "./gallery";
+export {
   apiPath,
   delay,
   HttpResponse,
@@ -49,4 +54,5 @@ export {
   type TestSessionOverrides,
   type TestUser,
   type ThemeMode,
+  toV1Session,
 } from "./session";

@@ -9,7 +9,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { QueryView } from "@v1/components/patterns/QueryView";
 import { adapterQueries } from "@v1/services/adapters";
-import { setOrganizationId } from "@v1/services/context";
 import { useOldVersionStore } from "@v1/stores/oldVersion";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -34,8 +33,6 @@ function LlmAdapters(): JSX.Element {
 }
 
 export function DemoPage(): JSX.Element {
-  // Stand-in until UN-4314's session: the URL's org name is the org id on OSS only.
-  setOrganizationId(useParams().orgName ?? null);
   return (
     <main className="ui:flex ui:flex-col ui:gap-4 ui:p-6" data-testid="v1-demo">
       <h1 className="ui:text-page-title">v1 demo page</h1>

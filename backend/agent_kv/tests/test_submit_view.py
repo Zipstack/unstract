@@ -22,7 +22,9 @@ from agent_kv.tests._factories import kv_key  # noqa: E402
 
 
 def _post(data=None):
-    return APIRequestFactory().post("/agent-kv/", data or {}, format="multipart")
+    return APIRequestFactory().post(
+        "/api/v1/agentic-extract/", data or {}, format="multipart"
+    )
 
 
 def _plugin_with_gate(denial=None):
@@ -297,7 +299,7 @@ def test_happy_path_returns_202_with_job_id_status_and_status_url(
     m_limiter.check_and_acquire.return_value = True
     m_save.side_effect = _stamp_created_at
 
-    def _side_effect(job, *, extractor, schema, options, adapters=None):
+    def _side_effect(job, *, extractor, schema, options, adapters=None, custom_data=None):
         job.status = JobStatus.DISPATCHED
         job.dispatched_at = timezone.now()
 
@@ -614,6 +616,8 @@ def test_sync_wait_returns_200_with_failure_body_when_job_fails_mid_wait(
         "success": False,
         "status": "failed",
         "error": "LLM provider timed out",
+        # The sync-wait path returns the same terminal payload the result
+        # endpoint does, so it omits the echo for the same reason.
     }
     assert not m_sleep.called
 
@@ -765,7 +769,9 @@ def _real_multipart_post(extractors, **job_level):
     with open(fixture, "rb") as fh:
         upload = SimpleUploadedFile("doc.pdf", fh.read(), content_type="application/pdf")
     payload = {"file": upload, "extractors": _json.dumps(extractors), **job_level}
-    req = APIRequestFactory().post("/agent-kv/", payload, format="multipart")
+    req = APIRequestFactory().post(
+        "/api/v1/agentic-extract/", payload, format="multipart"
+    )
     req.META["HTTP_AUTHORIZATION"] = "Bearer 123e4567-e89b-12d3-a456-426614174001"
     return req
 
@@ -843,7 +849,7 @@ def test_real_serializer_rejects_the_old_flat_shape_with_400(m_keys, m_plugin, m
     with open(fixture, "rb") as fh:
         upload = SimpleUploadedFile("doc.pdf", fh.read(), content_type="application/pdf")
     req = APIRequestFactory().post(
-        "/agent-kv/",
+        "/api/v1/agentic-extract/",
         {
             "file": upload,
             "keys": _json.dumps({"total": {"description": "T"}}),
@@ -890,7 +896,9 @@ def test_an_oversized_extractors_part_is_rejected_by_size(m_keys, m_plugin, m_ra
     cap = 64
     part = SimpleUploadedFile("extractors.json", b"x" * (cap * 50))
 
-    req = APIRequestFactory().post("/agent-kv/", {"extractors": part}, format="multipart")
+    req = APIRequestFactory().post(
+        "/api/v1/agentic-extract/", {"extractors": part}, format="multipart"
+    )
     req.META["HTTP_AUTHORIZATION"] = "Bearer 123e4567-e89b-12d3-a456-426614174001"
     with mock.patch.object(ev.settings, "AGENT_KV_MAX_SCHEMA_BYTES", cap):
         resp = ev.SubmitView.as_view()(req)
@@ -914,7 +922,7 @@ def test_a_non_utf8_extractors_part_is_rejected(m_keys, m_plugin, m_rate):
             return b'[{"name": "table", "keys": {"target_table": "\xe9"}}]'
 
     req = APIRequestFactory().post(
-        "/agent-kv/", {"extractors": _Latin1Part()}, format="multipart"
+        "/api/v1/agentic-extract/", {"extractors": _Latin1Part()}, format="multipart"
     )
     req.META["HTTP_AUTHORIZATION"] = "Bearer 123e4567-e89b-12d3-a456-426614174001"
     resp = ev.SubmitView.as_view()(req)
@@ -969,7 +977,7 @@ def test_a_save_failure_after_staging_removes_the_staged_object(
 # ---------------------------------------------------------------------------
 # The adapter tenancy gate.
 #
-# `POST /agent-kv/` names platform adapters by id. The platform service DOES
+# `POST /api/v1/agentic-extract/` names platform adapters by id. The platform service DOES
 # re-scope its lookups by organization (`WHERE id=%s and organization_id=%s`,
 # against the org of the job's own platform key), so this gate is defence in
 # depth rather than the only thing standing between a caller and another
@@ -1000,9 +1008,7 @@ def test_an_adapter_from_another_org_is_refused(
     m_limiter.check_and_acquire.return_value = True
     m_save.side_effect = _stamp_created_at
 
-    with _adapters_owned_by(
-        key.organization_id, missing=[_TABLE_ADAPTERS[stolen_role]]
-    ):
+    with _adapters_owned_by(key.organization_id, missing=[_TABLE_ADAPTERS[stolen_role]]):
         resp = ev.SubmitView.as_view()(
             _real_multipart_post(
                 [
@@ -1126,9 +1132,7 @@ def test_a_deprecated_adapter_is_refused_at_submit(
     m_limiter.check_and_acquire.return_value = True
     m_save.side_effect = _stamp_created_at
 
-    with _adapters_owned_by(
-        key.organization_id, unavailable=[_TABLE_ADAPTERS["x2text"]]
-    ):
+    with _adapters_owned_by(key.organization_id, unavailable=[_TABLE_ADAPTERS["x2text"]]):
         resp = ev.SubmitView.as_view()(
             _real_multipart_post(
                 [
@@ -1182,7 +1186,7 @@ def test_an_upload_over_the_memory_threshold_is_not_a_500():
 
     payload = b"%PDF-1.4\n" + b"0" * (settings.FILE_UPLOAD_MAX_MEMORY_SIZE + 4096)
     request = APIRequestFactory().post(
-        "/agent-kv/",
+        "/api/v1/agentic-extract/",
         {
             "file": SimpleUploadedFile("big.pdf", payload, "application/pdf"),
             "extractors": '[{"name": "table"}]',
@@ -1247,6 +1251,6 @@ def test_the_other_agent_kv_routes_are_not_exempted():
         ("agent_kv_cancel", {"job_id": "00000000-0000-0000-0000-000000000001"}),
     ):
         match = resolver.resolve(reverse(name, kwargs=kwargs))
-        assert not getattr(match.func, "_non_atomic_requests", set()), (
-            f"{name} is exempt from ATOMIC_REQUESTS but has no in-request wait"
-        )
+        assert not getattr(
+            match.func, "_non_atomic_requests", set()
+        ), f"{name} is exempt from ATOMIC_REQUESTS but has no in-request wait"

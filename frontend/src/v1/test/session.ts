@@ -1,3 +1,4 @@
+import type { Session } from "@v1/lib/session";
 import type { ThemeMode } from "@v1/lib/theme";
 
 /** A colour mode the v1 root can carry (#2399's ThemeMode). */
@@ -11,13 +12,16 @@ export type TestUser = Readonly<{
 
 export type TestOrganization = Readonly<{
   id: string;
+  /** The display name. */
   name: string;
+  /** The URL name (`/<urlName>/...`); differs from the id, as on cloud. */
+  urlName: string;
 }>;
 
 /**
- * A signed-in user and organization, as fixture data for network mocks
- * (`apiPath(session, …)` builds the org-scoped URL). Not a render option: no
- * v1 provider reads a session yet.
+ * A signed-in user and organization: what `renderV1`'s `session` option
+ * provides, and fixture data for network mocks (`apiPath(session, …)` builds
+ * the org-scoped URL; `sessionHandlers` answers the session load).
  */
 export type TestSession = Readonly<{
   user: TestUser;
@@ -32,8 +36,9 @@ export type TestSessionOverrides = Readonly<{
 }>;
 
 export const DEFAULT_SESSION: TestSession = {
-  user: { id: "user-1", email: "ada@example.com", displayName: "Ada" },
-  organization: { id: "org-1", name: "Example Org" },
+  // Numeric, as the session endpoint gives it.
+  user: { id: "1", email: "ada@example.com", displayName: "Ada" },
+  organization: { id: "org-1", name: "Example Org", urlName: "example-org" },
   role: "admin",
 };
 
@@ -48,5 +53,29 @@ export function makeSession(overrides: TestSessionOverrides = {}): TestSession {
       ...overrides.organization,
     },
     role: overrides.role ?? DEFAULT_SESSION.role,
+  };
+}
+
+/** The v1 session a fixture loads as: what `useSession()` gives under `renderV1`. */
+export function toV1Session({
+  user,
+  organization,
+  role,
+}: TestSession): Session {
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.displayName,
+      role,
+      isAdmin: role === "admin",
+      isStaff: false,
+    },
+    organization: {
+      id: organization.id,
+      name: organization.urlName,
+      displayName: organization.name,
+      switchViaLogin: false,
+    },
   };
 }

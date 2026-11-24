@@ -23,10 +23,10 @@ There are two independent auth schemes on two different URL prefixes:
 
 | Surface | Prefix | Auth |
 |---|---|---|
-| Public execution API (submit/status/result/cancel) | `/api/v1/agent-kv/…` (under the platform API prefix, beside the tenant subfolder rather than inside it) | `Authorization: Bearer <AgentKVKey>` — a dedicated per-organization key, validated by the view itself |
+| Public execution API (submit/status/result/cancel) | `/api/v1/agentic-extract/…` (under the platform API prefix, beside the tenant subfolder rather than inside it) | `Authorization: Bearer <AgentKVKey>` — a dedicated per-organization key, validated by the view itself |
 | Key management (create/list/rotate/revoke) | `{PATH_PREFIX}/unstract/…/agent-kv/keys/…` (tenant-scoped, alongside Platform API key management) | Session auth, `IsOrganizationAdmin` only |
 
-The execution prefix (`AGENT_KV_PATH_PREFIX`, default `api/v1/agent-kv`) sits **outside** the
+The execution prefix (`AGENT_KV_PATH_PREFIX`, default `api/v1/agentic-extract`) sits **outside** the
 tenant-subfolder/organization-middleware chain — it is added to `WHITELISTED_PATHS` in
 `backend/backend/settings/base.py` — because a caller authenticates with an API key, not
 a session/org header. Every view under it therefore owns its own auth via the
@@ -38,7 +38,7 @@ which:
 3. Injects the resolved key object as `agent_kv_key` into the view kwargs, which every
    subsequent lookup filters by (`organization_id=agent_kv_key.organization_id`) — this
    is what makes a job in another org indistinguishable from an unknown job id (both
-   404, see [Status](#4-status--get-agent-kvjob_id)).
+   404, see [Status](#4-status--get-apiv1agentic-extractjob_id)).
 
 **Drift from the spec:** spec §6.1 describes this as "every endpoint 401s without a
 valid key." The implementation returns **403** (`api_v2.exceptions.Forbidden`, reused
@@ -99,7 +99,7 @@ not a v1 gap unique to this feature.
 
 > **This section describes the `kv` extractor's schema language.** It is what
 > you send as `keys` when `extractors[].name` is `"kv"` (see
-> [§3](#3-submit--post-agent-kv-multipart)). The `table` extractor's `keys` is
+> [§3](#3-submit--post-apiv1agentic-extract-multipart)). The `table` extractor's `keys` is
 > just `{"target_table": "<name>"}` and needs none of this.
 >
 > This note used to open "which is not routable on this deployment", with the
@@ -208,7 +208,7 @@ env-configurable is the raw byte size of the whole `keys` document
 A schema that fails to compile is rejected with a `400` at submit time — **nothing is
 billed**.
 
-## 3. Submit — `POST /api/v1/agent-kv/` (multipart)
+## 3. Submit — `POST /api/v1/agentic-extract/` (multipart)
 
 Copied verbatim from spec §7.1 and cross-checked field-by-field against
 `backend/agent_kv/execution_serializers.py::SubmitSerializer` — every row below matches
@@ -226,7 +226,8 @@ The request is **extractor-scoped**: a per-extractor schema and its knobs live i
 | `extractors` | yes | JSON array (file part or inline JSON string), one entry per extractor. Compiled synchronously; invalid ⇒ 400, nothing billed. |
 | `page_start`, `page_end` | no | 1-based inclusive range. **Job-level, not per-extractor**: the range drives the shared OCR pass and the page cap, so it cannot differ between extractors reading the same document. |
 | `timeout` | no | Omitted or `0` = pure async (immediate 202). `1–300`: the view polls the job row up to the deadline and returns the result inline if the job completes, else 202 with the job id. |
-| `tags`, `custom_data` | no | Echoed through. |
+| `tags` | no | Echoed through. |
+| `custom_data` | no | A JSON **object**, capped at `AGENT_KV_MAX_CUSTOM_DATA_BYTES` (20 KB). Echoed in the status document and in the terminal result (omitted entirely when you sent none), **and** substituted into instruction text as `{{custom_data.<path>}}` — see §3b. Arrays and scalars are a 400: a dotted path has no key to address on them. |
 | `webhook_url` | no | Terminal-state POST `{job_id, status}` only — no result payload. **https, public host**; anything the delivery guard would refuse is a 400 at submit (§8). |
 
 **Each `extractors` entry:**
@@ -332,6 +333,8 @@ choice and LLM spend sit on your account**, per job.
 | `calculations` | Post-processing instructions; opt-in codegen. Disabled by default; enabled per deployment via `AGENT_KV_CALCULATIONS_ENABLED`. |
 | `document_class` | Free-text hint (as CLI). |
 | `key_notes` | Free-text notes appended to the prompt (as CLI). |
+| `enable_highlight` | Default **off**. Adds `highlight` (a coordinate box) and `confidence` to each `keys[]` entry — see [§5a](#5a-highlight-and-confidence-data). Requires an **LLMWhisperer** `x2text` adapter — any other is a 400 at submit naming the adapter. Gated by `AGENT_KV_HIGHLIGHT_ENABLED`. **Free**: this extractor's OCR already requests the line metadata on every job, and this stops it being discarded. **Nothing returned for spreadsheet inputs** — see §5a. |
+| `enable_word_confidence` | Default **off**. Adds `word_confidence` to each `keys[]` entry: the OCR's per-word scores for the lines the value was read off. **Requires `enable_highlight`** — on its own it is a 400, not a silent force-off. `kv` only; see the `table` table below. |
 
 **`table` options:**
 
@@ -339,12 +342,14 @@ choice and LLM spend sit on your account**, per job.
 |---|---|
 | `instructions` | Free-text extraction guidance handed to the engine. |
 | `json_structure` | Free-text description of the row structure to return. |
-| `enable_header_mapping` | Default **off**. **Changes the result shape** — see [§5](#5-result--get-agent-kvjob_idresult). |
+| `enable_header_mapping` | Default **off**. **Changes the result shape** — see [§5](#5-result--get-apiv1agentic-extractjob_idresult). |
+| `enable_highlight` | Default **off**. Adds `output.highlight_data`, one coordinate structure mirroring `output.tables` — see [§5a](#5a-highlight-and-confidence-data). Same LLMWhisperer requirement and the same `AGENT_KV_HIGHLIGHT_ENABLED` gate as `kv`. **Free here too**, for the same reason: the OCR call already requests the line metadata, and the engine's LLM-based row-to-line validator is an IDE-only stage this API never constructs. **Nothing returned for spreadsheet inputs** — the engine's workbook path requests no highlights, so `highlight_data` is absent even with the option on. |
+| ~~`enable_word_confidence`~~ | **Not supported on `table`** — sending it is a 400 naming the field, not a silent ignore. Per-word confidence is attached using a value's line numbers; `kv` carries them on each key, table rows do not. Use `kv` if you need it. |
 | `correct_number_separators` | Default **off**. Re-reads thousands/decimal separators in numeric cells. |
 | `number_format` | `US` (default) \| `EU`. Which convention `correct_number_separators` assumes. |
 
-Not exposed for `table` (they are meaningless on a blind API): `output_path`,
-`enable_highlight`, and the IDE callback hints `prompt_key`/`doc_name`.
+Not exposed for `table` (they are meaningless on a blind API): `output_path`
+and the IDE callback hints `prompt_key`/`doc_name`.
 
 > **No backward compatibility with the pre-`extractors` flat shape.** `keys`, `qa`,
 > `challenge`, `extraction_mode`, `structured_output`, `calculations`,
@@ -389,6 +394,43 @@ Not exposed (D6): model choice, challenger model, `parallel_pages`, thinking bud
 - `timeout`'s upper bound is not the literal `300` in the spec prose — it's
   `AGENT_KV_MAX_TIMEOUT_SECONDS` (default `300`, but deployment-configurable).
 
+### 3b. `{{custom_data.<path>}}` — substituted at submit
+
+`custom_data` is not only echoed: any `{{custom_data.<path>}}` in your
+instruction text is replaced with the value at that dotted path before the job
+is dispatched.
+
+Where substitution applies:
+
+| Field | Extractor |
+|---|---|
+| a key's `description` (anywhere in `keys`, at any depth) | `kv` |
+| `options.key_notes`, `options.document_class` | `kv` |
+| `options.instructions` | `table` |
+
+Where it deliberately does **not**: key **names**, and
+`options.json_structure`. Both define the shape of your result, so a
+placeholder there would let `custom_data` rename your own output fields — and
+a typo in one would silently reshape the response instead of failing.
+
+```json
+{"name": "kv",
+ "keys": {"total": {"description": "the {{custom_data.doc_kind}} total"}},
+ "options": {"key_notes": "issued by {{custom_data.vendor.name}}"}}
+```
+
+with `custom_data` `{"doc_kind": "invoice", "vendor": {"name": "Acme"}}` runs
+as `"the invoice total"` and `"issued by Acme"`.
+
+**A path you did not send is a 400 at submit**, naming the placeholder — not a
+mid-run failure on a job you have already paid for. Both halves are in the one
+request, so this is knowable before anything is staged. Values are stringified
+for prompt text: `null` becomes an empty string rather than the word "None",
+and booleans keep the lowercase JSON spelling you sent.
+
+The dialect is identical to `{{custom_data.*}}` in workflows, deliberately —
+one placeholder syntax across the platform.
+
 ### Response
 
 `202` (async, the default):
@@ -397,13 +439,13 @@ Not exposed (D6): model choice, challenger model, `parallel_pages`, thinking bud
 {
   "job_id": "5b6e9b0a-...",
   "status": "dispatched",
-  "status_url": "/api/v1/agent-kv/5b6e9b0a-...",
+  "status_url": "/api/v1/agentic-extract/5b6e9b0a-...",
   "created_at": "2026-08-28T10:15:00.123456+00:00"
 }
 ```
 
 `200` (when `timeout` was set and the job finished before the deadline): the full
-[result payload](#5-result--get-agent-kvjob_idresult), same shape as the result
+[result payload](#5-result--get-apiv1agentic-extractjob_idresult), same shape as the result
 endpoint.
 
 `501`: [engine unavailable](#10-when-the-engine-is-unavailable-501-behavior).
@@ -421,7 +463,7 @@ deployment returns `501` before ever reaching it.
 ### Example — `table` (agentic table extraction)
 
 ```bash
-curl -X POST https://api.unstract.example/api/v1/agent-kv/ \
+curl -X POST https://api.unstract.example/api/v1/agentic-extract/ \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345" \
   -F "file=@invoice.pdf" \
   -F 'extractors=[{
@@ -454,7 +496,7 @@ the `kv` extractor was env-configured on the operator side, which was true
 before the adapter migration and is not now.
 
 ```bash
-curl -X POST https://api.unstract.example/api/v1/agent-kv/ \
+curl -X POST https://api.unstract.example/api/v1/agentic-extract/ \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345" \
   -F "file=@invoice.pdf" \
   -F 'extractors=[{
@@ -486,7 +528,7 @@ To run the same document through the other engine, change `name` to `table` and
 replace `keys` with `{"target_table": "<name>"}`. Everything else — the file
 part, `adapters`, `page_start`/`page_end`, `webhook_url` — is unchanged.
 
-## 4. Status — `GET /api/v1/agent-kv/{job_id}`
+## 4. Status — `GET /api/v1/agentic-extract/{job_id}`
 
 Verbose, agent-centric, stage-level (`backend/agent_kv/execution_views.py::_status_document`).
 **Stage names are per-extractor.** They are wire format, and `qa`/`challenge`/`codegen`
@@ -545,6 +587,12 @@ job predating the field. (It was also `{}` for `kv` while that extractor
 was env-credentialed; it no longer is -- all three roles are required for both
 extractors, so a new job of either kind always carries them.)
 
+`custom_data` is echoed on every status and every terminal result for a job
+that sent it, and **omitted entirely for one that did not** — so a caller who
+does not use the field sees exactly the document they saw before it existed.
+It lives on the job row rather than in the stored result blob, so it survives a
+`DELETE` or a TTL purge.
+
 `status` is lowercased (`pending`, `dispatched`, `running`, `completed`, `failed`,
 `cancelled`); `error` is included (only) when `status == "failed"`. `adapters`,
 `pages_total` and `completed_at` are always present (as `null`/`{}` until known) — an addition beyond the
@@ -552,11 +600,11 @@ spec's illustrative example, not a drift, since spec §7.2 was explicitly a part
 sample ("Verbose, agent-centric, stage-level").
 
 ```bash
-curl https://api.unstract.example/api/v1/agent-kv/5b6e9b0a-... \
+curl https://api.unstract.example/api/v1/agentic-extract/5b6e9b0a-... \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345"
 ```
 
-## 5. Result — `GET /api/v1/agent-kv/{job_id}/result`
+## 5. Result — `GET /api/v1/agentic-extract/{job_id}/result`
 
 Re-readable until `expires_at` (D11), plus explicit `DELETE`.
 
@@ -566,7 +614,7 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
   `DELETE`/TTL cleanup**: `404`. The purge case is keyed off the job's
   `files_purged` marker, not off a blank ref — `DELETE` deliberately keeps a ref
   whose object delete failed so TTL cleanup can retry it, so a surviving ref is
-  not evidence that the data is still yours to read ([§7](#7-delete--delete-agent-kvjob_id)).
+  not evidence that the data is still yours to read ([§7](#7-delete--delete-apiv1agentic-extractjob_id)).
 - **`COMPLETED`**: `200` with the engine's full result object, unchanged (record,
   normalized_record, per-field audit trail, `qa_passed`, `challenge_passed`,
   `consistency_violations`, `cost_summary`, `timing`, plus the advisory markers that
@@ -603,7 +651,7 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
   One residual, recorded in `_fail`: if a cancel wins the terminal guard
   against a salvaging failure, the extraction is discarded, because `_salvage`
   stays success-only and will not graft a partial record onto a cancelled row
-  through the attach path ([§6](#6-cancel--post-agent-kvjob_idcancel) records
+  through the attach path ([§6](#6-cancel--post-apiv1agentic-extractjob_idcancel) records
   why that path is not widened lightly).
 - **`CANCELLED`**: `200` with `{"success": false, "status": "cancelled"}` — unless
   the cancel lost a race to an extraction that had already finished, in which case
@@ -612,7 +660,7 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
   because the cancel *was* honoured; `success` is `true` because there is a real
   result and it was already billed. Branch on `success` for "is there data",
   on `status` for "was this cancelled" — see
-  [§6](#6-cancel--post-agent-kvjob_idcancel).
+  [§6](#6-cancel--post-apiv1agentic-extractjob_idcancel).
 
 **Calculation result shape** (when `calculations` is supplied and
 `AGENT_KV_CALCULATIONS_ENABLED=true`): a `COMPLETED` result adds these fields to the
@@ -735,7 +783,7 @@ record on a failed job.
 an engine result). Document the code: no `timing` on failure/cancellation bodies.
 
 ```bash
-curl https://api.unstract.example/api/v1/agent-kv/5b6e9b0a-.../result \
+curl https://api.unstract.example/api/v1/agentic-extract/5b6e9b0a-.../result \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345"
 ```
 
@@ -785,6 +833,92 @@ the job; each extractor keeps its own `success` inside its own block.
 multi-extractor job can be attributed. With one extractor they are the same numbers.
 Note the **failed** and **cancelled** payloads above are NOT extractor-keyed: a
 failure belongs to the job, not to one extractor.
+
+### 5a. Highlight and confidence data
+
+Present only when you asked for it. With `enable_highlight` off, every shape
+below is **absent** — not empty, not null — so a client written before these
+options existed reads an unchanged result.
+
+**Neither option costs an OCR call or an LLM call, on either extractor.** On
+the PDF and image path both engines already request LLMWhisperer's line
+metadata — `kv` needs the line numbers for grounding, and the table engine's
+OCR call passes the flag with no reference to your option — so the fetch is
+metered either way and these options only stop that data being discarded. The
+table engine *does* have an LLM-based row-to-line validator, but it runs only
+on the Prompt Studio path, which constructs it; this API never does.
+
+Spreadsheets return nothing for either option, and still cost nothing. The
+table engine requests no highlights at all on its workbook path; `kv` shares
+one OCR call across both paths, so it requests the line metadata on every
+workbook job exactly as it already did and discards it — the data is fetched
+and metered either way, so neither option changes what a workbook is billed.
+
+#### `kv` — per key
+
+Each `keys[]` entry of `kind: "scalar"` — which includes the cells inside an
+array entry's `rows` — gains up to four fields:
+
+```json
+{
+  "key_path": "invoice_total",
+  "value": "1,240.00",
+  "found": true,
+  "line_start": 12,
+  "line_end": 12,
+  "source_page": 1,
+  "highlight": [[0, 38, 12, 792, {"offset": 0, "width": 612, "page_width": 612}]],
+  "confidence": 0.93,
+  "confidence_lines": 1,
+  "word_confidence": [{"text": "1,240.00", "confidence": 0.74}]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `highlight` | One entry per line the value spans, each `[page, y, height, 792, {offset, width, page_width}]`. Page is **0-indexed**. Coordinates are scaled into a 792x612 box: a viewer places the overlay with `top = (y - height) / 792 * 100`. This is the same convention the Prompt Studio document viewer and the `table` extractor use. |
+| `confidence` | Mean OCR line confidence across the value's lines, rounded to 4 places. Lines the OCR reported no confidence for are excluded from the mean rather than counted as zero. **Read it with `confidence_lines`, not alone.** The scale is whatever your OCR reports and is not normalised — do not assume 0–1 without checking your adapter. |
+| `confidence_lines` | How many lines of `line_start`..`line_end` actually carried a confidence and so contributed to `confidence`. Present whenever `confidence` is. It is the denominator that makes `confidence` safe to read: because unmeasured lines are excluded rather than averaged in as zero, a value spanning twenty lines of which one scored 0.99 reports `confidence: 0.99` with `confidence_lines: 1`. A caller gating auto-acceptance on `confidence >= 0.95` without this will accept values that were barely measured. |
+| `word_confidence` | Only with `enable_word_confidence`. The OCR's per-word entries for those lines, as reported — not averaged, since `confidence` is already the single number. |
+
+Each is omitted individually. A key that was not found has no line citation, so
+it gets none of them; a found key always gets `line_start`/`line_end` as before.
+
+**Spreadsheet inputs get none of the four.** The engine retains no OCR
+metadata for a workbook, so `highlight`, `confidence`, `confidence_lines` and
+`word_confidence` are all absent. The reason is the page index: a retained
+entry's page is the OCR's own, while the "pages" the engine reports for a
+workbook are fixed line-count chunks it invented by splitting the text — so a
+coordinate would name a page you never see. `line_start`, `line_end` and
+`source_page` are unaffected, so a spreadsheet value still tells you where it
+was read from.
+
+#### `table` — one structure for the table
+
+`output.highlight_data` mirrors the structure of `output.tables`, so a client
+can walk both in step: a list with one element per row, each a dict of the same
+column keys, whose leaf value is the coordinate list described above (the rows
+of a span share one coordinate list). A row the engine could not place is
+`null`.
+
+```json
+{
+  "tables": [{"Name": "Acme Corp", "Rent": "1000"}],
+  "highlight_data": [
+    {
+      "Name": [[0, 38, 12, 792, {"offset": 0, "width": 612, "page_width": 612}]],
+      "Rent": [[0, 38, 12, 792, {"offset": 0, "width": 612, "page_width": 612}]]
+    }
+  ]
+}
+```
+
+With `enable_header_mapping` on, `output.tables` is `{"header_mapping": …,
+"rows": [...]}`; `highlight_data` still mirrors the **rows**, so index it
+against `tables.rows`.
+
+The whole key is absent when the engine built nothing — an empty table, or
+no usable line metadata — rather than present and empty.
 
 ### `qa_passed` / `challenge_passed`, and the advisory markers that qualify them
 
@@ -961,7 +1095,7 @@ from `timing`, which is an internal structure rather than a contract. There is *
 > two settings of one option: a client that sets the flag must read `tables.rows`
 > instead of iterating `tables`.
 
-## 6. Cancel — `POST /api/v1/agent-kv/{job_id}/cancel`
+## 6. Cancel — `POST /api/v1/agentic-extract/{job_id}/cancel`
 
 Defined precisely per spec §7.4: no task-revocation machinery exists anywhere in the
 platform, so cancel flips the job row to `CANCELLED` via the same guarded
@@ -997,7 +1131,7 @@ Either way `GET result` reported `{"success": false, "status": "cancelled"}` and
 the customer had paid for an answer that no longer existed. Both paths now
 attach it to the cancelled row instead
 (`FinalizeView._salvage` / `AgentKVJob.attach_result_to_cancelled`) and it is
-served as described in [§5](#5-result--get-agent-kvjob_idresult).
+served as described in [§5](#5-result--get-apiv1agentic-extractjob_idresult).
 
 A success callback for an already-terminal job is therefore the one case where
 finalize writes a result for a row it read as terminal. It is `CANCELLED`-only,
@@ -1038,7 +1172,7 @@ so a **follow-up notification** carrying `result_available: true` is delivered
 when this happens — see [§8](#8-webhook-delivery).
 
 > **This was reverted three times before it shipped, and the reason is worth
-> knowing before you touch it.** `DELETE /api/v1/agent-kv/{job_id}` guarantees that a
+> knowing before you touch it.** `DELETE /api/v1/agentic-extract/{job_id}` guarantees that a
 > purged job cannot be resurrected, and it used to guarantee that *by relying on*
 > the late finalize deleting its own orphaned write. Keeping the result removes
 > exactly that cleanup, and every attempt to rebuild the guarantee from the job's
@@ -1077,11 +1211,11 @@ when this happens — see [§8](#8-webhook-delivery).
   assertion and had never been run.*
 
 ```bash
-curl -X POST https://api.unstract.example/api/v1/agent-kv/5b6e9b0a-.../cancel \
+curl -X POST https://api.unstract.example/api/v1/agentic-extract/5b6e9b0a-.../cancel \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345"
 ```
 
-## 7. Delete — `DELETE /api/v1/agent-kv/{job_id}`
+## 7. Delete — `DELETE /api/v1/agentic-extract/{job_id}`
 
 Deletes the result and any residual staged input immediately, blanks the refs whose
 objects are confirmed gone, and marks the job `files_purged` (`204`, no body). The job
@@ -1100,7 +1234,7 @@ A few details that matter if you are changing this endpoint:
   can equally mean "nothing was ever staged", and a *non*-blank ref can mean
   "purged, but the object delete failed and the ref is kept so TTL cleanup can
   retry" (`storage.delete_job_files`). Nothing downstream may infer purge state
-  from the ref columns — see the note in [§6](#6-cancel--post-agent-kvjob_idcancel).
+  from the ref columns — see the note in [§6](#6-cancel--post-apiv1agentic-extractjob_idcancel).
 - **A ref whose object delete failed is kept**, deliberately, as that retry handle.
   The response is still `204`: the job is terminal, the intent is recorded, and a
   `5xx` here would only invite a retry of a `DELETE` that already did everything it
@@ -1111,7 +1245,7 @@ A few details that matter if you are changing this endpoint:
   along with everything else, and one attempted afterwards is refused outright.
 
 ```bash
-curl -X DELETE https://api.unstract.example/api/v1/agent-kv/5b6e9b0a-... \
+curl -X DELETE https://api.unstract.example/api/v1/agentic-extract/5b6e9b0a-... \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345"
 ```
 
@@ -1151,7 +1285,7 @@ the permanently-undeliverable case belong to the `ide_callback` worker.
 
 It is sent when a cancel that had already been notified turns out to have lost the
 race to a finished extraction, so the result was kept and is now readable
-([§6](#6-cancel--post-agent-kvjob_idcancel)). Without it a webhook-driven caller —
+([§6](#6-cancel--post-apiv1agentic-extractjob_idcancel)). Without it a webhook-driven caller —
 who has no reason to poll a job they were told was cancelled — would never learn the
 answer arrived. `result_available` is the only thing distinguishing it from the
 cancellation POST they already have; a bare duplicate would carry no information at
@@ -1243,9 +1377,9 @@ production.
   against an already-`CANCELLED` job does not trigger it either: it never wins the
   terminal guard, and `_drop_staged_input` stays gated on a won guard, so even the
   success callback that *does* store a result there
-  ([§6](#6-cancel--post-agent-kvjob_idcancel)) leaves the input alone. A cancelled
+  ([§6](#6-cancel--post-apiv1agentic-extractjob_idcancel)) leaves the input alone. A cancelled
   job's staged input is therefore cleaned up the ordinary way: by the TTL sweep once
-  `expires_at` passes, or by an explicit `DELETE /api/v1/agent-kv/{job_id}`.
+  `expires_at` passes, or by an explicit `DELETE /api/v1/agentic-extract/{job_id}`.
 - **Result retention**: `AGENT_KV_RESULT_TTL_DAYS` (default **7** days, D10's
   engineering default) — results are re-readable until then, then swept by the
   internal `ttl-cleanup` endpoint ([§6](#11-deploy-checklist)), which blanks
@@ -1254,7 +1388,7 @@ production.
   never deleted (audit trail persists past TTL, only the object-store payloads are
   dropped).
 - **TTL cleanup marks every row it processes `files_purged`**, on the same terms as
-  `DELETE` ([§7](#7-delete--delete-agent-kvjob_id)): before the deletes are
+  `DELETE` ([§7](#7-delete--delete-apiv1agentic-extractjob_id)): before the deletes are
   attempted, and whether or not they succeed. The sweep *is* a purge, so it owes
   that marker — and without it, a result attached to a cancelled row by a late
   finalize could land after the sweep had read the row and before it blanked the
@@ -1290,7 +1424,7 @@ if not get_plugin("agent_kv"):
 `get_plugin(...)` (`backend/plugins/__init__.py`) returns an empty dict — falsy — when
 no `plugins/agent_kv/` package is installed, which is the OSS-only case by design (the
 plugin is a cloud deliverable, spec §5.1/§11: "OSS scaffold merges dark"). Every
-`POST /api/v1/agent-kv/` on an OSS-only deployment therefore returns:
+`POST /api/v1/agentic-extract/` on an OSS-only deployment therefore returns:
 
 ```json
 {"detail": "agent-kv engine not available on this deployment"}
@@ -1326,7 +1460,7 @@ On `noop: true`, the executor **must**:
    *A `noop` on a LATER stage report is a different situation and the executor should
    not conflate them.* By the final report the work is done and paid for, and a
    success body carrying the full output is then stored on the cancelled job rather
-   than discarded ([§6](#6-cancel--post-agent-kvjob_idcancel)). So "report whatever
+   than discarded ([§6](#6-cancel--post-apiv1agentic-extractjob_idcancel)). So "report whatever
    you have" is right at both ends of the run, but for different reasons: at pickup
    because nothing can be lost, and at the end because something can.
 
@@ -1775,6 +1909,78 @@ beyond `docker compose up`:
     `runtimeClass: gvisor` sandbox, together with a distinct UID per child, which is
     what would actually close the two residuals above.
 
+12. **The public path moved — and an existing `.env` keeps the old one.
+    APPLICABLE FROM THIS RELEASE.** `AGENT_KV_PATH_PREFIX` now defaults to
+    `api/v1/agentic-extract`, so every endpoint moves from
+    `/api/v1/agent-kv/...` to `/api/v1/agentic-extract/...` — submit, status,
+    result, cancel and delete alike. It was `api/v1/agent-kv` in every release
+    before the one carrying this change. There is **no alias**: the old path
+    stops being served, and every caller has to change its URL.
+
+    > **Deploy order:** nothing. The new prefix is still under `api/v1`, so the
+    > LB/ingress rule every deployment already has routes it, and the chart
+    > deliberately leaves `AGENT_KV_PATH_PREFIX` unset so it takes this default
+    > (`charts/unstract-platform/unittests/agent_kv_ingress_test.yaml`, `AKV-I5`).
+    > No ingress entry to add, no restart ordering.
+
+    **What a caller left on the old path sees, and why it misleads.** Not a 404.
+    `/api/v1/agent-kv/...` is still routed to Django, but the old prefix is no
+    longer in `WHITELISTED_PATHS`, so `CustomAuthMiddleware` runs before URL
+    resolution, takes its `Authorization: Bearer` branch, and tries the
+    `AgentKVKey` as a *Platform* API key. The caller gets
+    **`401 {"message": "Invalid or inactive API key"}`** — their credential
+    blamed for a stale URL. On this side it logs
+    `Platform key rejected (unknown or inactive key) … path /api/v1/agent-kv/…`,
+    which is the line reserved for credential traversal. **If you see that 401
+    or that log line after this release, grep the path before touching any
+    key.** It is also how you count who was still on the old URL.
+
+    **Who has to do something, and who does not.** The question is whether the
+    deployment carries the Agent-KV capability marker
+    (`backend/plugins/agent_kv/__init__.py`, item 1 above), because without it
+    every submit 501s whichever prefix is configured:
+
+    | Deployment | Action |
+    |---|---|
+    | **OSS-only compose** (`./run-platform.sh`, no marker) | None. It 501s on either prefix. |
+    | **Compose carrying the marker** — `copy_cloud_deps.py` copies it into an OSS checkout, and item 1 presents installing it as a supported step | **Set `AGENT_KV_PATH_PREFIX=api/v1/agentic-extract` in `backend/.env`.** See below. |
+    | **Cloud and enterprise on-prem** (Helm) | None, unless a values copy pins the key. The chart leaves it unset, so an untouched copy takes the new default. |
+
+    **Why the marker-bearing compose case needs a manual edit.**
+    `backend/sample.env` ships this key as an active assignment, so a
+    deployment set up the documented way has a value in `backend/.env` — and
+    `./run-platform.sh --update` (and `--only-env`) **preserves it**:
+    `docker/scripts/merge_env.py` keeps the existing value for any key outside
+    `PREFERRED_BASE_ENV_KEYS`, and re-appends it under `# Additional envs` even
+    if the sample drops the line. So the upgrade leaves that deployment serving
+    `/api/v1/agent-kv/` while these docs show the new path. Edit
+    **`backend/.env`** — not `docker/.env`, which no service reads.
+
+    **Rollback is config-only, and symmetric.** Set
+    `AGENT_KV_PATH_PREFIX=api/v1/agent-kv` and restart the backend: the mount,
+    the auth whitelist and the `status_url` in every submit response all derive
+    from this one setting, so they move together. No code deploy, no migration.
+    What it is not is free — every caller who already moved to the new path
+    then gets the identical `401 Invalid or inactive API key`, in the other
+    direction, until they move back.
+
+    > **On the release note.** There IS one:
+    > `docker/scripts/release-notes/release_notes.json`, keyed `v0.205.0`, which
+    > `./run-platform.sh --update` prints. That channel matters here because its
+    > audience is not only OSS-only stacks — a checkout with
+    > `copy_cloud_deps.py` applied carries the capability marker, so it both
+    > reads that file and serves this API.
+    >
+    > The key is the next **community** release (`vX.Y.Z` — a different series
+    > from the enterprise `ee-v*` line), computed from *Create Release*'s own
+    > `auto` rule rather than guessed. Its ACTION is "delete the
+    > `AGENT_KV_PATH_PREFIX` line", which is correct whether or not the reader's
+    > build has the rename yet, and it carries a no-auth `curl` that tells them
+    > which prefix their build actually serves. **Whoever cuts the release should
+    > confirm the rename is in `v0.205.0`** and move the key if it landed later;
+    > `docker/scripts/release-notes/README.md` explains why a mis-keyed note
+    > fails asymmetrically.
+
 ## 12. Environment reference
 
 All `AGENT_KV_*` settings (`backend/backend/settings/base.py`), each `os.environ.get`
@@ -1782,11 +1988,13 @@ with the default shown:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AGENT_KV_PATH_PREFIX` | `api/v1/agent-kv` | Top-level public URL prefix (whitelisted past tenant middleware). |
+| `AGENT_KV_PATH_PREFIX` | `api/v1/agentic-extract` | Public URL prefix, under the platform API prefix (whitelisted past tenant middleware). Pinned in an existing `.env`, it wins over this default — see §11. |
 | `AGENT_KV_MAX_FILE_SIZE_MB` | `50` | Submit-time file size cap. |
 | `AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS` | `3600` | How long after CANCELLATION a cancelled job's executor is presumed dead, so the sweep's phase 3 may release the concurrency slot it still holds. Must stay **below** `rate_limiter.SLOT_TTL_SECONDS` (6 h) or the window is empty and the phase silently releases nothing. |
 | `AGENT_KV_MAX_PAGES` | `100` | Pre-OCR cap on the pages of the DOCUMENT for PDFs — checked against `pages_total`, **not** against the `page_start`/`page_end` range (§6.1), because the whole file is OCR'd and billed whatever the range. The cloud worker refuses on the same quantity. Excel has no pre-OCR page concept, so it takes the engine's post-OCR virtual-page cap instead; images are not accepted. |
 | `AGENT_KV_MAX_CALCULATIONS_BYTES` | `20000` | Byte cap on the optional `calculations` field. |
+| `AGENT_KV_MAX_CUSTOM_DATA_BYTES` | `20000` | Byte cap on the submit `custom_data` object. It is stored on the job row, echoed in every status and result response for a job that sent it, and substituted into billed prompt text, so it is capped for three separate reasons. The cap is re-checked on the RESOLVED text, because substitution can expand a within-cap template by the whole allowance per placeholder. |
+| `AGENT_KV_HIGHLIGHT_ENABLED` | `false` | Gates `enable_highlight` on both extractors and `enable_word_confidence` on `kv`, which is the only extractor that accepts it (`table` refuses the field outright — see §3); a submit asking for a gated option while off is a 400. Off ships the previous behaviour exactly: no highlight block in the result. Neither extractor pays an OCR or LLM call for these options in either state — both already request the OCR line metadata — so the gate exists to hold the result shape stable, not to hold spend down. |
 | `AGENT_KV_MAX_SCHEMA_BYTES` | `262144` | Byte cap on the raw `keys` JSON document (256 KiB). |
 | `AGENT_KV_RESULT_TTL_DAYS` | `7` | Result retention window (and a cancelled job's input, which rides the same TTL — a completed/failed job's input is deleted immediately at finalize instead), stamped at submit time (see [§6](#9-retention-and-ttl)). |
 | `AGENT_KV_MAX_TIMEOUT_SECONDS` | `300` | Upper bound on the submit `timeout` (synchronous-wait) field. |

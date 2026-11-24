@@ -432,4 +432,38 @@ describe("menu triggers", () => {
       screen.getByRole("button", { name: "More" }).getAttribute("type"),
     ).toBe("button");
   });
+
+  it("does not open the menu from a loading trigger", async () => {
+    const user = userEvent.setup();
+    render(
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <MenuButton loading>Export</MenuButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem>CSV</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    );
+    const trigger = screen.getByRole("button", { name: "Export" });
+    await user.click(trigger);
+    expect(trigger).toHaveFocus();
+    await user.keyboard("{Enter}");
+    await user.keyboard(" ");
+    await user.keyboard("{ArrowDown}");
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
 });
+
+// Type-level guard, never rendered: the kebab keeps its required name.
+export function _menuIconButtonNeedsAName() {
+  return (
+    <>
+      <MenuIconButton aria-label="x" />
+      <MenuIconButton aria-labelledby="x" />
+      {/* @ts-expect-error an icon button needs aria-label or aria-labelledby */}
+      <MenuIconButton />
+    </>
+  );
+}
