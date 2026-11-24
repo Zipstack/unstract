@@ -408,6 +408,10 @@ AGENT_KV_MAX_CUSTOM_DATA_BYTES = int(
 AGENT_KV_HIGHLIGHT_ENABLED = (
     os.environ.get("AGENT_KV_HIGHLIGHT_ENABLED", "false").lower() == "true"
 )
+# Gates `hitl_queue_name`. Off refuses the field at submit rather than
+# accepting it and dropping the push, which is the failure mode `custom_data`
+# itself shipped with.
+AGENT_KV_HITL_ENABLED = os.environ.get("AGENT_KV_HITL_ENABLED", "false").lower() == "true"
 AGENT_KV_STRUCTURED_OUTPUT_ENABLED = (
     os.environ.get("AGENT_KV_STRUCTURED_OUTPUT_ENABLED", "false").lower() == "true"
 )

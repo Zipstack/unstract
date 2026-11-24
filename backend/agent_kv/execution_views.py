@@ -103,6 +103,15 @@ def _status_document(job) -> dict:
     # feature sees the document they saw before it existed.
     if job.custom_data:
         doc["custom_data"] = job.custom_data
+
+    # Only when a queue was named: its absence is the honest statement that
+    # this job has nothing to do with review.
+    if job.hitl_queue_name:
+        doc["hitl_queue_name"] = job.hitl_queue_name
+    # Only once a push has actually landed: it is the `{class}` the
+    # approved-results endpoint needs, and before that there is nothing to read.
+    if job.hitl_queue_class:
+        doc["hitl_queue_class"] = job.hitl_queue_class
     if job.status == JobStatus.FAILED:
         doc["error"] = job.error
     return doc
@@ -613,6 +622,7 @@ class SubmitView(APIView):
             pages_total=serializer.pages_total,
             tags=v["tags"],
             custom_data=v["custom_data"],
+            hitl_queue_name=v.get("hitl_queue_name", ""),
             webhook_url=v["webhook_url"],
             expires_at=timezone.now() + timedelta(days=settings.AGENT_KV_RESULT_TTL_DAYS),
         )
