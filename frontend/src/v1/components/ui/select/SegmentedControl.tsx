@@ -32,14 +32,18 @@ export type SegmentedControlProps = Readonly<{
   className?: string;
 }>;
 
-// The invalid outline sits outside the track, so the pills do not move.
-// `outline-1` sets the style too (Tailwind 4), so no bare `outline`, which
-// tailwind-merge would drop as a conflict.
+// The track's edge is a 1px transparent border inside a 1px padding (2px in
+// all, as before, so the pills do not move), which forced-colors mode (no
+// backgrounds) paints; invalid colours it destructive. Not an outline: Radix's
+// roving-focus root sets an inline `outline: none`, which beats any class.
 const GROUP_CLASS =
-  "ui:inline-flex ui:h-8 ui:items-center ui:rounded-md ui:bg-muted ui:p-0.5 ui:data-invalid:outline-1 ui:data-invalid:outline-destructive";
+  "ui:inline-flex ui:h-8 ui:items-center ui:rounded-md ui:border ui:border-transparent ui:bg-muted ui:p-px ui:data-invalid:border-destructive";
 
+// The selected pill's background and shadow vanish in forced-colors mode, so
+// it also takes a transparent 1px border, which that mode paints; the border
+// replaces 1px of padding on each side (border-box), so nothing moves.
 const ITEM_CLASS =
-  "ui:inline-flex ui:h-7 ui:cursor-pointer ui:items-center ui:justify-center ui:gap-1.5 ui:rounded-sm ui:border-0 ui:bg-transparent ui:px-3 ui:text-body-small ui:font-medium ui:text-muted-foreground ui:outline-none ui:focus-visible:focus-ring ui:disabled:pointer-events-none ui:disabled:opacity-50 ui:data-[state=on]:bg-background ui:data-[state=on]:text-foreground ui:data-[state=on]:shadow-sm";
+  "ui:inline-flex ui:h-7 ui:cursor-pointer ui:items-center ui:justify-center ui:gap-1.5 ui:rounded-sm ui:border-0 ui:bg-transparent ui:px-3 ui:data-[state=on]:border ui:data-[state=on]:border-transparent ui:data-[state=on]:px-2.75 ui:text-body-small ui:font-medium ui:text-muted-foreground ui:outline-none ui:focus-visible:focus-ring ui:disabled:pointer-events-none ui:disabled:opacity-50 ui:data-[state=on]:bg-background ui:data-[state=on]:text-foreground ui:data-[state=on]:shadow-sm";
 
 /**
  * Exactly one of 2 to 5 options, always selected, on Radix ToggleGroup

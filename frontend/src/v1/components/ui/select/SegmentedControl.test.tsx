@@ -177,8 +177,9 @@ it("marks the group invalid with aria-invalid and data-invalid", () => {
   rerender(<SegmentedControl options={VIEWS} aria-label="View" invalid />);
   expect(group.getAttribute("aria-invalid")).toBe("true");
   expect(group.getAttribute("data-invalid")).toBe("");
+  // The track's 1px border (transparent, for forced colors) turns destructive.
   expect(group.className).toContain(
-    "ui:data-invalid:outline-1 ui:data-invalid:outline-destructive",
+    "ui:border ui:border-transparent ui:bg-muted ui:p-px ui:data-invalid:border-destructive",
   );
   rerender(
     <SegmentedControl options={VIEWS} aria-label="View" invalid={false} />,

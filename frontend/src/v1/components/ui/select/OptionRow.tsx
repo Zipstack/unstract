@@ -10,9 +10,15 @@ const CheckIcon = ACTION_ICONS.confirm;
  * own element. The row is `ui:h-8`, or `ui:h-12` with a description.
  */
 
-/** The row frame; the active or highlighted row takes the accent. */
+/**
+ * The row frame; the active or highlighted row takes the accent. `shrink-0`
+ * keeps the fixed height in a capped flex column (Radix Select's viewport).
+ * Forced-colors mode drops the accent background, so that row also carries a
+ * transparent 1px outline drawn inside its edge, which the mode paints;
+ * `outline-solid` is needed because `outline-none` clears the style.
+ */
 export const OPTION_ROW_CLASS =
-  "ui:flex ui:w-full ui:cursor-pointer ui:items-center ui:gap-2.5 ui:rounded-md ui:px-2 ui:text-left ui:outline-none ui:select-none ui:data-active:bg-accent ui:data-highlighted:bg-accent";
+  "ui:flex ui:w-full ui:shrink-0 ui:cursor-pointer ui:items-center ui:gap-2.5 ui:rounded-md ui:px-2 ui:text-left ui:outline-none ui:select-none ui:data-active:bg-accent ui:data-active:outline-solid ui:data-active:outline-1 ui:data-active:-outline-offset-1 ui:data-active:outline-transparent ui:data-highlighted:bg-accent ui:data-highlighted:outline-solid ui:data-highlighted:outline-1 ui:data-highlighted:-outline-offset-1 ui:data-highlighted:outline-transparent";
 
 /** The option's label. */
 export const OPTION_LABEL_CLASS =

@@ -155,7 +155,7 @@ export function Select({
                 aria-selected={false}
                 aria-disabled
                 data-slot="option-empty"
-                className="ui:flex ui:h-8 ui:items-center ui:px-2 ui:text-caption ui:text-muted-foreground"
+                className="ui:flex ui:h-8 ui:shrink-0 ui:items-center ui:px-2 ui:text-caption ui:text-muted-foreground"
               >
                 No options
               </div>

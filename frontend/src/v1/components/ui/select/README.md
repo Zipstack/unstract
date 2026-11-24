@@ -60,7 +60,9 @@ import {
   filter instead. Logos go in `leading`:
   `leading: <ProviderLogo provider={adapter.id} name={adapter.name} decorative />`
   from `@v1/components/ui/BrandMark` (decorative, because the label beside it
-  already names it). A row is 32 tall, or 48 with a description.
+  already names it). A row is 32 tall, or 48 with a description, and
+  `shrink-0`: Radix Select's viewport is a flex column capped in height,
+  where a row would otherwise shrink to its text.
 - **One list surface.** Every popover list is `LIST_SURFACE`: the popover
   colour, radius 10 (`rounded-lg`), `shadow-md` (board § 6, "dropdown
   menus"), at least 192 wide and the trigger's width, at most 320 tall. It is
@@ -87,6 +89,24 @@ import {
   `aria-label`), and the chevron's `aria-controls` points at it. A virtual
   list gives each rendered row `aria-setsize` and `aria-posinset`.
   `MultiSelect`'s listbox is `aria-multiselectable`.
+
+- **Forced colors.** Forced-colors mode (Windows High Contrast) drops
+  backgrounds and shadows, so every state drawn only by a background also
+  carries a transparent outline or border, which that mode paints in the
+  system colour: the active or highlighted option row (a 1px outline inside
+  its edge, `-outline-offset-1`; `outline-solid` because the row's
+  `outline-none` clears the style), the `SegmentedControl` track (a 1px
+  border with `p-px` inside it, the same 2px inset as before; a border
+  because Radix's roving-focus root sets an inline `outline: none`, which
+  also hid the old invalid outline) and its selected segment (a 1px border
+  that replaces 1px of its 12px side padding), and the `Chip` (a 1px
+  outline inside its edge). Under `border-box` sizing (from v0's preflight
+  today) nothing moves in normal mode. Checked in Chromium with
+  `forcedColors: "active"` against the real v0 and v1 stylesheets: every
+  part above is painted, and in normal mode the chips, segments, tracks and
+  option rows measure the same as before. `styles.test.tsx` pins the
+  classes. The focus ring already carries a transparent outline
+  (`focus-ring`); the field frames have real borders.
 
 ### Keyboard
 
@@ -265,7 +285,7 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
 | `value` / `defaultValue` | `string` | the first enabled option | |
 | `onValueChange` | `(value: string) => void` | — | only with a new, non-empty value |
 | `disabled` | `boolean` | `false` | disables every item |
-| `invalid` | `boolean` | `false` | `aria-invalid` and `data-invalid` on the group, drawn as a destructive outline outside the track |
+| `invalid` | `boolean` | `false` | `aria-invalid` and `data-invalid` on the group, drawn as a destructive 1px border on the track's edge |
 | `id`, `aria-describedby` | `string` | — | on the group |
 | `aria-label`, `aria-labelledby` | `string` | — | names the group |
 | `className` | `string` | — | the group |

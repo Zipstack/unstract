@@ -32,8 +32,10 @@ export function Chip({
   return (
     <span
       data-slot="chip"
+      // The transparent outline, inside the edge, is the chip's outline in
+      // forced-colors mode, which drops the muted background.
       className={cn(
-        "ui:inline-flex ui:h-5 ui:max-w-full ui:items-center ui:gap-1 ui:rounded-sm ui:bg-muted ui:pl-1.75 ui:pr-0.5 ui:text-caption ui:font-medium ui:text-muted-foreground",
+        "ui:inline-flex ui:h-5 ui:max-w-full ui:items-center ui:gap-1 ui:rounded-sm ui:bg-muted ui:outline ui:-outline-offset-1 ui:outline-transparent ui:pl-1.75 ui:pr-0.5 ui:text-caption ui:font-medium ui:text-muted-foreground",
         className,
       )}
     >
