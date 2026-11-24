@@ -136,11 +136,7 @@ describe("project settings sections", () => {
     await user.click(
       within(preamble).getByRole("button", { name: "Save changes" }),
     );
-    await waitFor(() =>
-      expect(patches).toEqual([
-        { preamble: "Be brief.", postamble: makeToolSettings().postamble },
-      ]),
-    );
+    await waitFor(() => expect(patches).toEqual([{ preamble: "Be brief." }]));
     expect(await within(preamble).findByText("No changes")).toBeVisible();
     // Other sections never saved.
     expect(within(section("Grammar")).getByText("No changes")).toBeVisible();
@@ -442,4 +438,128 @@ it("stops asking once a dirty section is replaced by the no-permission state", a
     name: "You don't have access to this page",
   });
   await waitFor(async () => expect(await canLeave()).toBe(true));
+});
+
+describe("saving against the cached project", () => {
+  const preambleBox = () =>
+    within(section("Preamble")).getByLabelText("Preamble");
+
+  it("writes the saved project to the cache", async () => {
+    serve();
+    const { user, queryClient } = renderTab();
+    await loaded();
+    await user.clear(preambleBox());
+    await user.type(preambleBox(), "Be brief.");
+    await user.click(
+      within(section("Preamble")).getByRole("button", { name: "Save changes" }),
+    );
+    await waitFor(() =>
+      expect(
+        queryClient.getQueryData<ToolSettings>(
+          promptStudioToolKeys.detail(SETTINGS_TOOL_ID),
+        )?.preamble,
+      ).toBe("Be brief."),
+    );
+  });
+
+  it("shows a change made elsewhere unless the section has unsaved changes", async () => {
+    let tool = makeToolSettings();
+    mockApi(
+      ...settingsHandlers(S).slice(1),
+      http.get(TOOL, () => HttpResponse.json(tool)),
+    );
+    const { user, queryClient } = renderTab();
+    await loaded();
+    const refetch = () =>
+      queryClient.refetchQueries({
+        queryKey: promptStudioToolKeys.detail(SETTINGS_TOOL_ID),
+      });
+    tool = makeToolSettings({ preamble: "Changed elsewhere." });
+    await refetch();
+    await waitFor(() =>
+      expect(preambleBox()).toHaveValue("Changed elsewhere."),
+    );
+
+    await user.type(preambleBox(), " Mine.");
+    tool = makeToolSettings({ preamble: "Changed again." });
+    await refetch();
+    expect(preambleBox()).toHaveValue("Changed elsewhere. Mine.");
+
+    await user.click(
+      within(section("Preamble")).getByRole("button", { name: "Discard" }),
+    );
+    await waitFor(() => expect(preambleBox()).toHaveValue("Changed again."));
+  });
+
+  it("keeps what is typed while a save is in flight", async () => {
+    const tool = makeToolSettings();
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mockApi(
+      ...settingsHandlers(S, { tool }),
+      http.patch(TOOL, async ({ request }) => {
+        const patch = (await request.json()) as Partial<ToolSettings>;
+        await held;
+        return HttpResponse.json({ ...tool, ...patch });
+      }),
+    );
+    const { user } = renderTab();
+    await loaded();
+    await user.clear(preambleBox());
+    await user.type(preambleBox(), "Be brief.");
+    await user.click(
+      within(section("Preamble")).getByRole("button", { name: "Save changes" }),
+    );
+    await user.type(preambleBox(), " Really.");
+    expect(preambleBox()).toHaveValue("Be brief. Really.");
+    release();
+    await within(section("Preamble")).findByText("1 unsaved change");
+    expect(preambleBox()).toHaveValue("Be brief. Really.");
+  });
+
+  it("keeps a save when an older read of the project lands after it", async () => {
+    const tool = makeToolSettings();
+    let release: () => void = () => undefined;
+    let hold = false;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mockApi(
+      ...settingsHandlers(S).slice(1),
+      http.get(TOOL, async () => {
+        if (hold) {
+          await held;
+        }
+        return HttpResponse.json(tool);
+      }),
+      http.patch(TOOL, async ({ request }) =>
+        HttpResponse.json({
+          ...tool,
+          ...((await request.json()) as Partial<ToolSettings>),
+        }),
+      ),
+    );
+    const { user, queryClient } = renderTab();
+    await loaded();
+    hold = true;
+    void queryClient.refetchQueries({
+      queryKey: promptStudioToolKeys.detail(SETTINGS_TOOL_ID),
+    });
+    await user.clear(preambleBox());
+    await user.type(preambleBox(), "Be brief.");
+    await user.click(
+      within(section("Preamble")).getByRole("button", { name: "Save changes" }),
+    );
+    await within(section("Preamble")).findByText("No changes");
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(preambleBox()).toHaveValue("Be brief.");
+    expect(
+      queryClient.getQueryData<ToolSettings>(
+        promptStudioToolKeys.detail(SETTINGS_TOOL_ID),
+      )?.preamble,
+    ).toBe("Be brief.");
+  });
 });
