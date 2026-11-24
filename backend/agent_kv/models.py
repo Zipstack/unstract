@@ -186,6 +186,18 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
     files_purged = models.BooleanField(default=False)
     tags = models.JSONField(default=list, blank=True)
     custom_data = models.JSONField(null=True, blank=True)
+    # The review queue the caller named at submit, empty when they named none.
+    #
+    # Stored rather than derived because it is part of the request and the
+    # push happens later, at terminalize -- and because it is what a caller
+    # needs back in order to call the approved-results endpoint, which is
+    # keyed on the queue name rather than on this job's id.
+    hitl_queue_name = models.CharField(max_length=50, blank=True, default="")
+    # The queue `class` the review app assigned this job's push, recorded
+    # because it is the `{class}` segment of the approved-results endpoint and
+    # the caller cannot derive it. Written only when a push succeeded, so an
+    # empty value means "nothing to read back", not "unknown".
+    hitl_queue_class = models.CharField(max_length=64, blank=True, default="")
     webhook_url = models.URLField(max_length=1024, blank=True, default="")
 
     class Meta:

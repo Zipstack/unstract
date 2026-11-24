@@ -161,10 +161,19 @@ def result_payload(job) -> dict:
     highlight fields follow one layer down.
 
     It survives a purge, because it lives on the job row rather than in the
+
+    `hitl_queue_name` appears only when a queue was named, and
+    `hitl_queue_class` only once a push has landed -- together they are the two
+    coordinates the approved-results endpoint takes. Both live on the job row,
+    so both survive the same purge.
     stored blob `files_purged` destroys -- which is what keeps a purged job's
     response self-describing.
     """
     payload = _terminal_payload(job)
     if job.custom_data:
         payload["custom_data"] = job.custom_data
+    if job.hitl_queue_name:
+        payload["hitl_queue_name"] = job.hitl_queue_name
+    if job.hitl_queue_class:
+        payload["hitl_queue_class"] = job.hitl_queue_class
     return payload

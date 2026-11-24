@@ -228,6 +228,7 @@ The request is **extractor-scoped**: a per-extractor schema and its knobs live i
 | `timeout` | no | Omitted or `0` = pure async (immediate 202). `1–300`: the view polls the job row up to the deadline and returns the result inline if the job completes, else 202 with the job id. |
 | `tags` | no | Echoed through. |
 | `custom_data` | no | A JSON **object**, capped at `AGENT_KV_MAX_CUSTOM_DATA_BYTES` (20 KB). Echoed in the status document and in the terminal result (omitted entirely when you sent none), **and** substituted into instruction text as `{{custom_data.<path>}}` — see §3b. Arrays and scalars are a 400: a dotted path has no key to address on them. |
+| `hitl_queue_name` | no | Names a human-review queue; the completed extraction is pushed to it as well as being returned normally. `[A-Za-z0-9_-]`, 1–50 chars. 400 when `AGENT_KV_HITL_ENABLED` is off — refused rather than accepted and dropped. See §3c. |
 | `webhook_url` | no | Terminal-state POST `{job_id, status}` only — no result payload. **https, public host**; anything the delivery guard would refuse is a 400 at submit (§8). |
 
 **Each `extractors` entry:**
@@ -431,6 +432,34 @@ and booleans keep the lowercase JSON spelling you sent.
 The dialect is identical to `{{custom_data.*}}` in workflows, deliberately —
 one placeholder syntax across the platform.
 
+### 3c. `hitl_queue_name` — push the result to a review queue
+
+Name a queue and the completed extraction is pushed to it for a human, **in
+addition to** being returned to you as usual. This mirrors the `hitl_queue_name`
+field on API deployments: same field name, same shape, same behaviour.
+
+What does *not* change: the job still completes normally, `status` still goes
+`completed`, and `GET /{job_id}/result` still serves the extraction
+immediately. Nothing waits for a reviewer — so none of the job's timeouts,
+sweeps or concurrency limits are affected.
+
+How to read the reviewed data back: the existing approved-results endpoint,
+keyed on the queue rather than on this job's id —
+`GET /mr/api/{org}/approved/result/{class}/?hitl_queue_name=<name>`. **Both
+coordinates are echoed to you**: pass the `hitl_queue_class` from your result
+payload as `{class}`, and the `hitl_queue_name` as the query parameter.
+`hitl_queue_class` appears only once the push has landed, which is also exactly
+when there is something to read.
+
+`hitl_queue_class` is an opaque identifier — do not construct, parse or cache it
+across organizations. It is stable for a given organization, so caching it per
+organization is fine.
+
+Two retention clocks apply to the same extraction, and they differ. This API
+purges a result after `AGENT_KV_RESULT_TTL_DAYS` (7 days by default); the review
+copy lives for the HITL rules' *Unfinalized Records Lifetime*, 90 days unless
+the organization has configured otherwise. So `GET /{job_id}/result` can 404
+long before the review expires.
 ### Response
 
 `202` (async, the default):
@@ -592,6 +621,11 @@ that sent it, and **omitted entirely for one that did not** — so a caller who
 does not use the field sees exactly the document they saw before it existed.
 It lives on the job row rather than in the stored result blob, so it survives a
 `DELETE` or a TTL purge.
+
+`hitl_queue_name` appears **only** when a queue was named -- its absence is the
+statement that this job has nothing to do with review, and when present it is
+what the approved-results endpoint is keyed on. It lives on the job row too, so
+it survives the same purge.
 
 `status` is lowercased (`pending`, `dispatched`, `running`, `completed`, `failed`,
 `cancelled`); `error` is included (only) when `status == "failed"`. `adapters`,
@@ -1995,6 +2029,7 @@ with the default shown:
 | `AGENT_KV_MAX_CALCULATIONS_BYTES` | `20000` | Byte cap on the optional `calculations` field. |
 | `AGENT_KV_MAX_CUSTOM_DATA_BYTES` | `20000` | Byte cap on the submit `custom_data` object. It is stored on the job row, echoed in every status and result response for a job that sent it, and substituted into billed prompt text, so it is capped for three separate reasons. The cap is re-checked on the RESOLVED text, because substitution can expand a within-cap template by the whole allowance per placeholder. |
 | `AGENT_KV_HIGHLIGHT_ENABLED` | `false` | Gates `enable_highlight` on both extractors and `enable_word_confidence` on `kv`, which is the only extractor that accepts it (`table` refuses the field outright — see §3); a submit asking for a gated option while off is a 400. Off ships the previous behaviour exactly: no highlight block in the result. Neither extractor pays an OCR or LLM call for these options in either state — both already request the OCR line metadata — so the gate exists to hold the result shape stable, not to hold spend down. |
+| `AGENT_KV_HITL_ENABLED` | `false` | Gates `hitl_queue_name`. Off refuses the field at submit rather than accepting it and never pushing. |
 | `AGENT_KV_MAX_SCHEMA_BYTES` | `262144` | Byte cap on the raw `keys` JSON document (256 KiB). |
 | `AGENT_KV_RESULT_TTL_DAYS` | `7` | Result retention window (and a cancelled job's input, which rides the same TTL — a completed/failed job's input is deleted immediately at finalize instead), stamped at submit time (see [§6](#9-retention-and-ttl)). |
 | `AGENT_KV_MAX_TIMEOUT_SECONDS` | `300` | Upper bound on the submit `timeout` (synchronous-wait) field. |
