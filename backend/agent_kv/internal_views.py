@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from agent_kv.dispatch import dispatch_terminal_webhook
+from agent_kv.hitl import push_completed_job
 from agent_kv.maintenance import run_sweep, run_ttl_cleanup
 from agent_kv.models import AgentKVJob, JobStatus
 from agent_kv.rate_limiter import AgentKVConcurrencyLimiter
@@ -292,6 +293,16 @@ class FinalizeView(APIView):
         )
         if finalized:
             job.status = JobStatus.COMPLETED
+            # Exactly once, by the request that won the guard: a retried or
+            # duplicate finalize gets `finalized is False` and falls through to
+            # the attach path below, so it cannot enqueue a second review copy.
+            #
+            # After the status is set, so a reviewer never sees a record for a
+            # job the API would still call RUNNING. Never raises -- the
+            # extraction is already stored and billed, and a push failure must
+            # not turn a paid result into a job failure (see `hitl`).
+            if job.hitl_queue_name:
+                push_completed_job(job, body.get("result") or {})
             return True, False
         return False, _attach_or_discard(
             job_id, org_id, result_ref, body.get("usage_summary")
