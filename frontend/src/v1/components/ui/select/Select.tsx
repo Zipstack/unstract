@@ -1,3 +1,4 @@
+import { useFieldControl } from "@v1/components/ui/form";
 import { cn } from "@v1/lib/cn";
 import { ACTION_ICONS } from "@v1/lib/icons";
 import { getPortalContainer } from "@v1/lib/portal";
@@ -54,7 +55,7 @@ export function Select({
   placeholder,
   name,
   required,
-  disabled,
+  disabled: disabledProp,
   invalid,
   id,
   "aria-label": ariaLabel,
@@ -62,6 +63,13 @@ export function Select({
   "aria-describedby": ariaDescribedBy,
   className,
 }: SelectProps): JSX.Element {
+  const control = useFieldControl({
+    id,
+    "aria-describedby": ariaDescribedBy,
+    invalid,
+    disabled: disabledProp,
+  });
+  const { disabled } = control;
   // Radix leaves the trigger blank for a value no item has; "" (Radix's
   // empty value) shows the placeholder instead.
   const known = (candidate: string) =>
@@ -93,12 +101,12 @@ export function Select({
       disabled={disabled}
     >
       <SelectPrimitive.Trigger
-        id={id}
+        id={control.id}
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
-        aria-describedby={ariaDescribedBy}
-        aria-invalid={invalid || undefined}
-        data-invalid={invalid ? "" : undefined}
+        aria-describedby={control["aria-describedby"]}
+        aria-invalid={control["aria-invalid"]}
+        data-invalid={control.invalid ? "" : undefined}
         data-slot="select-trigger"
         className={cn(TRIGGER_FRAME, "ui:cursor-pointer", className)}
       >

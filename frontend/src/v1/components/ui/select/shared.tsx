@@ -1,3 +1,7 @@
+import {
+  type FieldControlState,
+  useFieldControl,
+} from "@v1/components/ui/form";
 import { cn } from "@v1/lib/cn";
 import { ACTION_ICONS } from "@v1/lib/icons";
 import { getPortalContainer } from "@v1/lib/portal";
@@ -42,16 +46,49 @@ export type ListFieldProps = Readonly<{
   className?: string;
 }>;
 
-/** The field props that land on the input (`useFieldControl`'s seam). */
-export function fieldInputProps(field: ListFieldProps) {
-  return {
+/**
+ * The field's id, description and state, from the enclosing `Field` and the
+ * field's own props, which win for state (`useFieldControl`).
+ */
+export function useListFieldControl(field: ListFieldProps): FieldControlState {
+  return useFieldControl({
     id: field.id,
+    "aria-describedby": field["aria-describedby"],
+    invalid: field.invalid,
+    disabled: field.disabled,
+  });
+}
+
+/** The props that land on the input: the resolved id, description and state, and the caller's name. */
+export function fieldInputProps(
+  field: ListFieldProps,
+  control: FieldControlState,
+) {
+  return {
+    id: control.id,
     "aria-label": field["aria-label"],
     "aria-labelledby": field["aria-labelledby"],
-    "aria-describedby": field["aria-describedby"],
-    "aria-invalid": field.invalid || undefined,
-    disabled: field.disabled,
+    "aria-describedby": control["aria-describedby"],
+    "aria-invalid": control["aria-invalid"],
+    disabled: control.disabled,
   } as const;
+}
+
+/**
+ * The listbox's name: the caller's `aria-labelledby`, else its `aria-label`,
+ * else the enclosing Field's label.
+ */
+export function listName(
+  field: ListFieldProps,
+  control: FieldControlState,
+): { "aria-label"?: string; "aria-labelledby"?: string } {
+  if (field["aria-labelledby"]) {
+    return { "aria-labelledby": field["aria-labelledby"] };
+  }
+  if (field["aria-label"]) {
+    return { "aria-label": field["aria-label"] };
+  }
+  return { "aria-labelledby": control.labelId };
 }
 
 /** An icon button inside the frame (clear, chevron). */

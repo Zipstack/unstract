@@ -16,7 +16,9 @@ import {
   fieldInputProps,
   type ListFieldProps,
   ListPopover,
+  listName,
   toggleList,
+  useListFieldControl,
   useLoadedOptions,
 } from "./shared";
 import { TRIGGER_FRAME } from "./trigger";
@@ -50,9 +52,10 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
     defaultValue = NO_VALUES,
     onValueChange,
     selectedOptions,
-    disabled,
     name,
   } = props;
+  const control = useListFieldControl(props);
+  const { disabled } = control;
   const [uncontrolled, setUncontrolled] = useState(defaultValue);
   const raw = valueProp ?? uncontrolled;
   const value = useMemo(() => [...new Set(raw)], [raw]);
@@ -160,7 +163,7 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
           ref={frameRef}
           data-slot="multi-select"
           data-state={listbox.open ? "open" : "closed"}
-          data-invalid={props.invalid ? "" : undefined}
+          data-invalid={control.invalid ? "" : undefined}
           data-disabled={disabled ? "" : undefined}
           onMouseDown={onFrameMouseDown}
           className={cn(
@@ -187,7 +190,7 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
             ref={inputRef}
             data-slot="control"
             {...listbox.comboboxProps}
-            {...fieldInputProps(props)}
+            {...fieldInputProps(props, control)}
             placeholder={value.length === 0 ? props.placeholder : undefined}
             autoComplete="off"
             spellCheck={false}
@@ -224,8 +227,7 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
         multiselectable
         frameRef={frameRef}
         contentRef={contentRef}
-        aria-label={props["aria-label"]}
-        aria-labelledby={props["aria-labelledby"]}
+        {...listName(props, control)}
       />
     </PopoverPrimitive.Root>
   );

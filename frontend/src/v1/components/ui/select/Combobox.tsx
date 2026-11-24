@@ -11,7 +11,9 @@ import {
   ICON_BUTTON,
   type ListFieldProps,
   ListPopover,
+  listName,
   toggleList,
+  useListFieldControl,
   useLoadedOptions,
 } from "./shared";
 import { TRIGGER_FRAME } from "./trigger";
@@ -47,10 +49,11 @@ export function Combobox(props: ComboboxProps): JSX.Element {
     onValueChange,
     selectedOption,
     placeholder,
-    disabled,
     name,
     className,
   } = props;
+  const control = useListFieldControl(props);
+  const { disabled } = control;
   const [uncontrolled, setUncontrolled] = useState(defaultValue);
   const value = valueProp === undefined ? uncontrolled : valueProp;
   // Typing since the list last closed: the input shows the query, not the label.
@@ -125,7 +128,7 @@ export function Combobox(props: ComboboxProps): JSX.Element {
           ref={frameRef}
           data-slot="combobox"
           data-state={listbox.open ? "open" : "closed"}
-          data-invalid={props.invalid ? "" : undefined}
+          data-invalid={control.invalid ? "" : undefined}
           data-disabled={disabled ? "" : undefined}
           className={cn(
             TRIGGER_FRAME,
@@ -142,7 +145,7 @@ export function Combobox(props: ComboboxProps): JSX.Element {
             ref={inputRef}
             data-slot="control"
             {...listbox.comboboxProps}
-            {...fieldInputProps(props)}
+            {...fieldInputProps(props, control)}
             placeholder={placeholder}
             autoComplete="off"
             spellCheck={false}
@@ -192,8 +195,7 @@ export function Combobox(props: ComboboxProps): JSX.Element {
         emptyText={props.emptyText}
         frameRef={frameRef}
         contentRef={contentRef}
-        aria-label={props["aria-label"]}
-        aria-labelledby={props["aria-labelledby"]}
+        {...listName(props, control)}
       />
     </PopoverPrimitive.Root>
   );

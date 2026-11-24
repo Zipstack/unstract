@@ -115,20 +115,31 @@ list, and Backspace edits the composition instead of removing a chip. Only
 Tab still closes the list, since focus is leaving. `Select` and
 `SegmentedControl` take no text, so no composition reaches them.
 
-### Hand-off to P1-T06
+### Inside `Field`
 
-`Field` and `useFieldControl` come with P1-T06 (#2416, not merged). Until
-then nothing here imports from it, and the seam is the props: `Select`,
-`Combobox` and `MultiSelect` accept `id`, `aria-describedby`, `invalid` and
-`disabled` on their trigger or input, and `SegmentedControl` on its group,
-matching `useFieldControl`'s `FieldControlInput`, so they plug in without
-changes. `Field`'s `<label>` cannot name a `radiogroup`, though: label a
-`SegmentedControl` with `aria-label` or point `aria-labelledby` at a
-visible heading.
+`Select`, `Combobox`, `MultiSelect` and `SegmentedControl` read the
+enclosing `Field` (`useFieldControl` from `@v1/components/ui/form`), as
+`Input` does: the Field's id replaces the control's own `id`, its helper and
+error ids come first in `aria-describedby` (then the control's own), and
+`invalid` and `disabled` come from the Field unless the control's own props
+say otherwise. `Field`'s `error` makes the control invalid.
 
-**Interim rule:** do not put these inside `Field` yet; its label would point
-at its own control's id, not at the select. Name them with `aria-label` or
-`aria-labelledby`, and show errors next to them yourself.
+```tsx
+<Field label="Model" helperText="Used for every prompt" error={errors.model}>
+  <Combobox options={models} value={model} onValueChange={setModel} />
+</Field>
+```
+
+- **The name.** Inside `Field` the label names the control: `<label for>`
+  for the `Select` trigger and the `Combobox` and `MultiSelect` input. A
+  `<label for>` cannot name a `radiogroup`, so a `SegmentedControl` inside
+  `Field` takes `aria-labelledby` pointing at the Field's label instead. The
+  open `Combobox` and `MultiSelect` listbox is named by the same label.
+  Outside `Field`, pass `aria-label` or `aria-labelledby`; the types do not
+  demand one, since inside `Field` neither is needed. A caller's own
+  `aria-label` or `aria-labelledby` wins over the Field's label.
+- Outside `Field` nothing changes: each control uses its own `id`,
+  `aria-describedby`, `invalid` and `disabled`.
 
 ### SegmentedControl ruling
 

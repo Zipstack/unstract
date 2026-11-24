@@ -128,8 +128,9 @@ is convention.
   `SegmentedControl` takes `SegmentedOption`; the folder README lists their
   fields. A provider or connector logo goes in a `SelectOption`'s `leading`
   as `<ProviderLogo decorative … />` from `@v1/components/ui/BrandMark`.
-- Until P1-T06's `Field` lands, name them with `aria-label` or
-  `aria-labelledby`; do not put them inside `Field`.
+- Inside `Field` they take its label, description, invalid and disabled
+  state (a `SegmentedControl` is named by `aria-labelledby` on the Field's
+  label); outside it, name them with `aria-label` or `aria-labelledby`.
 
 ## Toggles
 

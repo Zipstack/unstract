@@ -1,3 +1,4 @@
+import { useFieldControl } from "@v1/components/ui/form";
 import { cn } from "@v1/lib/cn";
 import { ToggleGroup as ToggleGroupPrimitive } from "radix-ui";
 import { type JSX, type ReactNode, useState } from "react";
@@ -61,6 +62,14 @@ export function SegmentedControl({
   "aria-describedby": ariaDescribedBy,
   className,
 }: SegmentedControlProps): JSX.Element {
+  // Inside a Field: its id, description and state, and its label as the
+  // group's name (a `<label for>` cannot name a radiogroup).
+  const control = useFieldControl({
+    id,
+    "aria-describedby": ariaDescribedBy,
+    invalid,
+    disabled,
+  });
   if (options.length < 2 || options.length > 5) {
     throw new Error("SegmentedControl needs 2 to 5 options");
   }
@@ -86,13 +95,15 @@ export function SegmentedControl({
       orientation="horizontal"
       value={current}
       onValueChange={select}
-      disabled={disabled}
-      id={id}
+      disabled={control.disabled}
+      id={control.id}
       aria-label={ariaLabel}
-      aria-labelledby={ariaLabelledBy}
-      aria-describedby={ariaDescribedBy}
-      aria-invalid={invalid || undefined}
-      data-invalid={invalid ? "" : undefined}
+      aria-labelledby={
+        ariaLabelledBy ?? (ariaLabel ? undefined : control.labelId)
+      }
+      aria-describedby={control["aria-describedby"]}
+      aria-invalid={control["aria-invalid"]}
+      data-invalid={control.invalid ? "" : undefined}
       data-slot="segmented-control"
       className={cn(GROUP_CLASS, className)}
     >
