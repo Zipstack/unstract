@@ -78,6 +78,64 @@ it("falls back to the first enabled option for a defaultValue naming a disabled 
   expect(selected()).toEqual(["List"]);
 });
 
+it("falls back to the first enabled option when new options drop the selected one", async () => {
+  const { user, rerender, onValueChange } = setup({ defaultValue: "table" });
+  rerender(
+    <SegmentedControl
+      options={VIEWS.filter((view) => view.value !== "table")}
+      aria-label="View"
+      onValueChange={onValueChange}
+    />,
+  );
+  expect(selected()).toEqual(["List"]);
+  // The fallback is not a choice, so it is not reported.
+  expect(onValueChange).not.toHaveBeenCalled();
+  // The fallback is stored: when the option comes back it stays unselected.
+  rerender(
+    <SegmentedControl
+      options={VIEWS}
+      aria-label="View"
+      onValueChange={onValueChange}
+    />,
+  );
+  expect(selected()).toEqual(["List"]);
+  await user.click(item("Grid"));
+  expect(selected()).toEqual(["Grid"]);
+  expect(onValueChange).toHaveBeenCalledExactlyOnceWith("grid");
+});
+
+it("falls back to the first enabled option when the selected one becomes disabled", () => {
+  const { rerender, onValueChange } = setup({ defaultValue: "grid" });
+  rerender(
+    <SegmentedControl
+      options={VIEWS.map((view) =>
+        view.value === "grid" ? { ...view, disabled: true } : view,
+      )}
+      aria-label="View"
+      onValueChange={onValueChange}
+    />,
+  );
+  expect(selected()).toEqual(["List"]);
+  expect(onValueChange).not.toHaveBeenCalled();
+});
+
+it("leaves a controlled value as given when the options change", () => {
+  const { rerender } = setup({ value: "table" });
+  rerender(
+    <SegmentedControl
+      options={VIEWS.filter((view) => view.value !== "table")}
+      aria-label="View"
+      value="table"
+    />,
+  );
+  expect(selected()).toEqual([]);
+});
+
+it("selects nothing when every option is disabled", () => {
+  setup({ options: VIEWS.map((view) => ({ ...view, disabled: true })) });
+  expect(selected()).toEqual([]);
+});
+
 it("selects on click", async () => {
   const { user, onValueChange } = setup();
   await user.click(item("Table"));

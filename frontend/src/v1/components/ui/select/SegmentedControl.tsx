@@ -16,7 +16,10 @@ export type SegmentedControlProps = Readonly<{
   /** 2 to 5 options; any other count throws during render. */
   options: readonly SegmentedOption[];
   value?: string;
-  /** Defaults to the first enabled option's value, also used when this names no enabled option. */
+  /**
+   * Defaults to the first enabled option's value, also used when this names
+   * no enabled option or the selected option is later removed or disabled.
+   */
   defaultValue?: string;
   /** Called only with a new, non-empty value. */
   onValueChange?: (value: string) => void;
@@ -33,6 +36,19 @@ export type SegmentedControlProps = Readonly<{
   /** The radiogroup element. */
   ref?: Ref<HTMLDivElement>;
 }>;
+
+/**
+ * `candidate` when it names an enabled option, else the first enabled
+ * option's value, else "" (every option disabled: nothing selected).
+ */
+function enabledOrFirst(
+  options: readonly SegmentedOption[],
+  candidate: string | undefined,
+): string {
+  const enabled = options.filter((option) => !option.disabled);
+  const match = enabled.find((option) => option.value === candidate);
+  return (match ?? enabled[0])?.value ?? "";
+}
 
 // The track's edge is a 1px transparent border inside a 1px padding (2px in
 // all, as before, so the pills do not move), which forced-colors mode (no
@@ -80,13 +96,19 @@ export function SegmentedControl({
   if (options.length < 2 || options.length > 5) {
     throw new Error("SegmentedControl needs 2 to 5 options");
   }
-  // A default that names no enabled option would leave nothing selected, so
-  // it falls back to the first enabled option, as no default does.
-  const [uncontrolled, setUncontrolled] = useState(() => {
-    const enabled = options.filter((option) => !option.disabled);
-    const match = enabled.find((option) => option.value === defaultValue);
-    return (match ?? enabled[0])?.value ?? "";
-  });
+  // Uncontrolled, the selection must name an enabled option, or nothing would
+  // be selected: a default, or a stored choice whose option was later removed
+  // or disabled, falls back to the first enabled option. The fallback is
+  // derived while rendering (no frame shows nothing selected) and stored, so
+  // the old option coming back does not take the selection back. It is not a
+  // choice, so it is not reported through onValueChange.
+  const [stored, setUncontrolled] = useState(() =>
+    enabledOrFirst(options, defaultValue),
+  );
+  const uncontrolled = enabledOrFirst(options, stored);
+  if (value === undefined && uncontrolled !== stored) {
+    setUncontrolled(uncontrolled);
+  }
   const current = value ?? uncontrolled;
   const select = (next: string) => {
     // Radix sends "" when the pressed item is pressed again; one stays selected.

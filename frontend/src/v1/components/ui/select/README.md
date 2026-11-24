@@ -340,8 +340,16 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
   lucide icon before it, sized 16.
 - Caller contract: `value` must match an enabled option (a controlled
   `value` is shown as given, so one that matches none leaves every item
-  unchecked). A `defaultValue` that names no option, or a disabled one,
-  falls back to the first enabled option, as no `defaultValue` does.
+  unchecked). Uncontrolled, the selection always names an enabled option:
+  a `defaultValue` that names no option, or a disabled one, falls back to
+  the first enabled option, as no `defaultValue` does, and so does a
+  selection whose option a later `options` removes or disables (worked out
+  while rendering, so no frame shows nothing selected). The fallback is
+  kept: if the old option comes back, the selection stays on the fallback
+  until the user picks again. A fallback is not a choice, so it never calls
+  `onValueChange`; a caller that needs to know what is selected should
+  control `value`. With every option disabled nothing is selected. There
+  is no `name` and no form input, so nothing else reads the selection.
 
 ## Chip
 
