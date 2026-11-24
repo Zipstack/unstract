@@ -11,7 +11,7 @@ import type { ComponentProps, JSX } from "react";
  */
 export const fieldFrameVariants = cva(
   [
-    "ui:box-border ui:flex ui:w-full ui:min-w-0 ui:gap-1.5 ui:rounded-md ui:border ui:border-input ui:bg-background ui:text-body ui:text-foreground ui:transition-[border-color,box-shadow]",
+    "ui:box-border ui:flex ui:w-full ui:min-w-0 ui:gap-1.5 ui:rounded-md ui:border ui:border-input ui:bg-background ui:text-body ui:text-foreground ui:transition-[border-color,box-shadow] ui:motion-reduce:transition-none",
     "ui:hover:border-muted-foreground",
     "ui:data-readonly:border-input ui:data-readonly:bg-muted",
     "ui:data-invalid:border-destructive ui:data-invalid:[--ring:var(--destructive)]",

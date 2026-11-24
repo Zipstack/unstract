@@ -1,9 +1,9 @@
-import { useFieldControl } from "@v1/components/ui/form";
+import { fieldFrameVariants, useFieldControl } from "@v1/components/ui/form";
 import { cn } from "@v1/lib/cn";
 import { ACTION_ICONS } from "@v1/lib/icons";
 import { getPortalContainer } from "@v1/lib/portal";
 import { Select as SelectPrimitive } from "radix-ui";
-import { type JSX, useState } from "react";
+import { type JSX, type Ref, useState } from "react";
 import {
   OPTION_CHECK_CLASS,
   OPTION_DESCRIPTION_CLASS,
@@ -12,12 +12,7 @@ import {
   OPTION_ROW_CLASS,
 } from "./OptionRow";
 import type { SelectOption } from "./options";
-import {
-  LIST_SURFACE,
-  TRIGGER_CHEVRON,
-  TRIGGER_FRAME,
-  TRIGGER_PLACEHOLDER,
-} from "./trigger";
+import { LIST_SURFACE, TRIGGER_CHEVRON, TRIGGER_PLACEHOLDER } from "./trigger";
 
 const ChevronIcon = ACTION_ICONS.expand;
 const CheckIcon = ACTION_ICONS.confirm;
@@ -38,6 +33,8 @@ export type SelectProps = Readonly<{
   "aria-describedby"?: string;
   /** Classes for the trigger. */
   className?: string;
+  /** The trigger button, the focusable element. */
+  ref?: Ref<HTMLButtonElement>;
 }>;
 
 /**
@@ -62,6 +59,7 @@ export function Select({
   "aria-labelledby": ariaLabelledBy,
   "aria-describedby": ariaDescribedBy,
   className,
+  ref,
 }: SelectProps): JSX.Element {
   const control = useFieldControl({
     id,
@@ -101,6 +99,7 @@ export function Select({
       disabled={disabled}
     >
       <SelectPrimitive.Trigger
+        ref={ref}
         id={control.id}
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
@@ -108,7 +107,11 @@ export function Select({
         aria-invalid={control["aria-invalid"]}
         data-invalid={control.invalid ? "" : undefined}
         data-slot="select-trigger"
-        className={cn(TRIGGER_FRAME, "ui:cursor-pointer", className)}
+        className={cn(
+          fieldFrameVariants({ focus: "self" }),
+          "ui:cursor-pointer",
+          className,
+        )}
       >
         {/*
          * The selected option's leading and label render here (its ItemText).

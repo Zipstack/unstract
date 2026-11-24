@@ -1,7 +1,16 @@
+import { fieldControlClass, fieldFrameVariants } from "@v1/components/ui/form";
 import { cn } from "@v1/lib/cn";
 import { ACTION_ICONS } from "@v1/lib/icons";
+import { mergeRefs } from "@v1/lib/merge-refs";
 import { Popover as PopoverPrimitive } from "radix-ui";
-import { type JSX, type KeyboardEvent, useRef, useState } from "react";
+import {
+  type JSX,
+  type KeyboardEvent,
+  type Ref,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { OPTION_LEADING_CLASS } from "./OptionRow";
 import type { SelectOption } from "./options";
 import {
@@ -16,7 +25,6 @@ import {
   useListFieldControl,
   useLoadedOptions,
 } from "./shared";
-import { TRIGGER_FRAME } from "./trigger";
 import { isComposing } from "./useListbox";
 
 const ClearIcon = ACTION_ICONS.close;
@@ -29,6 +37,8 @@ export type ComboboxProps = ListFieldProps &
     onValueChange?: (value: string | null, option: SelectOption | null) => void;
     /** The option for `value` when it is not in `options` yet, e.g. a saved choice before the first load. */
     selectedOption?: SelectOption | null;
+    /** The text input, the focusable element. */
+    ref?: Ref<HTMLInputElement>;
   }>;
 
 /**
@@ -51,6 +61,7 @@ export function Combobox(props: ComboboxProps): JSX.Element {
     placeholder,
     name,
     className,
+    ref,
   } = props;
   const control = useListFieldControl(props);
   const { disabled } = control;
@@ -61,6 +72,7 @@ export function Combobox(props: ComboboxProps): JSX.Element {
 
   const frameRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const composedRef = useMemo(() => mergeRefs(inputRef, ref), [ref]);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const { listbox, loading, error, lookup } = useLoadedOptions({
@@ -130,11 +142,7 @@ export function Combobox(props: ComboboxProps): JSX.Element {
           data-state={listbox.open ? "open" : "closed"}
           data-invalid={control.invalid ? "" : undefined}
           data-disabled={disabled ? "" : undefined}
-          className={cn(
-            TRIGGER_FRAME,
-            "ui:has-[[data-slot=control]:focus-visible]:focus-ring",
-            className,
-          )}
+          className={cn(fieldFrameVariants({ focus: "within" }), className)}
         >
           {selected?.leading && !editing ? (
             <span data-slot="option-leading" className={OPTION_LEADING_CLASS}>
@@ -142,7 +150,7 @@ export function Combobox(props: ComboboxProps): JSX.Element {
             </span>
           ) : null}
           <input
-            ref={inputRef}
+            ref={composedRef}
             data-slot="control"
             {...listbox.comboboxProps}
             {...fieldInputProps(props, control)}
@@ -163,7 +171,7 @@ export function Combobox(props: ComboboxProps): JSX.Element {
               }
             }}
             onBlur={onBlur}
-            className="ui:min-w-0 ui:flex-1 ui:border-0 ui:bg-transparent ui:p-0 ui:text-body ui:text-foreground ui:outline-none ui:placeholder:text-muted-foreground"
+            className={fieldControlClass}
           />
           {value !== null && !disabled ? (
             <button

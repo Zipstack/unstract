@@ -1,9 +1,12 @@
+import { fieldControlClass, fieldFrameVariants } from "@v1/components/ui/form";
 import { cn } from "@v1/lib/cn";
+import { mergeRefs } from "@v1/lib/merge-refs";
 import { Popover as PopoverPrimitive } from "radix-ui";
 import {
   type JSX,
   type KeyboardEvent,
   type MouseEvent,
+  type Ref,
   useMemo,
   useRef,
   useState,
@@ -21,7 +24,6 @@ import {
   useListFieldControl,
   useLoadedOptions,
 } from "./shared";
-import { TRIGGER_FRAME } from "./trigger";
 import { isComposing } from "./useListbox";
 
 const NO_OPTIONS: readonly SelectOption[] = [];
@@ -35,6 +37,8 @@ export type MultiSelectProps = ListFieldProps &
     onValueChange?: (values: readonly string[]) => void;
     /** The options for values not in `options` yet, e.g. saved choices before the first load. */
     selectedOptions?: readonly SelectOption[];
+    /** The text input, the focusable element. */
+    ref?: Ref<HTMLInputElement>;
   }>;
 
 /**
@@ -53,6 +57,7 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
     onValueChange,
     selectedOptions,
     name,
+    ref,
   } = props;
   const control = useListFieldControl(props);
   const { disabled } = control;
@@ -62,6 +67,7 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
 
   const frameRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const composedRef = useMemo(() => mergeRefs(inputRef, ref), [ref]);
   const contentRef = useRef<HTMLDivElement>(null);
 
   // A chip keeps its label when the list (or a server response) no longer
@@ -167,9 +173,8 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
           data-disabled={disabled ? "" : undefined}
           onMouseDown={onFrameMouseDown}
           className={cn(
-            TRIGGER_FRAME,
+            fieldFrameVariants({ focus: "within" }),
             "ui:h-auto ui:min-h-8 ui:flex-wrap ui:gap-1 ui:py-1",
-            "ui:has-[[data-slot=control]:focus-visible]:focus-ring",
             props.className,
           )}
         >
@@ -187,7 +192,7 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
             />
           ))}
           <input
-            ref={inputRef}
+            ref={composedRef}
             data-slot="control"
             {...listbox.comboboxProps}
             {...fieldInputProps(props, control)}
@@ -203,7 +208,7 @@ export function MultiSelect(props: MultiSelectProps): JSX.Element {
               }
             }}
             onBlur={onBlur}
-            className="ui:min-w-16 ui:flex-1 ui:border-0 ui:bg-transparent ui:p-0 ui:text-body ui:text-foreground ui:outline-none ui:placeholder:text-muted-foreground"
+            className={cn(fieldControlClass, "ui:min-w-16")}
           />
           <ChevronButton
             open={listbox.open}

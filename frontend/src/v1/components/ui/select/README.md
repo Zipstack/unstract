@@ -26,13 +26,22 @@ import {
 
 ## Rules
 
-- **The trigger is the field frame.** `Select`, `Combobox` and `MultiSelect`
-  use the P1-T03 `FieldFrame` recipe verbatim (`TRIGGER_FRAME` in
-  `trigger.ts`: 32 tall, radius 8), so a select and a text input sit
-  identically in a form. `MultiSelect` swaps the fixed height for
-  `min-h-8` and wraps its chips. Only `Select`'s trigger is
-  `cursor-pointer`: it is a button, while the Combobox and MultiSelect
-  frames hold a text input.
+- **The trigger is the field frame.** `Select`, `Combobox` and
+  `MultiSelect` build their frame from the form's `fieldFrameVariants`
+  (`@v1/components/ui/form`, 32 tall, radius 8), so a select and a text
+  input sit identically in a form and share hover, invalid, disabled and
+  reduced-motion styling: `Select`'s trigger button takes
+  `{ focus: "self" }`, and the `Combobox` and `MultiSelect` frames, which
+  hold a text input, take `{ focus: "within" }` (the ring follows the
+  input) with `fieldControlClass` on the input. `MultiSelect` swaps the
+  fixed height for `min-h-8` and wraps its chips. Only `Select`'s trigger
+  is `cursor-pointer`. None takes `readOnly`.
+- **Where `ref` and `id` land.** On the focusable element, so focus-on-error
+  and form-library registration reach it: `Select`'s trigger button, the
+  `Combobox` and `MultiSelect` text input (not the frame), and
+  `SegmentedControl`'s `radiogroup` (not an item). `ref` is React 19's
+  plain prop; the components keep their own ref to the input alongside it.
+  Inside `Field`, the Field's id replaces `id`. `refs.test.tsx` pins these.
 - **Pick by list size.** `Select` (Radix Select) renders every option, so it
   is for lists under about 50 options. Longer lists, and anything loaded from
   the server, use `Combobox` (or `MultiSelect` for several values), which
@@ -183,6 +192,7 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
 | `disabled`, `invalid` | `boolean` | `false` | `invalid` sets `aria-invalid` and `data-invalid` |
 | `id`, `aria-label`, `aria-labelledby`, `aria-describedby` | `string` | — | on the trigger |
 | `className` | `string` | — | the trigger |
+| `ref` | `Ref<HTMLButtonElement>` | — | the trigger button |
 
 - A `value` or `defaultValue` that matches no option shows the placeholder:
   the wrapper maps it to `""`, since this Radix version would otherwise
@@ -216,6 +226,7 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
 | `disabled`, `invalid` | `boolean` | `false` | |
 | `id`, `aria-label`, `aria-labelledby`, `aria-describedby` | `string` | — | on the input |
 | `className` | `string` | — | the frame |
+| `ref` | `Ref<HTMLInputElement>` | — | the text input |
 
 - While closed the input shows the selected label (and its `leading`),
   selected when the input takes focus or is clicked, so typing replaces it
@@ -260,6 +271,7 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
 | `selectedOptions` | `readonly SelectOption[]` | — | names preset values before the first load; a chip's label comes from the current options, then any option seen, then these |
 | `name` | `string` | — | one hidden input per value, only while enabled |
 | `disabled`, `invalid`, `id`, `aria-label`, `aria-labelledby`, `aria-describedby`, `className` | as Combobox | | |
+| `ref` | `Ref<HTMLInputElement>` | — | the text input |
 
 - Enter or a click toggles an option and keeps the list open, with the
   query cleared and the toggled option still active; choosing a selected
@@ -289,6 +301,7 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
 | `id`, `aria-describedby` | `string` | — | on the group |
 | `aria-label`, `aria-labelledby` | `string` | — | names the group |
 | `className` | `string` | — | the group |
+| `ref` | `Ref<HTMLDivElement>` | — | the `radiogroup` |
 
 - Exactly one item is always selected; clicking the selected item keeps it.
 - Radix ToggleGroup `type="single"` renders a `radiogroup` of `radio` items

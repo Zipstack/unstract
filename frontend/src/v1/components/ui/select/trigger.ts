@@ -1,11 +1,9 @@
 /*
  * Classes shared by the selection triggers (Select, Combobox, MultiSelect) and
- * their popover lists.
+ * their popover lists. The trigger frames themselves come from the form's
+ * `fieldFrameVariants`: `focus: "self"` for Select's button, `focus: "within"`
+ * for the Combobox and MultiSelect frames around their input.
  */
-
-/** The 32-tall field frame, P1-T03's `FieldFrame` recipe verbatim. */
-export const TRIGGER_FRAME =
-  "ui:box-border ui:flex ui:h-8 ui:w-full ui:min-w-0 ui:items-center ui:gap-1.5 ui:rounded-md ui:border ui:border-input ui:bg-background ui:px-2.5 ui:text-body ui:text-foreground ui:transition-[border-color,box-shadow] ui:hover:border-muted-foreground ui:focus-visible:focus-ring ui:data-invalid:border-destructive ui:data-invalid:[--ring:var(--destructive)] ui:data-disabled:pointer-events-none ui:data-disabled:opacity-50 ui:disabled:pointer-events-none ui:disabled:opacity-50";
 
 /** The placeholder text in a trigger. */
 export const TRIGGER_PLACEHOLDER = "ui:text-muted-foreground";

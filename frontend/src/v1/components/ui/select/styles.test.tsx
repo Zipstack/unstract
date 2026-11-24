@@ -1,7 +1,10 @@
 import { screen } from "@testing-library/react";
+import { fieldControlClass, fieldFrameVariants } from "@v1/components/ui/form";
 import { renderV1 } from "@v1/test";
 import { expect, it } from "vitest";
 import { Chip } from "./Chip";
+import { Combobox } from "./Combobox";
+import { MultiSelect } from "./MultiSelect";
 import { OptionRow } from "./OptionRow";
 import { SegmentedControl } from "./SegmentedControl";
 import { Select } from "./Select";
@@ -94,5 +97,48 @@ it("outlines a Chip inside its edge for forced colors", () => {
       "ui:outline-transparent",
       "ui:-outline-offset-1",
     ]),
+  );
+});
+
+const tokens = (list: string) => list.split(" ").filter(Boolean);
+
+it("builds Select's trigger from the field frame with the focus ring on itself", () => {
+  renderV1(<Select aria-label="S" options={[]} />);
+  const trigger = classes(screen.getByRole("combobox", { name: "S" }));
+  expect(trigger).toEqual(
+    expect.arrayContaining(tokens(fieldFrameVariants({ focus: "self" }))),
+  );
+  expect(trigger).toContain("ui:cursor-pointer");
+});
+
+it.each([
+  ["Combobox", <Combobox key="c" aria-label="F" />, "combobox"],
+  ["MultiSelect", <MultiSelect key="m" aria-label="F" />, "multi-select"],
+])("builds the %s frame from the field frame, ringed when its input is focused", (_, element, slot) => {
+  renderV1(element);
+  const input = screen.getByRole("combobox", { name: "F" });
+  const frame = classes(input.closest(`[data-slot=${slot}]`) as Element);
+  const expected = tokens(fieldFrameVariants({ focus: "within" })).filter(
+    // MultiSelect grows past 32 as chips wrap, with a 4px gap between them.
+    (name) => slot === "combobox" || !["ui:h-8", "ui:gap-1.5"].includes(name),
+  );
+  expect(frame).toEqual(expect.arrayContaining(expected));
+  // A frame is a div: `focus-visible:` and `disabled:` never match on it.
+  expect(frame.some((name) => /:(focus-visible|disabled):/.test(name))).toBe(
+    false,
+  );
+  // MultiSelect's input keeps 64px for typing beside the chips.
+  expect(classes(input)).toEqual(
+    expect.arrayContaining(
+      tokens(fieldControlClass).filter((name) =>
+        slot === "combobox" ? true : name !== "ui:min-w-0",
+      ),
+    ),
+  );
+});
+
+it("drops the frame transition under reduced motion", () => {
+  expect(tokens(fieldFrameVariants())).toContain(
+    "ui:motion-reduce:transition-none",
   );
 });

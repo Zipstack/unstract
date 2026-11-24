@@ -1,7 +1,7 @@
 import { useFieldControl } from "@v1/components/ui/form";
 import { cn } from "@v1/lib/cn";
 import { ToggleGroup as ToggleGroupPrimitive } from "radix-ui";
-import { type JSX, type ReactNode, useState } from "react";
+import { type JSX, type ReactNode, type Ref, useState } from "react";
 
 export type SegmentedOption = Readonly<{
   value: string;
@@ -30,6 +30,8 @@ export type SegmentedControlProps = Readonly<{
   "aria-describedby"?: string;
   /** Classes for the group. */
   className?: string;
+  /** The radiogroup element. */
+  ref?: Ref<HTMLDivElement>;
 }>;
 
 // The track's edge is a 1px transparent border inside a 1px padding (2px in
@@ -65,6 +67,7 @@ export function SegmentedControl({
   "aria-labelledby": ariaLabelledBy,
   "aria-describedby": ariaDescribedBy,
   className,
+  ref,
 }: SegmentedControlProps): JSX.Element {
   // Inside a Field: its id, description and state, and its label as the
   // group's name (a `<label for>` cannot name a radiogroup).
@@ -95,6 +98,7 @@ export function SegmentedControl({
   };
   return (
     <ToggleGroupPrimitive.Root
+      ref={ref}
       type="single"
       orientation="horizontal"
       value={current}
