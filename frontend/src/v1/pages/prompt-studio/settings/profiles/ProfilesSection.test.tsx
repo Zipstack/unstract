@@ -254,6 +254,65 @@ it("makes a project's first profile its default", async () => {
   await waitFor(() => expect(defaulted).toEqual({ default_profile: "first" }));
 });
 
+it("refreshes the list only after the first profile is the default", async () => {
+  const events: string[] = [];
+  let rows: readonly LlmProfile[] = [];
+  mockApi(
+    http.get(LIST, () => {
+      events.push("list");
+      return HttpResponse.json(rows);
+    }),
+    ...settingsHandlers(S).filter((_, i) => i !== 1),
+    http.post(CREATE, () => {
+      const created = makeProfile({ profile_id: "first", is_default: false });
+      rows = [{ ...created, is_default: true }];
+      return HttpResponse.json(created, { status: 201 });
+    }),
+    http.patch(LIST, async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      events.push("default");
+      return HttpResponse.json({ default_profile: "first" });
+    }),
+  );
+  const { user } = renderSection();
+  await user.click(
+    await screen.findByRole("button", { name: "Add New LLM Profile" }),
+  );
+  await fillNewProfile(user, "first");
+  events.length = 0;
+  await user.click(screen.getByRole("button", { name: "Save profile" }));
+  await waitFor(() => expect(events).toContain("list"));
+  expect(events[0]).toBe("default");
+});
+
+it("says so when the first profile could not be made the default", async () => {
+  const setRows = serveProfiles([]);
+  mockApi(
+    http.post(CREATE, () => {
+      const created = makeProfile({
+        profile_id: "first",
+        profile_name: "first",
+        is_default: false,
+      });
+      setRows([created]);
+      return HttpResponse.json(created, { status: 201 });
+    }),
+    http.patch(LIST, () => HttpResponse.json({}, { status: 500 })),
+  );
+  const { user } = renderSection();
+  await user.click(
+    await screen.findByRole("button", { name: "Add New LLM Profile" }),
+  );
+  await fillNewProfile(user, "first");
+  await user.click(screen.getByRole("button", { name: "Save profile" }));
+  await waitFor(() =>
+    expect(shown.map((n) => n.title)).toContain(
+      "Profile saved, but it is not the default",
+    ),
+  );
+  expect(await screen.findByRole("cell", { name: "first" })).toBeVisible();
+});
+
 it("refuses a name another profile of the project has", async () => {
   serveProfiles();
   const { user } = renderSection();

@@ -5,6 +5,7 @@ import { CopyButton } from "@v1/components/ui/code";
 import { SkeletonTableRows } from "@v1/components/ui/feedback";
 import { Radio, RadioGroup } from "@v1/components/ui/toggles";
 import { ACTION_ICONS } from "@v1/lib/icons";
+import { toast } from "@v1/lib/notify";
 import { SettingsSection } from "@v1/pages/prompt-studio/settings/SettingsSection";
 import { confirmDestructive } from "@v1/pages/prompt-studio/settings/standins";
 import {
@@ -95,7 +96,8 @@ function ProfileEditor({
   onClose: () => void;
 }>): JSX.Element {
   const queryClient = useQueryClient();
-  const makeDefault = useSetDefault(toolId);
+  // Its failure gets its own message below, not the generic one.
+  const makeDefault = useSetDefault(toolId, { notify: false });
   const profile = editing === "new" ? undefined : editing;
   const others = profiles.filter((p) => p.profile_id !== profile?.profile_id);
   return (
@@ -106,23 +108,38 @@ function ProfileEditor({
       onCancel={onClose}
       onDirtyChange={onDirtyChange}
       onSaved={(saved) => {
-        // A project's first profile becomes its default, as in v0.
+        const refresh = () =>
+          queryClient.invalidateQueries({
+            queryKey: promptProfileKeys.list(toolId),
+          });
+        // A project's first profile becomes its default, as in v0. The list
+        // refreshes after that, so it cannot read the profile before it is.
         if (profiles.length === 0) {
-          makeDefault.mutate(saved.profile_id);
+          void makeDefault
+            .mutateAsync(saved.profile_id)
+            .catch(() => {
+              toast.warning("Profile saved, but it is not the default", {
+                description: "Choose it as the default to run prompts.",
+              });
+            })
+            .finally(refresh);
+        } else {
+          void refresh();
         }
-        void queryClient.invalidateQueries({
-          queryKey: promptProfileKeys.list(toolId),
-        });
         onClose();
       }}
     />
   );
 }
 
-function useSetDefault(toolId: string) {
+function useSetDefault(
+  toolId: string,
+  { notify = true }: Readonly<{ notify?: boolean }> = {},
+) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (profileId: string) => setDefaultProfile(toolId, profileId),
+    meta: { notify },
     onSuccess: (defaultId) => {
       queryClient.setQueryData<LlmProfile[]>(
         promptProfileKeys.list(toolId),
