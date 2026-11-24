@@ -50,6 +50,23 @@ it("is empty and idle with no loader", () => {
   expect(result.current).toEqual({ options: [], loading: false, error: null });
 });
 
+it("drops a response from before the list closed, even for the same query", async () => {
+  const { load, calls } = deferredLoader();
+  const { result, rerender } = setup({ load, query: "", enabled: true });
+  advance(0);
+  expect(calls).toHaveLength(1);
+  rerender({ load, query: "", enabled: false });
+  rerender({ load, query: "", enabled: true });
+  advance(0);
+  expect(calls).toHaveLength(2);
+  expect(calls[0].signal.aborted).toBe(true);
+  await act(async () => calls[0].resolve([opt("Stale")]));
+  expect(result.current.options).toEqual([]);
+  expect(result.current.loading).toBe(true);
+  await act(async () => calls[1].resolve([opt("Fresh")]));
+  expect(result.current.options).toEqual([opt("Fresh")]);
+});
+
 it("does not load while disabled", () => {
   const { load } = deferredLoader();
   const { result } = setup({ load, query: "", enabled: false });

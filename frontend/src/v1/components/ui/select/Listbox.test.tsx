@@ -240,6 +240,22 @@ it("sizes a virtual row with a description taller", () => {
   ).toBe("50px");
 });
 
+it("re-measures a virtual list when its options change height", () => {
+  stubLayout();
+  const plain = many(200);
+  const { rerender } = renderV1(<Harness options={plain} />);
+  const height = () =>
+    screen.getByRole("listbox").style.getPropertyValue("--listbox-height");
+  expect(height()).toBe(`${200 * 32 + 199 * 2}px`);
+  // Same count, every row now with a description: the cached sizes are stale.
+  rerender(
+    <Harness
+      options={plain.map((option) => ({ ...option, description: "More" }))}
+    />,
+  );
+  expect(height()).toBe(`${200 * 48 + 199 * 2}px`);
+});
+
 it("brings the active row of a virtual list into the rendered window", async () => {
   stubLayout();
   const { user } = renderV1(<Harness options={many(1000)} />);

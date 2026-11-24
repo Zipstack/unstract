@@ -148,9 +148,6 @@ export function useListbox({
     setActiveValue(visible[index]?.value ?? null);
 
   const setQuery = (next: string) => {
-    if (disabled) {
-      return;
-    }
     setQueryState(next);
     if (next !== "") {
       setOpenState(true);

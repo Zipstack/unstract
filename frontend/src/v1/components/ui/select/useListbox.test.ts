@@ -181,6 +181,21 @@ it("closes, clears the query and selects nothing while the field is disabled", (
   expect(onSelect).toHaveBeenCalledExactlyOnceWith(OPTIONS[0]);
 });
 
+it("drops a query left behind a closed list when the field is disabled", () => {
+  const { result, rerender } = setup();
+  act(() => result.current.setQuery("ga"));
+  act(() => result.current.setOpen(false));
+  expect(result.current.query).toBe("ga");
+  rerender({ disabled: true });
+  expect(result.current.query).toBe("");
+});
+
+it("opens at the first enabled selected option, passing over a disabled one", () => {
+  const { result, press } = setup({ selected: ["beta", "gamma"] });
+  press("ArrowDown");
+  expect(result.current.activeIndex).toBe(2);
+});
+
 it("never makes a disabled option active: it falls back to the first enabled one", () => {
   const { result, press } = setup();
   press("ArrowDown");

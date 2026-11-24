@@ -220,7 +220,7 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
   description.
 - Disabling it while the list is open closes the list (the wrapper holds
   Radix's open state, since Radix's `disabled` reaches only the trigger),
-  and `onValueChange` is not called while disabled.
+  so no option can be chosen while disabled.
 
 ## Combobox
 
@@ -273,7 +273,7 @@ inset, and the selected item as a `background` pill with `shadow-sm`.
 - Disabling it while the list is open closes the list, drops the typed text
   and shows the selected label again; it stays closed when enabled again.
   `useListbox` (shared with `MultiSelect`) also refuses to open or select
-  while `disabled`, whatever calls it.
+  while `disabled`, whatever calls it, and drops any query left behind.
 
 ## MultiSelect
 
@@ -355,6 +355,10 @@ snapshots its markup in `__snapshots__/markup.md` and runs axe on it. Open
 lists are not gallery entries: Radix portals them out of the rendered
 container. `Listbox.test.tsx` and the component tests cover them, including
 axe on the open state.
+`Field.test.tsx` covers each control inside `Field`, `refs.test.tsx` where
+`ref` and `id` land, `styles.test.tsx` the classes happy-dom cannot render
+(forced colors, row shrink, the field frame, hit areas) and
+`shared.test.tsx` the popover-list plumbing.
 
 - Radix Select is modal while open: it aria-hides the rest of the page,
   its own focus guards and the trigger included, so a page scan of an open

@@ -73,8 +73,9 @@ export function Select({
   const known = (candidate: string) =>
     options.some((option) => option.value === candidate);
   // Radix's `disabled` reaches only the trigger: an open list stays open and
-  // its items stay choosable. So the open state is held here, closed while
-  // rendering when the field is disabled, and a change while disabled is dropped.
+  // its items stay choosable. So the open state is held here and closed while
+  // rendering when the field is disabled: the open list never commits, and the
+  // disabled trigger takes no focus or keys, so nothing can be chosen.
   const [open, setOpen] = useState(false);
   if (disabled && open) {
     setOpen(false);
@@ -89,11 +90,7 @@ export function Select({
           ? defaultValue
           : undefined
       }
-      onValueChange={(next) => {
-        if (!disabled) {
-          onValueChange?.(next);
-        }
-      }}
+      onValueChange={onValueChange}
       name={name}
       required={required}
       disabled={disabled}

@@ -209,6 +209,60 @@ it("closes the list and clears the query when disabled while open", async () => 
   expect(chipNames()).toEqual(["Invoice"]);
 });
 
+it("prevents Backspace's default when it removes a chip", async () => {
+  const { user } = setup({ defaultValue: ["invoice"] });
+  await user.click(input());
+  // fireEvent returns false when the handler called preventDefault.
+  expect(fireEvent.keyDown(input(), { key: "Backspace" })).toBe(false);
+  expect(chipNames()).toEqual([]);
+  // With nothing to remove, Backspace keeps its default.
+  expect(fireEvent.keyDown(input(), { key: "Backspace" })).toBe(true);
+});
+
+it("leaves a press on its own input, or on a disabled frame, to the browser", () => {
+  const { rerender } = setup({ defaultValue: ["invoice"] });
+  const frame = () =>
+    input().closest('[data-slot="multi-select"]') as HTMLElement;
+  // On the input: the caret and text selection need the default.
+  expect(fireEvent.mouseDown(input())).toBe(true);
+  // On the padding: forwarded to the input, which opens the list.
+  expect(fireEvent.mouseDown(frame())).toBe(false);
+  expect(document.activeElement).toBe(input());
+  expect(screen.getByRole("listbox")).toBeTruthy();
+  rerender(
+    <MultiSelect
+      options={TAGS}
+      aria-label="Tags"
+      defaultValue={["invoice"]}
+      disabled
+    />,
+  );
+  expect(fireEvent.mouseDown(frame())).toBe(true);
+  expect(screen.queryByRole("listbox")).toBeNull();
+});
+
+it("keeps spaces in the typed query", async () => {
+  const { user } = setup();
+  await user.type(input(), " con ");
+  expect(input().value).toBe(" con ");
+});
+
+it("shows emptyText and names the listbox by aria-labelledby", async () => {
+  const { user } = renderV1(
+    <>
+      <h2 id="tags-heading">Tags</h2>
+      <MultiSelect
+        options={[]}
+        emptyText="No tags yet"
+        aria-labelledby="tags-heading"
+      />
+    </>,
+  );
+  await user.click(input());
+  expect(screen.getByRole("listbox", { name: "Tags" })).toBeTruthy();
+  expect(screen.getByRole("status").textContent).toBe("No tags yet");
+});
+
 it("closes and clears the query on Escape", async () => {
   const { user, onValueChange } = setup();
   await user.type(input(), "con");

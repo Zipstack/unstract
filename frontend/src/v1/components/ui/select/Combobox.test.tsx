@@ -346,6 +346,84 @@ it("follows a controlled value", async () => {
   expect(input().value).toBe("Gemma");
 });
 
+it("keeps a controlled null value empty after a choice", async () => {
+  const { user, onValueChange } = setup({ value: null });
+  await user.click(input());
+  await user.click(screen.getByRole("option", { name: "Claude" }));
+  expect(onValueChange).toHaveBeenCalledWith("claude", MODELS[0]);
+  expect(input().value).toBe("");
+  expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
+});
+
+it("selects the label when the input is focused by code, so typing replaces it", async () => {
+  const { user } = setup({ defaultValue: "gemma" });
+  act(() => input().focus());
+  expect(input().selectionStart).toBe(0);
+  expect(input().selectionEnd).toBe("Gemma".length);
+  await user.keyboard("l");
+  expect(input().value).toBe("l");
+});
+
+it("leaves the typed text unselected when the input is clicked while editing", async () => {
+  const { user } = setup({ defaultValue: "gemma" });
+  await user.type(input(), "cl");
+  await user.click(input());
+  await user.keyboard("a");
+  expect(input().value).toBe("cla");
+});
+
+it("hides the selected option's leading while the query is shown", async () => {
+  const { user } = setup({ defaultValue: "claude" });
+  const frame = input().closest('[data-slot="combobox"]') as HTMLElement;
+  expect(frame.querySelector('[data-slot="option-leading"]')).toBeTruthy();
+  await user.type(input(), "g");
+  expect(frame.querySelector('[data-slot="option-leading"]')).toBeNull();
+});
+
+it("closes and restores the label when focus leaves from the Clear button", async () => {
+  const { user } = setup({ defaultValue: "llama" });
+  await user.type(input(), "ge");
+  const clear = screen.getByRole("button", { name: "Clear" });
+  // A press on Clear released elsewhere leaves focus on it, list open.
+  act(() => clear.focus());
+  expect(screen.getByRole("listbox")).toBeTruthy();
+  fireEvent.blur(clear, {
+    relatedTarget: screen.getByRole("button", { name: "Elsewhere" }),
+  });
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(input().value).toBe("Llama");
+});
+
+it("shows emptyText in place of No options and No matches", async () => {
+  const { user } = setup({ options: [], emptyText: "No models yet" });
+  await user.click(input());
+  expect(screen.getByRole("status").textContent).toBe("No models yet");
+});
+
+it("names the listbox by the field's aria-labelledby", async () => {
+  const { user } = renderV1(
+    <>
+      <h2 id="model-heading">Model</h2>
+      <Combobox options={MODELS} aria-labelledby="model-heading" />
+    </>,
+  );
+  await user.click(screen.getByRole("combobox", { name: "Model" }));
+  expect(screen.getByRole("listbox", { name: "Model" })).toBeTruthy();
+});
+
+it("restores the label when a press outside dismisses the list", async () => {
+  const { user } = setup({ defaultValue: "llama" });
+  await user.type(input(), "ge");
+  // Radix dismisses on a press outside (a pointerdown, then the click it
+  // waits for), listening from the tick after opening. No focus moves here,
+  // so only the Popover's onOpenChange can close the list.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+  fireEvent.pointerDown(document.body, { button: 0 });
+  fireEvent.click(document.body);
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(input().value).toBe("Llama");
+});
+
 it("submits the value through a hidden input when named", async () => {
   const { user } = setup({ name: "model", defaultValue: "gemini" });
   const hidden = document.querySelector<HTMLInputElement>(

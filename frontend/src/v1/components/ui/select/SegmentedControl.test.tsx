@@ -188,6 +188,16 @@ it("marks the group invalid with aria-invalid and data-invalid", () => {
   expect(group.hasAttribute("data-invalid")).toBe(false);
 });
 
+it("names the group by aria-labelledby", () => {
+  renderV1(
+    <>
+      <h2 id="view-heading">View</h2>
+      <SegmentedControl options={VIEWS} aria-labelledby="view-heading" />
+    </>,
+  );
+  expect(screen.getByRole("radiogroup", { name: "View" })).toBeTruthy();
+});
+
 it("puts className on the group", () => {
   setup({ className: "ui:w-full" });
   expect(screen.getByRole("radiogroup").className).toContain("ui:w-full");

@@ -92,6 +92,24 @@ it("sets aria-disabled only on a disabled option", () => {
   expect(row.className).toContain("ui:opacity-50");
 });
 
+it("dims a disabled row and takes it out of pointer events", () => {
+  const { rerender } = renderV1(
+    <OptionRow id="o1" option={GPT} selected={false} active={false} />,
+  );
+  const row = () => screen.getByRole("option");
+  expect(row().className).not.toContain("ui:opacity-50");
+  rerender(
+    <OptionRow
+      id="o1"
+      option={{ ...GPT, disabled: true }}
+      selected={false}
+      active={false}
+    />,
+  );
+  expect(row().className).toContain("ui:pointer-events-none");
+  expect(row().className).toContain("ui:opacity-50");
+});
+
 it("ignores synthetic clicks and mouse moves on a disabled option", () => {
   const onSelect = vi.fn();
   const onActivate = vi.fn();

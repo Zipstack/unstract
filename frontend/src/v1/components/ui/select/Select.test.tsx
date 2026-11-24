@@ -122,6 +122,41 @@ it("cycles type-ahead through the options starting with a repeated letter", asyn
   expect(highlighted()).toBe("GeminiGoogle");
 });
 
+it("matches type-ahead on the label alone, not text in the leading slot", async () => {
+  const { user, onValueChange } = setup({
+    options: [
+      { value: "a", label: "Alpha" },
+      // A logo fallback with initials is text in the leading slot.
+      { value: "z", label: "Zeta", leading: <span>AB</span> },
+    ],
+  });
+  await user.click(trigger());
+  await user.keyboard("z");
+  expect(highlighted()).toBe("ABZeta");
+  await user.keyboard("{Enter}");
+  expect(onValueChange).toHaveBeenCalledWith("z");
+});
+
+it("indents a description past the leading slot only when there is one", async () => {
+  const { user } = setup({
+    options: [
+      { value: "a", label: "Alpha", description: "First", leading: <Star /> },
+      { value: "b", label: "Beta", description: "Second" },
+    ],
+  });
+  await user.click(trigger());
+  expect(screen.getByText("First").className).toContain("ui:pl-6.5");
+  expect(screen.getByText("Second").className).not.toContain("ui:pl-6.5");
+});
+
+it("places the list below the trigger as a popper, not over it", async () => {
+  const { user } = setup();
+  await user.click(trigger());
+  // Radix sets data-side only in popper position; item-aligned covers the trigger.
+  const content = screen.getByRole("listbox");
+  expect(content.getAttribute("data-side")).toBe("bottom");
+});
+
 it("does not select a disabled option", async () => {
   const { user, onValueChange } = setup();
   await user.click(trigger());
