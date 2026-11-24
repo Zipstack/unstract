@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLeaveGuard } from "@v1/components/patterns/form";
 import { NoPermission } from "@v1/components/patterns/NoPermission";
 import { QueryView } from "@v1/components/patterns/QueryView";
+import { InlineAlert } from "@v1/components/ui/feedback";
 import { cn } from "@v1/lib/cn";
 import { Slot } from "@v1/lib/plugins";
 import { registry } from "@v1/plugins";
@@ -12,9 +13,10 @@ import { AmbleSection } from "./AmbleSection";
 import { CustomDataSection } from "./CustomDataSection";
 import { GrammarSection } from "./GrammarSection";
 import { ProfilesSection } from "./profiles/ProfilesSection";
+import { SettingsSection } from "./SettingsSection";
 import {
   anchorId,
-  type SettingsSection,
+  type SettingsSection as SectionEntry,
   type SettingsSlotId,
   visibleSections,
 } from "./sections";
@@ -105,6 +107,13 @@ function ProjectSettings({
           onDirtyChange: report(section.id),
         }}
         fallback={null}
+        failed={
+          <SettingsSection id={section.id} title={section.label}>
+            <InlineAlert title={`${section.label} could not load`}>
+              Reload the page to try again.
+            </InlineAlert>
+          </SettingsSection>
+        }
       />
     ) : null;
   };
@@ -154,7 +163,7 @@ function ProjectSettings({
 
 function SectionList({
   sections,
-}: Readonly<{ sections: readonly SettingsSection[] }>): JSX.Element {
+}: Readonly<{ sections: readonly SectionEntry[] }>): JSX.Element {
   const [current, setCurrent] = useState(sections[0]?.id);
   return (
     <nav

@@ -1,6 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { type NotifyInput, setNotifier } from "@v1/lib/notify";
 import {
+  buildRegistry,
+  makeSlot,
+  PluginProvider,
+  type SettingsSectionProps,
+} from "@v1/lib/plugins";
+import {
   promptStudioToolKeys,
   type ToolSettings,
 } from "@v1/services/promptStudioTool";
@@ -561,5 +567,85 @@ describe("saving against the cached project", () => {
         promptStudioToolKeys.detail(SETTINGS_TOOL_ID),
       )?.preamble,
     ).toBe("Be brief.");
+  });
+});
+
+describe("cloud sections", () => {
+  function ChallengeStub({
+    toolId,
+    readOnly,
+    anchorId,
+    onDirtyChange,
+  }: SettingsSectionProps) {
+    return (
+      <section id={anchorId} aria-label="Challenge stub">
+        <span>{`tool ${toolId}${readOnly ? " read-only" : ""}`}</span>
+        <button type="button" onClick={() => onDirtyChange(true)}>
+          Edit challenge
+        </button>
+      </section>
+    );
+  }
+
+  function renderWithPlugins(props: Partial<SettingsTabProps> = {}) {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const registry = buildRegistry(
+      [
+        {
+          id: "challenge",
+          distributions: ["cloud"],
+          slots: {
+            "prompt-studio.settings.llm-challenge": async () => ({
+              default: ChallengeStub,
+            }),
+            "prompt-studio.settings.highlighting": () =>
+              Promise.reject(new Error("chunk failed")),
+          },
+        },
+      ],
+      "cloud",
+    );
+    const Slot = makeSlot(registry, () => undefined);
+    return renderV1(
+      <PluginProvider slot={Slot}>
+        <SettingsTab
+          toolId={SETTINGS_TOOL_ID}
+          isSlotFilled={(slot) => registry.slot(slot) !== undefined}
+          {...props}
+        />
+      </PluginProvider>,
+    );
+  }
+
+  it("hands a filler the project, the mode, its anchor and the dirty reporter", async () => {
+    serve();
+    let canLeave: () => Promise<boolean> = async () => true;
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { user } = renderWithPlugins({
+      readOnly: true,
+      onLeaveGuard: (fn) => {
+        canLeave = fn;
+      },
+    });
+    const stub = await screen.findByRole("region", { name: "Challenge stub" });
+    expect(stub).toHaveAttribute("id", "ps-settings-llm-challenge");
+    expect(
+      within(stub).getByText(`tool ${SETTINGS_TOOL_ID} read-only`),
+    ).toBeVisible();
+    await expect(canLeave()).resolves.toBe(true);
+    await user.click(
+      within(stub).getByRole("button", { name: "Edit challenge" }),
+    );
+    await waitFor(async () => expect(await canLeave()).toBe(false));
+  });
+
+  it("says when a cloud section could not load instead of leaving a dead link", async () => {
+    serve();
+    renderWithPlugins();
+    const failed = await screen.findByRole("region", { name: "Highlighting" });
+    expect(failed).toHaveAttribute("id", "ps-settings-highlighting");
+    expect(
+      within(failed).getByText("Highlighting could not load"),
+    ).toBeVisible();
   });
 });
