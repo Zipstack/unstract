@@ -131,13 +131,28 @@ def push_completed_job(job, result: dict | None) -> bool:
         )
         return False
 
-    # Recorded with a narrow UPDATE rather than `job.save()`: the finalize path
-    # has already written this row through `mark_terminal` and holds a stale
-    # in-memory copy, so a full save would write every other field back from it.
+    # A narrow UPDATE rather than `job.save()`: the finalize path has already
+    # written this row through `mark_terminal` and holds a stale in-memory copy,
+    # so a full save would write every other field back from it.
+    #
+    # Guarded separately because NOTHING here may escape. The caller queues the
+    # terminal webhook and drops the staged input only after this returns
+    # (`internal_views.FinalizeView.post`), and a retried finalize reports
+    # `finalized: False`, so an exception raised here loses the customer's
+    # webhook permanently rather than merely losing the read-back coordinate.
     queue_class = (pushed or {}).get("queue_class") or ""
     if queue_class:
-        AgentKVJob.objects.filter(id=job.id).update(hitl_queue_class=queue_class)
-        job.hitl_queue_class = queue_class
+        try:
+            AgentKVJob.objects.filter(id=job.id).update(hitl_queue_class=queue_class)
+            job.hitl_queue_class = queue_class
+        except Exception:
+            logger.exception(
+                "agentic-extract: job %s was pushed to review queue %r but its "
+                "queue class could not be recorded; the review copy exists and "
+                "the caller must look it up by queue name",
+                job.id,
+                queue,
+            )
 
     logger.info("agentic-extract: job %s pushed to review queue %r", job.id, queue)
     return True

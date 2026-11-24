@@ -285,3 +285,24 @@ class TestTheReadBackCoordinateIsRecorded:
             assert hitl.push_completed_job(_job(), {}) is False
 
         _rows.objects.filter.assert_not_called()
+
+    def test_a_failing_class_write_does_not_escape_and_still_reports_success(
+        self, _rows, caplog
+    ):
+        """The webhook outranks the coordinate.
+
+        `FinalizeView.post` queues the terminal webhook and drops the staged
+        input only AFTER this returns, and a retried finalize reports
+        `finalized: False` -- so an exception escaping here loses the
+        customer's webhook permanently. The push already succeeded by this
+        point, so the honest report is True with the failure logged.
+        """
+        _rows.objects.filter.return_value.update.side_effect = RuntimeError("db gone")
+
+        with (
+            caplog.at_level(logging.ERROR, logger=hitl.logger.name),
+            mock.patch.object(hitl, "_review_plugin", return_value=_plugin()),
+        ):
+            assert hitl.push_completed_job(_job(), {}) is True
+
+        assert "queue class could not be recorded" in caplog.text
