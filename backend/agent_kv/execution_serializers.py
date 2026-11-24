@@ -9,7 +9,12 @@ import pdfplumber
 from django.conf import settings
 from rest_framework import serializers
 
-from agent_kv.constants import EXTRACTOR_ROUTES, TABLE_EXTRACTOR_NAME, V1_EXTRACTOR_NAME
+from agent_kv import custom_data
+from agent_kv.constants import (
+    EXTRACTOR_ROUTES,
+    TABLE_EXTRACTOR_NAME,
+    V1_EXTRACTOR_NAME,
+)
 from unstract.agent_kv_schema import SchemaError, compile_schema
 from unstract.core.mime_gate import (
     INCONCLUSIVE_MIME_TYPES,
@@ -242,6 +247,15 @@ class KVOptionsSerializer(serializers.Serializer):
     key_notes = serializers.CharField(
         required=False, allow_blank=True, default="", max_length=10_000
     )
+    enable_highlight = serializers.BooleanField(required=False, default=False)
+    enable_word_confidence = serializers.BooleanField(required=False, default=False)
+
+    def validate_enable_highlight(self, v):
+        if v and not settings.AGENT_KV_HIGHLIGHT_ENABLED:
+            raise serializers.ValidationError(
+                "highlight data is not available on this deployment yet"
+            )
+        return v
 
     def validate_calculations(self, v):
         if v and not settings.AGENT_KV_CALCULATIONS_ENABLED:
@@ -271,6 +285,21 @@ class KVOptionsSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 f"unknown options for extractor 'kv': {sorted(unknown)}"
             )
+        # Word confidence is meaningless without the line metadata highlight
+        # fetches, and Prompt Studio forces it off for the same reason rather
+        # than erroring (`answer_prompt.py`). Here it is a 400: that path is a
+        # UI toggle a user can see, this is an API field a caller set on
+        # purpose, and silently ignoring it would return a result missing data
+        # they asked for with nothing saying why.
+        if data.get("enable_word_confidence") and not data.get("enable_highlight"):
+            raise serializers.ValidationError(
+                {
+                    "enable_word_confidence": (
+                        "requires enable_highlight: word confidence is derived "
+                        "from the highlight line metadata"
+                    )
+                }
+            )
         return data
 
 
@@ -279,7 +308,29 @@ class TableOptionsSerializer(serializers.Serializer):
 
     Deliberately a subset of what the IDE path accepts: `output_path` and the
     IDE callback hints (`prompt_key`, `doc_name`) are meaningless on the blind
-    API, and `enable_highlight` has no consumer there.
+    API.
+
+    **`enable_highlight` is free on this extractor too**, which an earlier
+    version of this docstring got wrong. It claimed the engine's
+    `HighlightValidator` ("Agent 3.5", LLM-based row-to-line matching) made
+    the option cost a per-page LLM call. Agent 3.5 is real and is one
+    LLM call per page, but it runs only when `RunnerConfig.highlight_validator`
+    is set, and the blind API's binding never constructs one -- it is an IDE
+    stage. The OCR fetch is unconditional on both extractors. So what the flag
+    turns on is the deterministic row-to-line mapping the engine was already
+    computing and discarding.
+
+    These flags stay per-extractor anyway, because what they RETURN differs:
+    `kv` attaches a box and a confidence to each key, `table` returns one
+    mapping for the whole table.
+
+    **`enable_word_confidence` is not offered here**, unlike on `kv`. Per-word
+    confidence arrives from the OCR as one list per line of the extracted
+    text, so attaching it to a value needs that value's line numbers -- which
+    `kv` has on `KeyResult.line_start`/`line_end` and the table result does
+    not: `table` emits coordinates only.
+    Refused rather than accepted-and-ignored: a caller who set it would
+    otherwise get a result with no confidence in it and nothing saying why.
 
     **`enable_header_mapping` changes the result shape.** With it off, the
     engine returns `output.tables` as a flat list of row dicts. With it on, the
@@ -300,6 +351,14 @@ class TableOptionsSerializer(serializers.Serializer):
     number_format = serializers.ChoiceField(
         required=False, choices=("US", "EU"), default="US"
     )
+    enable_highlight = serializers.BooleanField(required=False, default=False)
+
+    def validate_enable_highlight(self, v):
+        if v and not settings.AGENT_KV_HIGHLIGHT_ENABLED:
+            raise serializers.ValidationError(
+                "highlight data is not available on this deployment yet"
+            )
+        return v
 
     def validate(self, data):
         # Same reason KVOptionsSerializer rejects unknowns: DRF drops them
@@ -307,6 +366,20 @@ class TableOptionsSerializer(serializers.Serializer):
         # discarded and the job would run with a configuration the caller
         # never asked for.
         unknown = set(self.initial_data) - set(self.fields)
+        # `enable_word_confidence` IS a real option -- on `kv`. Named
+        # explicitly so a caller who sent it to the wrong extractor is told
+        # that, rather than reading "unknown option" for a field they can see
+        # documented. See the class docstring for why `table` cannot serve it.
+        if "enable_word_confidence" in unknown:
+            raise serializers.ValidationError(
+                {
+                    "enable_word_confidence": (
+                        "not supported by the 'table' extractor: per-word "
+                        "confidence is attached using a value's line numbers, "
+                        "which table rows do not carry. Available on 'kv'."
+                    )
+                }
+            )
         if unknown:
             raise serializers.ValidationError(
                 f"unknown options for extractor '{TABLE_EXTRACTOR_NAME}': "
@@ -617,6 +690,36 @@ class SubmitSerializer(serializers.Serializer):
         required=False, allow_blank=True, default="", max_length=1024
     )
 
+    def validate_custom_data(self, value):
+        """A JSON object, capped.
+
+        `api_v2.serializers.validate_custom_data` checks only that it is a
+        dict, which is where the object rule comes from -- but it caps nothing,
+        so the cap here is modelled on `calculations` instead. Three reasons it
+        needs one: the value is stored on the job row, echoed in every status
+        and result response for the life of the job, and substituted into
+        prompt text that is then sent to a model and billed by token.
+
+        Arrays and scalars are refused rather than coerced. `{{custom_data.x}}`
+        is a dotted-path lookup, so a non-object has no addressable key and
+        every placeholder referencing it would fail at submit anyway -- a
+        clear 400 on the container beats a confusing one on each key.
+        """
+        if value is None:
+            return value
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                "custom_data must be a JSON object (not an array or a scalar): "
+                "`{{custom_data.<key>}}` addresses it by key"
+            )
+        size = len(json.dumps(value).encode("utf-8"))
+        if size > settings.AGENT_KV_MAX_CUSTOM_DATA_BYTES:
+            raise serializers.ValidationError(
+                f"custom_data is {size} bytes, over the "
+                f"{settings.AGENT_KV_MAX_CUSTOM_DATA_BYTES}-byte limit"
+            )
+        return value
+
     def validate_webhook_url(self, value):
         """Refuse at submit what the sink will refuse at delivery.
 
@@ -647,7 +750,7 @@ class SubmitSerializer(serializers.Serializer):
         reason = webhook_url_refusal(value, allowed_schemes=("https",), resolve=False)
         if reason is not None:
             raise serializers.ValidationError(
-                "webhook_url must be an https URL on a public host " f"({reason})"
+                f"webhook_url must be an https URL on a public host ({reason})"
             )
         return value
 
@@ -798,4 +901,54 @@ class SubmitSerializer(serializers.Serializer):
                 )
         # Excel: no page concept pre-OCR (spec §6.1); pages_total stays None,
         # size cap already enforced; the engine enforces the post-OCR cap.
+        # Substitute `{{custom_data.*}}` in the instruction text, HERE rather
+        # than in the engines. Both halves are in this one request, so a
+        # missing key is a 400 before anything is staged, slotted or billed --
+        # the workflow executor resolves engine-side and has to, because there
+        # the data is on a deployment and the prompt on a tool.
+        #
+        # Entries are replaced wholesale with their resolved copies, so what
+        # reaches `dispatch_job` is final text and the engines need no
+        # knowledge of `custom_data` at all.
+        entries = data.get("extractors") or []
+        if any(custom_data.entry_references(e) for e in entries):
+            try:
+                resolved = [
+                    custom_data.resolve_entry(e, data.get("custom_data")) for e in entries
+                ]
+            except custom_data.MissingCustomDataKey as e:
+                # Built from the exception's own fields rather than `str(e)`:
+                # the message is ours either way, but passing the exception
+                # object into the response body is what CodeQL flags as
+                # information exposure, and there is nothing here that needs
+                # the object.
+                raise serializers.ValidationError(
+                    {"custom_data": e.message_for_caller()}
+                ) from e
+
+            # **Re-measured AFTER substitution, against the same cap.**
+            # `validate_extractors` measures the payload as SENT, which is the
+            # template; substitution then expands it by up to the whole
+            # `custom_data` allowance PER PLACEHOLDER. A 256 KiB `extractors`
+            # holding ~10,000 copies of `{{custom_data.x}}` against a
+            # 20,000-byte value resolves to hundreds of megabytes -- all of it
+            # held in memory, dispatched, and billed as prompt text, from a
+            # request where both halves were individually within their limits.
+            #
+            # The cap is the one the caller was already told about, so this
+            # adds no knob; the message says the size is the resolved one,
+            # because a payload that measured 200 KiB being refused for being
+            # too large is otherwise baffling.
+            size = len(json.dumps(resolved, ensure_ascii=False).encode("utf-8"))
+            if size > settings.AGENT_KV_MAX_SCHEMA_BYTES:
+                raise serializers.ValidationError(
+                    {
+                        "extractors": f"extractors resolves to {size} bytes after "
+                        f"custom_data substitution; max is "
+                        f"{settings.AGENT_KV_MAX_SCHEMA_BYTES}. Shorten the "
+                        "substituted values or the number of placeholders"
+                    }
+                )
+            data["extractors"] = resolved
+
         return data

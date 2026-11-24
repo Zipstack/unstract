@@ -162,7 +162,13 @@ def _platform_api_key(job) -> str:
 
 
 def dispatch_job(
-    job, *, extractor: str, schema: dict, options: dict, adapters: dict | None = None
+    job,
+    *,
+    extractor: str,
+    schema: dict,
+    options: dict,
+    adapters: dict | None = None,
+    custom_data: dict | None = None,
 ) -> None:
     executor_name, operation = EXTRACTOR_ROUTES[extractor]
     org_id = str(job.organization_id)
@@ -210,6 +216,15 @@ def dispatch_job(
                 # for a job predating the field. Kept a dict because the roles
                 # are per-extractor data, not three fixed columns.
                 "adapters": adapters or {},
+                # Caller-supplied, validated as a capped JSON object at submit.
+                #
+                # The engines do NOT need this for `{{custom_data.*}}` --
+                # `execution_serializers` resolves those before dispatch, so
+                # what arrives in `options` and `schema` is already final text.
+                # It is passed because the value is part of the job's input and
+                # an engine may need to carry or echo it; an engine that does
+                # not simply ignores the key.
+                "custom_data": custom_data or {},
                 "platform_api_key": _platform_api_key(job),
                 # The CAP the engine must enforce (spec §6.1/§6.6), not the
                 # measured count -- job.pages_total is None for Excel (no

@@ -218,6 +218,15 @@ class LLMWhispererV2(X2TextAdapter):
         metadata = TextExtractionMetadata(
             whisper_hash=response.get(X2TextConstants.WHISPER_HASH_V2, ""),
             line_metadata=response.get("line_metadata"),
+            # The service puts this on every `layout_preserving` retrieve
+            # whether or not it was asked for, so the gate is ours: it scales
+            # with the document's word count, and a caller that did not ask
+            # for highlight data should not carry it. `line_metadata` is
+            # already implicitly gated the same way -- `send_whisper_request`
+            # only performs the `/highlights` fetch when `enable_highlight`.
+            confidence_metadata=(
+                response.get("confidence_metadata") if enable_highlight else None
+            ),
         )
 
         return TextExtractionResult(

@@ -978,3 +978,95 @@ def test_an_unknown_adapter_role_is_refused_and_names_its_extractor(extractor, k
     msg = str(s.errors)
     assert "embedding" in msg, msg
     assert f"'{extractor}'" in msg, msg
+
+
+# ---------------------------------------------------------------------------
+# `custom_data` substitution, driven through the serializer
+# ---------------------------------------------------------------------------
+class TestCustomDataSubstitutionThroughTheSerializer:
+    """Driven through `SubmitSerializer`, not through the resolver helpers.
+
+    The dialect itself is pinned in `test_custom_data_resolution.py` and the
+    helpers in `test_custom_data_and_highlight_options.py`. Neither runs the
+    serializer, so **deleting the substitution block from
+    `SubmitSerializer.validate` left both green** — and a submit would then
+    have dispatched its templates verbatim, placeholders and all, into billed
+    prompt text. These are the cases that fail for that.
+    """
+
+    def test_the_resolved_text_is_what_validation_produces(self):
+        s = SubmitSerializer(
+            data=_data(
+                instructions="rows for {{custom_data.vendor}}",
+                custom_data={"vendor": "Acme Corp"},
+            )
+        )
+
+        assert s.is_valid(), _errs(s)
+        entry = s.validated_data["extractors"][0]
+        assert entry["options"]["instructions"] == "rows for Acme Corp"
+
+    def test_a_missing_key_is_refused_before_anything_is_staged(self):
+        s = SubmitSerializer(
+            data=_data(
+                instructions="rows for {{custom_data.vendor}}",
+                custom_data={"something_else": "x"},
+            )
+        )
+
+        assert not s.is_valid()
+        assert "custom_data" in _errs(s)
+        assert "vendor" in _errs(s)
+
+    def test_a_submit_with_no_placeholders_is_untouched_and_not_refused(self):
+        """The gate, through the serializer.
+
+        Without it every request carrying instruction text and no custom data
+        would hit the "no custom_data was sent" branch and 400.
+        """
+        s = SubmitSerializer(data=_data(instructions="rows for the vendor"))
+
+        assert s.is_valid(), _errs(s)
+        entry = s.validated_data["extractors"][0]
+        assert entry["options"]["instructions"] == "rows for the vendor"
+
+    def test_substitution_cannot_expand_past_the_payload_cap(self):
+        """Amplification: both halves within their caps, the product far over.
+
+        `validate_extractors` measures the payload as SENT. Substitution then
+        expands it by up to the whole `custom_data` allowance PER placeholder,
+        and the expanded text is what is held in memory, dispatched, and
+        billed as prompt tokens. Here a 600-byte template and a 13 KB value
+        resolve to ~390 KB.
+        """
+        value = "a" * 13_000
+        template = "{{custom_data.x}}" * 30
+        data = _data(instructions=template, custom_data={"x": value})
+
+        # The template really is well inside the cap it is measured against --
+        # otherwise this test would be pinning the pre-existing check.
+        assert (
+            len(data["extractors"].encode("utf-8")) < settings.AGENT_KV_MAX_SCHEMA_BYTES
+        )
+        assert (
+            len(json.dumps({"x": value}).encode("utf-8"))
+            < settings.AGENT_KV_MAX_CUSTOM_DATA_BYTES
+        )
+
+        s = SubmitSerializer(data=data)
+
+        assert not s.is_valid()
+        errs = _errs(s)
+        assert "resolves to" in errs, errs
+        assert str(settings.AGENT_KV_MAX_SCHEMA_BYTES) in errs
+
+    def test_a_resolved_payload_inside_the_cap_is_accepted(self):
+        """The bound must not refuse ordinary substitution."""
+        s = SubmitSerializer(
+            data=_data(
+                instructions="{{custom_data.x}}" * 30,
+                custom_data={"x": "a" * 100},
+            )
+        )
+
+        assert s.is_valid(), _errs(s)
