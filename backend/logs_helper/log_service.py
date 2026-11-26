@@ -1,4 +1,5 @@
 from utils.cache_service import CacheService
+from utils.log_channel import log_channel_id
 
 
 class LogService:
@@ -17,7 +18,9 @@ class LogService:
         Parameters:
         session_id (str): The session identifier to include in the Redis key.
 
+        The key carries the session's log channel id, never the session key.
+
         Returns:
         str: The constructed Redis key.
         """
-        return f"logs:{session_id}"
+        return f"logs:{log_channel_id(session_id)}"

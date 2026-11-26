@@ -6,6 +6,7 @@ from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from utils.constants import Account
 from utils.local_context import StateStore
+from utils.log_channel import log_channel_id
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 
@@ -103,7 +104,11 @@ class CustomAuthMiddleware:
                 return JsonResponse({"message": "Organization access denied"}, status=403)
             if not SessionTracker.touch(request):
                 return JsonResponse({"message": "Unauthorized"}, status=401)
-            StateStore.set(Common.LOG_EVENTS_ID, request.session.session_key)
+            # Never the session key itself: it is the HttpOnly cookie's value,
+            # and this id reaches API responses, payloads, the DB and logs.
+            StateStore.set(
+                Common.LOG_EVENTS_ID, log_channel_id(request.session.session_key)
+            )
             StateStore.set(Account.ORGANIZATION_ID, organization_id)
             response = self.get_response(request)
             StateStore.clear(Account.ORGANIZATION_ID)

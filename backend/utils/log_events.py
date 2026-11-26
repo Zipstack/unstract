@@ -24,12 +24,14 @@ from unstract.core.data_models import LogDataDTO
 from unstract.core.log_utils import get_validated_log_data, store_execution_log
 from utils.constants import ExecutionLogConstants
 from utils.cors_origin import RegexOrigin
+from utils.log_channel import log_channel_id
 
 logger = logging.getLogger(__name__)
 
 _SESSION_KEY_RE = re.compile(r"[a-z0-9]{32}")
 # Socket ids per signed-in session, so that ending a session can disconnect its
 # sockets on every worker: a worker can list only its own sockets.
+# Both are keyed by the session's log channel id, never the session key.
 _SESSION_SOCKETS_PREFIX = "session_sockets:"
 _SOCKET_SESSION_PREFIX = "socket_session:"
 
@@ -92,11 +94,14 @@ def connect(sid: str, environ: Any, auth: Any) -> None:
     if session_id:
         # Fail closed: a socket that ending its session could not reach would
         # keep receiving that session's and its user's events.
-        if not _track_session_socket(sid, session_id):
+        # The room is the session's log channel, the id the backend hands out
+        # as `log_events_id`, so the session key never names a room.
+        channel_id = log_channel_id(session_id)
+        if not _track_session_socket(sid, channel_id):
             sio.disconnect(sid)
             return
-        sio.enter_room(sid, session_id)
-        logger.info(f"Entered room {session_id} for socket {sid}")
+        sio.enter_room(sid, channel_id)
+        logger.info(f"Entered the session room for socket {sid}")
         user_id = _get_user_id(sid, session_id)
         if user_id:
             # Per-user events, such as the inbox unread count.
@@ -123,19 +128,32 @@ def disconnect(sid: str) -> None:
     _untrack_session_socket(sid)
 
 
-def _session_sockets_key(session_id: str) -> str:
-    return f"{_SESSION_SOCKETS_PREFIX}{session_id}"
+def _session_sockets_key(channel_id: str) -> str:
+    return f"{_SESSION_SOCKETS_PREFIX}{channel_id}"
 
 
-def _track_session_socket(sid: str, session_id: str) -> bool:
-    """Whether the socket was recorded against its session."""
+def _session_sockets_keys(session_id: str) -> list[str]:
+    """The keys that may hold a session's sockets.
+
+    TODO(UN-4677): drop the legacy key one release after the change. Until a
+    rolling deploy completes, a pod running the earlier code tracks its sockets
+    under the session key; ending the session must still disconnect them.
+    """
+    return [
+        _session_sockets_key(log_channel_id(session_id)),
+        _session_sockets_key(session_id),
+    ]
+
+
+def _track_session_socket(sid: str, channel_id: str) -> bool:
+    """Whether the socket was recorded against its session's channel."""
     try:
         conn = _get_redis_conn()
-        key = _session_sockets_key(session_id)
+        key = _session_sockets_key(channel_id)
         conn.sadd(key, sid)
         conn.expire(key, settings.SESSION_COOKIE_AGE)
         conn.set(
-            f"{_SOCKET_SESSION_PREFIX}{sid}", session_id, ex=settings.SESSION_COOKIE_AGE
+            f"{_SOCKET_SESSION_PREFIX}{sid}", channel_id, ex=settings.SESSION_COOKIE_AGE
         )
         return True
     except Exception:
@@ -149,11 +167,12 @@ def _untrack_session_socket(sid: str) -> None:
     try:
         conn = _get_redis_conn()
         reverse_key = f"{_SOCKET_SESSION_PREFIX}{sid}"
-        session_id = conn.get(reverse_key)
-        if session_id:
-            if isinstance(session_id, bytes):
-                session_id = session_id.decode()
-            conn.srem(_session_sockets_key(session_id), sid)
+        # A channel id, or a session key when written by the earlier code.
+        channel_id = conn.get(reverse_key)
+        if channel_id:
+            if isinstance(channel_id, bytes):
+                channel_id = channel_id.decode()
+            conn.srem(_session_sockets_key(channel_id), sid)
             conn.delete(reverse_key)
     except Exception:
         logger.warning(f"Could not untrack socket {sid}", exc_info=True)
@@ -168,12 +187,12 @@ def renew_session_sockets(session_id: str, ttl: int) -> None:
     the session always finds its sockets.
     """
     conn = _get_redis_conn()
-    key = _session_sockets_key(session_id)
-    if not conn.expire(key, ttl):
-        return
-    for sid in conn.smembers(key):
-        sid = sid.decode() if isinstance(sid, bytes) else sid
-        conn.expire(f"{_SOCKET_SESSION_PREFIX}{sid}", ttl)
+    for key in _session_sockets_keys(session_id):
+        if not conn.expire(key, ttl):
+            continue
+        for sid in conn.smembers(key):
+            sid = sid.decode() if isinstance(sid, bytes) else sid
+            conn.expire(f"{_SOCKET_SESSION_PREFIX}{sid}", ttl)
 
 
 def disconnect_session_sockets(session_id: str) -> None:
@@ -184,10 +203,10 @@ def disconnect_session_sockets(session_id: str) -> None:
     included.
     """
     conn = _get_redis_conn()
-    key = _session_sockets_key(session_id)
-    for sid in conn.smembers(key):
-        sio.disconnect(sid.decode() if isinstance(sid, bytes) else sid)
-    conn.delete(key)
+    for key in _session_sockets_keys(session_id):
+        for sid in conn.smembers(key):
+            sio.disconnect(sid.decode() if isinstance(sid, bytes) else sid)
+        conn.delete(key)
 
 
 def _get_user_session_id_from_cookies(sid: str, environ: Any) -> str | None:

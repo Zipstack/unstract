@@ -14,8 +14,10 @@ from django.conf import settings
 from django.test import SimpleTestCase
 
 from utils import log_events
+from utils.log_channel import log_channel_id
 
 SESSION = "a" * 32
+CHANNEL = log_channel_id(SESSION)
 
 
 class _FakeRedis:
@@ -51,7 +53,7 @@ class _FakeRedis:
         self.values.pop(key, None)
 
 
-class SessionSocketsTest(SimpleTestCase):
+class _SocketsTestBase(SimpleTestCase):
     def setUp(self) -> None:
         self.redis = _FakeRedis()
         for target, kwargs in (
@@ -70,11 +72,13 @@ class SessionSocketsTest(SimpleTestCase):
         environ = {"HTTP_COOKIE": f"{settings.SESSION_COOKIE_NAME}={SESSION}"}
         log_events.connect(sid, environ, None)
 
+
+class SessionSocketsTest(_SocketsTestBase):
     def test_connected_sockets_are_tracked_for_their_session(self) -> None:
         self._connect("sid-1")
         self._connect("sid-2")
 
-        key = f"session_sockets:{SESSION}"
+        key = f"session_sockets:{CHANNEL}"
         self.assertEqual(self.redis.smembers(key), {b"sid-1", b"sid-2"})
         self.assertEqual(self.redis.ttls[key], settings.SESSION_COOKIE_AGE)
         self.assertEqual(
@@ -86,7 +90,7 @@ class SessionSocketsTest(SimpleTestCase):
 
         log_events.renew_session_sockets(SESSION, ttl=999)
 
-        self.assertEqual(self.redis.ttls[f"session_sockets:{SESSION}"], 999)
+        self.assertEqual(self.redis.ttls[f"session_sockets:{CHANNEL}"], 999)
         self.assertEqual(self.redis.ttls["socket_session:sid-1"], 999)
 
     def test_renewal_of_an_untracked_session_creates_nothing(self) -> None:
@@ -100,7 +104,7 @@ class SessionSocketsTest(SimpleTestCase):
 
         log_events.disconnect("sid-1")
 
-        self.assertEqual(self.redis.smembers(f"session_sockets:{SESSION}"), {b"sid-2"})
+        self.assertEqual(self.redis.smembers(f"session_sockets:{CHANNEL}"), {b"sid-2"})
         self.assertIsNone(self.redis.get("socket_session:sid-1"))
 
     def test_ending_a_session_disconnects_each_of_its_sockets(self) -> None:
@@ -110,7 +114,7 @@ class SessionSocketsTest(SimpleTestCase):
         log_events.disconnect_session_sockets(SESSION)
 
         self.disconnect.assert_has_calls([call("sid-1"), call("sid-2")], any_order=True)
-        self.assertEqual(self.redis.smembers(f"session_sockets:{SESSION}"), set())
+        self.assertEqual(self.redis.smembers(f"session_sockets:{CHANNEL}"), set())
 
     def test_a_socket_whose_session_ends_while_joining_leaves_the_user_room(
         self,
@@ -143,3 +147,57 @@ class SessionSocketsTest(SimpleTestCase):
 
         self.enter_room.assert_not_called()
         self.disconnect.assert_called_once_with("sid-1")
+
+    def test_a_socket_joins_its_session_channel_not_the_session_key(self) -> None:
+        self._connect("sid-1")
+
+        self.enter_room.assert_any_call("sid-1", CHANNEL)
+        rooms = {c.args[1] for c in self.enter_room.call_args_list}
+        self.assertNotIn(SESSION, rooms)
+
+    def test_the_session_key_names_no_tracking_key_or_value(self) -> None:
+        self._connect("sid-1")
+
+        names = [*self.redis.sets, *self.redis.values]
+        self.assertFalse([n for n in names if SESSION in n])
+        self.assertNotIn(SESSION.encode(), self.redis.values.values())
+
+
+class LegacySessionSocketsTest(_SocketsTestBase):
+    """Sockets tracked by a pod still running the earlier code.
+
+    Until a rolling deploy completes, such a pod tracks its sockets under the
+    session key itself. Ending the session must still disconnect them.
+    """
+
+    def _track_legacy(self, sid: str) -> None:
+        self.redis.sadd(f"session_sockets:{SESSION}", sid)
+        self.redis.set(f"socket_session:{sid}", SESSION, ex=60)
+
+    def test_ending_a_session_disconnects_legacy_tracked_sockets(self) -> None:
+        self._track_legacy("old-pod-sid")
+        self._connect("sid-1")
+
+        log_events.disconnect_session_sockets(SESSION)
+
+        self.disconnect.assert_has_calls(
+            [call("old-pod-sid"), call("sid-1")], any_order=True
+        )
+        self.assertEqual(self.redis.smembers(f"session_sockets:{SESSION}"), set())
+        self.assertEqual(self.redis.smembers(f"session_sockets:{CHANNEL}"), set())
+
+    def test_renewal_extends_legacy_tracked_sockets(self) -> None:
+        self._track_legacy("old-pod-sid")
+
+        log_events.renew_session_sockets(SESSION, ttl=999)
+
+        self.assertEqual(self.redis.ttls[f"session_sockets:{SESSION}"], 999)
+        self.assertEqual(self.redis.ttls["socket_session:old-pod-sid"], 999)
+
+    def test_a_legacy_tracked_socket_is_untracked_on_disconnect(self) -> None:
+        self._track_legacy("old-pod-sid")
+
+        log_events.disconnect("old-pod-sid")
+
+        self.assertEqual(self.redis.smembers(f"session_sockets:{SESSION}"), set())
+        self.assertIsNone(self.redis.get("socket_session:old-pod-sid"))

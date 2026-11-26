@@ -143,7 +143,9 @@ class ExecuteWorkflowResponseSerializer(Serializer):
 class WorkflowExecutionSerializer(ModelSerializer):
     class Meta:
         model = WorkflowExecution
-        fields = "__all__"
+        # execution_log_id is the starter's live-log channel: it routes their
+        # events only, and is no business of anyone else who can list the run.
+        exclude = ["execution_log_id"]
 
 
 class WorkflowExecutionLogSerializer(ModelSerializer):

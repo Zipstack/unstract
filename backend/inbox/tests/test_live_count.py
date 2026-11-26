@@ -10,6 +10,7 @@ from django.test import TestCase, override_settings
 from permissions.tests.base import CoOwnerOrgTestMixin
 from rest_framework.test import APIRequestFactory, force_authenticate
 from utils import log_events
+from utils.log_channel import log_channel_id
 from utils.user_context import UserContext
 
 from inbox import service
@@ -209,14 +210,14 @@ class ConnectTests(CoOwnerOrgTestMixin, TestCase):
         key = self.signed_in(self.viewer)
         enter = self.connect(key)
         enter.assert_has_calls(
-            [call("sid-1", key), call("sid-1", f"user:{self.viewer.pk}")]
+            [call("sid-1", log_channel_id(key)), call("sid-1", f"user:{self.viewer.pk}")]
         )
 
     def test_deactivated_user_joins_only_the_session_room(self) -> None:
         key = self.signed_in(self.viewer)
         self.viewer.is_active = False
         self.viewer.save(update_fields=["is_active"])
-        self.connect(key).assert_called_once_with("sid-1", key)
+        self.connect(key).assert_called_once_with("sid-1", log_channel_id(key))
 
     def test_session_from_before_a_password_change_joins_only_the_session_room(
         self,
@@ -224,17 +225,17 @@ class ConnectTests(CoOwnerOrgTestMixin, TestCase):
         key = self.signed_in(self.viewer)
         self.viewer.set_password("a-new-password")
         self.viewer.save()
-        self.connect(key).assert_called_once_with("sid-1", key)
+        self.connect(key).assert_called_once_with("sid-1", log_channel_id(key))
 
     def test_session_without_a_hash_joins_only_the_session_room(self) -> None:
         key = self.signed_in(self.viewer, **{HASH_SESSION_KEY: ""})
-        self.connect(key).assert_called_once_with("sid-1", key)
+        self.connect(key).assert_called_once_with("sid-1", log_channel_id(key))
 
     def test_session_from_an_unconfigured_backend_joins_only_the_session_room(
         self,
     ) -> None:
         key = self.signed_in(self.viewer, **{BACKEND_SESSION_KEY: "no.such.Backend"})
-        self.connect(key).assert_called_once_with("sid-1", key)
+        self.connect(key).assert_called_once_with("sid-1", log_channel_id(key))
 
     def test_session_signed_with_a_fallback_secret_still_joins(self) -> None:
         key = self.signed_in(self.viewer)
@@ -243,8 +244,10 @@ class ConnectTests(CoOwnerOrgTestMixin, TestCase):
             SECRET_KEY_FALLBACKS=[settings.SECRET_KEY],
         ):
             enter = self.connect(key)
+            # The room follows the current SECRET_KEY, as the middleware's does.
+            room = log_channel_id(key)
         enter.assert_has_calls(
-            [call("sid-1", key), call("sid-1", f"user:{self.viewer.pk}")]
+            [call("sid-1", room), call("sid-1", f"user:{self.viewer.pk}")]
         )
 
     def test_session_read_drops_stale_connections(self) -> None:
@@ -254,7 +257,7 @@ class ConnectTests(CoOwnerOrgTestMixin, TestCase):
     def test_anonymous_session_joins_only_the_session_room(self) -> None:
         key = self.session(other="x")
         enter = self.connect(key)
-        enter.assert_called_once_with("sid-1", key)
+        enter.assert_called_once_with("sid-1", log_channel_id(key))
 
     def test_cookie_shaped_like_a_user_room_joins_nothing(self) -> None:
         environ = {"HTTP_COOKIE": f"{settings.SESSION_COOKIE_NAME}=user:{self.viewer.pk}"}
@@ -271,7 +274,7 @@ class ConnectTests(CoOwnerOrgTestMixin, TestCase):
         with patch.object(log_events, "import_module", side_effect=RuntimeError("db")):
             with self.assertLogs("utils.log_events", "ERROR"):
                 enter = self.connect(key)
-        enter.assert_called_once_with("sid-1", key)
+        enter.assert_called_once_with("sid-1", log_channel_id(key))
 
     def test_cookie_not_shaped_like_a_session_key_is_never_looked_up(self) -> None:
         with patch.object(log_events, "import_module") as store:
@@ -282,5 +285,5 @@ class ConnectTests(CoOwnerOrgTestMixin, TestCase):
     def test_unknown_session_joins_only_the_session_room(self) -> None:
         with self.assertLogs("utils.log_events", "INFO") as logs:
             enter = self.connect("n" * 32)
-        enter.assert_called_once_with("sid-1", "n" * 32)
+        enter.assert_called_once_with("sid-1", log_channel_id("n" * 32))
         self.assertTrue(any("no user room" in line for line in logs.output))

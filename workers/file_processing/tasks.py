@@ -605,7 +605,8 @@ def _setup_execution_context(
     if execution_log_id:
         # Set LOG_EVENTS_ID like backend Celery workers do
         StateStore.set("LOG_EVENTS_ID", execution_log_id)
-        logger.info(f"Set LOG_EVENTS_ID for WebSocket messaging: {execution_log_id}")
+        # The id itself is a session's live-log channel: not logged.
+        logger.info("Set LOG_EVENTS_ID for WebSocket messaging")
     else:
         logger.warning(
             f"No execution_log_id found for execution {execution_id}, WebSocket logs may not be delivered"
@@ -1907,7 +1908,7 @@ def process_file_batch_api(
             log_events_id = workflow_execution.get("execution_log_id")
             if log_events_id:
                 StateStore.set("LOG_EVENTS_ID", log_events_id)
-                logger.info(f"Set LOG_EVENTS_ID for WebSocket messaging: {log_events_id}")
+                logger.info("Set LOG_EVENTS_ID for WebSocket messaging")
 
             # Process each file in the batch using Django-like pattern
             file_results = []

@@ -286,9 +286,8 @@ def async_execute_bin_general(
                 from shared.infrastructure.context import StateStore
 
                 StateStore.set("LOG_EVENTS_ID", execution_log_id)
-                logger.info(
-                    f"Set LOG_EVENTS_ID for WebSocket messaging: {execution_log_id}"
-                )
+                # The id itself is a session's live-log channel: not logged.
+                logger.info("Set LOG_EVENTS_ID for WebSocket messaging")
             else:
                 logger.warning(
                     f"No execution_log_id found for execution {execution_id}, WebSocket logs may not be delivered"

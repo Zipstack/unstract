@@ -116,8 +116,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         self.tags = workflow_execution.tag_names
         logger.info(
             f"Executing for Pipeline ID: {pipeline_id}, "
-            f"workflow ID: {self.workflow_id}, execution ID: {self.execution_id}, "
-            f"web socket messaging channel ID: {self.execution_log_id}"
+            f"workflow ID: {self.workflow_id}, execution ID: {self.execution_id}"
         )
 
         self.compilation_result = self.compile_workflow(execution_id=self.execution_id)
