@@ -60,7 +60,7 @@ jobs:
           client-id: ${{ vars.PUSH_TO_MAIN_APP_CLIENT_ID }}
           private-key: ${{ secrets.PUSH_TO_MAIN_APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ steps.bot.outputs.token }}
@@ -69,7 +69,7 @@ jobs:
         # A late push run checks out its event sha as origin/main; rescan the real tip instead.
         run: git fetch origin +refs/heads/main:refs/remotes/origin/main
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12" # relstate uses dt.UTC (3.11+)
 
@@ -110,7 +110,7 @@ jobs:
           client-id: ${{ vars.PUSH_TO_MAIN_APP_CLIENT_ID }}
           private-key: ${{ secrets.PUSH_TO_MAIN_APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0 # the decline reads the pick from the head and the base's history
