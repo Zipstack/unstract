@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 
 # Long enough for a provider's error text; a stack trace past it is noise.
 INDEX_ERROR_MAX_LENGTH = 2000
+# Stored as a JSON string, as handle_index_manager writes it; the delete
+# hook in models.py parses it.
+EMPTY_INDEX_IDS_HISTORY = json.dumps([])
 
 
 class ExtractionStatusResult(Enum):
@@ -97,21 +100,23 @@ class PromptStudioIndexHelper:
 
         Profiles with the same indexing settings share one index key, so a
         prompt run can find the index ready without indexing under this
-        profile. A bookkeeping error is logged; the run goes on.
+        profile. The index is not added to index_ids_history: deleting this
+        row would otherwise delete an index another row still uses. A
+        bookkeeping error is logged; the run goes on.
         """
-        already = IndexManager.objects.filter(
-            document_manager_id=document_id,
-            profile_manager=profile_manager,
-            raw_index_id=doc_id,
-            index_error__isnull=True,
-        ).exists()
-        if already:
-            return
         try:
-            PromptStudioIndexHelper.handle_index_manager(
-                document_id=document_id, profile_manager=profile_manager, doc_id=doc_id
-            )
-        except IndexingAPIError:
+            with transaction.atomic():
+                row, _ = IndexManager.objects.get_or_create(
+                    document_manager_id=document_id,
+                    profile_manager=profile_manager,
+                    defaults={"index_ids_history": EMPTY_INDEX_IDS_HISTORY},
+                )
+                if row.raw_index_id == doc_id and row.index_error is None:
+                    return
+                IndexManager.objects.filter(pk=row.pk).update(
+                    raw_index_id=doc_id, index_error=None
+                )
+        except (DatabaseError, ValidationError):
             logger.warning(
                 "Could not mark document %s indexed for profile %s",
                 document_id,
@@ -144,9 +149,23 @@ class PromptStudioIndexHelper:
                 ).get_or_create(
                     document_manager=document,
                     profile_manager=profile_manager,
-                    defaults={"extraction_status": {}},
+                    defaults={
+                        "extraction_status": {},
+                        "index_ids_history": EMPTY_INDEX_IDS_HISTORY,
+                    },
                 )
-                if superseded and superseded():
+                try:
+                    dropped = bool(superseded and superseded())
+                except Exception:
+                    # A cache outage must not hide the failure: record it.
+                    logger.warning(
+                        "Could not check for a newer index of document %s; "
+                        "recording the failure.",
+                        document_id,
+                        exc_info=True,
+                    )
+                    dropped = False
+                if dropped:
                     logger.info(
                         "Index failure for document %s profile %s dropped: "
                         "a newer attempt has indexed it.",

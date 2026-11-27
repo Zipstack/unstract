@@ -12,7 +12,7 @@ import pypdfium2 as pdfium
 from account_v2.models import Organization, User
 from adapter_processor_v2.models import AdapterInstance
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import connection
+from django.db import DatabaseError, connection
 from django.test import RequestFactory, TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import resolve
@@ -319,7 +319,10 @@ class PromptRunIndexFailureTests(_ToolWithDocument):
             ) as cache,
             self.assertRaises(IndexingAPIError),
         ):
-            cache.get_indexed_document_id.return_value = cached
+            if callable(cached):
+                cache.get_indexed_document_id.side_effect = cached
+            else:
+                cache.get_indexed_document_id.return_value = cached
             helper.dynamic_indexer(
                 profile_manager=self.default,
                 tool_id=str(self.tool.tool_id),
@@ -338,6 +341,13 @@ class PromptRunIndexFailureTests(_ToolWithDocument):
         status = self._status(self.default)
         self.assertEqual(status["status"], "failed")
         self.assertIn("vector db down", status["failure_reason"])
+
+    def test_a_cache_error_still_records_the_failure(self) -> None:
+        def cache_down(**_):
+            raise ConnectionError("redis down")
+
+        self._run_failing_index(cached=cache_down)
+        self.assertIn("vector db down", self._status(self.default)["failure_reason"])
 
     def test_a_failed_dynamic_index_after_a_newer_success_is_dropped(self) -> None:
         self._index(self.default)
@@ -388,9 +398,22 @@ class PromptRunReusedIndexTests(_ToolWithDocument):
 
     def test_a_recorded_reuse_is_not_written_again(self) -> None:
         self._run(indexed_doc_id="doc-shared")
-        with patch.object(PromptStudioIndexHelper, "handle_index_manager") as write:
+        with CaptureQueriesContext(connection) as queries:
             self._run(indexed_doc_id="doc-shared")
-        write.assert_not_called()
+        writes = [q for q in queries if q["sql"].startswith('UPDATE "index_manager"')]
+        self.assertEqual(writes, [])
+
+    def test_a_reused_index_is_not_deleted_with_this_document(self) -> None:
+        # Another document or profile with the same key owns the index.
+        self._run(indexed_doc_id="doc-shared")
+        row = IndexManager.objects.get(profile_manager=self.other)
+        self.assertNotIn("doc-shared", row.index_ids_history)
+        with patch(
+            "prompt_studio.prompt_studio_index_manager_v2.models.delete_from_vector_db"
+        ) as delete:
+            self.document.delete()
+        delete.assert_called_once()
+        self.assertNotIn("doc-shared", delete.call_args.args[0])
 
     def test_a_completed_wait_marks_the_profile_indexed(self) -> None:
         self._run(
@@ -412,9 +435,9 @@ class PromptRunReusedIndexTests(_ToolWithDocument):
 
     def test_a_bookkeeping_error_does_not_fail_the_run(self) -> None:
         with patch.object(
-            PromptStudioIndexHelper,
-            "handle_index_manager",
-            side_effect=IndexingAPIError("Error updating indexing status"),
+            IndexManager.objects,
+            "get_or_create",
+            side_effect=DatabaseError("connection reset"),
         ):
             self._run(indexed_doc_id="doc-shared")
         self.assertEqual(self._status(self.other)["status"], "pending")
