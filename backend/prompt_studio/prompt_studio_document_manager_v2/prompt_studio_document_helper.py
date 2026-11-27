@@ -9,10 +9,18 @@ logger = logging.getLogger(__name__)
 
 class PromptStudioDocumentHelper:
     @staticmethod
-    def create(tool_id: str, document_name: str) -> DocumentManager:
+    def create(
+        tool_id: str,
+        document_name: str,
+        size_bytes: int | None = None,
+        page_count: int | None = None,
+    ) -> DocumentManager:
         tool: CustomTool = CustomTool.objects.get(pk=tool_id)
         document: DocumentManager = DocumentManager.objects.create(
-            tool=tool, document_name=document_name
+            tool=tool,
+            document_name=document_name,
+            size_bytes=size_bytes,
+            page_count=page_count,
         )
         logger.info("Successfully created the record")
         return document

@@ -46,5 +46,17 @@ class DocumentIndexingService:
         CacheService.delete_a_key(cls._cache_key(org_id, user_id, doc_id_key))
 
     @classmethod
+    def clear_indexing_flag(cls, org_id: str, user_id: str, doc_id_key: str) -> None:
+        """Clears the in-progress flag after a failed attempt.
+
+        A doc id in the key is a newer attempt's success; it stays, so the
+        late failure neither erases it nor gets recorded (mark_index_failed).
+        """
+        # ponytail: read-then-delete is not atomic; a success landing between
+        # the two is lost. Use a Redis compare-and-delete if that shows up.
+        if cls.is_document_indexing(org_id, user_id, doc_id_key):
+            cls.remove_document_indexing(org_id, user_id, doc_id_key)
+
+    @classmethod
     def _cache_key(cls, org_id: str, user_id: str, doc_id_key: str) -> str:
         return f"{cls.CACHE_PREFIX}{org_id}:{user_id}:{doc_id_key}"

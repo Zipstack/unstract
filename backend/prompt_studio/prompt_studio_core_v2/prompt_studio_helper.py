@@ -1601,6 +1601,21 @@ class PromptStudioHelper:
         )
 
     @staticmethod
+    def upload_page_count(pdf: Any) -> int | None:
+        """Pages in an uploaded PDF (a file stream or bytes), or None.
+
+        None for no PDF or one that can't be read; the upload never fails on it.
+        """
+        if pdf is None:
+            return None
+        if hasattr(pdf, "seek"):
+            pdf.seek(0)
+        count = LLMWhispererHelper.pdf_page_count(pdf)
+        if hasattr(pdf, "seek"):
+            pdf.seek(0)
+        return count
+
+    @staticmethod
     def validate_upload_page_count_for_image_mode(
         file_data: Any, file_type: str, profile_manager: ProfileManager | None = None
     ) -> None:
@@ -2617,6 +2632,9 @@ class PromptStudioHelper:
                     org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
                 )
                 if indexed_doc_id:
+                    PromptStudioIndexHelper.record_reused_index(
+                        document_id, profile_manager, indexed_doc_id
+                    )
                     return {
                         "status": IndexingStatus.COMPLETED_STATUS.value,
                         "output": indexed_doc_id,
@@ -2626,6 +2644,10 @@ class PromptStudioHelper:
                     org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
                 )
                 if wait_result is not None:
+                    if wait_result["status"] == IndexingStatus.COMPLETED_STATUS.value:
+                        PromptStudioIndexHelper.record_reused_index(
+                            document_id, profile_manager, wait_result["output"]
+                        )
                     return wait_result
                 # wait_result is None → indexing failed; fall through to
                 # re-index below
@@ -2675,19 +2697,21 @@ class PromptStudioHelper:
                 )
             doc_id = result.data.get("doc_id")
 
+            # Cache first: a late failure write from an older attempt skips
+            # itself once the cache says indexed (see mark_index_failed).
+            DocumentIndexingService.mark_document_indexed(
+                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key, doc_id=doc_id
+            )
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
                 profile_manager=profile_manager,
                 doc_id=doc_id,
             )
-            DocumentIndexingService.mark_document_indexed(
-                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key, doc_id=doc_id
-            )
             return {"status": IndexingStatus.COMPLETED_STATUS.value, "output": doc_id}
         except (IndexingError, IndexingAPIError, SdkError) as e:
             # Clear the indexing flag so subsequent requests are not blocked
             try:
-                DocumentIndexingService.remove_document_indexing(
+                DocumentIndexingService.clear_indexing_flag(
                     org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
                 )
             except Exception:
@@ -2698,6 +2722,17 @@ class PromptStudioHelper:
 
             msg = f"Error while indexing '{filename}'. {msg}"
             logger.error(msg, stack_info=True, exc_info=True)
+            # Shown in the Documents tab after a reload.
+            PromptStudioIndexHelper.mark_index_failed(
+                document_id=document_id,
+                profile_manager=profile_manager,
+                error=msg,
+                superseded=lambda: bool(
+                    DocumentIndexingService.get_indexed_document_id(
+                        org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+                    )
+                ),
+            )
             PromptStudioHelper._publish_log(
                 {"tool_id": tool_id, "run_id": run_id, "doc_name": filename},
                 LogLevels.ERROR,

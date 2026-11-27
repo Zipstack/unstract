@@ -76,6 +76,13 @@ class IndexManager(BaseModel):
         default=dict,
     )
 
+    index_error = models.TextField(
+        db_comment="Why the last indexing of this document failed; cleared when it is next indexed",
+        editable=False,
+        null=True,
+        blank=True,
+    )
+
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,

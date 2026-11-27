@@ -1,5 +1,6 @@
 import json
 import logging
+from collections.abc import Callable
 from enum import Enum
 
 from django.core.exceptions import ImproperlyConfigured, ValidationError
@@ -12,6 +13,12 @@ from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManag
 from .models import IndexManager
 
 logger = logging.getLogger(__name__)
+
+# Long enough for a provider's error text; a stack trace past it is noise.
+INDEX_ERROR_MAX_LENGTH = 2000
+# Stored as a JSON string, as handle_index_manager writes it; the delete
+# hook in models.py parses it.
+EMPTY_INDEX_IDS_HISTORY = json.dumps([])
 
 
 class ExtractionStatusResult(Enum):
@@ -72,6 +79,9 @@ class PromptStudioIndexHelper:
 
                 args[index_id] = doc_id
                 args["index_ids_history"] = json.dumps(index_ids_list)
+                if not is_summary:
+                    # A successful index supersedes an earlier failure.
+                    args["index_error"] = None
 
                 # Update the record with the index id
                 result: IndexManager = IndexManager.objects.filter(
@@ -81,6 +91,103 @@ class PromptStudioIndexHelper:
         except Exception as e:
             transaction.rollback()
             raise IndexingAPIError("Error updating indexing status") from e
+
+    @staticmethod
+    def record_reused_index(
+        document_id: str, profile_manager: ProfileManager, doc_id: str
+    ) -> None:
+        """Marks the profile indexed when it reuses an index already built.
+
+        Profiles with the same indexing settings share one index key, so a
+        prompt run can find the index ready without indexing under this
+        profile. The index is not added to index_ids_history: deleting this
+        row would otherwise delete an index another row still uses. A
+        bookkeeping error is logged; the run goes on.
+        """
+        try:
+            with transaction.atomic():
+                row, _ = IndexManager.objects.get_or_create(
+                    document_manager_id=document_id,
+                    profile_manager=profile_manager,
+                    defaults={"index_ids_history": EMPTY_INDEX_IDS_HISTORY},
+                )
+                if row.raw_index_id == doc_id and row.index_error is None:
+                    return
+                IndexManager.objects.filter(pk=row.pk).update(
+                    raw_index_id=doc_id, index_error=None
+                )
+        except (DatabaseError, ValidationError):
+            logger.warning(
+                "Could not mark document %s indexed for profile %s",
+                document_id,
+                profile_manager.profile_id,
+                exc_info=True,
+            )
+
+    @staticmethod
+    def mark_index_failed(
+        document_id: str,
+        profile_manager: ProfileManager,
+        error: str,
+        superseded: Callable[[], bool] | None = None,
+    ) -> ExtractionStatusResult:
+        """Records why indexing a document under a profile failed.
+
+        The reason is kept on the IndexManager row so the Documents tab can
+        show it after a reload; handle_index_manager clears it the next time
+        the document is indexed (a summary index leaves it).
+
+        superseded, checked under the row lock, tells a late write from an
+        older attempt that a newer one has since succeeded; it then writes
+        nothing.
+        """
+        try:
+            with transaction.atomic():
+                document = DocumentManager.objects.get(pk=document_id)
+                index_manager, _ = IndexManager.objects.select_for_update(
+                    of=("self",)
+                ).get_or_create(
+                    document_manager=document,
+                    profile_manager=profile_manager,
+                    defaults={
+                        "extraction_status": {},
+                        "index_ids_history": EMPTY_INDEX_IDS_HISTORY,
+                    },
+                )
+                try:
+                    dropped = bool(superseded and superseded())
+                except Exception:
+                    # A cache outage must not hide the failure: record it.
+                    logger.warning(
+                        "Could not check for a newer index of document %s; "
+                        "recording the failure.",
+                        document_id,
+                        exc_info=True,
+                    )
+                    dropped = False
+                if dropped:
+                    logger.info(
+                        "Index failure for document %s profile %s dropped: "
+                        "a newer attempt has indexed it.",
+                        document_id,
+                        profile_manager.profile_id,
+                    )
+                    return ExtractionStatusResult.OK
+                index_manager.index_error = error[:INDEX_ERROR_MAX_LENGTH]
+                index_manager.save(update_fields=["index_error"])
+            return ExtractionStatusResult.OK
+        except (DocumentManager.DoesNotExist, ValidationError):
+            logger.error(
+                "Document %s not found or not visible in the current "
+                "organization; index failure not recorded.",
+                document_id,
+            )
+            return ExtractionStatusResult.DOCUMENT_MISSING
+        except DatabaseError:
+            logger.exception(
+                "Failed to record index failure for document %s", document_id
+            )
+            return ExtractionStatusResult.WRITE_FAILED
 
     @staticmethod
     def mark_extraction_status(

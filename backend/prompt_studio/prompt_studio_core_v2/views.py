@@ -1046,6 +1046,8 @@ class PromptStudioCoreView(
             # Store file
             file_name = uploaded_file.name
             file_data = uploaded_file
+            # The PDF a viewer shows: the upload itself, or its converted copy.
+            page_source = uploaded_file if file_type == "application/pdf" else None
 
             if file_converter_plugin and file_type != "application/pdf":
                 file_converter_service = file_converter_plugin["service_class"]()
@@ -1054,6 +1056,7 @@ class PromptStudioCoreView(
                     converted_data, converted_name = file_converter_service.process_file(
                         uploaded_file, file_name
                     )
+                    page_source = converted_data
                     PromptStudioFileHelper.upload_converted_for_ide(
                         org_id=UserSessionUtils.get_organization_id(request),
                         user_id=custom_tool.created_by.user_id,
@@ -1081,7 +1084,10 @@ class PromptStudioCoreView(
 
             # Create a record in the db for the file (document_name = original filename)
             document = PromptStudioDocumentHelper.create(
-                tool_id=str(custom_tool.tool_id), document_name=file_name
+                tool_id=str(custom_tool.tool_id),
+                document_name=file_name,
+                size_bytes=uploaded_file.size,
+                page_count=PromptStudioHelper.upload_page_count(page_source),
             )
             # Create a dictionary to store document data
             doc = {

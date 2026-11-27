@@ -28,6 +28,7 @@ _PROMPT_OUTPUT_MAX_BODY = 50 * 1024 * 1024
 logger = logging.getLogger(__name__)
 
 _ERR_INVALID_JSON = "Invalid JSON"
+_ERR_INDEX_FAILURE_NOT_RECORDED = "Index failure could not be recorded"
 
 
 def _resolve_profile(profile_manager_id):
@@ -482,7 +483,8 @@ def indexing_status(request):
                 org_id=org_id, user_id=user_id, doc_id_key=doc_id_key, doc_id=doc_id
             )
         elif action == "remove":
-            DocumentIndexingService.remove_document_indexing(
+            # Workers send this only after a failed attempt.
+            DocumentIndexingService.clear_indexing_flag(
                 org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
             )
         else:
@@ -650,5 +652,98 @@ def summary_index_key(request):
         logger.exception("summary_index_key internal API failed")
         return JsonResponse(
             {"success": False, "error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def index_error(request):
+    """Record why indexing a document under a profile failed.
+
+    Called by the ide_callback worker when an ide_index run fails, so the
+    Documents tab can show the reason after a reload.
+
+    Expected JSON payload:
+    {
+        "document_id": str,
+        "profile_manager_id": str,
+        "error": str,
+        "org_id": str, "user_id": str, "doc_id_key": str  (optional)
+    }
+
+    With the attempt's indexing-cache key, the write is dropped when that
+    key says indexed: the failed attempt cleared it before posting, so the
+    value comes from a newer attempt that succeeded.
+    """
+    data, err = _parse_json_body(request)
+    if err:
+        return err
+
+    document_id = data.get("document_id", "")
+    profile_manager_id = data.get("profile_manager_id", "")
+    error = data.get("error", "")
+
+    if not document_id or not profile_manager_id or not error:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "document_id, profile_manager_id, and error are required",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    cache_key = {
+        "org_id": data.get("org_id", ""),
+        "user_id": data.get("user_id", ""),
+        "doc_id_key": data.get("doc_id_key", ""),
+    }
+
+    try:
+        from prompt_studio.prompt_studio_core_v2.document_indexing_service import (
+            DocumentIndexingService,
+        )
+        from prompt_studio.prompt_studio_index_manager_v2.prompt_studio_index_helper import (
+            ExtractionStatusResult,
+            PromptStudioIndexHelper,
+        )
+
+        profile_manager, err = _resolve_profile(profile_manager_id)
+        if err:
+            return err
+        superseded = None
+        if all(cache_key.values()):
+
+            def superseded() -> bool:
+                return bool(DocumentIndexingService.get_indexed_document_id(**cache_key))
+
+        result = PromptStudioIndexHelper.mark_index_failed(
+            document_id=document_id,
+            profile_manager=profile_manager,
+            error=str(error),
+            superseded=superseded,
+        )
+        # 404 for a missing document stays outside the client's retry set,
+        # as in extraction_status.
+        match result:
+            case ExtractionStatusResult.OK:
+                return JsonResponse({"success": True})
+            case ExtractionStatusResult.DOCUMENT_MISSING:
+                return JsonResponse(
+                    {"success": False, "error": "Document not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            case ExtractionStatusResult.WRITE_FAILED:
+                return JsonResponse(
+                    {"success": False, "error": _ERR_INDEX_FAILURE_NOT_RECORDED},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            case unhandled:
+                raise AssertionError(f"Unhandled ExtractionStatusResult: {unhandled!r}")
+
+    except Exception:
+        logger.exception("index_error internal API failed")
+        return JsonResponse(
+            {"success": False, "error": _ERR_INDEX_FAILURE_NOT_RECORDED},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
