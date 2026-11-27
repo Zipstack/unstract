@@ -7,14 +7,13 @@ that will be validated in Phase 2-SANITY integration tests.
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from executor.executors.constants import RetrievalStrategy
 from executor.executors.retrieval import RetrievalService
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_output(prompt: str = "What is X?", top_k: int = 5, name: str = "field_a"):
     """Build a minimal ``output`` dict matching PromptServiceConstants keys."""
@@ -39,6 +38,7 @@ def _mock_retriever_class(return_value=None):
 # ---------------------------------------------------------------------------
 # Factory — run_retrieval
 # ---------------------------------------------------------------------------
+
 
 class TestRunRetrieval:
     """Tests for RetrievalService.run_retrieval()."""
@@ -157,6 +157,7 @@ class TestRunRetrieval:
 # Complete context — retrieve_complete_context
 # ---------------------------------------------------------------------------
 
+
 class TestRetrieveCompleteContext:
     """Tests for RetrievalService.retrieve_complete_context()."""
 
@@ -227,6 +228,7 @@ class TestRetrieveCompleteContext:
 # ---------------------------------------------------------------------------
 # BaseRetriever interface
 # ---------------------------------------------------------------------------
+
 
 class TestBaseRetriever:
     """Tests for BaseRetriever base class."""
@@ -303,3 +305,45 @@ class TestBaseRetriever:
         )
         with pytest.raises(ValueError, match="requires an LLM"):
             r.require_llm()
+
+
+# ---------------------------------------------------------------------------
+# Stop (UN-1031) — an abort is not a retrieval failure
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "module,attr",
+    [
+        ("fusion", "QueryFusionRetriever"),
+        ("subquestion", "SubQuestionQueryEngine"),
+        ("router", "RouterQueryEngine"),
+    ],
+)
+def test_retriever_lets_an_abort_through_unwrapped(module, attr):
+    import importlib
+
+    from executor.executors.exceptions import RetrievalError
+
+    from unstract.sdk1.utils.aborting import AbortedError
+
+    mod = importlib.import_module(f"executor.executors.retrievers.{module}")
+    cls = next(
+        v
+        for k, v in vars(mod).items()
+        if k.endswith("Retriever")
+        and isinstance(v, type)
+        and v.__module__ == mod.__name__
+    )
+    retriever = cls(
+        vector_db=MagicMock(), prompt="q", doc_id="d", top_k=3, llm=MagicMock()
+    )
+    with patch.object(
+        retriever.__class__, "require_llm", side_effect=AbortedError("stop")
+    ):
+        with pytest.raises(AbortedError):
+            retriever.retrieve()
+    # Sanity: other failures are still wrapped.
+    with patch.object(retriever.__class__, "require_llm", side_effect=RuntimeError("x")):
+        with pytest.raises(RetrievalError):
+            retriever.retrieve()

@@ -6,8 +6,16 @@ The below env variables are resolved by LLMWhisperer adapter
 
 | Variable                     | Description                                                                                  |
 | ---------------------------- | -------------------------------------------------------------------------------------------- |
-| `ADAPTER_LLMW_POLL_INTERVAL` | Time in seconds to wait before polling LLMWhisperer's status API. Defaults to 30s            |
-| `ADAPTER_LLMW_MAX_POLLS`     | Total number of times to poll the status API. Defaults to 30                                 |
+| `ADAPTER_LLMW_V2_POLL_INTERVAL` | Time in seconds to wait before polling LLMWhisperer's status API. Defaults to 5s          |
+| `ADAPTER_LLMW_WAIT_TIMEOUT`  | Seconds to keep polling before giving up on an extraction. Defaults to 900s                  |
+
+The v2 adapter drives the polling itself rather than asking the client to wait
+(`wait_for_completion=False`), so that a user who stops a Prompt Studio run
+stops waiting for the extraction too (UN-1031). Note that LLMWhisperer has no
+cancel endpoint: an abandoned extraction still completes, and is still billed,
+on their side.
+
+`ADAPTER_LLMW_POLL_INTERVAL` belongs to the v1 adapter and is not read here.
 
 
 ---

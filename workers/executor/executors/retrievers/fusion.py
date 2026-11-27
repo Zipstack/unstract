@@ -6,6 +6,8 @@ from llama_index.core import VectorStoreIndex
 from llama_index.core.retrievers import QueryFusionRetriever
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 
+from unstract.sdk1.utils.aborting import AbortedError
+
 logger = logging.getLogger(__name__)
 
 
@@ -84,6 +86,9 @@ class FusionRetriever(BaseRetriever):
             logger.info(f"Successfully retrieved {len(chunks)} chunks using fusion.")
             return chunks
 
+        except AbortedError:
+            # A stop is not a retrieval failure; let the caller see it.
+            raise
         except (ValueError, AttributeError, KeyError, ImportError) as e:
             logger.error(
                 "Error during fusion retrieval for %s: %s: %s",

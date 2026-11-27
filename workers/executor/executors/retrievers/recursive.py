@@ -6,6 +6,8 @@ from llama_index.core import VectorStoreIndex
 from llama_index.core.retrievers import RecursiveRetriever
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 
+from unstract.sdk1.utils.aborting import AbortedError
+
 logger = logging.getLogger(__name__)
 
 
@@ -66,6 +68,9 @@ class RecursiveRetrieval(BaseRetriever):
             )
             return chunks
 
+        except AbortedError:
+            # A stop is not a retrieval failure; let the caller see it.
+            raise
         except (ValueError, AttributeError, KeyError, ImportError) as e:
             logger.error(
                 "Error during recursive retrieval for %s: %s: %s",

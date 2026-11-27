@@ -6,6 +6,8 @@ from llama_index.core import VectorStoreIndex
 from llama_index.core.retrievers import AutoMergingRetriever as LlamaAutoMergingRetriever
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
 
+from unstract.sdk1.utils.aborting import AbortedError
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,6 +56,8 @@ class AutomergingRetriever(BaseRetriever):
                 # Retrieve nodes using auto-merging
                 nodes = auto_merging_retriever.retrieve(self.prompt)
 
+            except AbortedError:
+                raise
             except Exception as e:
                 logger.error(
                     "AutoMergingRetriever failed: %s: %s",
@@ -81,6 +85,9 @@ class AutomergingRetriever(BaseRetriever):
             )
             return chunks
 
+        except AbortedError:
+            # A stop is not a retrieval failure; let the caller see it.
+            raise
         except (ValueError, AttributeError, KeyError, ImportError) as e:
             logger.error(
                 "Error during auto-merging retrieval for %s: %s: %s",

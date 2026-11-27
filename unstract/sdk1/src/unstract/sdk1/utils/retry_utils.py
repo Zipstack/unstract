@@ -1,6 +1,5 @@
 """Generic retry utilities with custom exponential backoff implementation."""
 
-import asyncio
 import builtins
 import errno
 import logging
@@ -13,6 +12,13 @@ from typing import Any
 
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import HTTPError, Timeout
+from unstract.sdk1.utils.aborting import (
+    AbortCheck,
+    AbortedError,
+    asliced_sleep,
+    should_abort_now,
+    sliced_sleep,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -193,11 +199,20 @@ def call_with_retry[T](
     retry_predicate: Callable[[Exception], bool],
     description: str = "",
     logger_instance: logging.Logger | None = None,
+    should_abort: AbortCheck | None = None,
 ) -> T:
-    """Execute fn() with retry on transient errors."""
+    """Execute fn() with retry on transient errors.
+
+    ``should_abort`` (or the ambient abort scope) is consulted before each
+    attempt and *during* the backoff sleep. Without the latter a caller who
+    stops the work can wait out the whole delay — up to a minute once the
+    exponential backoff has grown — for a result that will be discarded.
+    """
     _validate_max_retries(max_retries)
     log = logger_instance or logger
     for attempt in range(max_retries + 1):
+        if should_abort_now(should_abort):
+            raise AbortedError(f"Aborted before attempt {attempt + 1}")
         try:
             return fn()
         except Exception as e:
@@ -206,7 +221,7 @@ def call_with_retry[T](
             )
             if delay is None:
                 raise
-            time.sleep(delay)
+            sliced_sleep(delay, should_abort)
     raise RuntimeError("unreachable")  # for type-checker: loop always returns or raises
 
 
@@ -217,11 +232,19 @@ async def acall_with_retry[T](
     retry_predicate: Callable[[Exception], bool],
     description: str = "",
     logger_instance: logging.Logger | None = None,
+    should_abort: AbortCheck | None = None,
 ) -> T:
-    """Async version of call_with_retry — awaits fn()."""
+    """Async version of call_with_retry — awaits fn().
+
+    Note that cancelling the surrounding task is the *primary* way an
+    in-flight call here is abandoned; ``should_abort`` additionally stops the
+    loop from starting another attempt or sitting out a backoff.
+    """
     _validate_max_retries(max_retries)
     log = logger_instance or logger
     for attempt in range(max_retries + 1):
+        if should_abort_now(should_abort):
+            raise AbortedError(f"Aborted before attempt {attempt + 1}")
         try:
             return await fn()
         except Exception as e:
@@ -230,7 +253,7 @@ async def acall_with_retry[T](
             )
             if delay is None:
                 raise
-            await asyncio.sleep(delay)
+            await asliced_sleep(delay, should_abort)
     raise RuntimeError("unreachable")  # for type-checker: loop always returns or raises
 
 
@@ -333,6 +356,7 @@ def iter_with_retry[T](
     retry_predicate: Callable[[Exception], bool],
     description: str = "",
     logger_instance: logging.Logger | None = None,
+    should_abort: AbortCheck | None = None,
 ) -> Generator[T, None, None]:
     """Yield from fn() with retry. Only retries before the first yield.
 
@@ -342,16 +366,25 @@ def iter_with_retry[T](
     A caller that stops before the end must ``close()`` the generator (for
     example with ``contextlib.closing``) so the stream is released on its own
     thread rather than by the garbage collector (see ``close_stream``).
+
+    The abort predicate is checked before each attempt and between yielded
+    items, so a streaming call stops at the next chunk rather than running to
+    completion.
     """
     _validate_max_retries(max_retries)
     log = logger_instance or logger
     for attempt in range(max_retries + 1):
+        if should_abort_now(should_abort):
+            raise AbortedError(f"Aborted before attempt {attempt + 1}")
         has_yielded = False
         gen = fn()
         try:
             for item in gen:
                 has_yielded = True
                 yield item
+                if should_abort_now(should_abort):
+                    # The ``finally`` below releases the stream.
+                    raise AbortedError("Aborted mid-stream")
             return
         except Exception as e:
             if has_yielded:
@@ -366,8 +399,8 @@ def iter_with_retry[T](
             # close()s this generator early.
             close_stream(gen, log=log, description=description)
         # After ``finally`` so the connection is released, not held
-        # through the backoff.
-        time.sleep(delay)
+        # through the backoff. Sliced so a stop is noticed mid-backoff.
+        sliced_sleep(delay, should_abort)
 
 
 def collect_with_retry[T](
@@ -378,6 +411,7 @@ def collect_with_retry[T](
     is_content: Callable[[T], bool],
     description: str = "",
     logger_instance: logging.Logger | None = None,
+    should_abort: AbortCheck | None = None,
 ) -> list[T]:
     """Drain fn() into a list with retry. Only retries before content.
 
@@ -388,10 +422,16 @@ def collect_with_retry[T](
     and is raised immediately: replaying it would re-run a generation that
     may already have consumed minutes. Items from a failed attempt are
     discarded so a retry never duplicates them.
+
+    ``should_abort`` (or the ambient abort scope) is checked before each
+    attempt, between items and during the backoff, so a stopped run
+    abandons the stream at the next chunk rather than draining it.
     """
     _validate_max_retries(max_retries)
     log = logger_instance or logger
     for attempt in range(max_retries + 1):
+        if should_abort_now(should_abort):
+            raise AbortedError(f"Aborted before attempt {attempt + 1}")
         items: list[T] = []
         has_content = False
         gen: Iterable[T] | None = None
@@ -404,7 +444,12 @@ def collect_with_retry[T](
             for item in gen:
                 items.append(item)
                 has_content = has_content or is_content(item)
+                if should_abort_now(should_abort):
+                    # The ``finally`` below releases the stream.
+                    raise AbortedError("Aborted mid-stream")
             return items
+        except AbortedError:
+            raise
         except Exception as e:
             if has_content:
                 raise
@@ -418,8 +463,8 @@ def collect_with_retry[T](
             # open (see ``close_stream``).
             close_stream(gen, log=log, description=description)
         # After ``finally`` so the connection is released, not held
-        # through the backoff.
-        time.sleep(delay)
+        # through the backoff. Sliced so a stop is noticed mid-backoff.
+        sliced_sleep(delay, should_abort)
     raise RuntimeError("unreachable")  # for type-checker: loop always returns or raises
 
 
