@@ -161,6 +161,17 @@ is convention.
 - A loading `Button` keeps focus and ignores activation; do not swap it for a
   disabled one while work runs.
 
+## Overlays
+
+- Drawers, popovers, hover cards and tooltips come from
+  `components/ui/overlay/` (`Drawer`, `Popover`, `HoverCard`, `Tooltip`),
+  imported from `@v1/components/ui/overlay`; its README lists every prop.
+- A drawer traps focus and returns it; a popover takes focus without
+  trapping it; a hover card and a tooltip never take it. Escape closes each.
+- A tooltip holds text only; anything a user must reach goes in a popover.
+- A new overlay (a dialog) builds on the shared parts there: the dim layer,
+  `OverlayHeader`, `OverlayFooter`, `dismissGuards` and `useReturnFocus`.
+
 ## Text inputs
 
 - Text controls come from `components/ui/form/` (`Input`, `Textarea`,

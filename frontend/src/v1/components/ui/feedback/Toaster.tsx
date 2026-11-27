@@ -129,11 +129,13 @@ export function Toaster({
     });
   }, [commit, container]);
 
+  // z-1600 keeps toasts above every overlay: drawers and dialogs (z-50) and the popper wrappers v0 pins at 1500.
+  // has-[li] keeps clicks on an older toast from reaching an overlay under it.
   const viewport = (
     <RadixToast.Viewport
       ref={viewportRef}
       label="Notifications ({hotkey})"
-      className="ui:fixed ui:right-0 ui:bottom-0 ui:box-border ui:z-50 ui:m-0 ui:flex ui:max-h-screen ui:w-full ui:max-w-108 ui:list-none ui:flex-col ui:gap-3 ui:p-4 ui:outline-none"
+      className="ui:fixed ui:right-0 ui:bottom-0 ui:box-border ui:z-1600 ui:has-[li]:pointer-events-auto ui:m-0 ui:flex ui:max-h-screen ui:w-full ui:max-w-108 ui:list-none ui:flex-col ui:gap-3 ui:p-4 ui:outline-none"
     />
   );
 
