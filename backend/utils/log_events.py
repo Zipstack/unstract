@@ -301,7 +301,13 @@ def _emit_websocket_event(room: str, event: str, data: dict[str, Any]) -> None:
     """
     payload = {"data": data}
     try:
-        logger.debug(f"[{os.getpid()}] Push websocket event: {event}, {payload}")
+        # Prompt run "outputs" hold extracted document text: keep it out of logs.
+        logged = (
+            {key: value for key, value in data.items() if key != "outputs"}
+            if isinstance(data, dict)
+            else data
+        )
+        logger.debug(f"[{os.getpid()}] Push websocket event: {event}, {logged}")
         sio.emit(event, data=payload, room=room)
     except Exception as e:
         logger.error(f"Error emitting WebSocket event: {e}")

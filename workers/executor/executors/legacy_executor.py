@@ -27,6 +27,7 @@ from executor.executors.lookup_enrichment import (
     run_lookup_enrichment,
     run_webhook_postprocessing,
 )
+from executor.executors.provider_error_details import provider_error_details
 from executor.executors.vlm_image_answer import (
     detect_image_mode_config,
     run_vlm_image_answer,
@@ -167,6 +168,8 @@ class LegacyExecutor(BaseExecutor):
             failure_metadata: dict[str, Any] = {}
             if exc.partial_usage_records:
                 failure_metadata["usage_records"] = list(exc.partial_usage_records)
+            if error_details := provider_error_details(exc):
+                failure_metadata["error_details"] = error_details
             return ExecutionResult.failure(error=exc.message, metadata=failure_metadata)
 
     def _build_shim(
