@@ -22,7 +22,7 @@
     "model": {
       "type": "string",
       "title": "Model",
-      "default": "gpt-3.5-turbo",
+      "default": "gpt-5.6-luna",
       "description": "The model to use for the API request. Refer to https://platform.openai.com/docs/models"
     },
     "api_base": {
